@@ -1,0 +1,201 @@
+package swarm
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"runtime"
+	"sync"
+	"time"
+
+	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/molt"
+)
+
+// Client handles swarm registration and heartbeat with Queen/Overlord
+type Client struct {
+	cfg      config.SwarmConfig
+	nodeID   string
+	token    string
+	mu       sync.RWMutex
+	stopCh   chan struct{}
+	httpC    *http.Client
+}
+
+// NewClient creates a swarm client from config
+func NewClient(cfg config.SwarmConfig) *Client {
+	return &Client{
+		cfg:    cfg,
+		stopCh: make(chan struct{}),
+		httpC:  &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// Start registers with Queen and begins heartbeat loop
+func (c *Client) Start() {
+	if !c.cfg.Enabled || c.cfg.QueenURL == "" {
+		log.Println("[swarm] swarm disabled or queen_url not set, running standalone")
+		return
+	}
+
+	log.Printf("[swarm] registering with Queen at %s", c.cfg.QueenURL)
+
+	if err := c.register(); err != nil {
+		log.Printf("[swarm] registration failed: %v (will retry in heartbeat loop)", err)
+	} else {
+		log.Printf("[swarm] registered as node %s", c.nodeID)
+	}
+
+	// Heartbeat loop
+	interval := time.Duration(c.cfg.HeartbeatInterval) * time.Second
+	if interval < 10*time.Second {
+		interval = 30 * time.Second
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if c.nodeID == "" {
+					// Retry registration
+					if err := c.register(); err != nil {
+						log.Printf("[swarm] re-registration failed: %v", err)
+						continue
+					}
+					log.Printf("[swarm] registered as node %s", c.nodeID)
+				}
+				if err := c.heartbeat(); err != nil {
+					log.Printf("[swarm] heartbeat failed: %v", err)
+				}
+			case <-c.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+// Stop gracefully stops the heartbeat loop
+func (c *Client) Stop() {
+	close(c.stopCh)
+}
+
+// NodeID returns the registered node ID
+func (c *Client) NodeID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.nodeID
+}
+
+func (c *Client) register() error {
+	name := c.cfg.NodeName
+	if name == "" {
+		hostname, _ := os.Hostname()
+		name = hostname
+	}
+
+	body := map[string]interface{}{
+		"name":    name,
+		"role":    "claw",
+		"version": molt.Version,
+		"address": fmt.Sprintf("%s:8080", getOutboundIP()),
+		"region":  c.cfg.Region,
+	}
+
+	resp, err := c.post("/swarm/register", body)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.nodeID = resp["node_id"].(string)
+	c.token = resp["token"].(string)
+	c.mu.Unlock()
+
+	// Persist credentials for restart survival
+	saveSwarmCredentials(c.nodeID, c.token)
+
+	return nil
+}
+
+func (c *Client) heartbeat() error {
+	c.mu.RLock()
+	nid, tok := c.nodeID, c.token
+	c.mu.RUnlock()
+
+	if nid == "" || tok == "" {
+		return fmt.Errorf("not registered")
+	}
+
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	memPct := float64(memStats.Alloc) / float64(memStats.Sys) * 100
+
+	body := map[string]interface{}{
+		"node_id":      nid,
+		"token":        tok,
+		"version":      molt.Version,
+		"cpu_percent":  0, // TODO: real CPU sampling
+		"mem_percent":  memPct,
+		"tasks_running": 0,
+		"tasks_queued":  0,
+		"error_rate":    0,
+	}
+
+	_, err := c.post("/swarm/heartbeat", body)
+	return err
+}
+
+func (c *Client) post(path string, body map[string]interface{}) (map[string]interface{}, error) {
+	data, _ := json.Marshal(body)
+	url := c.cfg.QueenURL + path
+
+	resp, err := c.httpC.Post(url, "application/json", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("POST %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		errMsg, _ := result["error"].(string)
+		return nil, fmt.Errorf("POST %s: %d %s", path, resp.StatusCode, errMsg)
+	}
+
+	return result, nil
+}
+
+// saveSwarmCredentials persists node_id and token to a file for restart survival
+func saveSwarmCredentials(nodeID, token string) {
+	data := fmt.Sprintf("%s\n%s\n", nodeID, token)
+	os.WriteFile(".swarm_credentials", []byte(data), 0600)
+}
+
+// LoadSwarmCredentials reads persisted credentials
+func LoadSwarmCredentials() (nodeID, token string) {
+	data, err := os.ReadFile(".swarm_credentials")
+	if err != nil {
+		return "", ""
+	}
+	parts := bytes.Split(data, []byte("\n"))
+	if len(parts) >= 2 {
+		return string(parts[0]), string(parts[1])
+	}
+	return "", ""
+}
+
+func getOutboundIP() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	return hostname
+}

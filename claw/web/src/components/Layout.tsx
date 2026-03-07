@@ -1,0 +1,334 @@
+import { useState, useEffect } from 'react'
+import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, Users, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Code2, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard } from 'lucide-react'
+import { notificationAPI, versionAPI } from '../lib/api'
+import { starclawWS } from '../lib/websocket'
+
+const CrawfishIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 19c-2 0-4-1-5-3s-1-4 0-6c1-1.5 3-3 5-3s4 1.5 5 3c1 2 1 4 0 6s-3 3-5 3z" />
+    <path d="M9 10c-2-2-4-3-6-2" />
+    <path d="M15 10c2-2 4-3 6-2" />
+    <path d="M8 7c-1-2-1-4 0-5" />
+    <path d="M16 7c1-2 1-4 0-5" />
+    <circle cx="10" cy="11" r="0.8" fill="currentColor" />
+    <circle cx="14" cy="11" r="0.8" fill="currentColor" />
+    <path d="M10 16c0.5 0.5 1.5 1 2 1s1.5-0.5 2-1" />
+    <path d="M9 19l-1 3" />
+    <path d="M15 19l1 3" />
+    <path d="M11 19.5l-0.5 2.5" />
+    <path d="M13 19.5l0.5 2.5" />
+  </svg>
+)
+import { useAuthStore } from '../stores/authStore'
+import { useThemeStore } from '../stores/themeStore'
+import { useConfigStore } from '../stores/configStore'
+import { useI18n } from '../lib/i18n'
+
+interface NavItem { to: string; icon: React.ComponentType<{ className?: string }>; label: string }
+interface NavGroup { group: string; items: NavItem[] }
+
+function getNavGroups(isHosted: boolean): NavGroup[] {
+  const systemItems: NavItem[] = [
+    { to: '/settings', icon: Settings, label: '设置' },
+  ]
+  if (isHosted) {
+    systemItems.unshift({ to: '/billing', icon: CreditCard, label: '计费' })
+  }
+  return [
+    {
+      group: '核心',
+      items: [
+        { to: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
+        { to: '/chat', icon: MessageSquare, label: '对话' },
+      ],
+    },
+    {
+      group: '代理',
+      items: [
+        { to: '/agents', icon: Bot, label: 'Agents' },
+        { to: '/multi-agent', icon: Users, label: '多 Agent' },
+        { to: '/coding', icon: Code2, label: '编程 Agent' },
+        { to: '/marketplace', icon: Store, label: '市场' },
+      ],
+    },
+    {
+      group: '技能 / 工具',
+      items: [
+        { to: '/skills', icon: Zap, label: '技能管理' },
+        { to: '/models', icon: Cpu, label: '模型' },
+        { to: '/knowledge', icon: BookOpen, label: '知识库' },
+        { to: '/mcp', icon: Plug, label: 'MCP 工具' },
+      ],
+    },
+    {
+      group: '工作流 / 任务',
+      items: [
+        { to: '/workflows', icon: GitBranch, label: '工作流' },
+        { to: '/tasks', icon: ListTodo, label: '自主任务' },
+        { to: '/resources', icon: FolderOpen, label: '资源中心' },
+        { to: '/videos', icon: Film, label: '视频画廊' },
+        { to: '/visualization', icon: Radar, label: '可视化' },
+      ],
+    },
+    {
+      group: '系统',
+      items: systemItems,
+    },
+  ]
+}
+
+export default function Layout() {
+  const { user, logout } = useAuthStore()
+  const { dark, toggle: toggleTheme } = useThemeStore()
+  const { deployMode, loaded: configLoaded, fetchConfig } = useConfigStore()
+  const { locale, setLocale } = useI18n()
+  const navigate = useNavigate()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showNotif, setShowNotif] = useState(false)
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [updateInfo, setUpdateInfo] = useState<{ latest: string; latest_url: string } | null>(null)
+  const [updateDismissed, setUpdateDismissed] = useState(false)
+
+  useEffect(() => { if (!configLoaded) fetchConfig() }, [configLoaded, fetchConfig])
+
+  // Molt: check for version updates
+  useEffect(() => {
+    versionAPI.check().then(res => {
+      if (res.data.update_available) {
+        setUpdateInfo({ latest: res.data.latest, latest_url: res.data.latest_url })
+      }
+    }).catch(() => {})
+  }, [])
+
+  // WebSocket: connect for real-time push
+  useEffect(() => {
+    starclawWS.connect()
+    const unsubNotif = starclawWS.on('notification', () => {
+      setUnreadCount(prev => prev + 1)
+    })
+    return () => {
+      unsubNotif()
+      starclawWS.disconnect()
+    }
+  }, [])
+
+  const navGroups = getNavGroups(deployMode === 'hosted')
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await notificationAPI.unreadCount()
+        setUnreadCount(res.data.unread_count || 0)
+      } catch {}
+    }
+    poll()
+    const interval = setInterval(poll, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const openNotifications = async () => {
+    setShowNotif(!showNotif)
+    if (!showNotif) {
+      try {
+        const res = await notificationAPI.list()
+        setNotifications(res.data.notifications || [])
+      } catch {}
+    }
+  }
+
+  const markAllRead = async () => {
+    try {
+      await notificationAPI.markRead()
+      setUnreadCount(0)
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    } catch {}
+  }
+
+  const notifIcon = (type: string) => {
+    switch (type) {
+      case 'task_complete': return <CheckCircle2 className="w-4 h-4 text-green-500" />
+      case 'task_failed': return <XCircle className="w-4 h-4 text-red-500" />
+      case 'warning': return <AlertTriangle className="w-4 h-4 text-yellow-500" />
+      default: return <Info className="w-4 h-4 text-blue-500" />
+    }
+  }
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  return (
+    <div className="flex h-screen">
+      {/* Mobile header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-30 h-12 bg-gray-900 flex items-center px-4 gap-3">
+        <button onClick={() => setMobileOpen(!mobileOpen)} className="text-white">
+          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+        <CrawfishIcon className="w-6 h-6 text-red-400" />
+        <span className="text-white font-bold">StarClaw</span>
+      </div>
+
+      {/* Overlay */}
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 z-20 bg-black/50" onClick={() => setMobileOpen(false)} />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`fixed md:static z-20 top-0 md:top-auto left-0 h-full w-60 bg-gray-900 text-white flex flex-col transition-transform md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="p-4 border-b border-gray-700">
+          <div className="flex items-center gap-2">
+            <CrawfishIcon className="w-7 h-7 text-red-400" />
+            <span className="text-xl font-bold">StarClaw</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">AI Agent Platform</p>
+        </div>
+
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+          {navGroups.map(({ group, items }, gi) => (
+            <div key={group}>
+              {gi > 0 && <div className="my-2 mx-3 border-t border-gray-700/60" />}
+              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                {group}
+              </div>
+              {items.map(({ to, icon: Icon, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      isActive
+                        ? 'bg-primary-600 text-white'
+                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                    }`
+                  }
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="p-3 border-t border-gray-700 space-y-2">
+          <div className="px-3 py-1">
+            <kbd className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Ctrl+K</kbd>
+            <span className="text-xs text-gray-500 ml-1.5">快速搜索</span>
+          </div>
+          <div className="flex items-center justify-between px-3 py-1">
+            <span className="text-xs text-gray-400">主题</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
+                className="px-1.5 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition-colors font-mono"
+                title={locale === 'zh' ? 'Switch to English' : '切换到中文'}
+              >
+                {locale === 'zh' ? 'EN' : '中'}
+              </button>
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                title={dark ? '浅色模式' : '深色模式'}
+              >
+                {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-primary-600 flex items-center justify-center text-xs font-medium">
+                {user?.username?.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm text-gray-300 truncate max-w-[120px]">
+                {user?.username}
+              </span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-gray-400 hover:text-white transition-colors"
+              title="退出登录"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900 pt-12 md:pt-0">
+        {/* Notification bar - desktop only */}
+        <div className="hidden md:flex items-center justify-end h-10 px-4 flex-shrink-0 relative">
+          <button
+            onClick={openNotifications}
+            className="relative p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            <Bell className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Notification dropdown */}
+          {showNotif && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowNotif(false)} />
+              <div className="absolute right-4 top-10 w-80 max-h-96 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-20 flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                  <span className="font-semibold text-sm text-gray-900 dark:text-white">通知</span>
+                  {unreadCount > 0 && (
+                    <button onClick={markAllRead} className="text-xs text-violet-600 hover:underline">全部已读</button>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="py-8 text-center text-gray-400 text-sm">暂无通知</div>
+                  ) : (
+                    notifications.slice(0, 20).map(n => (
+                      <div
+                        key={n.id}
+                        className={`px-4 py-3 border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 ${!n.is_read ? 'bg-violet-50/50 dark:bg-violet-900/10' : ''}`}
+                        onClick={() => { if (n.task_id) { navigate(`/tasks`); setShowNotif(false) } }}
+                      >
+                        <div className="flex items-start gap-2">
+                          {notifIcon(n.type)}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{n.title}</p>
+                            {n.content && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{n.content}</p>}
+                            <p className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('zh-CN')}</p>
+                          </div>
+                          {!n.is_read && <div className="w-2 h-2 rounded-full bg-violet-500 mt-1.5 flex-none" />}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex-1 overflow-hidden relative">
+          {updateInfo && !updateDismissed && (
+            <div className="bg-primary-50 border-b border-primary-200 px-4 py-2 flex items-center justify-between text-sm">
+              <span className="text-primary-700">
+                🦞 New version <strong>v{updateInfo.latest}</strong> available!{' '}
+                <a href={updateInfo.latest_url} target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-primary-900">
+                  View release
+                </a>
+              </span>
+              <button onClick={() => setUpdateDismissed(true)} className="text-primary-400 hover:text-primary-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  )
+}

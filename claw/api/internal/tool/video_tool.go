@@ -1,0 +1,800 @@
+package tool
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"gorm.io/gorm"
+
+	"github.com/google/uuid"
+	"github.com/yinhe/starclaw/internal/model"
+)
+
+// VideoTool generates videos via multiple providers: DashScope Wan and fal.ai (Veo3, Sora2, Kling, etc.)
+type VideoTool struct {
+	db      *gorm.DB
+	mergeMu sync.Mutex
+	merging map[string]bool
+}
+
+func NewVideoTool(db *gorm.DB) *VideoTool {
+	return &VideoTool{db: db, merging: make(map[string]bool)}
+}
+
+func (t *VideoTool) Name() string { return "video_generation" }
+
+func (t *VideoTool) Description() string {
+	return `AI 视频生成工具，支持多种视频模型。支持的模型：
+- wan2.6-t2v: 阿里云万相文生视频（默认），最高10秒
+- wan2.6-i2v: 阿里云万相图生视频，需要img_url
+- veo3: Google Veo 3 文生视频 (fal.ai)，电影级画质
+- sora2: OpenAI Sora 2 文生视频 (fal.ai)
+- kling-v2: 快手可灵 v2 文生视频 (fal.ai)
+- minimax-video: MiniMax 视频生成 (fal.ai)
+- luma: Luma Dream Machine (fal.ai)
+
+操作：generate_video、check_status、merge_videos、list_models
+制作流程：1) 编写脚本 2) 逐场景调用 generate_video 3) 所有场景完成后自动合成最终视频。`
+}
+
+func (t *VideoTool) Parameters() interface{} {
+	return &JSONSchema{
+		Type: "object",
+		Properties: map[string]Property{
+			"action":   {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models"},
+			"prompt":   {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
+			"model":    {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, sora2, kling-v2, minimax-video, luma"},
+			"img_url":  {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v)."},
+			"size":     {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
+			"duration": {Type: "string", Description: "Video duration in seconds: 5 or 10. Default: 5"},
+			"task_id":  {Type: "string", Description: "Task ID or record ID for check_status"},
+			"scene":    {Type: "string", Description: "Scene label for multi-scene projects (e.g. 'scene_1')"},
+			"task_ids": {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
+		},
+		Required: []string{"action"},
+	}
+}
+
+type videoArgs struct {
+	Action   string `json:"action"`
+	Prompt   string `json:"prompt"`
+	Model    string `json:"model"`
+	ImgURL   string `json:"img_url"`
+	Size     string `json:"size"`
+	Duration string `json:"duration"`
+	TaskID   string `json:"task_id"`
+	Scene    string `json:"scene"`
+	TaskIDs  string `json:"task_ids"`
+}
+
+// fal.ai video model endpoints
+var falVideoEndpoints = map[string]string{
+	"veo3":          "fal-ai/veo3",
+	"sora2":         "fal-ai/minimax-video/video-01-live",
+	"kling-v2":      "fal-ai/kling-video/v2.1/master/text-to-video",
+	"minimax-video": "fal-ai/minimax-video/video-01-live",
+	"luma":          "fal-ai/luma-dream-machine",
+}
+
+func (t *VideoTool) Execute(ctx context.Context, argsJSON string) (string, error) {
+	var args videoArgs
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %v", err)
+	}
+	switch args.Action {
+	case "generate_video":
+		return t.generateVideo(ctx, args)
+	case "check_status":
+		return t.checkStatus(ctx, args)
+	case "merge_videos":
+		return t.mergeVideos(ctx, args)
+	case "list_models":
+		return t.listModels()
+	default:
+		return "", fmt.Errorf("unknown action: %s. Use: generate_video, check_status, merge_videos, list_models", args.Action)
+	}
+}
+
+func isFalVideoModel(m string) bool {
+	_, ok := falVideoEndpoints[m]
+	return ok
+}
+
+func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, error) {
+	if args.Prompt == "" {
+		return "", fmt.Errorf("prompt is required")
+	}
+	userID := ""
+	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
+		userID = uid
+	}
+	convID := ""
+	if cid, ok := ctx.Value(CtxKeyConversationID).(string); ok {
+		convID = cid
+	}
+	if args.Model == "" {
+		args.Model = "wan2.6-t2v"
+	}
+	if args.Size == "" {
+		args.Size = "1280*720"
+	}
+	duration := 5
+	if args.Duration == "10" {
+		duration = 10
+	}
+
+	if isFalVideoModel(args.Model) {
+		return t.generateVideoFal(ctx, userID, convID, args, duration)
+	}
+	return t.generateVideoWan(ctx, userID, convID, args, duration)
+}
+
+// ── DashScope Wan Provider ──
+
+func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string, args videoArgs, duration int) (string, error) {
+	apiKey, baseHost := GetDashScopeAPIKey(t.db, userID)
+	if apiKey == "" {
+		return "", fmt.Errorf("no DashScope API key found. Please configure a qwen model first")
+	}
+
+	input := map[string]interface{}{"prompt": args.Prompt}
+	if args.ImgURL != "" {
+		input["img_url"] = args.ImgURL
+	}
+	body := map[string]interface{}{
+		"model": args.Model, "input": input,
+		"parameters": map[string]interface{}{"size": args.Size, "duration": duration},
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	url := fmt.Sprintf("https://%s/api/v1/services/aigc/video-generation/video-synthesis", baseHost)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-DashScope-Async", "enable")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("API request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var result map[string]interface{}
+	json.Unmarshal(respBody, &result)
+	output, _ := result["output"].(map[string]interface{})
+	taskID, _ := output["task_id"].(string)
+	if taskID == "" {
+		return "", fmt.Errorf("no task_id in response: %s", string(respBody))
+	}
+
+	log.Printf("[VideoTool] Wan submitted: %s (model=%s, dur=%ds, scene=%s)", taskID, args.Model, duration, args.Scene)
+
+	record := model.VideoRecord{
+		UserID: userID, ConversationID: convID, TaskID: taskID,
+		Model: args.Model, Prompt: args.Prompt, ImgURL: args.ImgURL,
+		Size: args.Size, Duration: duration, Scene: args.Scene, Status: "running",
+	}
+	t.db.Create(&record)
+	if args.Scene != "" {
+		t.ensureVideoWorkflow(userID, convID)
+	}
+
+	go func() {
+		videoURL, _, err := t.pollDashScopeTask(context.Background(), apiKey, baseHost, taskID, 10*time.Minute)
+		if err != nil {
+			log.Printf("[VideoTool] Task %s failed: %v", taskID, err)
+			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{"status": "failed"})
+			return
+		}
+		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{
+			"video_url": videoURL, "status": "succeeded",
+		})
+		var rec model.VideoRecord
+		if t.db.Where("task_id = ?", taskID).First(&rec).Error == nil {
+			ExtractThumbnail(t.db, rec.ID, videoURL)
+		}
+		if convID != "" {
+			t.TryAutoMerge(userID, convID)
+		}
+	}()
+
+	return toJSON(map[string]interface{}{
+		"action": "generate_video", "status": "submitted", "task_id": taskID,
+		"model": args.Model, "scene": args.Scene,
+		"message": fmt.Sprintf("视频任务已提交！任务ID: %s，模型: %s。片段完成后会自动合成。", taskID, args.Model),
+	}), nil
+}
+
+// ── fal.ai Provider ──
+
+func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string, args videoArgs, duration int) (string, error) {
+	apiKey := GetFalAPIKey(t.db, userID)
+	if apiKey == "" {
+		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider first")
+	}
+	endpoint, ok := falVideoEndpoints[args.Model]
+	if !ok {
+		return "", fmt.Errorf("unknown fal.ai video model: %s", args.Model)
+	}
+
+	body := map[string]interface{}{
+		"prompt":   args.Prompt,
+		"duration": fmt.Sprintf("%d", duration),
+	}
+	if args.ImgURL != "" {
+		body["image_url"] = args.ImgURL
+	}
+	sizeParts := strings.Split(args.Size, "*")
+	if len(sizeParts) == 2 {
+		if w, err := strconv.Atoi(sizeParts[0]); err == nil {
+			body["width"] = w
+		}
+		if h, err := strconv.Atoi(sizeParts[1]); err == nil {
+			body["height"] = h
+		}
+	}
+
+	requestID, err := SubmitToFal(apiKey, endpoint, body)
+	if err != nil {
+		return "", fmt.Errorf("fal.ai submit failed: %v", err)
+	}
+
+	log.Printf("[VideoTool] fal.ai submitted: %s (model=%s, scene=%s)", requestID, args.Model, args.Scene)
+
+	record := model.VideoRecord{
+		UserID: userID, ConversationID: convID, TaskID: requestID,
+		Model: args.Model, Prompt: args.Prompt, ImgURL: args.ImgURL,
+		Size: args.Size, Duration: duration, Scene: args.Scene, Status: "running",
+	}
+	t.db.Create(&record)
+	if args.Scene != "" {
+		t.ensureVideoWorkflow(userID, convID)
+	}
+
+	go func() {
+		result, err := PollFalStatus(apiKey, endpoint, requestID, 10*time.Minute)
+		if err != nil {
+			log.Printf("[VideoTool] fal.ai %s failed: %v", requestID, err)
+			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
+			return
+		}
+		videoURL := extractFalVideoURL(result)
+		if videoURL == "" {
+			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
+			return
+		}
+		// Download to local storage
+		outputDir := "/app/merged_videos"
+		os.MkdirAll(outputDir, 0755)
+		localFile := fmt.Sprintf("fal_%s.mp4", uuid.New().String()[:8])
+		localPath := filepath.Join(outputDir, localFile)
+		savedURL := videoURL
+		if err := DownloadFile(videoURL, localPath); err == nil {
+			savedURL = fmt.Sprintf("/v1/videos/merged/%s", localFile)
+		}
+		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{
+			"video_url": savedURL, "status": "succeeded",
+		})
+		var rec model.VideoRecord
+		if t.db.Where("task_id = ?", requestID).First(&rec).Error == nil {
+			ExtractThumbnail(t.db, rec.ID, savedURL)
+		}
+		if convID != "" {
+			t.TryAutoMerge(userID, convID)
+		}
+	}()
+
+	return toJSON(map[string]interface{}{
+		"action": "generate_video", "status": "submitted", "task_id": requestID,
+		"model": args.Model, "scene": args.Scene,
+		"message": fmt.Sprintf("视频任务已提交！请求ID: %s，模型: %s (fal.ai)。", requestID, args.Model),
+	}), nil
+}
+
+func extractFalVideoURL(result map[string]interface{}) string {
+	if video, ok := result["video"].(map[string]interface{}); ok {
+		if u, ok := video["url"].(string); ok {
+			return u
+		}
+	}
+	if u, ok := result["video_url"].(string); ok {
+		return u
+	}
+	if output, ok := result["output"].(map[string]interface{}); ok {
+		if u, ok := output["url"].(string); ok {
+			return u
+		}
+	}
+	if videos, ok := result["videos"].([]interface{}); ok && len(videos) > 0 {
+		if v, ok := videos[0].(map[string]interface{}); ok {
+			if u, ok := v["url"].(string); ok {
+				return u
+			}
+		}
+	}
+	return ""
+}
+
+// ── Check Status ──
+
+func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, error) {
+	if args.TaskID == "" {
+		return "", fmt.Errorf("task_id is required")
+	}
+	// Check DB first
+	var rec model.VideoRecord
+	if err := t.db.Where("task_id = ? OR id = ?", args.TaskID, args.TaskID).First(&rec).Error; err == nil {
+		if rec.Status == "succeeded" {
+			return toJSON(map[string]interface{}{
+				"action": "check_status", "task_id": rec.TaskID,
+				"task_status": "SUCCEEDED", "video_url": rec.VideoURL,
+				"message": "视频已就绪！",
+			}), nil
+		}
+		if rec.Status == "failed" {
+			return toJSON(map[string]interface{}{
+				"action": "check_status", "task_id": rec.TaskID,
+				"task_status": "FAILED", "message": "视频生成失败",
+			}), nil
+		}
+	}
+
+	// Poll DashScope
+	userID := ""
+	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
+		userID = uid
+	}
+	apiKey, baseHost := GetDashScopeAPIKey(t.db, userID)
+	if apiKey != "" {
+		deadline := time.Now().Add(3 * time.Minute)
+		for time.Now().Before(deadline) {
+			status, videoURL, err := t.getDashScopeTaskStatus(ctx, apiKey, baseHost, args.TaskID)
+			if err != nil {
+				break
+			}
+			if status == "SUCCEEDED" || videoURL != "" {
+				t.db.Model(&model.VideoRecord{}).Where("task_id = ?", args.TaskID).Updates(map[string]interface{}{
+					"video_url": videoURL, "status": "succeeded",
+				})
+				return toJSON(map[string]interface{}{
+					"action": "check_status", "task_id": args.TaskID,
+					"task_status": "SUCCEEDED", "video_url": videoURL, "message": "视频已就绪！",
+				}), nil
+			}
+			if status == "FAILED" {
+				return toJSON(map[string]interface{}{
+					"action": "check_status", "task_id": args.TaskID,
+					"task_status": "FAILED", "message": "视频生成失败",
+				}), nil
+			}
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}
+
+	return toJSON(map[string]interface{}{
+		"action": "check_status", "task_id": args.TaskID,
+		"task_status": "RUNNING", "message": "视频仍在生成中，请稍后再查。",
+	}), nil
+}
+
+// ── List Models ──
+
+func (t *VideoTool) listModels() (string, error) {
+	models := []map[string]string{
+		{"name": "wan2.6-t2v", "type": "text-to-video", "provider": "dashscope", "description": "阿里云万相文生视频，最高10秒"},
+		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "description": "阿里云万相图生视频，需要img_url"},
+		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "description": "Google Veo 3, 电影级画质"},
+		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "description": "OpenAI Sora 2"},
+		{"name": "kling-v2", "type": "text-to-video", "provider": "fal.ai", "description": "快手可灵 v2"},
+		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "description": "MiniMax 视频生成"},
+		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "description": "Luma Dream Machine"},
+	}
+	return toJSON(map[string]interface{}{
+		"action": "list_models", "models": models,
+		"tips": "wan系列需要qwen的API Key，其他模型需要fal.ai的API Key。超过10秒请生成多场景再合并。",
+	}), nil
+}
+
+// ── Merge Videos ──
+
+func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, error) {
+	userID := ""
+	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
+		userID = uid
+	}
+	convID := ""
+	if cid, ok := ctx.Value(CtxKeyConversationID).(string); ok {
+		convID = cid
+	}
+
+	var records []model.VideoRecord
+	if args.TaskIDs != "" {
+		ids := strings.Split(args.TaskIDs, ",")
+		for i := range ids {
+			ids[i] = strings.TrimSpace(ids[i])
+		}
+		t.db.Where("user_id = ? AND task_id IN ? AND status = ?", userID, ids, "succeeded").Find(&records)
+		idOrder := make(map[string]int)
+		for i, id := range ids {
+			idOrder[id] = i
+		}
+		sort.Slice(records, func(i, j int) bool {
+			return idOrder[records[i].TaskID] < idOrder[records[j].TaskID]
+		})
+	} else if convID != "" {
+		t.db.Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status = ?", userID, convID, "succeeded").
+			Order("scene ASC, created_at ASC").Find(&records)
+	} else {
+		return "", fmt.Errorf("no conversation context and no task_ids provided")
+	}
+
+	if len(records) == 0 {
+		return "", fmt.Errorf("no completed videos found to merge")
+	}
+	if len(records) == 1 {
+		return toJSON(map[string]interface{}{
+			"action": "merge_videos", "status": "success",
+			"video_url": records[0].VideoURL, "message": "只有1个视频片段，无需合成。",
+		}), nil
+	}
+
+	tmpDir, err := os.MkdirTemp("", "video-merge-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	var clipPaths []string
+	for i, rec := range records {
+		clipPath := filepath.Join(tmpDir, fmt.Sprintf("clip_%03d.mp4", i))
+		// Use narrated version if available
+		dlURL := rec.VideoURL
+		if rec.NarratedURL != "" {
+			dlURL = rec.NarratedURL
+		}
+		// Resolve local paths
+		if strings.HasPrefix(dlURL, "/v1/videos/merged/") {
+			fn := strings.TrimPrefix(dlURL, "/v1/videos/merged/")
+			localPath := filepath.Join("/app/merged_videos", fn)
+			if _, err := os.Stat(localPath); err == nil {
+				clipPaths = append(clipPaths, localPath)
+				continue
+			}
+		}
+		if err := DownloadFile(dlURL, clipPath); err != nil {
+			return "", fmt.Errorf("failed to download clip %d: %v", i+1, err)
+		}
+		clipPaths = append(clipPaths, clipPath)
+	}
+
+	listPath := filepath.Join(tmpDir, "filelist.txt")
+	var listContent strings.Builder
+	for _, p := range clipPaths {
+		listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
+	}
+	os.WriteFile(listPath, []byte(listContent.String()), 0644)
+
+	mergeID := uuid.New().String()
+	outputDir := "/app/merged_videos"
+	os.MkdirAll(outputDir, 0755)
+	outputPath := filepath.Join(outputDir, mergeID+".mp4")
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+		"-i", listPath, "-c", "copy", outputPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+			"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
+		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+			return "", fmt.Errorf("ffmpeg merge failed: %v\n%s\n%s", err2, string(out), string(out2))
+		}
+	}
+
+	fi, _ := os.Stat(outputPath)
+	sizeMB := float64(0)
+	if fi != nil {
+		sizeMB = float64(fi.Size()) / 1024 / 1024
+	}
+	downloadURL := fmt.Sprintf("/v1/videos/merged/%s.mp4", mergeID)
+
+	clipIDList := make([]string, len(records))
+	totalDuration := 0
+	for i, r := range records {
+		clipIDList[i] = r.ID
+		totalDuration += r.Duration
+	}
+	clipIDsJSON, _ := json.Marshal(clipIDList)
+	mergedRecord := model.VideoRecord{
+		UserID: userID, ConversationID: convID,
+		Model: "merged", Prompt: fmt.Sprintf("合成视频: %d个片段, 共%d秒", len(records), totalDuration),
+		VideoURL: downloadURL, Size: records[0].Size, Duration: totalDuration,
+		Status: "succeeded", Type: "merged", ClipIDs: string(clipIDsJSON),
+	}
+	t.db.Create(&mergedRecord)
+
+	return toJSON(map[string]interface{}{
+		"action": "merge_videos", "status": "success",
+		"clips_count": len(records), "download_url": downloadURL,
+		"size_mb": fmt.Sprintf("%.1f", sizeMB),
+		"message": fmt.Sprintf("视频合成成功！共%d个片段。下载: %s (%.1f MB)", len(records), downloadURL, sizeMB),
+	}), nil
+}
+
+// ── TryAutoMerge ──
+
+// TryAutoMerge checks if all clips in a conversation are complete, and auto-merges them.
+func (t *VideoTool) TryAutoMerge(userID, convID string) {
+	t.mergeMu.Lock()
+	if t.merging[convID] {
+		t.mergeMu.Unlock()
+		return
+	}
+	t.merging[convID] = true
+	t.mergeMu.Unlock()
+	defer func() {
+		t.mergeMu.Lock()
+		delete(t.merging, convID)
+		t.mergeMu.Unlock()
+	}()
+
+	var existingMerge int64
+	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").Count(&existingMerge)
+	if existingMerge > 0 {
+		return
+	}
+
+	var totalClips, succeededClips, runningClips int64
+	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '')", userID, convID).Count(&totalClips)
+	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded'", userID, convID).Count(&succeededClips)
+	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status IN ('running','pending')", userID, convID).Count(&runningClips)
+
+	if totalClips < 2 || runningClips > 0 || succeededClips < 2 {
+		return
+	}
+
+	log.Printf("[VideoTool] Auto-merge triggered: %d clips, conversation %s", succeededClips, convID)
+
+	var records []model.VideoRecord
+	t.db.Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded'", userID, convID).
+		Order("scene ASC, created_at ASC").Find(&records)
+	if len(records) < 2 {
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "auto-merge-*")
+	if err != nil {
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	var clipPaths []string
+	for i, rec := range records {
+		clipPath := filepath.Join(tmpDir, fmt.Sprintf("clip_%03d.mp4", i))
+		dlURL := rec.VideoURL
+		if rec.NarratedURL != "" {
+			dlURL = rec.NarratedURL
+		}
+		if strings.HasPrefix(dlURL, "/v1/videos/merged/") {
+			fn := strings.TrimPrefix(dlURL, "/v1/videos/merged/")
+			localPath := filepath.Join("/app/merged_videos", fn)
+			if _, err := os.Stat(localPath); err == nil {
+				clipPaths = append(clipPaths, localPath)
+				continue
+			}
+		}
+		if err := DownloadFile(dlURL, clipPath); err != nil {
+			log.Printf("[VideoTool] Auto-merge: download clip %d failed: %v", i+1, err)
+			return
+		}
+		clipPaths = append(clipPaths, clipPath)
+	}
+
+	listPath := filepath.Join(tmpDir, "filelist.txt")
+	var listContent strings.Builder
+	for _, p := range clipPaths {
+		listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
+	}
+	os.WriteFile(listPath, []byte(listContent.String()), 0644)
+
+	mergeID := uuid.New().String()
+	outputDir := "/app/merged_videos"
+	os.MkdirAll(outputDir, 0755)
+	outputPath := filepath.Join(outputDir, mergeID+".mp4")
+
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+		"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("[VideoTool] Auto-merge failed: %s", string(out))
+		return
+	}
+
+	downloadURL := fmt.Sprintf("/v1/videos/merged/%s.mp4", mergeID)
+	clipIDList := make([]string, len(records))
+	totalDuration := 0
+	for i, r := range records {
+		clipIDList[i] = r.ID
+		totalDuration += r.Duration
+	}
+	clipIDsJSON, _ := json.Marshal(clipIDList)
+	mergedRecord := model.VideoRecord{
+		UserID: userID, ConversationID: convID,
+		Model: "merged", Prompt: fmt.Sprintf("自动合成视频: %d个片段, 共%d秒", len(records), totalDuration),
+		VideoURL: downloadURL, Size: records[0].Size, Duration: totalDuration,
+		Status: "succeeded", Type: "merged", ClipIDs: string(clipIDsJSON),
+	}
+	t.db.Create(&mergedRecord)
+	ExtractThumbnail(t.db, mergedRecord.ID, downloadURL)
+	log.Printf("[VideoTool] Auto-merge succeeded: %d clips, %ds", len(records), totalDuration)
+}
+
+// RetryNarration is kept as stub for backward compatibility (narration moved to dubbing tool)
+func (t *VideoTool) RetryNarration(userID string) {
+	// No-op: narration is now handled by the dubbing tool
+}
+
+// ── DashScope Task Polling ──
+
+func (t *VideoTool) pollDashScopeTask(ctx context.Context, apiKey, baseHost, taskID string, timeout time.Duration) (string, string, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return "", "", ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+		status, videoURL, err := t.getDashScopeTaskStatus(ctx, apiKey, baseHost, taskID)
+		if err != nil {
+			return "", "", err
+		}
+		switch status {
+		case "SUCCEEDED":
+			return videoURL, status, nil
+		case "FAILED":
+			return "", status, fmt.Errorf("video generation failed")
+		case "CANCELED":
+			return "", status, fmt.Errorf("video generation canceled")
+		}
+	}
+	return "", "", fmt.Errorf("polling timeout after %v", timeout)
+}
+
+func (t *VideoTool) getDashScopeTaskStatus(ctx context.Context, apiKey, baseHost, taskID string) (string, string, error) {
+	url := fmt.Sprintf("https://%s/api/v1/tasks/%s", baseHost, taskID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var result map[string]interface{}
+	json.Unmarshal(body, &result)
+	output, _ := result["output"].(map[string]interface{})
+	status, _ := output["task_status"].(string)
+
+	videoURL := ""
+	if results, ok := output["results"].([]interface{}); ok && len(results) > 0 {
+		if r, ok := results[0].(map[string]interface{}); ok {
+			videoURL, _ = r["url"].(string)
+		}
+	}
+	if videoURL == "" {
+		videoURL, _ = output["video_url"].(string)
+	}
+	return status, videoURL, nil
+}
+
+// ── Workflow & Thumbnails ──
+
+func (t *VideoTool) ensureVideoWorkflow(userID, convID string) {
+	if convID == "" {
+		return
+	}
+	var count int64
+	t.db.Model(&model.Workflow{}).Where("user_id = ? AND description LIKE ?", userID, "%conv:"+convID+"%").Count(&count)
+	if count > 0 {
+		return
+	}
+	convTitle := "视频制作"
+	var conv model.Conversation
+	if err := t.db.Where("id = ?", convID).First(&conv).Error; err == nil && conv.Title != "" {
+		convTitle = conv.Title
+	}
+
+	type nodeDef struct {
+		ID       string                 `json:"id"`
+		Type     string                 `json:"type"`
+		Position map[string]float64     `json:"position"`
+		Data     map[string]interface{} `json:"data"`
+	}
+	type edgeDef struct {
+		ID     string `json:"id"`
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+	nodes := []nodeDef{
+		{ID: "start-1", Type: "start", Position: map[string]float64{"x": 300, "y": 50}, Data: map[string]interface{}{"label": "开始"}},
+		{ID: "step-1", Type: "llm", Position: map[string]float64{"x": 300, "y": 150}, Data: map[string]interface{}{"label": "编写脚本"}},
+		{ID: "step-2", Type: "tool", Position: map[string]float64{"x": 300, "y": 270}, Data: map[string]interface{}{"label": "生成视频片段", "toolName": "video_generation"}},
+		{ID: "step-3", Type: "tool", Position: map[string]float64{"x": 300, "y": 390}, Data: map[string]interface{}{"label": "自动合成", "toolName": "video_generation"}},
+		{ID: "end-1", Type: "end", Position: map[string]float64{"x": 300, "y": 510}, Data: map[string]interface{}{"label": "完成"}},
+	}
+	edges := []edgeDef{
+		{ID: "e-s1", Source: "start-1", Target: "step-1"},
+		{ID: "e-12", Source: "step-1", Target: "step-2"},
+		{ID: "e-23", Source: "step-2", Target: "step-3"},
+		{ID: "e-3e", Source: "step-3", Target: "end-1"},
+	}
+	defJSON, _ := json.Marshal(map[string]interface{}{"nodes": nodes, "edges": edges})
+	wf := model.Workflow{
+		ID: uuid.New().String(), UserID: userID, Name: convTitle,
+		Description: fmt.Sprintf("视频制作工作浀[conv:%s]", convID),
+		Definition:  string(defJSON),
+	}
+	t.db.Create(&wf)
+}
+
+// GenerateMissingThumbnails finds videos without thumbnails and generates them.
+func (t *VideoTool) GenerateMissingThumbnails() {
+	var records []model.VideoRecord
+	t.db.Where("status = 'succeeded' AND video_url != '' AND (img_url = '' OR img_url IS NULL)").
+		Order("created_at DESC").Limit(50).Find(&records)
+	if len(records) == 0 {
+		return
+	}
+	log.Printf("[VideoTool] Generating thumbnails for %d videos", len(records))
+	generated := 0
+	for _, rec := range records {
+		source := rec.VideoURL
+		if (rec.Type == "clip" || rec.Type == "") && rec.NarratedURL != "" {
+			if strings.HasPrefix(rec.NarratedURL, "/v1/videos/merged/") {
+				source = rec.NarratedURL
+			}
+		}
+		if strings.HasPrefix(source, "https://") {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			req, _ := http.NewRequestWithContext(ctx, "HEAD", source, nil)
+			resp, err := http.DefaultClient.Do(req)
+			cancel()
+			if err != nil || resp.StatusCode != 200 {
+				continue
+			}
+		}
+		if url := ExtractThumbnail(t.db, rec.ID, source); url != "" {
+			generated++
+		}
+	}
+	if generated > 0 {
+		log.Printf("[VideoTool] Generated %d thumbnails", generated)
+	}
+}

@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: starclaw-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-starclaw_prod_2026}
+      MYSQL_DATABASE: starclaw
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # Do NOT expose port to host in production
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - starclaw-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: starclaw-redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-starclaw_redis_2026}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-starclaw_redis_2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - starclaw-net
+
+  backend:
+    build:
+      context: ./claw/api
+      dockerfile: Dockerfile
+    container_name: starclaw-backend
+    restart: always
+    environment:
+      STARCLAW_SERVER_MODE: release
+      STARCLAW_DATABASE_HOST: mysql
+      STARCLAW_DATABASE_PORT: 3306
+      STARCLAW_DATABASE_USER: root
+      STARCLAW_DATABASE_PASSWORD: ${DB_ROOT_PASSWORD:-starclaw_prod_2026}
+      STARCLAW_DATABASE_DBNAME: starclaw
+      STARCLAW_REDIS_HOST: redis
+      STARCLAW_REDIS_PORT: 6379
+      STARCLAW_REDIS_PASSWORD: ${REDIS_PASSWORD:-starclaw_redis_2026}
+      STARCLAW_JWT_SECRET: ${JWT_SECRET}
+      STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - sandbox_data:/tmp/starclaw-sandbox
+      - ./claw/data/merged_videos:/app/merged_videos
+      - ./claw/data/thumbnails:/app/thumbnails
+      - ./claw/data/music:/app/music
+      - ./claw/data/images:/app/images
+      - ./claw/data/workspaces:/app/workspaces
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - starclaw-net
+
+  frontend:
+    build:
+      context: ./claw/web
+      dockerfile: Dockerfile
+    container_name: starclaw-frontend
+    restart: always
+    ports:
+      - "127.0.0.1:8081:80"
+    depends_on:
+      - backend
+    networks:
+      - starclaw-net
+
+volumes:
+  mysql_data:
+  redis_data:
+  sandbox_data:
+
+networks:
+  starclaw-net:
+    driver: bridge

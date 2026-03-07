@@ -1,0 +1,39 @@
+# StarClaw 🦞 国内加速配置
+# 用法: docker compose -f docker-compose.yml -f docker-compose.cn.yml up -d --build
+#
+# 此文件覆盖基础镜像为国内可访问的镜像源，解决 Docker Hub 拉取超时问题。
+# 使用前请先配置 Docker 镜像加速器（见下方说明）。
+#
+# === Docker 镜像加速器配置 ===
+# sudo mkdir -p /etc/docker
+# sudo tee /etc/docker/daemon.json <<-'EOF'
+# {
+#   "registry-mirrors": [
+#     "https://docker.1ms.run",
+#     "https://docker.xuanyuan.me"
+#   ]
+# }
+# EOF
+# sudo systemctl daemon-reload && sudo systemctl restart docker
+
+services:
+  mysql:
+    image: docker.1ms.run/mysql:8.0
+
+  redis:
+    image: docker.1ms.run/redis:7-alpine
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      args:
+        REGISTRY: "docker.1ms.run"
+        GOPROXY: "https://goproxy.cn,direct"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        REGISTRY: "docker.1ms.run"

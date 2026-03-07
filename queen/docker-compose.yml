@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  mysql-queen:
+    image: mysql:8.0
+    container_name: starclaw-queen-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: starclaw
+      MYSQL_DATABASE: starclaw_queen
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks:
+      - queen
+
+  swarm:
+    build:
+      context: ./swarm
+    container_name: starclaw-queen-swarm
+    restart: unless-stopped
+    environment:
+      SWARM_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      SWARM_PORT: "8090"
+      GIN_MODE: release
+    ports:
+      - "8090:8090"
+    depends_on:
+      - mysql-queen
+    networks:
+      - queen
+
+  core:
+    build:
+      context: ./core
+    container_name: starclaw-queen-core
+    restart: unless-stopped
+    environment:
+      SWARM_URL: "http://swarm:8090"
+      CORE_PORT: "8091"
+      GIN_MODE: release
+    ports:
+      - "8091:8091"
+    depends_on:
+      - swarm
+    networks:
+      - queen
+
+networks:
+  queen:
+    driver: bridge

@@ -1,0 +1,214 @@
+package v1
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"path/filepath"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/yinhe/starclaw/internal/browser"
+	"github.com/yinhe/starclaw/internal/config"
+)
+
+type MultimodalHandler struct {
+	cfg *config.Config
+}
+
+func NewMultimodalHandler(cfg *config.Config) *MultimodalHandler {
+	return &MultimodalHandler{cfg: cfg}
+}
+
+// ServeScreenshot serves a cached browser screenshot by ID
+func ServeScreenshot(c *gin.Context) {
+	id := c.Param("id")
+	data, mimeType, ok := browser.GetCache().Get(id)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "screenshot not found or expired"})
+		return
+	}
+	c.Data(http.StatusOK, mimeType, data)
+}
+
+// UploadImage accepts an image file and returns a base64 data URL for use in vision messages
+func (h *MultimodalHandler) UploadImage(c *gin.Context) {
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no file uploaded"})
+		return
+	}
+	defer file.Close()
+
+	// Validate file type
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	mimeTypes := map[string]string{
+		".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+		".png": "image/png", ".gif": "image/gif",
+		".webp": "image/webp", ".bmp": "image/bmp",
+	}
+	mime, ok := mimeTypes[ext]
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported image format, use jpg/png/gif/webp"})
+		return
+	}
+
+	// Limit to 20MB
+	if header.Size > 20*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image too large, max 20MB"})
+		return
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		return
+	}
+
+	b64 := base64.StdEncoding.EncodeToString(data)
+	dataURL := fmt.Sprintf("data:%s;base64,%s", mime, b64)
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":       uuid.New().String(),
+		"url":      dataURL,
+		"filename": header.Filename,
+		"size":     header.Size,
+		"mime":     mime,
+	})
+}
+
+// SpeechToText accepts an audio file and returns transcribed text using OpenAI Whisper API
+func (h *MultimodalHandler) SpeechToText(c *gin.Context) {
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no audio file uploaded"})
+		return
+	}
+	defer file.Close()
+
+	apiKey := h.cfg.OpenAI.APIKey
+	baseURL := h.cfg.OpenAI.BaseURL
+	if apiKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenAI API key not configured for STT"})
+		return
+	}
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+
+	// Read file
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read audio"})
+		return
+	}
+
+	// Build multipart request to OpenAI Whisper
+	var buf bytes.Buffer
+	boundary := "----StarClawBoundary" + uuid.New().String()[:8]
+	w := &buf
+
+	// file field
+	fmt.Fprintf(w, "--%s\r\n", boundary)
+	fmt.Fprintf(w, "Content-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n", header.Filename)
+	fmt.Fprintf(w, "Content-Type: application/octet-stream\r\n\r\n")
+	w.Write(data)
+	fmt.Fprintf(w, "\r\n")
+
+	// model field
+	fmt.Fprintf(w, "--%s\r\n", boundary)
+	fmt.Fprintf(w, "Content-Disposition: form-data; name=\"model\"\r\n\r\n")
+	fmt.Fprintf(w, "whisper-1\r\n")
+
+	// language field (optional, auto-detect)
+	fmt.Fprintf(w, "--%s--\r\n", boundary)
+
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, baseURL+"/audio/transcriptions", &buf)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create request"})
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "STT request failed: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(resp.StatusCode, gin.H{"error": "STT API error: " + string(body)})
+		return
+	}
+
+	var result struct {
+		Text string `json:"text"`
+	}
+	json.Unmarshal(body, &result)
+
+	c.JSON(http.StatusOK, gin.H{"text": result.Text})
+}
+
+// TextToSpeech converts text to audio using OpenAI TTS API
+func (h *MultimodalHandler) TextToSpeech(c *gin.Context) {
+	var req struct {
+		Text  string `json:"text" binding:"required"`
+		Voice string `json:"voice"` // alloy, echo, fable, onyx, nova, shimmer
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Voice == "" {
+		req.Voice = "alloy"
+	}
+
+	apiKey := h.cfg.OpenAI.APIKey
+	baseURL := h.cfg.OpenAI.BaseURL
+	if apiKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenAI API key not configured for TTS"})
+		return
+	}
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+
+	payload, _ := json.Marshal(map[string]string{
+		"model": "tts-1",
+		"input": req.Text,
+		"voice": req.Voice,
+	})
+
+	httpReq, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, baseURL+"/audio/speech", bytes.NewReader(payload))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create request"})
+		return
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "TTS request failed: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		c.JSON(resp.StatusCode, gin.H{"error": "TTS API error: " + string(body)})
+		return
+	}
+
+	c.Header("Content-Type", "audio/mpeg")
+	c.Header("Content-Disposition", "inline; filename=speech.mp3")
+	io.Copy(c.Writer, resp.Body)
+}

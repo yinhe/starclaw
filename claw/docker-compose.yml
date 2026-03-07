@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: starclaw-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: starclaw
+      MYSQL_DATABASE: starclaw
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - starclaw
+
+  redis:
+    image: redis:7-alpine
+    container_name: starclaw-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - starclaw
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: starclaw-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      STARCLAW_SERVER_MODE: release
+      STARCLAW_DATABASE_HOST: mysql
+      STARCLAW_DATABASE_PORT: 3306
+      STARCLAW_DATABASE_USER: root
+      STARCLAW_DATABASE_PASSWORD: starclaw
+      STARCLAW_DATABASE_DBNAME: starclaw
+      STARCLAW_REDIS_HOST: redis
+      STARCLAW_REDIS_PORT: 6379
+      STARCLAW_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - ./data/sandbox:/tmp/starclaw-sandbox
+      - ./data/merged_videos:/app/merged_videos
+      - ./data/thumbnails:/app/thumbnails
+      - ./data/music:/app/music
+      - ./data/images:/app/images
+      - ./data/workspaces:/app/workspaces
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - starclaw
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: starclaw-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - starclaw
+
+networks:
+  starclaw:
+    driver: bridge

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>StarClaw Logo Preview</title>
+<style>
+  body { background: #1a1a2e; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 100vh; gap: 40px; font-family: system-ui; color: white; }
+  .preview { text-align: center; }
+  .preview p { margin-top: 12px; opacity: 0.6; font-size: 14px; }
+  svg { filter: drop-shadow(0 4px 20px rgba(99, 102, 241, 0.4)); }
+</style>
+</head>
+<body>
+
+<div class="preview">
+  <svg id="logo" width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Background gradient -->
+      <radialGradient id="bgGrad" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#4338ca"/>
+        <stop offset="100%" stop-color="#1e1b4b"/>
+      </radialGradient>
+      <!-- Claw gradient -->
+      <linearGradient id="clawGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f97316"/>
+        <stop offset="50%" stop-color="#ef4444"/>
+        <stop offset="100%" stop-color="#dc2626"/>
+      </linearGradient>
+      <!-- Star glow -->
+      <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.9"/>
+        <stop offset="70%" stop-color="#f59e0b" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#d97706" stop-opacity="0"/>
+      </radialGradient>
+      <!-- Body gradient -->
+      <linearGradient id="bodyGrad" x1="0.3" y1="0" x2="0.7" y2="1">
+        <stop offset="0%" stop-color="#ef4444"/>
+        <stop offset="100%" stop-color="#991b1b"/>
+      </linearGradient>
+      <!-- Shine -->
+      <linearGradient id="shine" x1="0" y1="0" x2="0.5" y2="1">
+        <stop offset="0%" stop-color="white" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="white" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Background circle -->
+    <circle cx="256" cy="256" r="240" fill="url(#bgGrad)"/>
+    <circle cx="256" cy="256" r="240" fill="none" stroke="#6366f1" stroke-width="3" opacity="0.5"/>
+
+    <!-- Star behind crayfish (subtle glow) -->
+    <g transform="translate(256,200)" opacity="0.7">
+      <polygon points="0,-65 18,-22 63,-22 28,5 40,50 0,25 -40,50 -28,5 -63,-22 -18,-22" fill="url(#starGlow)"/>
+    </g>
+
+    <!-- Small stars decoration -->
+    <g fill="#fbbf24" opacity="0.5">
+      <polygon points="100,120 104,130 114,130 106,136 109,146 100,140 91,146 94,136 86,130 96,130" transform="scale(0.7) translate(40,40)"/>
+      <polygon points="400,100 404,110 414,110 406,116 409,126 400,120 391,126 394,116 386,110 396,110" transform="scale(0.6) translate(120,30)"/>
+      <polygon points="420,340 424,350 434,350 426,356 429,366 420,360 411,366 414,356 406,350 416,350" transform="scale(0.5) translate(150,50)"/>
+    </g>
+
+    <!-- Crayfish body -->
+    <g transform="translate(256, 280)">
+      <!-- Tail segments -->
+      <ellipse cx="0" cy="80" rx="28" ry="16" fill="#b91c1c" transform="rotate(-5)"/>
+      <ellipse cx="-3" cy="65" rx="32" ry="18" fill="#dc2626"/>
+      <ellipse cx="-1" cy="48" rx="35" ry="20" fill="#dc2626"/>
+
+      <!-- Tail fan -->
+      <ellipse cx="15" cy="100" rx="18" ry="10" fill="#991b1b" transform="rotate(25, 15, 100)"/>
+      <ellipse cx="-15" cy="100" rx="18" ry="10" fill="#991b1b" transform="rotate(-25, -15, 100)"/>
+      <ellipse cx="0" cy="102" rx="14" ry="10" fill="#b91c1c"/>
+
+      <!-- Main body -->
+      <ellipse cx="0" cy="15" rx="48" ry="42" fill="url(#bodyGrad)"/>
+      <!-- Body segments -->
+      <path d="M-44,5 Q0,-2 44,5" stroke="#991b1b" stroke-width="2" fill="none" opacity="0.5"/>
+      <path d="M-46,15 Q0,8 46,15" stroke="#991b1b" stroke-width="2" fill="none" opacity="0.5"/>
+      <path d="M-44,25 Q0,18 44,25" stroke="#991b1b" stroke-width="2" fill="none" opacity="0.5"/>
+
+      <!-- Body shine -->
+      <ellipse cx="-10" cy="5" rx="20" ry="25" fill="url(#shine)"/>
+
+      <!-- Head -->
+      <ellipse cx="0" cy="-35" rx="38" ry="30" fill="url(#bodyGrad)"/>
+      <ellipse cx="-8" cy="-40" rx="15" ry="18" fill="url(#shine)"/>
+
+      <!-- Eyes -->
+      <g>
+        <!-- Eye stalks -->
+        <line x1="-15" y1="-55" x2="-22" y2="-72" stroke="#dc2626" stroke-width="6" stroke-linecap="round"/>
+        <line x1="15" y1="-55" x2="22" y2="-72" stroke="#dc2626" stroke-width="6" stroke-linecap="round"/>
+        <!-- Eye balls -->
+        <circle cx="-22" cy="-74" r="9" fill="white"/>
+        <circle cx="22" cy="-74" r="9" fill="white"/>
+        <!-- Pupils -->
+        <circle cx="-20" cy="-74" r="5" fill="#1e1b4b"/>
+        <circle cx="24" cy="-74" r="5" fill="#1e1b4b"/>
+        <!-- Eye highlights -->
+        <circle cx="-18" cy="-76" r="2" fill="white"/>
+        <circle cx="26" cy="-76" r="2" fill="white"/>
+      </g>
+
+      <!-- Antennae -->
+      <path d="M-10,-60 Q-40,-110 -65,-105" stroke="#ef4444" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M10,-60 Q40,-110 65,-105" stroke="#ef4444" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M-12,-58 Q-25,-90 -45,-95" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M12,-58 Q25,-90 45,-95" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+      <!-- Legs (3 pairs) -->
+      <g stroke="#dc2626" stroke-width="3" fill="none" stroke-linecap="round">
+        <path d="M-40,0 Q-65,5 -72,18"/>
+        <path d="M40,0 Q65,5 72,18"/>
+        <path d="M-42,15 Q-68,22 -75,35"/>
+        <path d="M42,15 Q68,22 75,35"/>
+        <path d="M-38,30 Q-60,38 -68,50"/>
+        <path d="M38,30 Q60,38 68,50"/>
+      </g>
+
+      <!-- LEFT CLAW (the star claw!) -->
+      <g transform="translate(-50, -25) rotate(-15)">
+        <!-- Arm -->
+        <path d="M0,0 Q-25,-20 -40,-50" stroke="url(#clawGrad)" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <!-- Claw base -->
+        <ellipse cx="-42" cy="-55" rx="18" ry="14" fill="#f97316"/>
+        <!-- Upper pincer (star-shaped!) -->
+        <path d="M-55,-58 L-48,-80 L-42,-65 L-36,-82 L-32,-60" fill="#f97316" stroke="#ea580c" stroke-width="1.5" stroke-linejoin="round"/>
+        <!-- Lower pincer -->
+        <path d="M-55,-52 Q-70,-48 -68,-38 Q-65,-32 -50,-35 Q-42,-38 -38,-48" fill="#fb923c" stroke="#ea580c" stroke-width="1.5"/>
+        <!-- Claw shine -->
+        <ellipse cx="-48" cy="-58" rx="6" ry="8" fill="white" opacity="0.2"/>
+      </g>
+
+      <!-- RIGHT CLAW -->
+      <g transform="translate(50, -25) scale(-1,1) rotate(-15)">
+        <!-- Arm -->
+        <path d="M0,0 Q-25,-20 -40,-50" stroke="url(#clawGrad)" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <!-- Claw base -->
+        <ellipse cx="-42" cy="-55" rx="18" ry="14" fill="#f97316"/>
+        <!-- Upper pincer (star-shaped!) -->
+        <path d="M-55,-58 L-48,-80 L-42,-65 L-36,-82 L-32,-60" fill="#f97316" stroke="#ea580c" stroke-width="1.5" stroke-linejoin="round"/>
+        <!-- Lower pincer -->
+        <path d="M-55,-52 Q-70,-48 -68,-38 Q-65,-32 -50,-35 Q-42,-38 -38,-48" fill="#fb923c" stroke="#ea580c" stroke-width="1.5"/>
+        <!-- Claw shine -->
+        <ellipse cx="-48" cy="-58" rx="6" ry="8" fill="white" opacity="0.2"/>
+      </g>
+    </g>
+
+    <!-- Brand text at bottom -->
+    <text x="256" y="460" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="700" letter-spacing="4">
+      STARCLAW
+    </text>
+  </svg>
+  <p>512 x 512 &mdash; Full logo with text</p>
+</div>
+
+<div class="preview">
+  <svg width="192" height="192" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="bgGrad2" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#4338ca"/>
+        <stop offset="100%" stop-color="#1e1b4b"/>
+      </radialGradient>
+      <linearGradient id="clawGrad2" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f97316"/>
+        <stop offset="50%" stop-color="#ef4444"/>
+        <stop offset="100%" stop-color="#dc2626"/>
+      </linearGradient>
+      <radialGradient id="starGlow2" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.9"/>
+        <stop offset="70%" stop-color="#f59e0b" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#d97706" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="bodyGrad2" x1="0.3" y1="0" x2="0.7" y2="1">
+        <stop offset="0%" stop-color="#ef4444"/>
+        <stop offset="100%" stop-color="#991b1b"/>
+      </linearGradient>
+      <linearGradient id="shine2" x1="0" y1="0" x2="0.5" y2="1">
+        <stop offset="0%" stop-color="white" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="white" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <rect width="512" height="512" rx="108" fill="url(#bgGrad2)"/>
+    <g transform="translate(256,200)" opacity="0.7">
+      <polygon points="0,-65 18,-22 63,-22 28,5 40,50 0,25 -40,50 -28,5 -63,-22 -18,-22" fill="url(#starGlow2)"/>
+    </g>
+    <g fill="#fbbf24" opacity="0.4">
+      <polygon points="100,120 104,130 114,130 106,136 109,146 100,140 91,146 94,136 86,130 96,130" transform="scale(0.7) translate(40,40)"/>
+      <polygon points="420,340 424,350 434,350 426,356 429,366 420,360 411,366 414,356 406,350 416,350" transform="scale(0.5) translate(150,80)"/>
+    </g>
+    <g transform="translate(256, 275)">
+      <ellipse cx="0" cy="80" rx="28" ry="16" fill="#b91c1c" transform="rotate(-5)"/>
+      <ellipse cx="-3" cy="65" rx="32" ry="18" fill="#dc2626"/>
+      <ellipse cx="-1" cy="48" rx="35" ry="20" fill="#dc2626"/>
+      <ellipse cx="15" cy="100" rx="18" ry="10" fill="#991b1b" transform="rotate(25, 15, 100)"/>
+      <ellipse cx="-15" cy="100" rx="18" ry="10" fill="#991b1b" transform="rotate(-25, -15, 100)"/>
+      <ellipse cx="0" cy="102" rx="14" ry="10" fill="#b91c1c"/>
+      <ellipse cx="0" cy="15" rx="48" ry="42" fill="url(#bodyGrad2)"/>
+      <path d="M-44,5 Q0,-2 44,5" stroke="#991b1b" stroke-width="2" fill="none" opacity="0.5"/>
+      <path d="M-46,15 Q0,8 46,15" stroke="#991b1b" stroke-width="2" fill="none" opacity="0.5"/>
+      <path d="M-44,25 Q0,18 44,25" stroke="#991b1b" stroke-width="2" fill="none" opacity="0.5"/>
+      <ellipse cx="-10" cy="5" rx="20" ry="25" fill="url(#shine2)"/>
+      <ellipse cx="0" cy="-35" rx="38" ry="30" fill="url(#bodyGrad2)"/>
+      <ellipse cx="-8" cy="-40" rx="15" ry="18" fill="url(#shine2)"/>
+      <line x1="-15" y1="-55" x2="-22" y2="-72" stroke="#dc2626" stroke-width="6" stroke-linecap="round"/>
+      <line x1="15" y1="-55" x2="22" y2="-72" stroke="#dc2626" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="-22" cy="-74" r="9" fill="white"/>
+      <circle cx="22" cy="-74" r="9" fill="white"/>
+      <circle cx="-20" cy="-74" r="5" fill="#1e1b4b"/>
+      <circle cx="24" cy="-74" r="5" fill="#1e1b4b"/>
+      <circle cx="-18" cy="-76" r="2" fill="white"/>
+      <circle cx="26" cy="-76" r="2" fill="white"/>
+      <path d="M-10,-60 Q-40,-110 -65,-105" stroke="#ef4444" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M10,-60 Q40,-110 65,-105" stroke="#ef4444" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M-12,-58 Q-25,-90 -45,-95" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M12,-58 Q25,-90 45,-95" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <g stroke="#dc2626" stroke-width="3" fill="none" stroke-linecap="round">
+        <path d="M-40,0 Q-65,5 -72,18"/>
+        <path d="M40,0 Q65,5 72,18"/>
+        <path d="M-42,15 Q-68,22 -75,35"/>
+        <path d="M42,15 Q68,22 75,35"/>
+        <path d="M-38,30 Q-60,38 -68,50"/>
+        <path d="M38,30 Q60,38 68,50"/>
+      </g>
+      <g transform="translate(-50, -25) rotate(-15)">
+        <path d="M0,0 Q-25,-20 -40,-50" stroke="url(#clawGrad2)" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <ellipse cx="-42" cy="-55" rx="18" ry="14" fill="#f97316"/>
+        <path d="M-55,-58 L-48,-80 L-42,-65 L-36,-82 L-32,-60" fill="#f97316" stroke="#ea580c" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M-55,-52 Q-70,-48 -68,-38 Q-65,-32 -50,-35 Q-42,-38 -38,-48" fill="#fb923c" stroke="#ea580c" stroke-width="1.5"/>
+        <ellipse cx="-48" cy="-58" rx="6" ry="8" fill="white" opacity="0.2"/>
+      </g>
+      <g transform="translate(50, -25) scale(-1,1) rotate(-15)">
+        <path d="M0,0 Q-25,-20 -40,-50" stroke="url(#clawGrad2)" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <ellipse cx="-42" cy="-55" rx="18" ry="14" fill="#f97316"/>
+        <path d="M-55,-58 L-48,-80 L-42,-65 L-36,-82 L-32,-60" fill="#f97316" stroke="#ea580c" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M-55,-52 Q-70,-48 -68,-38 Q-65,-32 -50,-35 Q-42,-38 -38,-48" fill="#fb923c" stroke="#ea580c" stroke-width="1.5"/>
+        <ellipse cx="-48" cy="-58" rx="6" ry="8" fill="white" opacity="0.2"/>
+      </g>
+    </g>
+  </svg>
+  <p>App Icon (rounded square)</p>
+</div>
+
+</body>
+</html>

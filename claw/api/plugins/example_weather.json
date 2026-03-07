@@ -1,0 +1,23 @@
+{
+  "name": "weather_lookup",
+  "description": "查询城市当前天气信息，支持全球城市实时天气查询。",
+  "version": "1.0.0",
+  "author": "StarClaw",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string",
+        "description": "城市名称（如 Beijing、Tokyo、London）"
+      }
+    },
+    "required": ["city"]
+  },
+  "endpoint": {
+    "url": "https://wttr.in/{{city}}?format=j1",
+    "method": "GET"
+  },
+  "headers": {
+    "User-Agent": "StarClaw-Agent/1.0"
+  }
+}
