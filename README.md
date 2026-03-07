@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="docs/logo.png" alt="StarClaw" width="120" />
-</p>
-
-<h1 align="center">StarClaw 🦞</h1>
+<h1 align="center">🦞 StarClaw</h1>
 
 <p align="center">
   <strong>Open-Source AI Agent Orchestration Platform</strong><br>
@@ -42,6 +38,16 @@
 
 ## 🚀 Quick Start
 
+### One-Click Install (Linux server)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
+```
+
+This will automatically install Docker (if needed), clone the repo, generate secure config, and start all services.
+
+### Manual Install
+
 ```bash
 # 1. Clone
 git clone https://github.com/yinhe/starclaw.git
@@ -55,7 +61,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Visit **http://localhost** to get started.
+Visit **http://localhost** (or your server IP) to get started.
 
 The first registered user automatically becomes admin.
 
@@ -149,7 +155,13 @@ StarClaw 是一个功能完整的**开源 AI Agent 编排平台**，支持：
 - **多模型** — Qwen / OpenAI / DeepSeek / Anthropic / Ollama
 - **BYOK** — 自带 API Key，完全免费
 
-### 快速开始
+### 一键部署
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
+```
+
+或手动安装：
 
 ```bash
 git clone https://github.com/yinhe/starclaw.git
