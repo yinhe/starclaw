@@ -138,6 +138,29 @@ init: ## First-time setup: create data dirs + copy .env
 	@test -f .env || cp .env.example .env && echo "✓ .env created from .env.example — please edit it"
 	@echo "✓ Data directories ready. Run 'make up' to start."
 
+# ======================== MCP Bridge (Host Control) ========================
+
+.PHONY: bridge
+bridge: ## Build MCP Bridge binary for current OS
+	cd api && go build -o ../mcp-bridge ./cmd/mcp-bridge/
+	@echo "✓ Built mcp-bridge. Run: ./mcp-bridge -port 9100"
+
+.PHONY: bridge-linux
+bridge-linux: ## Cross-compile MCP Bridge for Linux (server deployment)
+	cd api && GOOS=linux GOARCH=amd64 go build -o ../mcp-bridge-linux ./cmd/mcp-bridge/
+	@echo "✓ Built mcp-bridge-linux"
+
+.PHONY: bridge-start
+bridge-start: bridge ## Build and start MCP Bridge
+	./mcp-bridge -port 9100
+
+.PHONY: bridge-install
+bridge-install: bridge-linux ## Deploy MCP Bridge to server as systemd service
+	scp mcp-bridge-linux root@starclaw.me:/usr/local/bin/mcp-bridge
+	scp deploy/mcp-bridge.service root@starclaw.me:/etc/systemd/system/
+	ssh root@starclaw.me "chmod +x /usr/local/bin/mcp-bridge && systemctl daemon-reload && systemctl enable --now mcp-bridge"
+	@echo "✓ MCP Bridge installed and running on server"
+
 # ======================== Help ========================
 
 .PHONY: help
