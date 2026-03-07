@@ -13,6 +13,15 @@ type Config struct {
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	OpenAI   OpenAIConfig   `mapstructure:"openai"`
 	OAuth    OAuthConfig    `mapstructure:"oauth"`
+	Swarm    SwarmConfig    `mapstructure:"swarm"`
+}
+
+type SwarmConfig struct {
+	Enabled           bool   `mapstructure:"enabled"`            // enable swarm registration
+	QueenURL          string `mapstructure:"queen_url"`          // e.g. https://api.starclaw.me
+	NodeName          string `mapstructure:"node_name"`          // display name for this Claw
+	Region            string `mapstructure:"region"`             // e.g. cn-east, us-west
+	HeartbeatInterval int    `mapstructure:"heartbeat_interval"` // seconds, default 30
 }
 
 type OAuthConfig struct {
@@ -85,6 +94,11 @@ func Load() (*Config, error) {
 	viper.SetDefault("jwt.expire_hour", 72)
 	viper.SetDefault("openai.api_key", "")
 	viper.SetDefault("openai.base_url", "")
+	viper.SetDefault("swarm.enabled", false)
+	viper.SetDefault("swarm.queen_url", "")
+	viper.SetDefault("swarm.node_name", "")
+	viper.SetDefault("swarm.region", "")
+	viper.SetDefault("swarm.heartbeat_interval", 30)
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
