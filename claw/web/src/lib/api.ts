@@ -44,6 +44,17 @@ export const versionAPI = {
   check: () => api.get('/version'),
 }
 
+// System (update, swarm, bounty)
+export const systemAPI = {
+  getUpdate: () => api.get('/system/update'),
+  triggerUpdate: () => api.post('/system/update'),
+  forceCheck: () => api.post('/system/update/check'),
+  getSwarm: () => api.get('/system/swarm'),
+  joinSwarm: (data: { queen_url: string; node_name?: string; region?: string }) => api.post('/system/swarm/join', data),
+  leaveSwarm: () => api.post('/system/swarm/leave'),
+  getBounty: () => api.get('/system/bounty'),
+}
+
 // Agents
 export const agentAPI = {
   list: () => api.get('/agents'),

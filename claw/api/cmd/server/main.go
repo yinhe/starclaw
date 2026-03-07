@@ -56,7 +56,7 @@ func main() {
 	defer swarmClient.Stop()
 
 	// Setup router
-	r := router.Setup(cfg, db, rdb)
+	r := router.Setup(cfg, db, rdb, swarmClient)
 
 	// Graceful shutdown
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

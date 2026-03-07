@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Settings, User, Key, Shield, Loader2, Check, FileText } from 'lucide-react'
-import { settingsAPI, auditAPI } from '../lib/api'
+import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink } from 'lucide-react'
+import { settingsAPI, auditAPI, systemAPI } from '../lib/api'
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState({ username: '', email: '', phone: '' })
@@ -12,11 +12,82 @@ export default function SettingsPage() {
   const [apiKeys, setApiKeys] = useState<{ id: string; provider: string; display_name: string; api_key: string }[]>([])
   const [auditLogs, setAuditLogs] = useState<{ id: string; action: string; resource: string; resource_id: string; detail: string; ip: string; created_at: string }[]>([])
 
+  // System state
+  const [updateInfo, setUpdateInfo] = useState<any>(null)
+  const [swarmStatus, setSwarmStatus] = useState<any>(null)
+  const [updating, setUpdating] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [joiningSwarm, setJoiningSwarm] = useState(false)
+  const [swarmForm, setSwarmForm] = useState({ queen_url: 'https://api.starclaw.me', node_name: '', region: '' })
+  const [swarmMsg, setSwarmMsg] = useState('')
+  const [updateMsg, setUpdateMsg] = useState('')
+
   useEffect(() => {
     loadProfile()
     loadAPIKeys()
     loadAuditLogs()
+    loadSystemInfo()
   }, [])
+
+  const loadSystemInfo = async () => {
+    try {
+      const [updateRes, swarmRes] = await Promise.all([
+        systemAPI.getUpdate(),
+        systemAPI.getSwarm(),
+      ])
+      setUpdateInfo(updateRes.data)
+      setSwarmStatus(swarmRes.data)
+      if (swarmRes.data.queen_url) {
+        setSwarmForm(prev => ({ ...prev, queen_url: swarmRes.data.queen_url }))
+      }
+    } catch { /* ignore */ }
+  }
+
+  const handleForceCheck = async () => {
+    setChecking(true)
+    try {
+      await systemAPI.forceCheck()
+      const res = await systemAPI.getUpdate()
+      setUpdateInfo(res.data)
+    } catch { /* ignore */ }
+    setChecking(false)
+  }
+
+  const handleTriggerUpdate = async () => {
+    setUpdating(true)
+    setUpdateMsg('')
+    try {
+      const res = await systemAPI.triggerUpdate()
+      setUpdateMsg(res.data.message || '正在更新...')
+    } catch {
+      setUpdateMsg('更新失败')
+    }
+    setUpdating(false)
+  }
+
+  const handleJoinSwarm = async () => {
+    if (!swarmForm.queen_url) return
+    setJoiningSwarm(true)
+    setSwarmMsg('')
+    try {
+      const res = await systemAPI.joinSwarm(swarmForm)
+      setSwarmMsg(res.data.message || '已加入')
+      loadSystemInfo()
+      setTimeout(() => setSwarmMsg(''), 3000)
+    } catch (e: any) {
+      setSwarmMsg(e.response?.data?.error || '加入失败')
+    }
+    setJoiningSwarm(false)
+  }
+
+  const handleLeaveSwarm = async () => {
+    try {
+      await systemAPI.leaveSwarm()
+      setSwarmMsg('已退出虫群')
+      loadSystemInfo()
+      setTimeout(() => setSwarmMsg(''), 3000)
+    } catch { /* ignore */ }
+  }
 
   const loadProfile = async () => {
     try {
@@ -88,6 +159,152 @@ export default function SettingsPage() {
           </h1>
           <p className="text-gray-500 text-sm mt-1">管理账户和配置</p>
         </div>
+
+        {/* Version & Update */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <ArrowUpCircle className="w-4 h-4" /> 版本与更新
+          </h2>
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-gray-900">v{updateInfo?.version?.current || '...'}</span>
+                {updateInfo?.version?.update_available && (
+                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-medium animate-pulse">有新版本 v{updateInfo.version.latest}</span>
+                )}
+                {updateInfo && !updateInfo.version?.update_available && (
+                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">已是最新</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                {updateInfo?.go_version} · {updateInfo?.os}/{updateInfo?.arch} · {updateInfo?.deploy_mode} 模式
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleForceCheck}
+                disabled={checking}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-lg hover:bg-gray-100 disabled:opacity-50"
+              >
+                {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                检查更新
+              </button>
+              {updateInfo?.version?.update_available && (
+                <button
+                  onClick={handleTriggerUpdate}
+                  disabled={updating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                >
+                  {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  一键更新
+                </button>
+              )}
+            </div>
+          </div>
+          {updateMsg && <p className="text-sm text-orange-600 mb-3">{updateMsg}</p>}
+          {updateInfo?.version?.release_notes && updateInfo.version.update_available && (
+            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
+              <p className="font-medium text-gray-600 mb-1">更新日志:</p>
+              <pre className="whitespace-pre-wrap">{updateInfo.version.release_notes}</pre>
+            </div>
+          )}
+          {updateInfo?.version?.latest_url && updateInfo.version.update_available && (
+            <a href={updateInfo.version.latest_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline mt-2">
+              <ExternalLink className="w-3 h-3" /> 在 GitHub 查看
+            </a>
+          )}
+        </section>
+
+        {/* Swarm */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <Globe className="w-4 h-4" /> 虫群网络 (Swarm)
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">加入虫群后，你的 Claw 节点将注册到 Queen 中心，获得远程管理、任务调度、自动更新等能力。</p>
+          <div className="flex items-center gap-3 p-3 rounded-lg mb-4" style={{ backgroundColor: swarmStatus?.connected ? '#f0fdf4' : '#fafafa' }}>
+            {swarmStatus?.connected ? (
+              <Wifi className="w-5 h-5 text-green-600" />
+            ) : (
+              <WifiOff className="w-5 h-5 text-gray-400" />
+            )}
+            <div>
+              <p className="text-sm font-medium" style={{ color: swarmStatus?.connected ? '#166534' : '#6b7280' }}>
+                {swarmStatus?.connected ? `已连接 — 节点 ${swarmStatus.node_id?.slice(0, 8)}...` : '未连接'}
+              </p>
+              {swarmStatus?.queen_url && swarmStatus.connected && (
+                <p className="text-xs text-gray-400">Queen: {swarmStatus.queen_url}</p>
+              )}
+            </div>
+          </div>
+          {!swarmStatus?.connected ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Queen 地址</label>
+                <input
+                  value={swarmForm.queen_url}
+                  onChange={(e) => setSwarmForm({ ...swarmForm, queen_url: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="https://api.starclaw.me"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">节点名称 (可选)</label>
+                  <input
+                    value={swarmForm.node_name}
+                    onChange={(e) => setSwarmForm({ ...swarmForm, node_name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="留空则使用主机名"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选)</label>
+                  <input
+                    value={swarmForm.region}
+                    onChange={(e) => setSwarmForm({ ...swarmForm, region: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="cn-east, us-west..."
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleJoinSwarm}
+                disabled={joiningSwarm || !swarmForm.queen_url}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              >
+                {joiningSwarm ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                加入虫群
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleLeaveSwarm}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+            >
+              <WifiOff className="w-4 h-4" /> 退出虫群
+            </button>
+          )}
+          {swarmMsg && <p className="text-sm text-green-600 mt-2">{swarmMsg}</p>}
+        </section>
+
+        {/* Bounty Network */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <Coins className="w-4 h-4" /> 赏金网络 (Bounty)
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">赏金网络允许你的 Agent 发布和领取任务，与全球其他 Claw 节点协作。加入虫群后自动开启。</p>
+          <div className={`flex items-center gap-3 p-3 rounded-lg ${swarmStatus?.connected ? 'bg-green-50' : 'bg-gray-50'}`}>
+            <Coins className={`w-5 h-5 ${swarmStatus?.connected ? 'text-green-600' : 'text-gray-400'}`} />
+            <div>
+              <p className={`text-sm font-medium ${swarmStatus?.connected ? 'text-green-800' : 'text-gray-500'}`}>
+                {swarmStatus?.connected ? '赏金网络已激活' : '未激活 — 请先加入虫群'}
+              </p>
+              {swarmStatus?.connected && (
+                <p className="text-xs text-gray-400">你的 Agent 可以通过工具发布和领取赏金任务</p>
+              )}
+            </div>
+          </div>
+        </section>
 
         {/* Profile */}
         <section className="bg-white border rounded-xl p-6 mb-6">
@@ -194,7 +411,7 @@ export default function SettingsPage() {
         </section>
 
         {/* API Keys */}
-        <section className="bg-white border rounded-xl p-6">
+        <section className="bg-white border rounded-xl p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
             <Key className="w-4 h-4" /> API Keys
           </h2>
