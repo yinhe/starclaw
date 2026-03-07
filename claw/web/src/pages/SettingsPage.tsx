@@ -56,22 +56,39 @@ export default function SettingsPage() {
     setChecking(false)
   }
 
+  const [updateStep, setUpdateStep] = useState(0) // 0=idle, 1=pulling, 2=building, 3=restarting, 4=verifying, 5=done
+
+  const updateSteps = [
+    '',
+    '拉取最新代码...',
+    '构建容器镜像...',
+    '重启服务...',
+    '等待 API 就绪...',
+    '更新完成！',
+  ]
+
   const handleTriggerUpdate = async () => {
     setUpdating(true)
     setUpdateMsg('')
+    setUpdateStep(1)
     try {
       const res = await systemAPI.triggerUpdate()
       const targetVersion = res.data.to
-      setUpdateMsg(res.data.message || '正在更新...')
 
-      // Poll version endpoint until API comes back with new version
       if (targetVersion) {
+        // Simulate progress steps based on timing
+        setTimeout(() => setUpdateStep(2), 8000)   // ~8s: building
+        setTimeout(() => setUpdateStep(3), 60000)   // ~60s: restarting
+        setTimeout(() => setUpdateStep(4), 90000)   // ~90s: verifying
+
         let attempts = 0
+        let apiWasDown = false
         const poll = setInterval(async () => {
           attempts++
-          if (attempts > 60) { // 5 min timeout
+          if (attempts > 60) {
             clearInterval(poll)
-            setUpdateMsg('更新超时，请手动检查')
+            setUpdateMsg('更新超时，请手动检查服务器状态')
+            setUpdateStep(0)
             setUpdating(false)
             return
           }
@@ -80,19 +97,26 @@ export default function SettingsPage() {
             const current = vRes.data?.version?.current
             if (current === targetVersion) {
               clearInterval(poll)
+              setUpdateStep(5)
               setUpdateMsg(`✅ 已成功更新到 v${targetVersion}！`)
               setUpdateInfo(vRes.data)
-              setUpdating(false)
+              setTimeout(() => { setUpdateStep(0); setUpdating(false) }, 5000)
+            } else if (apiWasDown) {
+              // API came back but version didn't change yet, keep polling
+              setUpdateStep(4)
             }
           } catch {
-            // API may be restarting, keep polling
+            apiWasDown = true
+            setUpdateStep(3) // API is restarting
           }
         }, 5000)
       } else {
+        setUpdateStep(0)
         setUpdating(false)
       }
     } catch {
       setUpdateMsg('更新失败')
+      setUpdateStep(0)
       setUpdating(false)
     }
   }
@@ -233,7 +257,38 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
-          {updateMsg && <p className="text-sm text-orange-600 mb-3">{updateMsg}</p>}
+          {updateStep > 0 && updateStep < 5 && (
+            <div className="mb-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="flex items-center gap-3 mb-3">
+                <Loader2 className="w-4 h-4 animate-spin text-orange-600" />
+                <span className="text-sm font-medium text-orange-700">{updateSteps[updateStep]}</span>
+              </div>
+              <div className="flex gap-1">
+                {[1,2,3,4].map(s => (
+                  <div key={s} className="h-1.5 flex-1 rounded-full transition-all duration-500" style={{
+                    backgroundColor: updateStep >= s ? '#ea580c' : '#fed7aa'
+                  }} />
+                ))}
+              </div>
+              <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                <span>拉取</span><span>构建</span><span>重启</span><span>就绪</span>
+              </div>
+            </div>
+          )}
+          {updateStep === 5 && (
+            <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center gap-3">
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium text-green-700">{updateMsg}</span>
+              </div>
+              <div className="flex gap-1 mt-2">
+                {[1,2,3,4].map(s => (
+                  <div key={s} className="h-1.5 flex-1 rounded-full bg-green-500" />
+                ))}
+              </div>
+            </div>
+          )}
+          {updateMsg && updateStep === 0 && <p className="text-sm text-orange-600 mb-3">{updateMsg}</p>}
           {updateInfo?.version?.release_notes && updateInfo.version.update_available && (
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
               <p className="font-medium text-gray-600 mb-1">更新日志:</p>
