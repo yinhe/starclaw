@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, MicOff, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode } from 'lucide-react'
+import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, MicOff, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode, BookOpen } from 'lucide-react'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -14,7 +14,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
   </svg>
 )
 import { useChatStore } from '../stores/chatStore'
-import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI } from '../lib/api'
+import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI, knowledgeBaseAPI } from '../lib/api'
 import ReactMarkdown from 'react-markdown'
 import CodeBlock from '../components/CodeBlock'
 import Skeleton from '../components/Skeleton'
@@ -64,6 +64,9 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [attachedFiles, setAttachedFiles] = useState<{ id: string; filename: string; url: string; size: number; mime: string; category: string; stored: string }[]>([])
   const [fileUploading, setFileUploading] = useState(false)
+  const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string; document_count: number }[]>([])
+  const [selectedKBIds, setSelectedKBIds] = useState<string[]>([])
+  const [showKBSelector, setShowKBSelector] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null)
   const [contextPanelOpen, setContextPanelOpen] = useState(false)
@@ -97,6 +100,7 @@ export default function ChatPage() {
   useEffect(() => {
     loadConversations()
     loadAgents()
+    loadKnowledgeBases()
   }, [])
 
   useEffect(() => {
@@ -124,6 +128,13 @@ export default function ChatPage() {
     try {
       const res = await chatAPI.listConversations()
       setConversations(res.data.conversations || [])
+    } catch { /* ignore */ }
+  }
+
+  const loadKnowledgeBases = async () => {
+    try {
+      const res = await knowledgeBaseAPI.list()
+      setKnowledgeBases(res.data.knowledge_bases || [])
     } catch { /* ignore */ }
   }
 
@@ -910,6 +921,7 @@ export default function ChatPage() {
           message: userMessage,
           images: images.length > 0 ? images : undefined,
           files: files.length > 0 ? files : undefined,
+          knowledge_base_ids: selectedKBIds.length > 0 ? selectedKBIds : undefined,
           stream: true,
         }),
         signal: abortController.signal,
@@ -1714,6 +1726,24 @@ export default function ChatPage() {
               })}
             </div>
           )}
+          {/* Selected KB indicator */}
+          {selectedKBIds.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {selectedKBIds.map(id => {
+                const kb = knowledgeBases.find(k => k.id === id)
+                if (!kb) return null
+                return (
+                  <div key={id} className="flex items-center gap-1.5 px-2.5 py-1 bg-primary-50 border border-primary-200 rounded-lg text-xs text-primary-700">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span className="max-w-[120px] truncate">{kb.name}</span>
+                    <button onClick={() => setSelectedKBIds(prev => prev.filter(x => x !== id))} className="text-primary-400 hover:text-red-500">
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
           {fileUploading && (
             <div className="flex items-center gap-2 mb-2 text-sm text-gray-500">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -1752,6 +1782,56 @@ export default function ChatPage() {
             >
               <ImagePlus className="w-5 h-5" />
             </button>
+            {/* Knowledge base selector */}
+            <div className="relative">
+              <button
+                onClick={() => setShowKBSelector(!showKBSelector)}
+                className={`p-2.5 transition-colors ${selectedKBIds.length > 0 ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}
+                title={selectedKBIds.length > 0 ? `已选 ${selectedKBIds.length} 个知识库` : '选择知识库'}
+              >
+                <BookOpen className="w-5 h-5" />
+                {selectedKBIds.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">{selectedKBIds.length}</span>
+                )}
+              </button>
+              {showKBSelector && (
+                <div className="absolute bottom-full left-0 mb-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
+                  <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-600">知识库检索</span>
+                    {selectedKBIds.length > 0 && (
+                      <button onClick={() => setSelectedKBIds([])} className="text-[10px] text-gray-400 hover:text-red-500">清除全部</button>
+                    )}
+                  </div>
+                  {knowledgeBases.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-xs text-gray-400">暂无知识库</div>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto">
+                      {knowledgeBases.map((kb) => (
+                        <button
+                          key={kb.id}
+                          onClick={() => {
+                            setSelectedKBIds(prev =>
+                              prev.includes(kb.id)
+                                ? prev.filter(id => id !== kb.id)
+                                : [...prev, kb.id]
+                            )
+                          }}
+                          className={`w-full text-left px-3 py-2 flex items-center gap-2 text-sm transition-colors ${selectedKBIds.includes(kb.id) ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                        >
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedKBIds.includes(kb.id) ? 'bg-primary-600 border-primary-600' : 'border-gray-300'}`}>
+                            {selectedKBIds.includes(kb.id) && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium truncate">{kb.name}</div>
+                            <div className="text-[10px] text-gray-400">{kb.document_count || 0} 文档</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             {/* Voice recording */}
             <button
               onClick={toggleRecording}
