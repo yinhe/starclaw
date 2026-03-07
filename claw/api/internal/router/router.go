@@ -506,7 +506,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 						}
 					}
 					if !isBuiltin && name != "system" {
-						typ = "plugin"
+						if strings.HasPrefix(name, "mcp_") {
+							typ = "mcp"
+						} else {
+							typ = "plugin"
+						}
 					}
 					skills = append(skills, SkillInfo{
 						Name:        name,
@@ -529,13 +533,26 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 					})
 				}
 
+				// Count by type
+				builtinCount, pluginCount, mcpCount := 0, 0, 0
+				for _, s := range skills {
+					switch s.Type {
+					case "builtin":
+						builtinCount++
+					case "plugin":
+						pluginCount++
+					case "mcp":
+						mcpCount++
+					}
+				}
+
 				c.JSON(200, gin.H{
 					"skills": skills,
 					"summary": gin.H{
 						"total":   len(skills),
-						"builtin": len(builtinNames),
-						"plugin":  len(skills) - len(builtinNames) - len(mcpServers),
-						"mcp":     len(mcpServers),
+						"builtin": builtinCount,
+						"plugin":  pluginCount,
+						"mcp":     mcpCount,
 					},
 				})
 			})
