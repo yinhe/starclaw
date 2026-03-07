@@ -711,7 +711,7 @@ export default function SettingsPage() {
                     <p className="text-sm font-medium text-gray-800">{k.display_name || k.provider}</p>
                     <p className="text-xs text-gray-400">{k.provider}</p>
                   </div>
-                  <code className="text-xs bg-gray-200 px-2 py-1 rounded">{k.api_key || '未设置'}</code>
+                  <span className={`text-xs px-2 py-1 rounded ${k.api_key ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>{k.api_key ? '已配置' : '未设置'}</span>
                 </div>
               ))}
             </div>
