@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { BookOpen, Plus, Trash2, Upload, FileText, Search, X, Loader2, ChevronLeft } from 'lucide-react'
+import { BookOpen, Plus, Trash2, Upload, FileText, Search, X, Loader2, ChevronLeft, FileAudio, FileVideo, File, FileCode, Image } from 'lucide-react'
 import { knowledgeBaseAPI } from '../lib/api'
 
 interface KnowledgeBase {
@@ -82,15 +82,30 @@ export default function KnowledgeBasePage() {
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !selectedKB) return
+    const files = e.target.files
+    if (!files || files.length === 0 || !selectedKB) return
     setUploading(true)
-    try {
-      await knowledgeBaseAPI.uploadFile(selectedKB.id, file)
-      setTimeout(() => loadKBDetail(selectedKB), 1000)
-    } catch { /* ignore */ }
+    for (const file of Array.from(files)) {
+      try {
+        await knowledgeBaseAPI.uploadFile(selectedKB.id, file)
+      } catch (err: any) {
+        alert(err.response?.data?.error || `上传 ${file.name} 失败`)
+      }
+    }
+    setTimeout(() => loadKBDetail(selectedKB), 1000)
     setUploading(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const getDocIcon = (doc: Document) => {
+    const cat = (doc as any).category || ''
+    const name = doc.name.toLowerCase()
+    if (cat === 'audio' || name.match(/\.(mp3|wav|ogg|m4a|flac|aac|wma)$/)) return FileAudio
+    if (cat === 'video' || name.match(/\.(mp4|webm|avi|mov|mkv|flv|wmv)$/)) return FileVideo
+    if (cat === 'image' || name.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/)) return Image
+    if (cat === 'code' || name.match(/\.(py|go|js|ts|java|c|cpp|rs|rb|php|sql|sh|jsx|tsx)$/)) return FileCode
+    if (cat === 'archive' || name.match(/\.(zip|rar|7z|tar|gz)$/)) return File
+    return FileText
   }
 
   const handleTextUpload = async () => {
@@ -159,8 +174,9 @@ export default function KnowledgeBasePage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.md,.csv,.json,.xml,.yaml,.yml,.py,.go,.js,.ts,.html"
+                  accept=".pdf,.docx,.xlsx,.pptx,.rtf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.html,.py,.go,.js,.ts,.java,.c,.cpp,.rs,.rb,.php,.sql,.sh,.jsx,.tsx,.vue,.css,.mp3,.wav,.ogg,.m4a,.flac,.aac,.mp4,.webm,.avi,.mov,.mkv,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.zip,.rar,.7z"
                   onChange={handleFileUpload}
+                  multiple
                   className="hidden"
                 />
               </label>
@@ -215,9 +231,14 @@ export default function KnowledgeBasePage() {
               {documents.map((doc) => (
                 <div key={doc.id} className="bg-white border rounded-lg px-4 py-3 flex items-center justify-between group">
                   <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-gray-400" />
+                    {(() => { const Icon = getDocIcon(doc); return <Icon className="w-5 h-5 text-gray-400" /> })()}
                     <div>
-                      <p className="text-sm font-medium text-gray-800">{doc.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-gray-800">{doc.name}</p>
+                        {(doc as any).file_url && (
+                          <a href={(doc as any).file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-500 hover:underline">下载</a>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
                         <span>{formatSize(doc.size)}</span>
                         <span>{doc.chunk_count} 分块</span>
