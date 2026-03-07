@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, MicOff, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User } from 'lucide-react'
+import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, MicOff, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode } from 'lucide-react'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -14,7 +14,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
   </svg>
 )
 import { useChatStore } from '../stores/chatStore'
-import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI } from '../lib/api'
+import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI } from '../lib/api'
 import ReactMarkdown from 'react-markdown'
 import CodeBlock from '../components/CodeBlock'
 import Skeleton from '../components/Skeleton'
@@ -61,6 +61,9 @@ export default function ChatPage() {
   const animFrameRef = useRef<number>(0)
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [attachedFiles, setAttachedFiles] = useState<{ id: string; filename: string; url: string; size: number; mime: string; category: string; stored: string }[]>([])
+  const [fileUploading, setFileUploading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null)
   const [contextPanelOpen, setContextPanelOpen] = useState(false)
@@ -213,6 +216,53 @@ export default function ChatPage() {
         setAttachedImages((prev) => [...prev, { url: res.data.url, name: res.data.filename }])
       } catch { /* ignore */ }
     }
+  }
+
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files) return
+    setFileUploading(true)
+    for (const file of Array.from(files)) {
+      // Skip images — those go through handleImageUpload
+      if (file.type.startsWith('image/')) {
+        try {
+          const res = await multimodalAPI.uploadImage(file)
+          setAttachedImages((prev) => [...prev, { url: res.data.url, name: res.data.filename }])
+        } catch { /* ignore */ }
+        continue
+      }
+      try {
+        const res = await fileAPI.upload(file)
+        setAttachedFiles((prev) => [...prev, {
+          id: res.data.id,
+          filename: res.data.filename,
+          url: res.data.url,
+          size: res.data.size,
+          mime: res.data.mime,
+          category: res.data.category,
+          stored: res.data.stored,
+        }])
+      } catch (err: any) {
+        alert(err.response?.data?.error || '文件上传失败')
+      }
+    }
+    setFileUploading(false)
+  }
+
+  const getFileIcon = (category: string) => {
+    switch (category) {
+      case 'audio': return FileAudio
+      case 'video': return FileVideo
+      case 'document': return FileText
+      case 'code': return FileCode
+      case 'archive': return File
+      default: return FileText
+    }
+  }
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -804,6 +854,7 @@ export default function ChatPage() {
 
     let userMessage = input.trim()
     const images = attachedImages.map((img) => img.url)
+    const files = attachedFiles.map(f => ({ id: f.id, filename: f.filename, url: f.url, size: f.size, mime: f.mime, category: f.category, stored: f.stored }))
 
     // Resolve @AgentName mention → use that agent's ID
     let agentIdToUse = selectedAgentId // default: SuperAgent (router)
@@ -820,6 +871,7 @@ export default function ChatPage() {
     }
     setInput('')
     setAttachedImages([])
+    setAttachedFiles([])
     setBrowserScreenshots([])
     setToolInteractions([])
     setMentionedAgent(null)
@@ -827,11 +879,17 @@ export default function ChatPage() {
     setLoading(true)
     setStreamingContent('')
 
+    // Build display content for user message
+    let displayContent = userMessage
+    if (images.length > 0) displayContent += `\n\n[${images.length} 张图片]`
+    if (files.length > 0) displayContent += `\n\n[${files.length} 个文件: ${files.map(f => f.filename).join(', ')}]`
+
     addMessage({
       id: Date.now().toString(),
       role: 'user',
-      content: images.length > 0 ? `${userMessage}\n\n[${images.length} 张图片]` : userMessage,
+      content: displayContent,
       created_at: new Date().toISOString(),
+      attachments: files.length > 0 ? JSON.stringify(files) : undefined,
     })
 
     try {
@@ -851,6 +909,7 @@ export default function ChatPage() {
           conversation_id: currentConversationId || '',
           message: userMessage,
           images: images.length > 0 ? images : undefined,
+          files: files.length > 0 ? files : undefined,
           stream: true,
         }),
         signal: abortController.signal,
@@ -1407,7 +1466,35 @@ export default function ChatPage() {
                           </div>
                         </>
                       ) : (
-                        msg.content
+                        <>
+                          <div className="whitespace-pre-wrap">{msg.content}</div>
+                          {msg.attachments && msg.attachments !== '[]' && (() => {
+                            try {
+                              const files = JSON.parse(msg.attachments) as { filename: string; url: string; size: number; category: string }[]
+                              if (!files.length) return null
+                              return (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {files.map((f, i) => {
+                                    const Icon = getFileIcon(f.category)
+                                    return (
+                                      <a
+                                        key={i}
+                                        href={f.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1.5 px-2 py-1 bg-white/20 rounded-lg text-xs hover:bg-white/30 transition-colors"
+                                      >
+                                        <Icon className="w-3.5 h-3.5" />
+                                        <span className="max-w-[100px] truncate">{f.filename}</span>
+                                        <span className="opacity-70">{formatSize(f.size)}</span>
+                                      </a>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            } catch { return null }
+                          })()}
+                        </>
                       )}
                     </div>
                   )}
@@ -1606,7 +1693,49 @@ export default function ChatPage() {
               ))}
             </div>
           )}
+          {/* File preview strip */}
+          {attachedFiles.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {attachedFiles.map((f, idx) => {
+                const Icon = getFileIcon(f.category)
+                return (
+                  <div key={idx} className="relative group flex items-center gap-2 px-3 py-1.5 bg-gray-50 border rounded-lg text-sm">
+                    <Icon className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <span className="max-w-[120px] truncate text-gray-700">{f.filename}</span>
+                    <span className="text-xs text-gray-400">{formatSize(f.size)}</span>
+                    <button
+                      onClick={() => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
+                      className="ml-1 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <XIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {fileUploading && (
+            <div className="flex items-center gap-2 mb-2 text-sm text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>上传中...</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
+            {/* File upload (general) */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => { handleFileUpload(e.target.files); e.target.value = '' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 text-gray-400 hover:text-primary-600 transition-colors"
+              title="上传文件（文档/音频/视频/代码等）"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
             {/* Image upload */}
             <input
               ref={imageInputRef}
@@ -1689,7 +1818,7 @@ export default function ChatPage() {
                 onChange={handleInputChange}
                 onKeyDown={(e) => { if (!handleMentionKeyDown(e)) handleKeyDown(e) }}
                 onPaste={handlePaste}
-                onDrop={(e) => { e.preventDefault(); handleImageUpload(e.dataTransfer.files) }}
+                onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files) }}
                 onDragOver={(e) => e.preventDefault()}
                 rows={1}
                 placeholder={isRecording ? '正在录音...' : isTranscribing ? '转写中...' : '输入消息，@ 可指定Agent...'}

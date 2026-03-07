@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,11 +33,22 @@ func NewChatHandler(db *gorm.DB, pr *provider.Registry, tr *tool.Registry, emb r
 }
 
 type ChatCompletionRequest struct {
-	AgentID        string   `json:"agent_id" binding:"required"`
-	ConversationID string   `json:"conversation_id"`
-	Message        string   `json:"message" binding:"required"`
-	Images         []string `json:"images,omitempty"` // base64 data URLs for vision
-	Stream         bool     `json:"stream"`
+	AgentID        string           `json:"agent_id" binding:"required"`
+	ConversationID string           `json:"conversation_id"`
+	Message        string           `json:"message" binding:"required"`
+	Images         []string         `json:"images,omitempty"` // base64 data URLs for vision
+	Files          []FileAttachment `json:"files,omitempty"`  // uploaded file attachments
+	Stream         bool             `json:"stream"`
+}
+
+type FileAttachment struct {
+	ID       string `json:"id"`
+	Filename string `json:"filename"`
+	URL      string `json:"url"`
+	Size     int64  `json:"size"`
+	Mime     string `json:"mime"`
+	Category string `json:"category"`
+	Stored   string `json:"stored,omitempty"`
 }
 
 func (h *ChatHandler) Chat(c *gin.Context) {
@@ -86,11 +100,15 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		h.db.Create(&conversation)
 	}
 
-	// Save user message
+	// Save user message (with file attachments if any)
 	userMsg := model.Message{
 		ConversationID: conversation.ID,
 		Role:           "user",
 		Content:        req.Message,
+	}
+	if len(req.Files) > 0 {
+		filesJSON, _ := json.Marshal(req.Files)
+		userMsg.Attachments = string(filesJSON)
 	}
 	h.db.Create(&userMsg)
 
@@ -109,6 +127,14 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			context := rag.BuildContext(results, 4000)
 			systemPrompt = systemPrompt + "\n\n以下是与用户问题相关的参考资料，请基于这些信息回答：\n\n" + context
 			log.Printf("[RAG] injected %d chunks into prompt for KB %s", len(results), agent.KnowledgeBaseID)
+		}
+	}
+
+	// Inject file context into prompt if files are attached
+	if len(req.Files) > 0 {
+		fileContext := buildFileContext(req.Files)
+		if fileContext != "" {
+			systemPrompt += "\n\n" + fileContext
 		}
 	}
 
@@ -582,6 +608,69 @@ func buildProviderMessages(systemPrompt string, history []model.Message, images 
 	}
 
 	return messages
+}
+
+// buildFileContext creates a text summary of attached files for the LLM to understand
+func buildFileContext(files []FileAttachment) string {
+	if len(files) == 0 {
+		return ""
+	}
+
+	var parts []string
+	parts = append(parts, "用户附带了以下文件：")
+	for i, f := range files {
+		sizeStr := formatFileSize(f.Size)
+		parts = append(parts, fmt.Sprintf("%d. %s (%s, %s, %s)", i+1, f.Filename, f.Category, f.Mime, sizeStr))
+
+		// For text-readable files, try to read and include content
+		if isTextReadable(f.Mime, f.Filename) && f.Stored != "" {
+			content, err := readUploadedFileContent("/app/uploads/" + f.Stored)
+			if err == nil && content != "" {
+				// Limit to 10000 chars to avoid prompt overflow
+				if len(content) > 10000 {
+					content = content[:10000] + "\n... (文件内容已截断，共 " + fmt.Sprintf("%d", len(content)) + " 字符)"
+				}
+				parts = append(parts, "```\n"+content+"\n```")
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func isTextReadable(mime, filename string) bool {
+	textPrefixes := []string{"text/", "application/json", "application/xml"}
+	for _, p := range textPrefixes {
+		if strings.HasPrefix(mime, p) {
+			return true
+		}
+	}
+	textExts := []string{".md", ".csv", ".yaml", ".yml", ".toml", ".ini", ".log", ".sql", ".sh", ".py", ".js", ".ts", ".go", ".java", ".c", ".cpp", ".rs", ".rb", ".php", ".html", ".xml", ".json", ".txt", ".rtf"}
+	ext := strings.ToLower(filepath.Ext(filename))
+	for _, e := range textExts {
+		if ext == e {
+			return true
+		}
+	}
+	return false
+}
+
+func readUploadedFileContent(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func formatFileSize(size int64) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d B", size)
+	} else if size < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(size)/1024)
+	} else if size < 1024*1024*1024 {
+		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
+	}
+	return fmt.Sprintf("%.1f GB", float64(size)/(1024*1024*1024))
 }
 
 func truncate(s string, maxLen int) string {
