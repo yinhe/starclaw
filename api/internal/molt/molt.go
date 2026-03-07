@@ -52,6 +52,11 @@ func StartChecker() {
 	}()
 }
 
+// ForceCheck triggers an immediate version check
+func ForceCheck() {
+	check()
+}
+
 func check() {
 	info, err := fetchLatestRelease()
 	if err != nil {

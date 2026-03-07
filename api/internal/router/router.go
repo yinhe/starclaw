@@ -28,13 +28,14 @@ import (
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
 	"github.com/yinhe/starclaw/internal/sandbox"
+	"github.com/yinhe/starclaw/internal/swarm"
 	"github.com/yinhe/starclaw/internal/tool"
 	"github.com/yinhe/starclaw/internal/worker"
 	"github.com/yinhe/starclaw/internal/ws"
 	"gorm.io/gorm"
 )
 
-func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
+func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*swarm.Client) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -586,6 +587,20 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			protected.PUT("/settings/profile", settingsHandler.UpdateProfile)
 			protected.PUT("/settings/password", settingsHandler.ChangePassword)
 			protected.GET("/settings/api-keys", settingsHandler.GetAPIKeys)
+
+			// System: Swarm, Bounty, Updates
+			var sc *swarm.Client
+			if len(swarmClient) > 0 {
+				sc = swarmClient[0]
+			}
+			systemHandler := v1.NewSystemHandler(cfg, sc)
+			protected.GET("/system/update", systemHandler.GetUpdateInfo)
+			protected.POST("/system/update", systemHandler.TriggerUpdate)
+			protected.POST("/system/update/check", systemHandler.ForceCheck)
+			protected.GET("/system/swarm", systemHandler.GetSwarmStatus)
+			protected.POST("/system/swarm/join", systemHandler.JoinSwarm)
+			protected.POST("/system/swarm/leave", systemHandler.LeaveSwarm)
+			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
 
 			// Workflow Templates (Marketplace)
 			wfTemplateHandler := v1.NewWorkflowTemplateHandler(db)

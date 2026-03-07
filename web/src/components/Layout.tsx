@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { MessageSquare, Bot, Cpu, BookOpen, Plug, Users, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Code2, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard } from 'lucide-react'
-import { notificationAPI, versionAPI } from '../lib/api'
+import { notificationAPI, versionAPI, systemAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
@@ -314,16 +314,29 @@ export default function Layout() {
         </div>
         <div className="flex-1 overflow-hidden relative">
           {updateInfo && !updateDismissed && (
-            <div className="bg-primary-50 border-b border-primary-200 px-4 py-2 flex items-center justify-between text-sm">
-              <span className="text-primary-700">
-                🦞 New version <strong>v{updateInfo.latest}</strong> available!{' '}
-                <a href={updateInfo.latest_url} target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-primary-900">
-                  View release
-                </a>
+            <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center justify-between text-sm">
+              <span className="text-orange-700">
+                新版本 <strong>v{updateInfo.latest}</strong> 可用！
               </span>
-              <button onClick={() => setUpdateDismissed(true)} className="text-primary-400 hover:text-primary-600">
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-3">
+                <a href={updateInfo.latest_url} target="_blank" rel="noopener noreferrer" className="text-xs text-orange-600 hover:underline">
+                  查看详情
+                </a>
+                <button
+                  onClick={async () => {
+                    try {
+                      await systemAPI.triggerUpdate()
+                      setUpdateDismissed(true)
+                    } catch {}
+                  }}
+                  className="px-2.5 py-1 text-xs bg-orange-500 text-white rounded-md hover:bg-orange-600 font-medium"
+                >
+                  一键更新
+                </button>
+                <button onClick={() => setUpdateDismissed(true)} className="text-orange-400 hover:text-orange-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
           <Outlet />
