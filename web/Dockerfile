@@ -1,4 +1,5 @@
-FROM node:18-alpine AS builder
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -8,7 +9,8 @@ RUN npm config set registry https://registry.npmmirror.com && npm install
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

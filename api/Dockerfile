@@ -1,4 +1,5 @@
-FROM golang:1.24-alpine AS builder
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -12,7 +13,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /starclaw ./cmd/server
 
-FROM alpine:latest
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/alpine:latest
 
 # Use Alibaba Cloud mirrors for faster downloads in China
 RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories

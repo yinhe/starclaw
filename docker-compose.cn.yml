@@ -17,9 +17,23 @@
 # sudo systemctl daemon-reload && sudo systemctl restart docker
 
 services:
+  mysql:
+    image: docker.1ms.run/mysql:8.0
+
+  redis:
+    image: docker.1ms.run/redis:7-alpine
+
   api:
     build:
       context: ./api
       dockerfile: Dockerfile
       args:
+        REGISTRY: "docker.1ms.run"
         GOPROXY: "https://goproxy.cn,direct"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        REGISTRY: "docker.1ms.run"
