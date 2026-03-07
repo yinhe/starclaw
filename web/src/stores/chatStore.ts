@@ -4,6 +4,7 @@ export interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  attachments?: string
   feedback?: number
   created_at: string
 }

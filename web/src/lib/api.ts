@@ -299,6 +299,17 @@ export const multimodalAPI = {
     api.post('/multimodal/tts', { text, voice: voice || 'alloy' }, { responseType: 'blob' }),
 }
 
+// File upload (general: documents, audio, video, code, etc.)
+export const fileAPI = {
+  upload: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+}
+
 // Coding Agent
 // Super Agent (auto-create)
 export const superAgentAPI = {

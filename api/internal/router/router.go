@@ -194,6 +194,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		workflowHandler := v1.NewWorkflowHandler(db, providerRegistry, toolRegistry)
 		apiV1.POST("/webhooks/workflow/:token", workflowHandler.Webhook)
 
+		// Uploaded files (public, secured by UUID filename)
+		apiV1.GET("/uploads/:filename", v1.ServeUploadedFile)
+
 		// Browser screenshots (public, secured by UUID)
 		apiV1.GET("/screenshots/:id", v1.ServeScreenshot)
 
@@ -623,6 +626,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			protected.POST("/multimodal/upload-image", multimodalHandler.UploadImage)
 			protected.POST("/multimodal/stt", multimodalHandler.SpeechToText)
 			protected.POST("/multimodal/tts", multimodalHandler.TextToSpeech)
+
+			// File upload (general: documents, audio, video, code, etc.)
+			protected.POST("/upload", v1.UploadFile)
 
 			// Coding Agent
 			codingHandler := v1.NewCodingHandler(db, sandboxMgr, providerRegistry, toolRegistry)

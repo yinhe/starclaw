@@ -32,6 +32,7 @@ type Message struct {
 	ConversationID string    `json:"conversation_id" gorm:"type:varchar(36);index;not null"`
 	Role           string    `json:"role" gorm:"type:varchar(20);not null"` // user, assistant, system, tool
 	Content        string    `json:"content" gorm:"type:longtext"`
+	Attachments    string    `json:"attachments,omitempty" gorm:"type:json"` // JSON array of file attachments
 	ToolCalls      string    `json:"tool_calls,omitempty" gorm:"type:json"`
 	ToolCallID     string    `json:"tool_call_id,omitempty" gorm:"type:varchar(100)"`
 	TokensUsed     int       `json:"tokens_used" gorm:"default:0"`
