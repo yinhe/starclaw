@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  mysql-queen:
+    image: mysql:8.0
+    container_name: starclaw-queen-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${QUEEN_DB_PASSWORD:-starclaw_queen_2026}
+      MYSQL_DATABASE: starclaw_queen
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks:
+      - queen
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${QUEEN_DB_PASSWORD:-starclaw_queen_2026}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  swarm:
+    build:
+      context: ./swarm
+    container_name: starclaw-queen-swarm
+    restart: unless-stopped
+    environment:
+      SWARM_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      SWARM_PORT: "8090"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:8090:8090"
+    depends_on:
+      mysql-queen:
+        condition: service_healthy
+    networks:
+      - queen
+
+  core:
+    build:
+      context: ./core
+    container_name: starclaw-queen-core
+    restart: unless-stopped
+    environment:
+      SWARM_URL: "http://swarm:8090"
+      CORE_PORT: "8091"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:8091:8091"
+    depends_on:
+      - swarm
+    networks:
+      - queen
+
+  bounty:
+    build:
+      context: ./bounty
+    container_name: starclaw-queen-bounty
+    restart: unless-stopped
+    environment:
+      BOUNTY_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      BOUNTY_PORT: "8092"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:8092:8092"
+    depends_on:
+      mysql-queen:
+        condition: service_healthy
+    networks:
+      - queen
+
+  forum:
+    build:
+      context: ./forum
+    container_name: starclaw-queen-forum
+    restart: unless-stopped
+    environment:
+      FORUM_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      FORUM_PORT: "8093"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:8093:8093"
+    depends_on:
+      mysql-queen:
+        condition: service_healthy
+    networks:
+      - queen
+
+  arena:
+    build:
+      context: ./arena
+    container_name: starclaw-queen-arena
+    restart: unless-stopped
+    environment:
+      ARENA_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      ARENA_PORT: "8094"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:8094:8094"
+    depends_on:
+      mysql-queen:
+        condition: service_healthy
+    networks:
+      - queen
+
+networks:
+  queen:
+    driver: bridge
