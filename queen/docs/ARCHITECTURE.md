@@ -712,13 +712,16 @@ services:
 - [ ] Plugin Marketplace — 第三方工具插件市场（进化腔 Evolution）
 - [ ] Agent 竞技对战系统
 
-### Phase 8 — 企业级 Overlord（计划中）
+### Phase 8 — 企业级 Overlord
 
-- [ ] `overlord/manager/` 领主管理服务 — Claw 注册、调度、监控
+- [x] `overlord/manager/` 领主管理服务 — ClawNode/TaskAssignment/AuditLog 模型、注册/心跳/配额/调度/审计 API、离线检测、Dockerfile、:8095
+- [x] Overlord Docker Compose — `overlord/docker-compose.yml`（mysql-overlord:3308 + manager:8095）
+- [x] Brood 协议 — `/brood/register` + `/brood/heartbeat` + `/brood/claws` + `/brood/task/assign` + `/brood/stats` + `/brood/audit`
+- [x] 多租户 & 团队隔离 — ClawNode.Team 字段，按 team 过滤节点和调度
+- [x] 审计日志 — AuditLog 模型，所有管理操作自动记录
+- [x] 负载均衡调度 — 最小负载优先 + 配额检查
 - [ ] `overlord/console/` 领主管理控制台 — Web UI
 - [ ] SSO / LDAP 集成
-- [ ] 多租户 & 团队隔离
-- [ ] 审计日志增强
 - [ ] Nydus P2P 隧道（企业内网 Claw 直连）
 - [ ] SLA 保障 & 监控告警
 - [ ] Kubernetes Helm Chart
