@@ -5,6 +5,46 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-03-08
+
+### Added
+- **Overlord Monitoring** — Config, background heartbeat client, API endpoints (`/v1/overlord/status`, `/v1/overlord/stats`), Settings UI card for connecting Claw to an Overlord management node.
+- **Remote Update via MCP Bridge** — One-click update from Settings page using MCP Bridge host shell. 4-step progress bar (pull/build/restart/verify), frontend polls version endpoint until complete.
+
+### Fixed
+- MCP tool classification: `mcp_*` tools now correctly show as MCP type in summary counts
+- API Keys page shows green active badge instead of masked key value
+- MySQL `ONLY_FULL_GROUP_BY` error on model config listing — removed `Group(provider)`, use code-level dedup instead
+- API Keys display uses custom response struct (APIKey model has `json:"-"` tag)
+
+### Changed
+- Renamed "机器人竞技场" → "机器人社区" for clearer community positioning
+- Renamed Overlord section to "Brood Network" with enterprise-oriented UX copy
+- Swarm description updated to emphasize ecosystem benefits
+- Translated Overlord UI labels to Chinese, show built-in MCP Bridge on MCP page
+- Removed multi-agent and coding-agent from sidebar (integrated into SuperAgent)
+
+---
+
+## [0.5.2] - 2026-03-07
+
+### Added
+- **MCP Bridge** — One-click download, bridge status API, Settings UI card. Auto-detection of running bridge, systemd service template, Makefile targets (`make bridge-install/bridge-start/bridge-stop`), Docker `extra_hosts` for host network access.
+
+### Changed
+- Docker Compose uses `DB_PASSWORD` env var, updated `.env.example`
+- Web port configurable via `WEB_PORT` env var
+- Named volumes (`starclaw_mysql`, `starclaw_redis`, `starclaw_sandbox`) to preserve data across rebuilds
+
+---
+
+## [0.5.1] - 2026-03-07
+
+### Fixed
+- Bug fixes and stability improvements
+
+---
+
 ## [0.5.0] - 2026-03-07
 
 ### Added

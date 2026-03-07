@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Version    = "0.5.2"
+	Version    = "0.5.3"
 	owner      = "yinhe"
 	repo       = "starclaw"
 	checkEvery = 6 * time.Hour
