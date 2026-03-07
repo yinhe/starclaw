@@ -33,12 +33,13 @@ func NewChatHandler(db *gorm.DB, pr *provider.Registry, tr *tool.Registry, emb r
 }
 
 type ChatCompletionRequest struct {
-	AgentID        string           `json:"agent_id" binding:"required"`
-	ConversationID string           `json:"conversation_id"`
-	Message        string           `json:"message" binding:"required"`
-	Images         []string         `json:"images,omitempty"` // base64 data URLs for vision
-	Files          []FileAttachment `json:"files,omitempty"`  // uploaded file attachments
-	Stream         bool             `json:"stream"`
+	AgentID          string           `json:"agent_id" binding:"required"`
+	ConversationID   string           `json:"conversation_id"`
+	Message          string           `json:"message" binding:"required"`
+	Images           []string         `json:"images,omitempty"`           // base64 data URLs for vision
+	Files            []FileAttachment `json:"files,omitempty"`            // uploaded file attachments
+	KnowledgeBaseIDs []string         `json:"knowledge_base_ids,omitempty"` // user-selected KBs for RAG
+	Stream           bool             `json:"stream"`
 }
 
 type FileAttachment struct {
@@ -116,17 +117,43 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	var history []model.Message
 	h.db.Where("conversation_id = ?", conversation.ID).Order("created_at ASC").Find(&history)
 
-	// RAG: retrieve relevant context if agent has a knowledge base
+	// RAG: retrieve relevant context from knowledge bases
 	systemPrompt := agent.SystemPrompt
-	if agent.KnowledgeBaseID != "" && h.embedder != nil {
+	// Collect all KB IDs: agent's default KB + user-selected KBs
+	kbIDs := make(map[string]bool)
+	if agent.KnowledgeBaseID != "" {
+		kbIDs[agent.KnowledgeBaseID] = true
+	}
+	for _, id := range req.KnowledgeBaseIDs {
+		if id != "" {
+			kbIDs[id] = true
+		}
+	}
+	if len(kbIDs) > 0 && h.embedder != nil {
 		retriever := rag.NewRetriever(h.db, h.embedder)
-		results, err := retriever.Search(c.Request.Context(), agent.KnowledgeBaseID, req.Message, 5)
-		if err != nil {
-			log.Printf("[RAG] search failed: %v", err)
-		} else if len(results) > 0 {
-			context := rag.BuildContext(results, 4000)
-			systemPrompt = systemPrompt + "\n\n以下是与用户问题相关的参考资料，请基于这些信息回答：\n\n" + context
-			log.Printf("[RAG] injected %d chunks into prompt for KB %s", len(results), agent.KnowledgeBaseID)
+		var allResults []rag.SearchResult
+		for kbID := range kbIDs {
+			// Verify user owns this KB
+			var kb model.KnowledgeBase
+			if err := h.db.Where("id = ? AND user_id = ?", kbID, userID).First(&kb).Error; err != nil {
+				continue
+			}
+			results, err := retriever.Search(c.Request.Context(), kbID, req.Message, 5)
+			if err != nil {
+				log.Printf("[RAG] search KB %s failed: %v", kbID, err)
+				continue
+			}
+			allResults = append(allResults, results...)
+		}
+		if len(allResults) > 0 {
+			// Sort by score descending and take top 8
+			rag.SortResults(allResults)
+			if len(allResults) > 8 {
+				allResults = allResults[:8]
+			}
+			context := rag.BuildContext(allResults, 6000)
+			systemPrompt = systemPrompt + "\n\n以下是从知识库中检索到的与用户问题相关的参考资料，请基于这些信息回答：\n\n" + context
+			log.Printf("[RAG] injected %d chunks from %d KBs into prompt", len(allResults), len(kbIDs))
 		}
 	}
 

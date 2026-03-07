@@ -93,6 +93,13 @@ func (r *Retriever) Search(ctx context.Context, kbID string, query string, topK 
 	return output, nil
 }
 
+// SortResults sorts search results by score descending
+func SortResults(results []SearchResult) {
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+}
+
 // BuildContext constructs a context string from search results for injection into LLM prompt
 func BuildContext(results []SearchResult, maxChars int) string {
 	if len(results) == 0 {
