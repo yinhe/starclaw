@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/swarm"
 )
@@ -136,13 +137,13 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 	runtime.ReadMemStats(&memStats)
 
 	c.JSON(http.StatusOK, gin.H{
-		"version":          vi,
-		"go_version":       runtime.Version(),
-		"os":               runtime.GOOS,
-		"arch":             runtime.GOARCH,
-		"memory_mb":        memStats.Alloc / 1024 / 1024,
-		"deploy_mode":      h.cfg.Server.DeployMode,
-		"swarm_enabled":    h.cfg.Swarm.Enabled,
+		"version":       vi,
+		"go_version":    runtime.Version(),
+		"os":            runtime.GOOS,
+		"arch":          runtime.GOARCH,
+		"memory_mb":     memStats.Alloc / 1024 / 1024,
+		"deploy_mode":   h.cfg.Server.DeployMode,
+		"swarm_enabled": h.cfg.Swarm.Enabled,
 	})
 }
 
@@ -164,9 +165,9 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 	}()
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":     fmt.Sprintf("正在更新到 v%s，服务将在数秒后重启...", vi.Latest),
-		"from":        vi.Current,
-		"to":          vi.Latest,
+		"message": fmt.Sprintf("正在更新到 v%s，服务将在数秒后重启...", vi.Latest),
+		"from":    vi.Current,
+		"to":      vi.Latest,
 	})
 }
 
@@ -175,6 +176,11 @@ func (h *SystemHandler) ForceCheck(c *gin.Context) {
 	molt.ForceCheck()
 	vi := molt.GetVersionInfo()
 	c.JSON(http.StatusOK, vi)
+}
+
+// GetBridgeStatus returns MCP Bridge connection status and download URLs
+func (h *SystemHandler) GetBridgeStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, mcp.BridgeStatus())
 }
 
 func performDockerUpdate() error {

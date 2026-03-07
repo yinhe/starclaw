@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink } from 'lucide-react'
+import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap } from 'lucide-react'
 import { settingsAPI, auditAPI, systemAPI } from '../lib/api'
 
 export default function SettingsPage() {
@@ -21,6 +21,7 @@ export default function SettingsPage() {
   const [swarmForm, setSwarmForm] = useState({ queen_url: 'https://swarm.starclaw.me', node_name: '', region: '' })
   const [swarmMsg, setSwarmMsg] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
+  const [bridgeStatus, setBridgeStatus] = useState<any>(null)
 
   useEffect(() => {
     loadProfile()
@@ -31,12 +32,14 @@ export default function SettingsPage() {
 
   const loadSystemInfo = async () => {
     try {
-      const [updateRes, swarmRes] = await Promise.all([
+      const [updateRes, swarmRes, bridgeRes] = await Promise.all([
         systemAPI.getUpdate(),
         systemAPI.getSwarm(),
+        systemAPI.getBridge().catch(() => null),
       ])
       setUpdateInfo(updateRes.data)
       setSwarmStatus(swarmRes.data)
+      if (bridgeRes) setBridgeStatus(bridgeRes.data)
       if (swarmRes.data.queen_url) {
         setSwarmForm(prev => ({ ...prev, queen_url: swarmRes.data.queen_url }))
       }
@@ -213,6 +216,54 @@ export default function SettingsPage() {
               <ExternalLink className="w-3 h-3" /> 在 GitHub 查看
             </a>
           )}
+        </section>
+
+        {/* MCP Bridge */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <Monitor className="w-4 h-4" /> 宿主机控制 (MCP Bridge)
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">启用后，AI Agent 可以在对话中直接操作你的电脑：执行命令、读写文件、获取系统信息等。</p>
+          <div className="flex items-center gap-3 p-3 rounded-lg mb-4" style={{ backgroundColor: bridgeStatus?.connected ? '#f0fdf4' : '#fef2f2' }}>
+            {bridgeStatus?.connected ? (
+              <PlugZap className="w-5 h-5 text-green-600" />
+            ) : (
+              <Plug className="w-5 h-5 text-gray-400" />
+            )}
+            <div>
+              <p className="text-sm font-medium" style={{ color: bridgeStatus?.connected ? '#166534' : '#991b1b' }}>
+                {bridgeStatus?.connected ? '已连接' : '未连接'}
+              </p>
+              {bridgeStatus?.connected && (
+                <p className="text-xs text-gray-400">{bridgeStatus.bridge_url} · 9 个宿主机工具已注册</p>
+              )}
+            </div>
+          </div>
+          {!bridgeStatus?.connected && bridgeStatus?.downloads && (() => {
+            const ua = navigator.userAgent.toLowerCase()
+            let platform = 'linux_amd64'
+            let label = 'Linux'
+            if (ua.includes('win')) { platform = 'windows_amd64'; label = 'Windows' }
+            else if (ua.includes('mac')) { platform = ua.includes('arm') ? 'darwin_arm64' : 'darwin_amd64'; label = 'macOS' }
+            const url = bridgeStatus.downloads[platform]
+            return (
+              <div className="space-y-3">
+                <a
+                  href={url}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                >
+                  <Download className="w-4 h-4" /> 下载 MCP Bridge ({label})
+                </a>
+                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+                  <p className="font-medium text-gray-600 mb-1">下载后运行：</p>
+                  <code className="block bg-gray-100 px-2 py-1 rounded text-xs font-mono">
+                    {platform.startsWith('windows') ? '.\\mcp-bridge-windows-amd64.exe' : `chmod +x mcp-bridge-${platform} && ./mcp-bridge-${platform}`}
+                  </code>
+                  <p className="mt-2 text-gray-400">启动后此页面会自动显示「已连接」，无需其他配置。</p>
+                </div>
+              </div>
+            )
+          })()}
         </section>
 
         {/* Swarm */}
