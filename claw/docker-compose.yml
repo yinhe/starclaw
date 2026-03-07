@@ -81,7 +81,7 @@ services:
     container_name: starclaw-web
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${WEB_PORT:-80}:80"
     depends_on:
       - api
     networks:
