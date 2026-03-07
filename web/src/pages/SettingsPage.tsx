@@ -24,7 +24,7 @@ export default function SettingsPage() {
   const [bridgeStatus, setBridgeStatus] = useState<any>(null)
   const [overlordStatus, setOverlordStatus] = useState<any>(null)
   const [joiningOverlord, setJoiningOverlord] = useState(false)
-  const [overlordForm, setOverlordForm] = useState({ overlord_url: 'https://overlord.starclaw.me', node_name: '', region: '' })
+  const [overlordForm, setOverlordForm] = useState({ overlord_url: '', node_name: '', region: '' })
   const [overlordMsg, setOverlordMsg] = useState('')
 
   useEffect(() => {
@@ -361,12 +361,12 @@ export default function SettingsPage() {
           })()}
         </section>
 
-        {/* Overlord */}
+        {/* Brood */}
         <section className="bg-white border rounded-xl p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
-            <Eye className="w-4 h-4" /> 领主监控 (Overlord)
+            <Eye className="w-4 h-4" /> 虫巢网络 (Brood)
           </h2>
-          <p className="text-xs text-gray-400 mb-4">接入领主后，你的 Claw 将受到资源配额管理、可观测性监控和任务调度保护。</p>
+          <p className="text-xs text-gray-400 mb-4">加入企业虫巢后，你的 Claw 将由领主 (Overlord) 统一管理，获得资源配额、可观测性监控和任务调度能力。领主地址由企业管理员提供。</p>
           <div className="flex items-center gap-3 p-3 rounded-lg mb-4" style={{ backgroundColor: overlordStatus?.connected ? '#f0fdf4' : '#fafafa' }}>
             {overlordStatus?.connected ? (
               <Eye className="w-5 h-5 text-violet-600" />
@@ -375,7 +375,7 @@ export default function SettingsPage() {
             )}
             <div>
               <p className="text-sm font-medium" style={{ color: overlordStatus?.connected ? '#166534' : '#6b7280' }}>
-                {overlordStatus?.connected ? `已接入 — 节点 ${overlordStatus.node_id?.slice(0, 8)}...` : '未接入'}
+                {overlordStatus?.connected ? `已加入虫巢 — 节点 ${overlordStatus.node_id?.slice(0, 8)}...` : '未加入'}
               </p>
               {overlordStatus?.overlord_url && overlordStatus.connected && (
                 <p className="text-xs text-gray-400">Overlord: {overlordStatus.overlord_url}</p>
@@ -385,12 +385,12 @@ export default function SettingsPage() {
           {!overlordStatus?.connected ? (
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">领主地址</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">领主地址（由企业管理员提供）</label>
                 <input
                   value={overlordForm.overlord_url}
                   onChange={(e) => setOverlordForm({ ...overlordForm, overlord_url: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="https://overlord.starclaw.me"
+                  placeholder="例如 http://192.168.1.100:8095 或 https://overlord.company.com"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -432,7 +432,7 @@ export default function SettingsPage() {
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
               >
                 {joiningOverlord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-                接入领主
+                加入虫巢
               </button>
               {overlordMsg && <p className="text-sm text-violet-600">{overlordMsg}</p>}
             </div>
@@ -452,7 +452,7 @@ export default function SettingsPage() {
                 }}
                 className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
               >
-                退出领主
+                退出虫巢
               </button>
             </div>
           )}
