@@ -93,5 +93,8 @@ networks:
 
 volumes:
   mysql_data:
+    name: starclaw_mysql_data
   redis_data:
+    name: starclaw_redis_data
   sandbox_data:
+    name: starclaw_sandbox_data
