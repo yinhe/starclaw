@@ -17,6 +17,8 @@ const (
 	BridgePort         = 9100
 	BridgeServerName   = "host"
 	bridgeProbeTimeout = 3 * time.Second
+	owner              = "yinhe"
+	repoName           = "starclaw"
 )
 
 // DetectBridgeURL determines the MCP Bridge URL based on runtime environment.
@@ -83,27 +85,26 @@ func AutoRegisterBridge(registry *tool.Registry) {
 	}()
 }
 
-// BridgeInstallInstructions returns platform-specific install instructions.
-func BridgeInstallInstructions() string {
-	switch runtime.GOOS {
-	case "windows":
-		return `# Windows - 在宿主机 PowerShell 中运行:
-cd claw\api
-go build -o mcp-bridge.exe .\cmd\mcp-bridge\
-.\mcp-bridge.exe -port 9100`
-	case "darwin":
-		return `# macOS - 在宿主机终端中运行:
-cd claw/api
-go build -o mcp-bridge ./cmd/mcp-bridge/
-./mcp-bridge -port 9100`
-	default:
-		return `# Linux - 在宿主机终端中运行:
-cd claw/api
-go build -o mcp-bridge ./cmd/mcp-bridge/
-./mcp-bridge -port 9100
+// BridgeStatus returns the current bridge connection status and download info.
+func BridgeStatus() map[string]interface{} {
+	bridgeURL := DetectBridgeURL()
+	connected := ProbeBridge(bridgeURL)
 
-# 或使用 systemd 服务:
-sudo cp deploy/mcp-bridge.service /etc/systemd/system/
-sudo systemctl enable --now mcp-bridge`
+	return map[string]interface{}{
+		"connected":  connected,
+		"bridge_url": bridgeURL,
+		"port":       BridgePort,
+		"downloads":  BridgeDownloadURLs(),
+	}
+}
+
+// BridgeDownloadURLs returns download URLs for each platform from GitHub Release.
+func BridgeDownloadURLs() map[string]string {
+	base := fmt.Sprintf("https://github.com/%s/%s/releases/latest/download", owner, repoName)
+	return map[string]string{
+		"windows_amd64": base + "/mcp-bridge-windows-amd64.exe",
+		"darwin_amd64":  base + "/mcp-bridge-darwin-amd64",
+		"darwin_arm64":  base + "/mcp-bridge-darwin-arm64",
+		"linux_amd64":   base + "/mcp-bridge-linux-amd64",
 	}
 }

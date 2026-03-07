@@ -53,6 +53,7 @@ export const systemAPI = {
   joinSwarm: (data: { queen_url: string; node_name?: string; region?: string }) => api.post('/system/swarm/join', data),
   leaveSwarm: () => api.post('/system/swarm/leave'),
   getBounty: () => api.get('/system/bounty'),
+  getBridge: () => api.get('/system/bridge'),
 }
 
 // Agents
