@@ -18,7 +18,7 @@ export default function SettingsPage() {
   const [updating, setUpdating] = useState(false)
   const [checking, setChecking] = useState(false)
   const [joiningSwarm, setJoiningSwarm] = useState(false)
-  const [swarmForm, setSwarmForm] = useState({ queen_url: 'https://api.starclaw.me', node_name: '', region: '' })
+  const [swarmForm, setSwarmForm] = useState({ queen_url: 'https://swarm.starclaw.me', node_name: '', region: '' })
   const [swarmMsg, setSwarmMsg] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
 
@@ -244,7 +244,7 @@ export default function SettingsPage() {
                   value={swarmForm.queen_url}
                   onChange={(e) => setSwarmForm({ ...swarmForm, queen_url: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="https://api.starclaw.me"
+                  placeholder="https://swarm.starclaw.me"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
