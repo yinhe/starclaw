@@ -106,17 +106,23 @@ func (h *SettingsHandler) GetAPIKeys(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var keys []model.ModelConfig
-	h.db.Where("user_id = ?", userID).Group("provider").Find(&keys)
+	h.db.Where("user_id = ?", userID).Find(&keys)
 
 	// Build response with masked api_key (struct has json:"-" so we must do it manually)
+	// Deduplicate by provider — show one entry per provider
 	type keyItem struct {
 		ID          string `json:"id"`
 		Provider    string `json:"provider"`
 		DisplayName string `json:"display_name"`
 		APIKey      string `json:"api_key"`
 	}
-	items := make([]keyItem, 0, len(keys))
+	seen := map[string]bool{}
+	items := make([]keyItem, 0)
 	for _, k := range keys {
+		if seen[k.Provider] {
+			continue
+		}
+		seen[k.Provider] = true
 		masked := ""
 		if k.APIKey != "" {
 			if len(k.APIKey) > 8 {
