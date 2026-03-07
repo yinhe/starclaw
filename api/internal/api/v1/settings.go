@@ -106,14 +106,32 @@ func (h *SettingsHandler) GetAPIKeys(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var keys []model.ModelConfig
-	h.db.Where("user_id = ?", userID).Find(&keys)
+	h.db.Where("user_id = ?", userID).Group("provider").Find(&keys)
 
-	// Mask API keys
-	for i := range keys {
-		if keys[i].APIKey != "" && len(keys[i].APIKey) > 8 {
-			keys[i].APIKey = keys[i].APIKey[:4] + "****" + keys[i].APIKey[len(keys[i].APIKey)-4:]
+	// Build response with masked api_key (struct has json:"-" so we must do it manually)
+	type keyItem struct {
+		ID          string `json:"id"`
+		Provider    string `json:"provider"`
+		DisplayName string `json:"display_name"`
+		APIKey      string `json:"api_key"`
+	}
+	items := make([]keyItem, 0, len(keys))
+	for _, k := range keys {
+		masked := ""
+		if k.APIKey != "" {
+			if len(k.APIKey) > 8 {
+				masked = k.APIKey[:4] + "****" + k.APIKey[len(k.APIKey)-4:]
+			} else {
+				masked = "****"
+			}
 		}
+		items = append(items, keyItem{
+			ID:          k.ID,
+			Provider:    k.Provider,
+			DisplayName: k.DisplayName,
+			APIKey:      masked,
+		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"api_keys": keys})
+	c.JSON(http.StatusOK, gin.H{"api_keys": items})
 }
