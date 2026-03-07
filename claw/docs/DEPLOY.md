@@ -176,65 +176,99 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## 八、日常运维
 
-项目根目录提供了 `Makefile`，可直接使用 `make <命令>`：
+### 安装 CLI 别名（推荐）
+
+项目提供 `claw` CLI 工具，是 `make` 的简写别名，支持所有命令 + 额外快捷方式。
+
+**Linux / macOS:**
 
 ```bash
-make help              # 查看所有可用命令
+# 创建符号链接（二选一或都建）
+sudo ln -sf $(pwd)/scripts/claw /usr/local/bin/claw
+sudo ln -sf $(pwd)/scripts/claw /usr/local/bin/starclaw
+
+# 之后可在任意目录使用
+claw up
+claw logs
+starclaw update
+```
+
+**Windows:**
+
+将 `scripts\` 目录加入系统 PATH，或复制 `scripts\claw.bat` 到 PATH 中的目录：
+
+```powershell
+# 复制到用户目录
+copy scripts\claw.bat %USERPROFILE%\claw.bat
+
+# 然后使用
+claw up
+claw logs
+```
+
+### 命令速查
+
+以下命令通过 `claw`、`starclaw` 或 `make` 均可调用：
+
+```bash
+claw help              # 查看所有可用命令
 ```
 
 ### 生命周期
 
 ```bash
-# 构建 & 启动
-make up                # 构建并启动所有服务
-make up-cn             # 国内镜像加速构建
+claw up                # 构建并启动所有服务
+claw up-cn             # 国内镜像加速构建
+claw start             # 启动已有容器（不重新构建）
+claw stop              # 停止所有容器（保留数据）
+claw restart           # 重启所有容器
+claw down              # 停止并移除容器和网络（保留数据）
+claw destroy           # ⚠️ 停止并删除 MySQL/Redis/Sandbox 数据
+```
 
-# 启停
-make start             # 启动已有容器（不重新构建）
-make stop              # 停止所有容器（保留数据）
-make restart           # 重启所有容器
-make down              # 停止并移除容器和网络（保留数据）
-make destroy           # ⚠️ 停止并删除 MySQL/Redis/Sandbox 数据
+### 更新
 
-# 更新
-make update            # git pull + 重新构建
-make update-cn         # 国内镜像加速更新
-
-# 单服务重建
-make rebuild-api       # 仅重建 API 服务
-make rebuild-web       # 仅重建 Web 前端
+```bash
+claw update            # git pull + 重新构建（别名: claw pull）
+claw update-cn         # 国内镜像加速更新
+claw rebuild-api       # 仅重建 API 服务（别名: claw ra）
+claw rebuild-web       # 仅重建 Web 前端（别名: claw rw）
 ```
 
 ### 日志 & 状态
 
 ```bash
-make logs              # 查看所有服务日志
-make logs-api          # 查看 API 日志
-make ps                # 查看容器状态
-make stats             # 查看 CPU/内存占用
-make health            # 检查 API 健康状态
+claw logs              # 查看所有服务日志
+claw la                # 查看 API 日志（别名: claw logs-api）
+claw lw                # 查看 Web 日志（别名: claw logs-web）
+claw ps                # 查看容器状态（别名: claw status）
+claw stats             # 查看 CPU/内存占用
+claw health            # 检查 API 健康状态（别名: claw ping）
+claw version           # 查看版本信息（别名: claw v）
 ```
 
 ### 备份 & 恢复
 
 ```bash
-make backup            # 备份数据库 + data 目录到 backups/
-make restore-db FILE=backups/db_20260307.sql  # 恢复数据库
+claw backup            # 备份数据库 + data 目录到 backups/
+claw restore-db backups/db_20260307.sql  # 恢复数据库
 ```
 
 ### Shell 访问
 
 ```bash
-make shell-api         # 进入 API 容器
-make shell-mysql       # 打开 MySQL CLI
-make shell-redis       # 打开 Redis CLI
+claw shell             # 进入 API 容器（别名: claw sh）
+claw mysql             # 打开 MySQL CLI
+claw redis             # 打开 Redis CLI
 ```
 
 ### 清理
 
 ```bash
-make prune             # 清理未使用的 Docker 镜像和构建缓存
+claw prune             # 清理未使用的 Docker 镜像（别名: claw clean）
 ```
+
+> **提示:** 所有命令仍然兼容 `make` 方式调用，如 `make up`、`make logs` 等。
 
 ## 九、常见问题
 
