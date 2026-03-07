@@ -6,7 +6,7 @@ services:
     container_name: starclaw-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: starclaw
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-starclaw}
       MYSQL_DATABASE: starclaw
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
@@ -53,7 +53,7 @@ services:
       STARCLAW_DATABASE_HOST: mysql
       STARCLAW_DATABASE_PORT: 3306
       STARCLAW_DATABASE_USER: root
-      STARCLAW_DATABASE_PASSWORD: starclaw
+      STARCLAW_DATABASE_PASSWORD: ${DB_PASSWORD:-starclaw}
       STARCLAW_DATABASE_DBNAME: starclaw
       STARCLAW_REDIS_HOST: redis
       STARCLAW_REDIS_PORT: 6379
