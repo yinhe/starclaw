@@ -225,6 +225,18 @@ export const workflowTemplateAPI = {
   delete: (id: string) => api.delete(`/workflow-templates/${id}`),
 }
 
+// Agent Templates (Creep Marketplace)
+export const templateAPI = {
+  list: (params?: { category?: string; q?: string; featured?: string }) =>
+    api.get('/templates', { params }),
+  get: (id: string) => api.get(`/templates/${id}`),
+  categories: () => api.get('/templates/categories'),
+  publish: (data: { agent_id: string; category?: string; tags?: string; icon?: string; description?: string }) =>
+    api.post('/templates', data),
+  install: (id: string) => api.post(`/templates/${id}/install`),
+  rate: (id: string, rating: number) => api.post(`/templates/${id}/rate`, { rating }),
+}
+
 // Schedules (Cron)
 export const scheduleAPI = {
   list: () => api.get('/schedules'),

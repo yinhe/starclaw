@@ -54,7 +54,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	}))
 
 	// Rate limiting
-	r.Use(middleware.RateLimit(300, time.Minute))
+	r.Use(middleware.RateLimit(300, time.Minute, rdb))
 
 	// Provider registry
 	providerRegistry := provider.NewRegistry()
@@ -110,7 +110,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	_ = tool.LoadPluginsFromDir(toolRegistry, "plugins")
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{})
+
+	// Seed built-in agent templates (Creep marketplace)
+	v1.SeedBuiltinTemplates(db)
 
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
@@ -432,9 +435,18 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			protected.POST("/agents/:id/share", agentHandler.Share)
 			protected.POST("/agents/super-agent", agentHandler.EnsureSuperAgent)
 
+			// Agent Templates (Creep Marketplace)
+			tplHandler := v1.NewTemplateHandler(db)
+			protected.GET("/templates", tplHandler.List)
+			protected.GET("/templates/categories", tplHandler.Categories)
+			protected.GET("/templates/:id", tplHandler.Get)
+			protected.POST("/templates", tplHandler.Publish)
+			protected.POST("/templates/:id/install", tplHandler.Install)
+			protected.POST("/templates/:id/rate", tplHandler.Rate)
+
 			// Chat
 			chatHandler := v1.NewChatHandler(db, providerRegistry, toolRegistry, embedder)
-			protected.POST("/chat/completions", middleware.UserRateLimit(30, time.Minute), chatHandler.Chat)
+			protected.POST("/chat/completions", middleware.UserRateLimit(30, time.Minute, rdb), chatHandler.Chat)
 			protected.GET("/conversations", chatHandler.ListConversations)
 			protected.GET("/conversations/:id/messages", chatHandler.GetMessages)
 			protected.PUT("/conversations/:id", chatHandler.RenameConversation)

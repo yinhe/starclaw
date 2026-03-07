@@ -5,6 +5,21 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-07
+
+### Added
+- **Agent Template Marketplace (Creep 菌毯)** — Browse, install, publish, and rate AI Agent templates. 8 built-in templates across 8 categories (coding, writing, data, creative, devops, research, business, assistant). Backend: `AgentTemplate` model, `/v1/templates` CRUD + install/rate/categories endpoints. Frontend: redesigned MarketplacePage with category filter, featured section, search, ratings, install counts.
+- **Redis-Based Rate Limiting** — Upgraded rate limiter from in-memory to Redis-backed for distributed deployments. Falls back to in-memory when Redis unavailable. Per-IP (300/min global) and per-user (30/min chat) limits with `X-RateLimit-*` headers.
+- **Makefile** — Full Docker lifecycle management: `make up/stop/restart/down/destroy/logs/ps/stats/health/backup/restore-db/shell-*/prune/init`. China mirror variant: `make up-cn/update-cn`.
+
+### Changed
+- **Dark mode polish** — Added `dark:` variants across Dashboard, Marketplace, Layout notifications, index.css utilities (input-sm, scrollbar). All key pages now properly support dark theme.
+- All Docker services now share `starclaw` bridge network for inter-container DNS resolution
+- Nginx upstream fixed: `backend` → `api` to match Docker Compose service name
+- DEPLOY.md ops section rewritten with Makefile command reference
+
+---
+
 ## [0.4.0] - 2026-03-07
 
 ### Added

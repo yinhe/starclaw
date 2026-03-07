@@ -32,5 +32,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.UsageRecord{},
 		&model.Transaction{},
 		&model.Invoice{},
+		&model.AgentTemplate{},
 	)
 }

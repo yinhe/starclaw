@@ -93,7 +93,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">仪表盘</h1>
-          <p className="text-gray-500 text-sm mt-1">StarClaw AI Agent Platform 总览</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">StarClaw AI Agent Platform 总览</p>
         </div>
 
         {/* Token / Message highlights */}
@@ -219,11 +219,11 @@ export default function DashboardPage() {
                   <div
                     key={conv.id}
                     onClick={() => navigate(`/chat/${conv.id}`)}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <MessageSquare className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-800 truncate max-w-[200px]">{conv.title}</span>
+                      <span className="text-sm text-gray-800 dark:text-gray-200 truncate max-w-[200px]">{conv.title}</span>
                     </div>
                     <div className="flex items-center gap-1 text-xs text-gray-400">
                       <Clock className="w-3 h-3" />
@@ -236,8 +236,8 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-white border rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">快捷操作</h3>
+          <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4">快捷操作</h3>
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: '新建对话', icon: MessageSquare, to: '/chat', color: 'text-green-600 bg-green-50' },
@@ -250,12 +250,12 @@ export default function DashboardPage() {
                 <button
                   key={action.label}
                   onClick={() => navigate(action.to)}
-                  className="flex items-center gap-3 p-3 rounded-lg border hover:border-gray-300 transition-colors text-left"
+                  className="flex items-center gap-3 p-3 rounded-lg border dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors text-left"
                 >
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${action.color}`}>
                     <action.icon className="w-4 h-4" />
                   </div>
-                  <span className="text-sm text-gray-700">{action.label}</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{action.label}</span>
                 </button>
               ))}
             </div>
