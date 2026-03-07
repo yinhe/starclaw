@@ -75,6 +75,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	toolRegistry.Register(tool.NewComicTool(db))
 	toolRegistry.Register(tool.NewMusicTool(db))
 	toolRegistry.Register(tool.NewImageTool(db))
+	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))
 
 	// Generate thumbnails for existing videos on startup
 	go videoTool.GenerateMissingThumbnails()
