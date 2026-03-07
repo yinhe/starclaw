@@ -27,16 +27,45 @@ echo -e "${CYAN}║   AI Agent Orchestration Platform     ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
 echo ""
 
+# --- Detect China network ---
+IN_CHINA=false
+if curl -sI --connect-timeout 3 https://www.google.com &>/dev/null; then
+    IN_CHINA=false
+else
+    IN_CHINA=true
+    echo -e "${YELLOW}  Detected China network, will use mirror acceleration${NC}"
+fi
+
 # --- Check prerequisites ---
 echo -e "${YELLOW}[1/5] Checking prerequisites...${NC}"
 
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}✗ Docker not found. Installing...${NC}"
-    curl -fsSL https://get.docker.com | sh
+    if [ "$IN_CHINA" = true ]; then
+        curl -fsSL https://get.docker.com | sh -s -- --mirror Aliyun
+    else
+        curl -fsSL https://get.docker.com | sh
+    fi
     sudo usermod -aG docker "$USER"
     echo -e "${GREEN}✓ Docker installed${NC}"
 else
     echo -e "${GREEN}✓ Docker $(docker --version | awk '{print $3}' | tr -d ',')${NC}"
+fi
+
+# Configure Docker mirror for China
+if [ "$IN_CHINA" = true ] && [ ! -f /etc/docker/daemon.json ]; then
+    echo -e "  Configuring Docker mirror for China..."
+    sudo mkdir -p /etc/docker
+    sudo tee /etc/docker/daemon.json > /dev/null <<-'MIRROR'
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run",
+    "https://docker.xuanyuan.me"
+  ]
+}
+MIRROR
+    sudo systemctl daemon-reload && sudo systemctl restart docker
+    echo -e "${GREEN}✓ Docker mirror configured${NC}"
 fi
 
 if docker compose version &> /dev/null; then
@@ -105,10 +134,16 @@ echo -e "${YELLOW}[5/5] Building and starting services...${NC}"
 echo "  This may take 5-10 minutes on first run..."
 echo ""
 
+COMPOSE_FILES="-f docker-compose.yml"
+if [ "$IN_CHINA" = true ] && [ -f docker-compose.china.yml ]; then
+    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.china.yml"
+    echo -e "  ${YELLOW}Using China mirror acceleration${NC}"
+fi
+
 if docker compose version &> /dev/null; then
-    docker compose up -d --build
+    docker compose $COMPOSE_FILES up -d --build
 else
-    docker-compose up -d --build
+    docker-compose $COMPOSE_FILES up -d --build
 fi
 
 # --- Done ---

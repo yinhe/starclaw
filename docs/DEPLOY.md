@@ -19,19 +19,21 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-国内服务器建议配置镜像加速：
+**⚠️ 国内服务器必须配置 Docker 镜像加速**（否则无法拉取基础镜像）：
 ```bash
 sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json <<-'EOF'
 {
   "registry-mirrors": [
-    "https://mirror.ccs.tencentyun.com",
-    "https://docker.mirrors.ustc.edu.cn"
+    "https://docker.1ms.run",
+    "https://docker.xuanyuan.me"
   ]
 }
 EOF
 sudo systemctl daemon-reload && sudo systemctl restart docker
 ```
+
+> 验证加速是否生效：`docker info | grep -A5 "Registry Mirrors"`
 
 ## 三、部署
 
@@ -64,6 +66,9 @@ mkdir -p data/{merged_videos,thumbnails,music,images,workspaces}
 
 # 构建 & 启动（首次约 5-10 分钟）
 docker compose up -d --build
+
+# ⚠️ 国内服务器请使用加速配置：
+# docker compose -f docker-compose.yml -f docker-compose.china.yml up -d --build
 ```
 
 ### 4. 验证

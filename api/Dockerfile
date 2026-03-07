@@ -2,6 +2,10 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
+# Use China Go proxy if GOPROXY is set (pass --build-arg GOPROXY=https://goproxy.cn,direct)
+ARG GOPROXY=
+ENV GOPROXY=${GOPROXY}
+
 COPY go.mod go.sum ./
 RUN go mod download
 
