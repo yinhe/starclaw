@@ -68,7 +68,7 @@ mkdir -p data/{merged_videos,thumbnails,music,images,workspaces}
 docker compose up -d --build
 
 # ⚠️ 国内服务器请使用加速配置：
-# docker compose -f docker-compose.yml -f docker-compose.china.yml up -d --build
+# docker compose -f docker-compose.yml -f docker-compose.cn.yml up -d --build
 ```
 
 ### 4. 验证

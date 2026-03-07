@@ -135,8 +135,8 @@ echo "  This may take 5-10 minutes on first run..."
 echo ""
 
 COMPOSE_FILES="-f docker-compose.yml"
-if [ "$IN_CHINA" = true ] && [ -f docker-compose.china.yml ]; then
-    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.china.yml"
+if [ "$IN_CHINA" = true ] && [ -f docker-compose.cn.yml ]; then
+    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.cn.yml"
     echo -e "  ${YELLOW}Using China mirror acceleration${NC}"
 fi
 
