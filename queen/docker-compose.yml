@@ -13,7 +13,7 @@ services:
     volumes:
       - ./data/mysql:/var/lib/mysql
     networks:
-      - queen
+      - starqueen
 
   swarm:
     build:
@@ -29,7 +29,7 @@ services:
     depends_on:
       - mysql-queen
     networks:
-      - queen
+      - starqueen
 
   core:
     build:
@@ -45,7 +45,7 @@ services:
     depends_on:
       - swarm
     networks:
-      - queen
+      - starqueen
 
   bounty:
     build:
@@ -61,7 +61,7 @@ services:
     depends_on:
       - mysql-queen
     networks:
-      - queen
+      - starqueen
 
   forum:
     build:
@@ -77,7 +77,7 @@ services:
     depends_on:
       - mysql-queen
     networks:
-      - queen
+      - starqueen
 
   arena:
     build:
@@ -93,8 +93,8 @@ services:
     depends_on:
       - mysql-queen
     networks:
-      - queen
+      - starqueen
 
 networks:
-  queen:
+  starqueen:
     driver: bridge
