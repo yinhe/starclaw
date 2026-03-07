@@ -14,6 +14,7 @@ type Config struct {
 	OpenAI   OpenAIConfig   `mapstructure:"openai"`
 	OAuth    OAuthConfig    `mapstructure:"oauth"`
 	Swarm    SwarmConfig    `mapstructure:"swarm"`
+	Overlord OverlordConfig `mapstructure:"overlord"`
 }
 
 type SwarmConfig struct {
@@ -21,6 +22,14 @@ type SwarmConfig struct {
 	QueenURL          string `mapstructure:"queen_url"`          // e.g. https://api.starclaw.me
 	NodeName          string `mapstructure:"node_name"`          // display name for this Claw
 	Region            string `mapstructure:"region"`             // e.g. cn-east, us-west
+	HeartbeatInterval int    `mapstructure:"heartbeat_interval"` // seconds, default 30
+}
+
+type OverlordConfig struct {
+	Enabled           bool   `mapstructure:"enabled"`            // enable overlord monitoring
+	OverlordURL       string `mapstructure:"overlord_url"`       // e.g. https://overlord.starclaw.me
+	NodeName          string `mapstructure:"node_name"`          // display name for this Claw
+	Region            string `mapstructure:"region"`             // e.g. cn-east
 	HeartbeatInterval int    `mapstructure:"heartbeat_interval"` // seconds, default 30
 }
 
@@ -99,6 +108,11 @@ func Load() (*Config, error) {
 	viper.SetDefault("swarm.node_name", "")
 	viper.SetDefault("swarm.region", "")
 	viper.SetDefault("swarm.heartbeat_interval", 30)
+	viper.SetDefault("overlord.enabled", false)
+	viper.SetDefault("overlord.overlord_url", "")
+	viper.SetDefault("overlord.node_name", "")
+	viper.SetDefault("overlord.region", "")
+	viper.SetDefault("overlord.heartbeat_interval", 30)
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

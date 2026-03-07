@@ -15,17 +15,23 @@ import (
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/overlord"
 	"github.com/yinhe/starclaw/internal/swarm"
 )
 
-// SystemHandler handles system-level settings: swarm, updates, bounty
+// SystemHandler handles system-level settings: swarm, overlord, updates, bounty
 type SystemHandler struct {
-	cfg         *config.Config
-	swarmClient *swarm.Client
+	cfg            *config.Config
+	swarmClient    *swarm.Client
+	overlordClient *overlord.Client
 }
 
-func NewSystemHandler(cfg *config.Config, sc *swarm.Client) *SystemHandler {
-	return &SystemHandler{cfg: cfg, swarmClient: sc}
+func NewSystemHandler(cfg *config.Config, sc *swarm.Client, oc ...*overlord.Client) *SystemHandler {
+	h := &SystemHandler{cfg: cfg, swarmClient: sc}
+	if len(oc) > 0 {
+		h.overlordClient = oc[0]
+	}
+	return h
 }
 
 // --- Swarm ---
@@ -182,6 +188,82 @@ func (h *SystemHandler) ForceCheck(c *gin.Context) {
 // GetBridgeStatus returns MCP Bridge connection status and download URLs
 func (h *SystemHandler) GetBridgeStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, mcp.BridgeStatus())
+}
+
+// --- Overlord ---
+
+// GetOverlordStatus returns overlord connection state
+func (h *SystemHandler) GetOverlordStatus(c *gin.Context) {
+	nodeID := ""
+	if h.overlordClient != nil {
+		nodeID = h.overlordClient.NodeID()
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"enabled":      h.cfg.Overlord.Enabled,
+		"overlord_url": h.cfg.Overlord.OverlordURL,
+		"node_name":    h.cfg.Overlord.NodeName,
+		"region":       h.cfg.Overlord.Region,
+		"node_id":      nodeID,
+		"connected":    nodeID != "",
+	})
+}
+
+// JoinOverlord connects to an Overlord monitoring node
+func (h *SystemHandler) JoinOverlord(c *gin.Context) {
+	var req struct {
+		OverlordURL string `json:"overlord_url" binding:"required"`
+		NodeName    string `json:"node_name"`
+		Region      string `json:"region"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.cfg.Overlord.Enabled = true
+	h.cfg.Overlord.OverlordURL = req.OverlordURL
+	if req.NodeName != "" {
+		h.cfg.Overlord.NodeName = req.NodeName
+	}
+	if req.Region != "" {
+		h.cfg.Overlord.Region = req.Region
+	}
+
+	viper.Set("overlord.enabled", true)
+	viper.Set("overlord.overlord_url", req.OverlordURL)
+	if req.NodeName != "" {
+		viper.Set("overlord.node_name", req.NodeName)
+	}
+	if req.Region != "" {
+		viper.Set("overlord.region", req.Region)
+	}
+	_ = viper.WriteConfig()
+
+	if h.overlordClient != nil {
+		h.overlordClient.Stop()
+	}
+	h.overlordClient = overlord.NewClient(h.cfg.Overlord)
+	h.overlordClient.Start()
+
+	log.Printf("[system] joined overlord: url=%s node=%s region=%s", req.OverlordURL, req.NodeName, req.Region)
+	c.JSON(http.StatusOK, gin.H{"message": "已接入领主监控", "overlord_url": req.OverlordURL})
+}
+
+// LeaveOverlord disconnects from Overlord
+func (h *SystemHandler) LeaveOverlord(c *gin.Context) {
+	h.cfg.Overlord.Enabled = false
+	viper.Set("overlord.enabled", false)
+	_ = viper.WriteConfig()
+
+	if h.overlordClient != nil {
+		h.overlordClient.Stop()
+	}
+
+	os.Remove(".overlord_credentials")
+
+	log.Println("[system] left overlord")
+	c.JSON(http.StatusOK, gin.H{"message": "已退出领主监控"})
 }
 
 func performDockerUpdate() error {
