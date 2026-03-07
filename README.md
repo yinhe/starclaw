@@ -5,8 +5,8 @@
 <h1 align="center">StarClaw 🦞</h1>
 
 <p align="center">
-  <strong>开源 AI Agent 编排平台</strong><br>
-  多模型接入 · 可视化工作流 · RAG 知识库 · MCP 兼容 · Multi-Agent 协作
+  <strong>Open-Source AI Agent Orchestration Platform</strong><br>
+  Multi-Model · Visual Workflow · RAG · MCP Compatible · Multi-Agent Collaboration
 </p>
 
 <p align="center">
@@ -14,111 +14,148 @@
   <a href="https://github.com/yinhe/starclaw"><img src="https://img.shields.io/github/stars/yinhe/starclaw?style=social" alt="Stars" /></a>
 </p>
 
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> ·
+  <a href="docs/DEPLOY_EN.md">Deploy Guide</a> ·
+  <a href="docs/API_EN.md">API Docs</a> ·
+  <a href="#中文">中文文档</a>
+</p>
+
 ---
 
-> 每一个部署的 StarClaw 实例就是一只小龙虾（Claw）——灵感来自星际争霸虫族
+> Every deployed StarClaw instance is a Claw 🦞 — inspired by the StarCraft Zerg swarm
 
-## ✨ 功能亮点
+## ✨ Features
 
-| 能力 | 说明 |
-|------|------|
-| **Agent 引擎** | ReAct 推理循环、Multi-Agent 协作、自主委派子 Agent |
-| **工作流编排** | React Flow 可视化画布，LLM / 条件 / HTTP / 代码 / 合并 5 种节点 |
-| **RAG 知识库** | 文档上传 → 智能分块 → 向量嵌入 → 语义检索 |
-| **Tool 系统** | 浏览器操控、代码执行、视频/音乐/图片生成、配音、搜索 |
-| **多模型接入** | Qwen · OpenAI · DeepSeek · Anthropic · Ollama · OpenRouter |
-| **编程 Agent** | 自主编码、文件操作、13 种语言代码沙箱 |
-| **MCP 兼容** | 连接外部 MCP 工具服务器，扩展 Agent 能力 |
-| **BYOK** | Bring Your Own Key — 自带 API Key，完全免费使用 |
-| **多媒体** | AI 视频生成 + 音乐生成 + MV 合成 + TTS 配音 |
-| **虫群网络** | 多节点分布式协作（可选，独立运行完全没问题） |
+| Feature | Description |
+|---------|-------------|
+| **Agent Engine** | ReAct reasoning loop, Multi-Agent collaboration, autonomous sub-agent delegation |
+| **Visual Workflow** | React Flow canvas with 5 node types: LLM / Condition / HTTP / Code / Merge |
+| **RAG Knowledge Base** | Document upload → smart chunking → vector embedding → semantic retrieval |
+| **Tool System** | Browser control, code execution, video/music/image generation, TTS, web search |
+| **Multi-Model** | Qwen · OpenAI · DeepSeek · Anthropic · Ollama · OpenRouter |
+| **Coding Agent** | Autonomous coding, file ops, sandbox for 13 languages |
+| **MCP Compatible** | Connect external MCP tool servers to extend Agent capabilities |
+| **BYOK** | Bring Your Own Key — use your own API keys, completely free |
+| **Multimedia** | AI video + music + MV composition + TTS narration |
+| **Swarm Network** | Distributed multi-node collaboration (optional, works perfectly standalone) |
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
 ```bash
-# 1. 克隆
+# 1. Clone
 git clone https://github.com/yinhe/starclaw.git
 cd starclaw
 
-# 2. 配置环境变量
+# 2. Configure
 cp .env.example .env
-# 编辑 .env，设置 JWT_SECRET（必须）和 API Key（按需）
+# Edit .env: set JWT_SECRET (required) and API keys (as needed)
 
-# 3. 启动
+# 3. Launch
 docker compose up -d
 ```
 
-访问 **http://localhost** 开始使用。
+Visit **http://localhost** to get started.
 
-首次注册的用户自动成为管理员。
+The first registered user automatically becomes admin.
 
-## 📁 项目结构
+## 📁 Project Structure
 
 ```
 starclaw/
-├── api/                    # Go 后端（Gin + GORM）
-│   ├── cmd/server/         # 入口
-│   ├── configs/            # 配置文件
-│   ├── internal/           # 业务逻辑
-│   │   ├── agent/          # Agent 引擎（ReAct / Multi-Agent）
+├── api/                    # Go backend (Gin + GORM)
+│   ├── cmd/server/         # Entrypoint
+│   ├── configs/            # Configuration
+│   ├── internal/           # Business logic
+│   │   ├── agent/          # Agent engine (ReAct / Multi-Agent)
 │   │   ├── api/v1/         # HTTP Handlers
-│   │   ├── provider/       # LLM Provider 适配层
+│   │   ├── provider/       # LLM Provider adapters
 │   │   ├── rag/            # RAG Pipeline
-│   │   ├── tool/           # Tool 系统
-│   │   └── workflow/       # 工作流引擎
-│   ├── plugins/            # JSON 工具插件
+│   │   ├── tool/           # Tool system
+│   │   └── workflow/       # Workflow engine
+│   ├── plugins/            # JSON tool plugins
 │   └── Dockerfile
-├── web/                    # React 前端（Vite + TypeScript）
+├── web/                    # React frontend (Vite + TypeScript)
 │   ├── src/
 │   └── Dockerfile
-├── deploy/                 # Nginx 配置
-├── docs/                   # 文档
-│   ├── README.md           # 详细项目概览
-│   ├── DEPLOY.md           # 部署指南
-│   └── API.md              # API 接口文档
-├── docker-compose.yml      # 开发环境
-├── docker-compose.prod.yml # 生产环境
-├── .env.example            # 环境变量模板
+├── deploy/                 # Nginx config
+├── docs/                   # Documentation
+├── docker-compose.yml      # Development
+├── docker-compose.prod.yml # Production
+├── .env.example            # Environment template
 └── LICENSE
 ```
 
-## 🛠 技术栈
+## 🛠 Tech Stack
 
-| 层级 | 技术 |
-|------|------|
-| **前端** | React 18 + Vite + TypeScript + TailwindCSS + Zustand + React Flow |
-| **后端** | Go 1.24 + Gin + GORM + Viper |
-| **数据库** | MySQL 8.0 + Redis 7 |
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18 + Vite + TypeScript + TailwindCSS + Zustand + React Flow |
+| **Backend** | Go 1.24 + Gin + GORM + Viper |
+| **Database** | MySQL 8.0 + Redis 7 |
 | **AI** | Qwen / OpenAI / DeepSeek / Anthropic / Ollama / OpenRouter + fal.ai |
-| **多媒体** | FFmpeg + DashScope TTS + fal.ai（视频/音乐/图片） |
-| **部署** | Docker Compose + Nginx |
+| **Multimedia** | FFmpeg + DashScope TTS + fal.ai (video/music/image) |
+| **Deploy** | Docker Compose + Nginx |
 
-## 🌐 虫群网络（可选）
+## 🌐 Swarm Network (Optional)
 
-每只小龙虾可以独立运行，也可以加入虫群网络获得集体增益：
+Each Claw can run independently or join the swarm for collective benefits:
 
 ```yaml
 # api/configs/config.yaml
 server:
-  node_role: claw          # 默认
-  queen_url: ""            # 留空 = 独立运行
-  auto_update: true        # 自动接收版本更新
+  node_role: claw          # default
+  queen_url: ""            # empty = standalone
+  auto_update: true        # auto-receive version updates
 ```
 
-- **独立模式** — 不连接任何上级节点，所有功能完全正常
-- **加入虫群** — 连接后获得共享知识、自动更新、任务分配
-- **断网生存** — 网络断开后自动进入 Feral 模式，所有能力不受影响
+- **Standalone** — all features work without connecting to any upstream node
+- **Join Swarm** — shared knowledge, auto-updates, task distribution
+- **Feral Mode** — network disconnected? all capabilities remain unaffected
 
-## 📖 文档
+## 📖 Documentation
 
-- [详细项目概览](docs/README.md)
+**English:**
+- [Deploy Guide](docs/DEPLOY_EN.md)
+- [API Reference](docs/API_EN.md)
+
+**中文:**
 - [部署指南](docs/DEPLOY.md)
 - [API 接口文档](docs/API.md)
+- [详细项目概览](docs/README.md)
 
-## 🤝 贡献
+## 🤝 Contributing
 
-欢迎提交 Issue 和 PR！
+Issues and PRs are welcome!
 
 ## 📄 License
 
 [MIT](LICENSE)
+
+---
+
+<a id="中文"></a>
+
+## 中文简介
+
+> 每一个部署的 StarClaw 实例就是一只小龙虾（Claw）——灵感来自星际争霸虫族
+
+StarClaw 是一个功能完整的**开源 AI Agent 编排平台**，支持：
+
+- **Agent 引擎** — ReAct 推理、Multi-Agent 协作、自主委派子 Agent
+- **可视化工作流** — React Flow 画布，5 种节点类型
+- **RAG 知识库** — 文档分块 → 向量嵌入 → 语义检索
+- **Tool 系统** — 浏览器操控、代码沙箱、视频/音乐/图片生成
+- **多模型** — Qwen / OpenAI / DeepSeek / Anthropic / Ollama
+- **BYOK** — 自带 API Key，完全免费
+
+### 快速开始
+
+```bash
+git clone https://github.com/yinhe/starclaw.git
+cd starclaw
+cp .env.example .env
+docker compose up -d
+```
+
+访问 `http://localhost` 开始使用。详细文档见 [docs/](docs/) 目录。
