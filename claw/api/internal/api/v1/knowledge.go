@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/rag"
 	"gorm.io/gorm"
@@ -124,8 +127,8 @@ func (h *KnowledgeHandler) UploadDocument(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Read file content
-	content, err := io.ReadAll(io.LimitReader(file, 10*1024*1024)) // 10MB max
+	// Read file content — 100MB max
+	content, err := io.ReadAll(io.LimitReader(file, 100*1024*1024))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read file"})
 		return
@@ -135,10 +138,10 @@ func (h *KnowledgeHandler) UploadDocument(c *gin.Context) {
 	contentType := header.Header.Get("Content-Type")
 	name := header.Filename
 
-	// Parse document content (supports PDF, DOCX, and text files)
+	// Parse document content
 	parser := rag.NewDocumentParser()
 	if !parser.CanParse(name) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported file type"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported file type: " + filepath.Ext(name)})
 		return
 	}
 	textContent, parseErr := parser.Parse(name, content)
@@ -147,12 +150,29 @@ func (h *KnowledgeHandler) UploadDocument(c *gin.Context) {
 		return
 	}
 
+	// Determine file category
+	category := kbFileCategory(name)
+
+	// For binary files (audio/video/image/archive), store file to disk so it can be referenced
+	var fileURL string
+	if isBinaryKBFile(name) {
+		ext := strings.ToLower(filepath.Ext(name))
+		storedName := uuid.New().String() + ext
+		os.MkdirAll("/app/uploads", 0755)
+		destPath := filepath.Join("/app/uploads", storedName)
+		if err := os.WriteFile(destPath, content, 0644); err == nil {
+			fileURL = "/v1/uploads/" + storedName
+		}
+	}
+
 	// Create document record
 	doc := model.Document{
 		KnowledgeBaseID: kbID,
 		UserID:          userID,
 		Name:            name,
 		ContentType:     contentType,
+		FileURL:         fileURL,
+		Category:        category,
 		Size:            int64(len(content)),
 		Status:          "pending",
 	}
@@ -173,6 +193,41 @@ func (h *KnowledgeHandler) UploadDocument(c *gin.Context) {
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"document": doc})
+}
+
+// isBinaryKBFile returns true for non-text binary files that should be stored to disk
+func isBinaryKBFile(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	binaryExts := map[string]bool{
+		".mp3": true, ".wav": true, ".ogg": true, ".m4a": true, ".flac": true, ".aac": true, ".wma": true,
+		".mp4": true, ".webm": true, ".avi": true, ".mov": true, ".mkv": true, ".flv": true, ".wmv": true,
+		".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true, ".bmp": true,
+		".zip": true, ".rar": true, ".7z": true, ".tar": true, ".gz": true,
+		".pdf": true, ".docx": true, ".xlsx": true, ".pptx": true, ".rtf": true,
+	}
+	return binaryExts[ext]
+}
+
+// kbFileCategory returns a display category for the file
+func kbFileCategory(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch {
+	case ext == ".mp3" || ext == ".wav" || ext == ".ogg" || ext == ".m4a" || ext == ".flac" || ext == ".aac" || ext == ".wma":
+		return "audio"
+	case ext == ".mp4" || ext == ".webm" || ext == ".avi" || ext == ".mov" || ext == ".mkv" || ext == ".flv" || ext == ".wmv":
+		return "video"
+	case ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" || ext == ".bmp" || ext == ".svg":
+		return "image"
+	case ext == ".pdf" || ext == ".docx" || ext == ".xlsx" || ext == ".pptx" || ext == ".rtf":
+		return "document"
+	case ext == ".zip" || ext == ".rar" || ext == ".7z" || ext == ".tar" || ext == ".gz":
+		return "archive"
+	case ext == ".py" || ext == ".go" || ext == ".js" || ext == ".ts" || ext == ".java" || ext == ".c" || ext == ".cpp" ||
+		ext == ".rs" || ext == ".rb" || ext == ".php" || ext == ".sql" || ext == ".sh" || ext == ".jsx" || ext == ".tsx":
+		return "code"
+	default:
+		return "text"
+	}
 }
 
 // UploadText allows direct text input instead of file upload

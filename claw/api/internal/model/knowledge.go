@@ -36,6 +36,8 @@ type Document struct {
 	UserID          string         `json:"user_id" gorm:"type:varchar(36);index;not null"`
 	Name            string         `json:"name" gorm:"type:varchar(500);not null"`
 	ContentType     string         `json:"content_type" gorm:"type:varchar(100)"`
+	FileURL         string         `json:"file_url,omitempty" gorm:"type:varchar(500)"` // URL to stored file (for binary files)
+	Category        string         `json:"category,omitempty" gorm:"type:varchar(30)"`  // document, audio, video, image, code, text, archive
 	Size            int64          `json:"size" gorm:"default:0"`
 	ChunkCount      int            `json:"chunk_count" gorm:"default:0"`
 	Status          string         `json:"status" gorm:"type:varchar(20);default:'pending'"` // pending, processing, ready, error
@@ -58,7 +60,7 @@ type DocumentChunk struct {
 	DocumentID      string    `json:"document_id" gorm:"type:varchar(36);index;not null"`
 	KnowledgeBaseID string    `json:"knowledge_base_id" gorm:"type:varchar(36);index;not null"`
 	Content         string    `json:"content" gorm:"type:longtext;not null"`
-	Embedding       []byte    `json:"-" gorm:"type:longblob"`  // serialized float32 vector
+	Embedding       []byte    `json:"-" gorm:"type:longblob"` // serialized float32 vector
 	ChunkIndex      int       `json:"chunk_index" gorm:"default:0"`
 	TokenCount      int       `json:"token_count" gorm:"default:0"`
 	CreatedAt       time.Time `json:"created_at"`
