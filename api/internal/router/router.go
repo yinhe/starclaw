@@ -124,6 +124,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 	r.Use(middleware.RequestLogger())
 
+	// A2A Agent Card discovery (must be at root, not under /v1)
+	a2aCardHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
+	r.GET("/.well-known/agent.json", a2aCardHandler.AgentCardHandler)
+
 	// Health check
 	startTime := time.Now()
 	r.GET("/health", func(c *gin.Context) {
@@ -171,6 +175,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		apiV1.GET("/version", func(c *gin.Context) {
 			c.JSON(200, molt.GetVersionInfo())
 		})
+
+		// A2A (Agent-to-Agent) protocol endpoints (public)
+		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
+		apiV1.POST("/a2a", a2aHandler.HandleRPC)
 
 		// Seed platform model configs in hosted mode
 		if cfg.Server.DeployMode == "hosted" {

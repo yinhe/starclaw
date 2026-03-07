@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Version    = "0.2.0"
+	Version    = "0.3.0"
 	owner      = "yinhe"
 	repo       = "starclaw"
 	checkEvery = 6 * time.Hour
@@ -25,12 +25,12 @@ type ReleaseInfo struct {
 }
 
 type VersionInfo struct {
-	Current       string       `json:"current"`
-	Latest        string       `json:"latest"`
-	LatestURL     string       `json:"latest_url"`
-	UpdateAvail   bool         `json:"update_available"`
-	ReleaseNotes  string       `json:"release_notes,omitempty"`
-	LastCheckedAt time.Time    `json:"last_checked_at"`
+	Current       string    `json:"current"`
+	Latest        string    `json:"latest"`
+	LatestURL     string    `json:"latest_url"`
+	UpdateAvail   bool      `json:"update_available"`
+	ReleaseNotes  string    `json:"release_notes,omitempty"`
+	LastCheckedAt time.Time `json:"last_checked_at"`
 }
 
 var (

@@ -4,7 +4,8 @@ import {
   Bot, MessageSquare, GitBranch, BookOpen, Plug, FileText, Zap, Clock,
   ArrowRight, Users, BarChart3, TrendingUp,
 } from 'lucide-react'
-import { dashboardAPI } from '../lib/api'
+import { dashboardAPI, modelAPI } from '../lib/api'
+import OnboardingWizard from '../components/OnboardingWizard'
 
 interface Stats {
   agents: number
@@ -41,10 +42,21 @@ export default function DashboardPage() {
   const [recentConvos, setRecentConvos] = useState<RecentConversation[]>([])
   const [agentUsage, setAgentUsage] = useState<AgentUsage[]>([])
   const [dailyUsage, setDailyUsage] = useState<DailyUsage[]>([])
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
     loadStats()
+    // Check if first run (no models configured and not previously dismissed)
+    if (!localStorage.getItem('starclaw_onboarded')) {
+      modelAPI.list().then(res => {
+        if (!res.data.models || res.data.models.length === 0) {
+          setShowOnboarding(true)
+        } else {
+          localStorage.setItem('starclaw_onboarded', '1')
+        }
+      }).catch(() => {})
+    }
   }, [])
 
   const loadStats = async () => {
@@ -76,6 +88,7 @@ export default function DashboardPage() {
 
   return (
     <div className="h-full overflow-y-auto">
+      {showOnboarding && <OnboardingWizard onComplete={() => setShowOnboarding(false)} />}
       <div className="max-w-6xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">

@@ -5,6 +5,20 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-07
+
+### Added
+- **A2A Protocol** — Google Agent-to-Agent protocol support: Agent Card at `/.well-known/agent.json`, JSON-RPC task endpoints (`tasks/send`, `tasks/get`, `tasks/cancel`, `tasks/sendSubscribe` with SSE streaming)
+- **First-Run Onboarding Wizard** — Step-by-step guide for new users: select provider, enter API key, start chatting. Auto-detects when no models are configured.
+
+### Changed
+- Docker services renamed: `backend` → `api`, `frontend` → `web`
+- All data volumes now use `./data/` bind mounts (mysql, redis, sandbox, media)
+- Added `docker-compose.cn.yml` for China Docker mirror acceleration
+- Install script auto-detects China network and configures Docker mirrors
+
+---
+
 ## [0.2.0] - 2026-03-07
 
 ### Added
