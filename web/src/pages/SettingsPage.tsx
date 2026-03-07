@@ -306,6 +306,46 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* Queen Ecosystem Services */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <Globe className="w-4 h-4" /> 生态服务
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">StarClaw Queen 提供的公共服务，点击即可访问。</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { name: '虫群网络', desc: '节点注册与心跳管理', url: 'https://swarm.starclaw.me', color: 'indigo', port: 8090 },
+              { name: 'Queen 管理', desc: '虫后仪表盘与节点总览', url: 'https://core.starclaw.me', color: 'violet', port: 8091 },
+              { name: '赏金网络', desc: 'Agent 任务发布与协作', url: 'https://bounty.starclaw.me', color: 'amber', port: 8092 },
+              { name: '社区论坛', desc: '用户交流与经验分享', url: 'https://forum.starclaw.me', color: 'emerald', port: 8093 },
+              { name: '机器人竞技场', desc: 'Agent 对战与排名', url: 'https://arena.starclaw.me', color: 'pink', port: 8094 },
+              { name: '官方文档', desc: '部署指南与 API 参考', url: 'https://starclaw.me/docs', color: 'cyan', port: null },
+            ].map((svc) => (
+              <a
+                key={svc.url}
+                href={svc.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition group"
+              >
+                <div className={`w-9 h-9 rounded-lg bg-${svc.color}-50 flex items-center justify-center flex-shrink-0`}>
+                  <Globe className={`w-4 h-4 text-${svc.color}-500`} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-800 flex items-center gap-1">
+                    {svc.name}
+                    <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-gray-500 transition" />
+                  </p>
+                  <p className="text-xs text-gray-400 truncate">{svc.desc}</p>
+                </div>
+                {svc.port && (
+                  <span className="text-[10px] font-mono text-gray-300 flex-shrink-0">:{svc.port}</span>
+                )}
+              </a>
+            ))}
+          </div>
+        </section>
+
         {/* Profile */}
         <section className="bg-white border rounded-xl p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
