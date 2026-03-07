@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Plug, Plus, Trash2, RefreshCw, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
-import { mcpAPI } from '../lib/api'
+import { Plug, PlugZap, Plus, Trash2, RefreshCw, X, CheckCircle, AlertCircle, Loader2, Monitor } from 'lucide-react'
+import { mcpAPI, systemAPI } from '../lib/api'
 
 interface MCPServer {
   id: string
@@ -19,8 +19,16 @@ export default function MCPPage() {
   const [form, setForm] = useState({ name: '', base_url: '', api_key: '' })
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
+  const [bridge, setBridge] = useState<any>(null)
 
-  useEffect(() => { loadServers() }, [])
+  useEffect(() => { loadServers(); loadBridge() }, [])
+
+  const loadBridge = async () => {
+    try {
+      const res = await systemAPI.getBridge()
+      setBridge(res.data)
+    } catch { /* ignore */ }
+  }
 
   const loadServers = async () => {
     try {
@@ -77,13 +85,40 @@ export default function MCPPage() {
           </button>
         </div>
 
-        {servers.length === 0 ? (
+        {/* Built-in MCP Bridge */}
+        {bridge && (
+          <div className={`border rounded-xl p-5 mb-6 flex items-center justify-between ${bridge.connected ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${bridge.connected ? 'bg-green-100' : 'bg-gray-100'}`}>
+                <Monitor className={`w-5 h-5 ${bridge.connected ? 'text-green-600' : 'text-gray-400'}`} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-gray-900">宿主机控制 (内置)</h3>
+                  {bridge.connected ? (
+                    <span className="flex items-center gap-1 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full"><PlugZap className="w-3 h-3" /> 已连接</span>
+                  ) : (
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">未连接</span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {bridge.connected
+                    ? <>{bridge.bridge_url} · 9 个工具: shell_exec, file_read, file_write, file_list, system_info, open_url, open_app, clipboard_read, clipboard_write</>
+                    : '在宿主机运行 MCP Bridge 即可启用，详见 设置 → 宿主机控制'
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {servers.length === 0 && !bridge?.connected ? (
           <div className="text-center py-20 text-gray-400">
             <Plug className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>还没有连接 MCP 服务器</p>
             <p className="text-xs mt-1">MCP 服务器提供外部工具供 Agent 调用</p>
           </div>
-        ) : (
+        ) : servers.length === 0 ? null : (
           <div className="space-y-3">
             {servers.map((s) => (
               <div key={s.id} className="bg-white border rounded-xl p-5 flex items-center justify-between group">
