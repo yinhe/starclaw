@@ -5,6 +5,20 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-07
+
+### Added
+- **Google Gemini Provider** — Full support via OpenAI-compatible endpoint (Gemini 2.5 Pro/Flash, 2.0, 1.5)
+- **OAuth Login** — GitHub and Google social login (auto-create account, link existing by email)
+- **Molt Version Checker** — Background GitHub Release checker, `/v1/version` endpoint, frontend update banner
+- **One-Click Install** — `curl | bash` install script for Linux servers
+
+### Changed
+- README now bilingual (English first, Chinese at bottom)
+- Added English documentation (DEPLOY_EN.md, API_EN.md)
+
+---
+
 ## [0.1.0] - 2026-03-07
 
 ### Added

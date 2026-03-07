@@ -24,6 +24,7 @@ import (
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
 	"github.com/yinhe/starclaw/internal/sandbox"
@@ -153,11 +154,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		apiV1.POST("/auth/phone/register", authHandler.PhoneRegister)
 		apiV1.POST("/auth/phone/login", authHandler.PhoneLogin)
 
+		// OAuth routes (public)
+		oauthHandler := v1.NewOAuthHandler(db, cfg)
+		apiV1.GET("/auth/oauth/providers", oauthHandler.GetOAuthConfig)
+		apiV1.POST("/auth/oauth/github", oauthHandler.GitHubCallback)
+		apiV1.POST("/auth/oauth/google", oauthHandler.GoogleCallback)
+
 		// Deploy mode info (public, no auth needed)
 		apiV1.GET("/config", func(c *gin.Context) {
 			c.JSON(200, gin.H{
 				"deploy_mode": cfg.Server.DeployMode,
 			})
+		})
+
+		// Version info (public, includes Molt update check)
+		apiV1.GET("/version", func(c *gin.Context) {
+			c.JSON(200, molt.GetVersionInfo())
 		})
 
 		// Seed platform model configs in hosted mode

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { MessageSquare, Bot, Cpu, BookOpen, Plug, Users, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Code2, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard } from 'lucide-react'
-import { notificationAPI } from '../lib/api'
+import { notificationAPI, versionAPI } from '../lib/api'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -87,8 +87,19 @@ export default function Layout() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [showNotif, setShowNotif] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
+  const [updateInfo, setUpdateInfo] = useState<{ latest: string; latest_url: string } | null>(null)
+  const [updateDismissed, setUpdateDismissed] = useState(false)
 
   useEffect(() => { if (!configLoaded) fetchConfig() }, [configLoaded, fetchConfig])
+
+  // Molt: check for version updates
+  useEffect(() => {
+    versionAPI.check().then(res => {
+      if (res.data.update_available) {
+        setUpdateInfo({ latest: res.data.latest, latest_url: res.data.latest_url })
+      }
+    }).catch(() => {})
+  }, [])
 
   const navGroups = getNavGroups(deployMode === 'hosted')
 
@@ -289,6 +300,19 @@ export default function Layout() {
           )}
         </div>
         <div className="flex-1 overflow-hidden relative">
+          {updateInfo && !updateDismissed && (
+            <div className="bg-primary-50 border-b border-primary-200 px-4 py-2 flex items-center justify-between text-sm">
+              <span className="text-primary-700">
+                🦞 New version <strong>v{updateInfo.latest}</strong> available!{' '}
+                <a href={updateInfo.latest_url} target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-primary-900">
+                  View release
+                </a>
+              </span>
+              <button onClick={() => setUpdateDismissed(true)} className="text-primary-400 hover:text-primary-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

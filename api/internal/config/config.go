@@ -12,6 +12,18 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	OpenAI   OpenAIConfig   `mapstructure:"openai"`
+	OAuth    OAuthConfig    `mapstructure:"oauth"`
+}
+
+type OAuthConfig struct {
+	GitHub OAuthProviderConfig `mapstructure:"github"`
+	Google OAuthProviderConfig `mapstructure:"google"`
+}
+
+type OAuthProviderConfig struct {
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+	RedirectURL  string `mapstructure:"redirect_url"`
 }
 
 type ServerConfig struct {

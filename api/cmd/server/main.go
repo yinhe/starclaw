@@ -13,6 +13,7 @@ import (
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
+	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/router"
 )
 
@@ -43,6 +44,10 @@ func main() {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 	defer rdb.Close()
+
+	// Start Molt version checker
+	molt.StartChecker()
+	log.Printf("StarClaw v%s starting...", molt.Version)
 
 	// Setup router
 	r := router.Setup(cfg, db, rdb)

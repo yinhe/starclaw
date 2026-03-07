@@ -39,6 +39,11 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
 		})
+	case "google", "gemini":
+		return NewGeminiProvider(GeminiConfig{
+			APIKey:  cfg.APIKey,
+			BaseURL: cfg.BaseURL,
+		})
 	case "fal":
 		return NewFalProvider(FalConfig{
 			APIKey:  cfg.APIKey,
