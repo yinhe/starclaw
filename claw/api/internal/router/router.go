@@ -22,6 +22,7 @@ import (
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
@@ -110,6 +111,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 	// Load JSON tool plugins from plugins/ directory
 	_ = tool.LoadPluginsFromDir(toolRegistry, "plugins")
+
+	// Auto-detect and register MCP Bridge (host control)
+	mcp.AutoRegisterBridge(toolRegistry)
 
 	// Auto-migrate task & notification tables
 	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{})

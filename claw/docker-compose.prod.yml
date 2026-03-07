@@ -40,6 +40,8 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: starclaw-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: always
     environment:
       STARCLAW_SERVER_MODE: release
