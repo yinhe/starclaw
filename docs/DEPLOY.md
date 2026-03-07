@@ -176,21 +176,64 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## 八、日常运维
 
+项目根目录提供了 `Makefile`，可直接使用 `make <命令>`：
+
 ```bash
+make help              # 查看所有可用命令
+```
+
+### 生命周期
+
+```bash
+# 构建 & 启动
+make up                # 构建并启动所有服务
+make up-cn             # 国内镜像加速构建
+
+# 启停
+make start             # 启动已有容器（不重新构建）
+make stop              # 停止所有容器（保留数据）
+make restart           # 重启所有容器
+make down              # 停止并移除容器和网络（保留数据）
+make destroy           # ⚠️ 停止并删除 MySQL/Redis/Sandbox 数据
+
 # 更新
-git pull && docker compose up -d --build
+make update            # git pull + 重新构建
+make update-cn         # 国内镜像加速更新
 
-# 查看日志
-docker logs -f starclaw-api --tail 100
+# 单服务重建
+make rebuild-api       # 仅重建 API 服务
+make rebuild-web       # 仅重建 Web 前端
+```
 
-# 备份数据库
-docker exec starclaw-mysql mysqldump -uroot -p$DB_ROOT_PASSWORD starclaw > backup.sql
+### 日志 & 状态
 
-# 备份数据
-tar -czf data-backup.tar.gz data/
+```bash
+make logs              # 查看所有服务日志
+make logs-api          # 查看 API 日志
+make ps                # 查看容器状态
+make stats             # 查看 CPU/内存占用
+make health            # 检查 API 健康状态
+```
 
-# 重启
-docker compose restart
+### 备份 & 恢复
+
+```bash
+make backup            # 备份数据库 + data 目录到 backups/
+make restore-db FILE=backups/db_20260307.sql  # 恢复数据库
+```
+
+### Shell 访问
+
+```bash
+make shell-api         # 进入 API 容器
+make shell-mysql       # 打开 MySQL CLI
+make shell-redis       # 打开 Redis CLI
+```
+
+### 清理
+
+```bash
+make prune             # 清理未使用的 Docker 镜像和构建缓存
 ```
 
 ## 九、常见问题
