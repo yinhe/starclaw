@@ -61,11 +61,40 @@ export default function SettingsPage() {
     setUpdateMsg('')
     try {
       const res = await systemAPI.triggerUpdate()
+      const targetVersion = res.data.to
       setUpdateMsg(res.data.message || '正在更新...')
+
+      // Poll version endpoint until API comes back with new version
+      if (targetVersion) {
+        let attempts = 0
+        const poll = setInterval(async () => {
+          attempts++
+          if (attempts > 60) { // 5 min timeout
+            clearInterval(poll)
+            setUpdateMsg('更新超时，请手动检查')
+            setUpdating(false)
+            return
+          }
+          try {
+            const vRes = await systemAPI.getUpdate()
+            const current = vRes.data?.version?.current
+            if (current === targetVersion) {
+              clearInterval(poll)
+              setUpdateMsg(`✅ 已成功更新到 v${targetVersion}！`)
+              setUpdateInfo(vRes.data)
+              setUpdating(false)
+            }
+          } catch {
+            // API may be restarting, keep polling
+          }
+        }, 5000)
+      } else {
+        setUpdating(false)
+      }
     } catch {
       setUpdateMsg('更新失败')
+      setUpdating(false)
     }
-    setUpdating(false)
   }
 
   const handleJoinSwarm = async () => {
