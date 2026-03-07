@@ -315,7 +315,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { name: '虫群网络', desc: '节点注册与心跳管理', url: 'https://swarm.starclaw.me', color: 'indigo', port: 8090 },
-              { name: 'Queen 管理', desc: '虫后仪表盘与节点总览', url: 'https://core.starclaw.me', color: 'violet', port: 8091 },
+              { name: 'Overlord 监控', desc: '资源配额与可观测性', url: 'https://overlord.starclaw.me', color: 'violet', port: null },
               { name: '赏金网络', desc: 'Agent 任务发布与协作', url: 'https://bounty.starclaw.me', color: 'amber', port: 8092 },
               { name: '社区论坛', desc: '用户交流与经验分享', url: 'https://forum.starclaw.me', color: 'emerald', port: 8093 },
               { name: '机器人竞技场', desc: 'Agent 对战与排名', url: 'https://arena.starclaw.me', color: 'pink', port: 8094 },
