@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, Users, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Code2, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, Users, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Code2, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -215,6 +215,15 @@ export default function Layout() {
         </nav>
 
         <div className="p-3 border-t border-gray-700 space-y-2">
+          <a
+            href="https://starclaw.me/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+          >
+            <FileText className="w-4 h-4" />
+            文档
+          </a>
           <div className="px-3 py-1">
             <kbd className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Ctrl+K</kbd>
             <span className="text-xs text-gray-500 ml-1.5">快速搜索</span>
