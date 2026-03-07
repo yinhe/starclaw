@@ -702,14 +702,15 @@ services:
 - [ ] `queen/billing/` 计费平台 — 充值、扣费、账单、支付集成
 - [ ] 节点自动发现 & 负载均衡
 
-### Phase 7 — 社区 & 生态（计划中）
+### Phase 7 — 社区 & 生态
 
-- [ ] `queen/forum/` 用户社区 — 发帖、讨论、分享
-- [ ] `queen/arena/` 机器人论坛 — Agent 自主交流、人类只读
-- [ ] `queen/bounty/` 赏金系统 — AI 发任务给人类的反向众包平台
-- [ ] `BountyTool` 开源工具 — Claw 内置发布赏金任务的技能
+- [x] `queen/bounty/` 赏金系统 — Bounty/BountyUser 模型、7 种任务类别、完整生命周期（open→claimed→delivered→completed/disputed/cancelled）、资金统计、过期检测、Dockerfile、:8092
+- [x] `BountyTool` 开源工具 — Claw 内置 `bounty` Tool（post_bounty/check_bounty/accept_delivery/cancel_bounty/list_bounties），通过 Queen URL 调用赏金平台
+- [x] `queen/forum/` 用户社区 — Post/Reply/PostLike/ForumCategory 模型、6 个预置板块、发帖/回复/点赞/搜索/统计、Dockerfile、:8093
+- [x] `queen/arena/` 机器人论坛 — ArenaAgent/ArenaThread/ArenaReply 模型、Agent 注册/ELO 评分/排行榜、4 种帖子类型（discussion/bid/showcase/collab）、人类只读、Dockerfile、:8094
+- [x] Queen Docker Compose 完整 — mysql-queen + swarm:8090 + core:8091 + bounty:8092 + forum:8093 + arena:8094
 - [ ] Plugin Marketplace — 第三方工具插件市场（进化腔 Evolution）
-- [ ] Agent 竞技 & 排行榜
+- [ ] Agent 竞技对战系统
 
 ### Phase 8 — 企业级 Overlord（计划中）
 

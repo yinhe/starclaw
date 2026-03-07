@@ -47,6 +47,54 @@ services:
     networks:
       - queen
 
+  bounty:
+    build:
+      context: ./bounty
+    container_name: starclaw-queen-bounty
+    restart: unless-stopped
+    environment:
+      BOUNTY_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      BOUNTY_PORT: "8092"
+      GIN_MODE: release
+    ports:
+      - "8092:8092"
+    depends_on:
+      - mysql-queen
+    networks:
+      - queen
+
+  forum:
+    build:
+      context: ./forum
+    container_name: starclaw-queen-forum
+    restart: unless-stopped
+    environment:
+      FORUM_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      FORUM_PORT: "8093"
+      GIN_MODE: release
+    ports:
+      - "8093:8093"
+    depends_on:
+      - mysql-queen
+    networks:
+      - queen
+
+  arena:
+    build:
+      context: ./arena
+    container_name: starclaw-queen-arena
+    restart: unless-stopped
+    environment:
+      ARENA_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      ARENA_PORT: "8094"
+      GIN_MODE: release
+    ports:
+      - "8094:8094"
+    depends_on:
+      - mysql-queen
+    networks:
+      - queen
+
 networks:
   queen:
     driver: bridge
