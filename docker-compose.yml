@@ -13,7 +13,7 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./data/mysql:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -27,18 +27,18 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  backend:
+  api:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: starclaw-backend
+    container_name: starclaw-api
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -54,7 +54,7 @@ services:
       STARCLAW_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
-      - sandbox_data:/tmp/starclaw-sandbox
+      - ./data/sandbox:/tmp/starclaw-sandbox
       - ./data/merged_videos:/app/merged_videos
       - ./data/thumbnails:/app/thumbnails
       - ./data/music:/app/music
@@ -66,18 +66,13 @@ services:
       redis:
         condition: service_healthy
 
-  frontend:
+  web:
     build:
       context: ./web
       dockerfile: Dockerfile
-    container_name: starclaw-frontend
+    container_name: starclaw-web
     restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
-      - backend
-
-volumes:
-  mysql_data:
-  redis_data:
-  sandbox_data:
+      - api

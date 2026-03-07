@@ -125,7 +125,7 @@ fi
 echo ""
 echo -e "${YELLOW}[4/5] Creating data directories...${NC}"
 
-mkdir -p data/{merged_videos,thumbnails,music,images,workspaces}
+mkdir -p data/{mysql,redis,sandbox,merged_videos,thumbnails,music,images,workspaces}
 echo -e "  ${GREEN}✓ data/ directories ready${NC}"
 
 # --- Build and start ---

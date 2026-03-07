@@ -11,7 +11,7 @@ services:
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./data/mysql:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -26,7 +26,7 @@ services:
     restart: always
     command: redis-server --requirepass ${REDIS_PASSWORD:-starclaw_redis_2026}
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-starclaw_redis_2026}", "ping"]
       interval: 10s
@@ -35,11 +35,11 @@ services:
     networks:
       - starclaw-net
 
-  backend:
+  api:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: starclaw-backend
+    container_name: starclaw-api
     restart: always
     environment:
       STARCLAW_SERVER_MODE: release
@@ -54,7 +54,7 @@ services:
       STARCLAW_JWT_SECRET: ${JWT_SECRET}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
-      - sandbox_data:/tmp/starclaw-sandbox
+      - ./data/sandbox:/tmp/starclaw-sandbox
       - ./data/merged_videos:/app/merged_videos
       - ./data/thumbnails:/app/thumbnails
       - ./data/music:/app/music
@@ -70,23 +70,18 @@ services:
     networks:
       - starclaw-net
 
-  frontend:
+  web:
     build:
       context: ./web
       dockerfile: Dockerfile
-    container_name: starclaw-frontend
+    container_name: starclaw-web
     restart: always
     ports:
       - "127.0.0.1:8081:80"
     depends_on:
-      - backend
+      - api
     networks:
       - starclaw-net
-
-volumes:
-  mysql_data:
-  redis_data:
-  sandbox_data:
 
 networks:
   starclaw-net:
