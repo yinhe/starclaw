@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap } from 'lucide-react'
+import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff } from 'lucide-react'
 import { settingsAPI, auditAPI, systemAPI } from '../lib/api'
 
 export default function SettingsPage() {
@@ -22,6 +22,10 @@ export default function SettingsPage() {
   const [swarmMsg, setSwarmMsg] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
   const [bridgeStatus, setBridgeStatus] = useState<any>(null)
+  const [overlordStatus, setOverlordStatus] = useState<any>(null)
+  const [joiningOverlord, setJoiningOverlord] = useState(false)
+  const [overlordForm, setOverlordForm] = useState({ overlord_url: 'https://overlord.starclaw.me', node_name: '', region: '' })
+  const [overlordMsg, setOverlordMsg] = useState('')
 
   useEffect(() => {
     loadProfile()
@@ -32,14 +36,21 @@ export default function SettingsPage() {
 
   const loadSystemInfo = async () => {
     try {
-      const [updateRes, swarmRes, bridgeRes] = await Promise.all([
+      const [updateRes, swarmRes, bridgeRes, overlordRes] = await Promise.all([
         systemAPI.getUpdate(),
         systemAPI.getSwarm(),
         systemAPI.getBridge().catch(() => null),
+        systemAPI.getOverlord().catch(() => null),
       ])
       setUpdateInfo(updateRes.data)
       setSwarmStatus(swarmRes.data)
       if (bridgeRes) setBridgeStatus(bridgeRes.data)
+      if (overlordRes) {
+        setOverlordStatus(overlordRes.data)
+        if (overlordRes.data.overlord_url) {
+          setOverlordForm(prev => ({ ...prev, overlord_url: overlordRes.data.overlord_url }))
+        }
+      }
       if (swarmRes.data.queen_url) {
         setSwarmForm(prev => ({ ...prev, queen_url: swarmRes.data.queen_url }))
       }
@@ -348,6 +359,103 @@ export default function SettingsPage() {
               </div>
             )
           })()}
+        </section>
+
+        {/* Overlord */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <Eye className="w-4 h-4" /> 领主监控 (Overlord)
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">接入领主后，你的 Claw 将受到资源配额管理、可观测性监控和任务调度保护。</p>
+          <div className="flex items-center gap-3 p-3 rounded-lg mb-4" style={{ backgroundColor: overlordStatus?.connected ? '#f0fdf4' : '#fafafa' }}>
+            {overlordStatus?.connected ? (
+              <Eye className="w-5 h-5 text-violet-600" />
+            ) : (
+              <EyeOff className="w-5 h-5 text-gray-400" />
+            )}
+            <div>
+              <p className="text-sm font-medium" style={{ color: overlordStatus?.connected ? '#166534' : '#6b7280' }}>
+                {overlordStatus?.connected ? `已接入 — 节点 ${overlordStatus.node_id?.slice(0, 8)}...` : '未接入'}
+              </p>
+              {overlordStatus?.overlord_url && overlordStatus.connected && (
+                <p className="text-xs text-gray-400">Overlord: {overlordStatus.overlord_url}</p>
+              )}
+            </div>
+          </div>
+          {!overlordStatus?.connected ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">领主地址</label>
+                <input
+                  value={overlordForm.overlord_url}
+                  onChange={(e) => setOverlordForm({ ...overlordForm, overlord_url: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="https://overlord.starclaw.me"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">节点名称 (可选)</label>
+                  <input
+                    value={overlordForm.node_name}
+                    onChange={(e) => setOverlordForm({ ...overlordForm, node_name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="留空则使用主机名"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选)</label>
+                  <input
+                    value={overlordForm.region}
+                    onChange={(e) => setOverlordForm({ ...overlordForm, region: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="cn-east"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!overlordForm.overlord_url) return
+                  setJoiningOverlord(true)
+                  setOverlordMsg('')
+                  try {
+                    const res = await systemAPI.joinOverlord(overlordForm)
+                    setOverlordMsg(res.data.message || '已接入')
+                    loadSystemInfo()
+                    setTimeout(() => setOverlordMsg(''), 3000)
+                  } catch (e: any) {
+                    setOverlordMsg(e.response?.data?.error || '接入失败')
+                  }
+                  setJoiningOverlord(false)
+                }}
+                disabled={joiningOverlord || !overlordForm.overlord_url}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
+              >
+                {joiningOverlord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                接入领主
+              </button>
+              {overlordMsg && <p className="text-sm text-violet-600">{overlordMsg}</p>}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-gray-400">
+                节点: {overlordStatus.node_name || '—'} · 地域: {overlordStatus.region || '—'}
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await systemAPI.leaveOverlord()
+                    setOverlordMsg('已退出领主监控')
+                    loadSystemInfo()
+                    setTimeout(() => setOverlordMsg(''), 3000)
+                  } catch { /* ignore */ }
+                }}
+                className="px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+              >
+                退出领主
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Swarm */}

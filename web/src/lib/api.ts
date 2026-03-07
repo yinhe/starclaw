@@ -54,6 +54,9 @@ export const systemAPI = {
   leaveSwarm: () => api.post('/system/swarm/leave'),
   getBounty: () => api.get('/system/bounty'),
   getBridge: () => api.get('/system/bridge'),
+  getOverlord: () => api.get('/system/overlord'),
+  joinOverlord: (data: { overlord_url: string; node_name?: string; region?: string }) => api.post('/system/overlord/join', data),
+  leaveOverlord: () => api.post('/system/overlord/leave'),
 }
 
 // Agents
