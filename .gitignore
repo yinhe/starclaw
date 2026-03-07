@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Runtime data
+data/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archives
+*.tar.gz
+*.zip
+
+# Logs
+*.log
+
+# Temp files
+tmp_*

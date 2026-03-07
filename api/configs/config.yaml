@@ -1,0 +1,26 @@
+server:
+  port: 8080
+  mode: debug
+  deploy_mode: opensource  # hosted = 官网托管(有计费), opensource = 开源自部署(无计费)
+
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: starclaw
+  dbname: starclaw
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: starclaw-secret-key-change-me-in-production
+  expire_hour: 72
+
+# OpenAI API (used for RAG embeddings)
+openai:
+  api_key: ""       # or set env STARCLAW_OPENAI_API_KEY
+  base_url: ""      # optional: custom base URL for OpenAI-compatible API

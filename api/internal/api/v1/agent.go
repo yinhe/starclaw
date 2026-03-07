@@ -1,0 +1,527 @@
+package v1
+
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw/internal/model"
+	"gorm.io/gorm"
+)
+
+const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完成复杂任务的 AI Agent。
+
+## 执行策略
+
+### 直接执行（默认，适合大多数任务）
+你拥有所有工具，**优先自己直接执行**，不要委派：
+- 视频制作 → video_generation（多模型：wan/veo3/sora2/kling/luma）
+- 配音字幕 → dubbing（多音色，8种阿里云CosyVoice）
+- MV合成 → mv_production
+- 音乐创作 → music_generation
+- 图片生成 → image_generation
+- 编程建站 → code
+- 搜索研究 → web_search / browser / http_request
+- 系统管理 → system
+
+### 委派执行（推荐用于漫剧、商业计划书、并行任务）
+使用 delegate_to_agent 委派给专业Agent：
+- **漫剧/漫画视频/短剧** → 委派给 "漫剧创作Agent"
+- **商业计划书/BP** → 委派给 "商业计划书Agent"
+- 需要 **同时并行** 多个独立子任务
+
+### 用户自助创建Agent
+当用户说"帮我创建一个xxx Agent"时：
+1. 用 create_agent 创建，填写 name、description、system_prompt、tools
+2. tools 从可用工具中选择：code, web_search, browser, http_request, music_generation, video_generation, dubbing, mv_production, comic_production, image_generation
+3. 创建后告知用户Agent已就绪
+
+## 你的工具
+
+### 系统管理 (system)
+- list_agents / create_agent / delegate_to_agent: Agent管理与委派
+- create_task / update_task / list_tasks: 后台任务
+- notify_user / create_workflow / schedule_task / list_schedules
+
+### 代码执行 (code)
+- write_file / read_file / execute / run_command / start_app / stop_app / list_apps（14种语言）
+
+### 网络 (web_search / browser / http_request)
+- 搜索、浏览网页、HTTP请求
+
+### AI视频 (video_generation)
+- generate_video: 多模型视频生成（wan2.6-t2v/i2v, veo3, sora2, kling-v2, minimax-video, luma）
+- check_status / merge_videos / list_models
+- wan系列需要qwen API Key，其他模型需要fal.ai API Key
+
+### 配音字幕 (dubbing)
+- add_voiceover: 为视频添加TTS配音+字幕
+- add_subtitles: 仅添加字幕
+- list_voices: 查看8种可用音色
+- 女声：longyuan(温柔)、longxiaochun(甜美)、longshu(旁白)、longwan(大气)
+- 男声：longhua(沉稳)、longjing(播音)、longshuo(活力)、longfei(浑厚)
+
+### MV合成 (mv_production)
+- compose_mv: 将视频和音乐合成MV，可选歌词字幕
+
+### 漫剧制作 (comic_production)
+- compose_comic: 图片+配音+动效→漫剧视频（ken_burns或ai_video模式）
+
+### AI图片 (image_generation)
+- generate_image / batch_generate / check_status / list_images
+- 模型：flux-schnell(默认)、flux-dev、flux-pro、flux-realism、stable-diffusion-v35-large
+
+### AI音乐 (music_generation)
+- generate_music / check_status / list_music
+- 模型：ace-step(默认)、minimax-music-v2、diffrhythm、stable-audio
+
+## MV制作流程
+1. 创作歌词 → 2. music_generation生成歌曲 → 3. 等歌曲完成 → 4. 按时长分镜 → 5. video_generation逐场景生成 → 6. 等自动合并 → 7. mv_production.compose_mv合成MV
+
+## 普通视频制作流程
+1. 编写分镜脚本 → 2. video_generation逐场景生成（可选模型）
+→ 3. 等自动合成 → 4. dubbing.add_voiceover添加配音字幕
+
+## 漫剧制作（必须委派！）
+⚠️ 用户说 "做漫剧""做短剧""comic drama" 时 → 立刻 delegate_to_agent 给 "漫剧创作Agent"，不要自己做。
+
+## 商业计划书（推荐委派）
+用户说 "写商业计划书""写BP" 时 → delegate_to_agent 给 "商业计划书Agent"。
+
+## 网站部署
+- 静态网站：write_file → 访问 /v1/preview/{workspace_id}/index.html
+- 全栈应用：write_file → run_command → start_app(监听PORT) → /v1/app/{workspace_id}/
+
+## 工作原则
+1. 直接执行：自己有工具就直接做
+2. 主动执行：不要反复确认
+3. 自动纠错：出错时自动修复
+4. 完整交付：给出总结和结果
+5. 不要重复：已提交的任务不重复生成
+6. 漫剧专属：漫剧请求只委派给漫剧创作Agent
+7. **代码运行提示**：写完代码后用 bash 代码块给出运行命令（如 python xxx.py），用户可点击代码块的 ▶ 运行按钮执行`
+
+type AgentHandler struct {
+	db *gorm.DB
+}
+
+func NewAgentHandler(db *gorm.DB) *AgentHandler {
+	return &AgentHandler{db: db}
+}
+
+type CreateAgentRequest struct {
+	Name         string `json:"name" binding:"required"`
+	Description  string `json:"description"`
+	SystemPrompt string `json:"system_prompt"`
+	ModelID      string `json:"model_id"`
+	Tools        string `json:"tools"`
+	Config       string `json:"config"`
+	IsPublic     bool   `json:"is_public"`
+}
+
+func (h *AgentHandler) List(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var agents []model.Agent
+	// Return user's own agents + system built-in agents
+	if err := h.db.Where("user_id = ? OR (user_id = 'system' AND is_builtin = ?)", userID, true).Order("is_builtin DESC, created_at DESC").Find(&agents).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch agents"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"agents": agents})
+}
+
+func (h *AgentHandler) Create(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var req CreateAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tools := req.Tools
+	if tools == "" {
+		tools = "[]"
+	}
+	config := req.Config
+	if config == "" {
+		config = "{}"
+	}
+
+	agent := model.Agent{
+		UserID:       userID,
+		Name:         req.Name,
+		Description:  req.Description,
+		SystemPrompt: req.SystemPrompt,
+		ModelID:      req.ModelID,
+		Tools:        tools,
+		Config:       config,
+		IsPublic:     req.IsPublic,
+	}
+
+	if err := h.db.Create(&agent).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create agent"})
+		return
+	}
+
+	// Auto-create workflow for this agent
+	wfDef := generateWorkflowFromTools(agent.Name, agent.Tools)
+	if wfDef != "" {
+		wfTag := fmt.Sprintf("[agent:%s]", agent.Name)
+		wf := model.Workflow{
+			UserID:      userID,
+			Name:        agent.Name + " 工作流",
+			Description: fmt.Sprintf("%s 的标准工作流 %s", agent.Name, wfTag),
+			Definition:  wfDef,
+		}
+		h.db.Create(&wf)
+	}
+
+	c.JSON(http.StatusCreated, agent)
+}
+
+func (h *AgentHandler) Get(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("user_id")
+
+	var agent model.Agent
+	if err := h.db.Where("id = ? AND (user_id = ? OR is_public = ?)", id, userID, true).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+
+	// Find associated workflow: DB ↀbuilt-in ↀauto-generate from tools
+	var workflowDef string
+	var workflowID string
+	wfTag := fmt.Sprintf("[agent:%s]", agent.Name)
+	var wf model.Workflow
+	if err := h.db.Where("user_id = ? AND description LIKE ?", userID, "%"+wfTag+"%").First(&wf).Error; err == nil {
+		// If existing workflow has empty definition, regenerate it
+		if wf.Definition == "" || wf.Definition == "{}" {
+			var regen string
+			for _, def := range builtinAgents {
+				if def.Name == agent.Name && def.Workflow != "" {
+					regen = def.Workflow
+					break
+				}
+			}
+			if regen == "" {
+				regen = generateWorkflowFromTools(agent.Name, agent.Tools)
+			}
+			if regen != "" {
+				h.db.Model(&wf).Update("definition", regen)
+				wf.Definition = regen
+			}
+		}
+		workflowDef = wf.Definition
+		workflowID = wf.ID
+	} else {
+		// Try built-in definition first
+		var builtinDef string
+		for _, def := range builtinAgents {
+			if def.Name == agent.Name && def.Workflow != "" {
+				builtinDef = def.Workflow
+				break
+			}
+		}
+		// If no built-in, auto-generate from agent's tool list
+		if builtinDef == "" {
+			builtinDef = generateWorkflowFromTools(agent.Name, agent.Tools)
+		}
+		if builtinDef != "" {
+			wf = model.Workflow{
+				UserID:      userID,
+				Name:        agent.Name + " 工作流",
+				Description: fmt.Sprintf("%s 的标准工作流 %s", agent.Name, wfTag),
+				Definition:  builtinDef,
+			}
+			if err := h.db.Create(&wf).Error; err == nil {
+				workflowDef = wf.Definition
+				workflowID = wf.ID
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"agent":        agent,
+		"workflow_def": workflowDef,
+		"workflow_id":  workflowID,
+	})
+}
+
+// GetWorkflow ensures a workflow exists for an agent and returns its ID
+func (h *AgentHandler) GetWorkflow(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("user_id")
+
+	var agent model.Agent
+	if err := h.db.Where("id = ? AND (user_id = ? OR is_public = ?)", id, userID, true).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+
+	wfTag := fmt.Sprintf("[agent:%s]", agent.Name)
+	var wf model.Workflow
+
+	// Check DB first
+	if err := h.db.Where("user_id = ? AND description LIKE ?", userID, "%"+wfTag+"%").First(&wf).Error; err == nil {
+		// Found - regenerate if empty
+		if wf.Definition == "" || wf.Definition == "{}" {
+			def := ""
+			for _, d := range builtinAgents {
+				if d.Name == agent.Name && d.Workflow != "" {
+					def = d.Workflow
+					break
+				}
+			}
+			if def == "" {
+				def = generateWorkflowFromTools(agent.Name, agent.Tools)
+			}
+			if def != "" {
+				h.db.Model(&wf).Updates(map[string]interface{}{"definition": def, "name": agent.Name + " 工作流"})
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"workflow_id": wf.ID})
+		return
+	}
+
+	// Not found - create new
+	def := ""
+	for _, d := range builtinAgents {
+		if d.Name == agent.Name && d.Workflow != "" {
+			def = d.Workflow
+			break
+		}
+	}
+	if def == "" {
+		def = generateWorkflowFromTools(agent.Name, agent.Tools)
+	}
+	if def == "" {
+		def = `{"nodes":[{"id":"start","type":"start","position":{"x":300,"y":100},"data":{"label":"开始"}},{"id":"end","type":"end","position":{"x":300,"y":400},"data":{"label":"结束"}}],"edges":[{"id":"e-start-end","source":"start","target":"end"}]}`
+	}
+
+	wf = model.Workflow{
+		UserID:      userID,
+		Name:        agent.Name + " 工作流",
+		Description: fmt.Sprintf("%s 的标准工作流 %s", agent.Name, wfTag),
+		Definition:  def,
+	}
+	if err := h.db.Create(&wf).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create workflow"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"workflow_id": wf.ID})
+}
+
+func (h *AgentHandler) Update(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("user_id")
+
+	var agent model.Agent
+	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+
+	var req CreateAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.db.Model(&agent).Updates(model.Agent{
+		Name:         req.Name,
+		Description:  req.Description,
+		SystemPrompt: req.SystemPrompt,
+		ModelID:      req.ModelID,
+		Tools:        req.Tools,
+		Config:       req.Config,
+		IsPublic:     req.IsPublic,
+	})
+
+	c.JSON(http.StatusOK, agent)
+}
+
+// Marketplace: list all public agents from all users
+func (h *AgentHandler) Export(c *gin.Context) {
+	userID := c.GetString("user_id")
+	agentID := c.Param("id")
+
+	var agent model.Agent
+	if err := h.db.Where("id = ? AND (user_id = ? OR is_public = ?)", agentID, userID, true).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+
+	export := gin.H{
+		"name":          agent.Name,
+		"description":   agent.Description,
+		"system_prompt": agent.SystemPrompt,
+		"model_id":      agent.ModelID,
+		"tools":         agent.Tools,
+		"is_public":     agent.IsPublic,
+		"version":       "1.0",
+		"platform":      "starclaw",
+	}
+
+	c.Header("Content-Disposition", "attachment; filename=agent_"+agent.Name+".json")
+	c.JSON(http.StatusOK, export)
+}
+
+func (h *AgentHandler) Import(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var req struct {
+		Name         string `json:"name" binding:"required"`
+		Description  string `json:"description"`
+		SystemPrompt string `json:"system_prompt"`
+		ModelID      string `json:"model_id"`
+		Tools        string `json:"tools"`
+		IsPublic     bool   `json:"is_public"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	agent := model.Agent{
+		UserID:       userID,
+		Name:         req.Name + " (导入)",
+		Description:  req.Description,
+		SystemPrompt: req.SystemPrompt,
+		ModelID:      req.ModelID,
+		Tools:        req.Tools,
+		IsPublic:     req.IsPublic,
+	}
+	if err := h.db.Create(&agent).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import agent"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+}
+
+func (h *AgentHandler) ListPublic(c *gin.Context) {
+	var agents []model.Agent
+	h.db.Where("is_public = ?", true).Order("created_at DESC").Preload("User").Find(&agents)
+	c.JSON(http.StatusOK, gin.H{"agents": agents})
+}
+
+// Clone a public agent to the current user's collection
+func (h *AgentHandler) Clone(c *gin.Context) {
+	userID := c.GetString("user_id")
+	id := c.Param("id")
+
+	var source model.Agent
+	if err := h.db.Where("id = ? AND is_public = ?", id, true).First(&source).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "public agent not found"})
+		return
+	}
+
+	clone := model.Agent{
+		UserID:          userID,
+		Name:            source.Name + " (副本)",
+		Description:     source.Description,
+		SystemPrompt:    source.SystemPrompt,
+		ModelID:         source.ModelID,
+		Tools:           source.Tools,
+		KnowledgeBaseID: "", // don't copy KB
+		Config:          source.Config,
+		IsPublic:        false,
+	}
+	if err := h.db.Create(&clone).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clone agent"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"agent": clone})
+}
+
+// EnsureSuperAgent creates system-level built-in agents (visible to all users)
+func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
+	const systemUID = "system"
+
+	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
+	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation"]`
+
+	// Ensure SuperAgent (system-level)
+	var superAgent model.Agent
+	created := false
+	if err := h.db.Where("user_id = ? AND name = ?", systemUID, "全能助手").First(&superAgent).Error; err == nil {
+		h.db.Model(&superAgent).Updates(map[string]interface{}{
+			"system_prompt": superAgentSystemPrompt,
+			"tools":         superTools,
+			"description":   superDesc,
+			"is_builtin":    true,
+		})
+		h.db.Where("id = ?", superAgent.ID).First(&superAgent)
+	} else {
+		superAgent = model.Agent{
+			UserID:       systemUID,
+			Name:         "全能助手",
+			Description:  superDesc,
+			Tools:        superTools,
+			Config:       `{"temperature":0.3,"max_tokens":8192}`,
+			IsPublic:     true,
+			IsBuiltin:    true,
+			SystemPrompt: superAgentSystemPrompt,
+		}
+		h.db.Create(&superAgent)
+		created = true
+	}
+
+	// Ensure all built-in specialist agents
+	for _, def := range builtinAgents {
+		var existing model.Agent
+		if err := h.db.Where("user_id = ? AND name = ?", systemUID, def.Name).First(&existing).Error; err == nil {
+			h.db.Model(&existing).Updates(map[string]interface{}{
+				"system_prompt": def.Prompt,
+				"tools":         def.Tools,
+				"description":   def.Description,
+				"is_builtin":    true,
+			})
+		} else {
+			specialist := model.Agent{
+				UserID:       systemUID,
+				Name:         def.Name,
+				Description:  def.Description,
+				Tools:        def.Tools,
+				Config:       `{"temperature":0.3,"max_tokens":8192}`,
+				IsPublic:     true,
+				IsBuiltin:    true,
+				SystemPrompt: def.Prompt,
+			}
+			h.db.Create(&specialist)
+		}
+	}
+
+	if created {
+		c.JSON(http.StatusCreated, gin.H{"agent": superAgent, "created": true})
+	} else {
+		c.JSON(http.StatusOK, gin.H{"agent": superAgent, "created": false})
+	}
+}
+
+func (h *AgentHandler) Delete(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("user_id")
+
+	// Prevent deletion of built-in agents
+	var agent model.Agent
+	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&agent).Error; err == nil {
+		if agent.IsBuiltin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "内置官方 Agent 不可删除"})
+			return
+		}
+	}
+
+	result := h.db.Where("id = ? AND user_id = ?", id, userID).Delete(&model.Agent{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "agent deleted"})
+}
