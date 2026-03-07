@@ -463,7 +463,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
             <Globe className="w-4 h-4" /> 虫群网络 (Swarm)
           </h2>
-          <p className="text-xs text-gray-400 mb-4">加入虫群后，你的 Claw 节点将注册到 Queen 中心，获得远程管理、任务调度、自动更新等能力。</p>
+          <p className="text-xs text-gray-400 mb-4">加入虫群后，你的 Claw 将进入 StarClaw 生态，获得赏金任务协作、Agent 模板市场、自动版本更新、社区排行榜等生态服务。</p>
           <div className="flex items-center gap-3 p-3 rounded-lg mb-4" style={{ backgroundColor: swarmStatus?.connected ? '#f0fdf4' : '#fafafa' }}>
             {swarmStatus?.connected ? (
               <Wifi className="w-5 h-5 text-green-600" />
