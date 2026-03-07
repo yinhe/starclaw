@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -8,6 +9,38 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/yinhe/starclaw/internal/config"
 )
+
+// TokenClaims holds parsed JWT claims
+type TokenClaims struct {
+	UserID   string
+	Username string
+	Role     string
+}
+
+// ParseToken validates a JWT string and returns the claims
+func ParseToken(tokenStr string, secret string) (*TokenClaims, error) {
+	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+	if err != nil || !token.Valid {
+		return nil, fmt.Errorf("invalid or expired token")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+	tc := &TokenClaims{Role: "user"}
+	if sub, ok := claims["sub"].(string); ok {
+		tc.UserID = sub
+	}
+	if u, ok := claims["username"].(string); ok {
+		tc.Username = u
+	}
+	if r, ok := claims["role"].(string); ok {
+		tc.Role = r
+	}
+	return tc, nil
+}
 
 func AuthRequired(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {

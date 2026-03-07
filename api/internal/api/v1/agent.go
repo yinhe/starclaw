@@ -439,6 +439,57 @@ func (h *AgentHandler) Clone(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"agent": clone})
 }
 
+// ShareAgent generates a public share token for an agent
+func (h *AgentHandler) Share(c *gin.Context) {
+	userID := c.GetString("user_id")
+	agentID := c.Param("id")
+
+	var agent model.Agent
+	if err := h.db.Where("id = ? AND user_id = ?", agentID, userID).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+
+	// Make agent public if not already
+	if !agent.IsPublic {
+		h.db.Model(&agent).Update("is_public", true)
+	}
+
+	// Share token is just the agent ID (public agents are accessible)
+	proto := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		proto = "https"
+	}
+	shareURL := fmt.Sprintf("%s://%s/v1/agents/shared/%s", proto, c.Request.Host, agent.ID)
+	c.JSON(http.StatusOK, gin.H{
+		"share_url": shareURL,
+		"agent_id":  agent.ID,
+	})
+}
+
+// GetSharedAgent returns a public agent by ID (no auth required)
+func (h *AgentHandler) GetShared(c *gin.Context) {
+	id := c.Param("id")
+
+	var agent model.Agent
+	if err := h.db.Where("id = ? AND is_public = ?", id, true).First(&agent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "shared agent not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"agent": gin.H{
+			"id":            agent.ID,
+			"name":          agent.Name,
+			"description":   agent.Description,
+			"system_prompt": agent.SystemPrompt,
+			"tools":         agent.Tools,
+			"config":        agent.Config,
+			"platform":      "starclaw",
+		},
+	})
+}
+
 // EnsureSuperAgent creates system-level built-in agents (visible to all users)
 func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 	const systemUID = "system"

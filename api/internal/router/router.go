@@ -30,6 +30,7 @@ import (
 	"github.com/yinhe/starclaw/internal/sandbox"
 	"github.com/yinhe/starclaw/internal/tool"
 	"github.com/yinhe/starclaw/internal/worker"
+	"github.com/yinhe/starclaw/internal/ws"
 	"gorm.io/gorm"
 )
 
@@ -392,6 +393,26 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		apiV1.PUT("/app/:workspace_id/*path", appProxy)
 		apiV1.DELETE("/app/:workspace_id/*path", appProxy)
 
+		// WebSocket endpoint (authenticated via query param token)
+		wsHub := ws.GetHub()
+		apiV1.GET("/ws", func(c *gin.Context) {
+			token := c.Query("token")
+			if token == "" {
+				c.JSON(401, gin.H{"error": "token required"})
+				return
+			}
+			claims, err := middleware.ParseToken(token, cfg.JWT.Secret)
+			if err != nil {
+				c.JSON(401, gin.H{"error": "invalid token"})
+				return
+			}
+			ws.HandleWS(wsHub, claims.UserID, c.Writer, c.Request)
+		})
+
+		// Public agent sharing (no auth)
+		sharedAgentHandler := v1.NewAgentHandler(db)
+		apiV1.GET("/agents/shared/:id", sharedAgentHandler.GetShared)
+
 		// Protected routes
 		protected := apiV1.Group("")
 		protected.Use(middleware.AuthRequired(cfg))
@@ -408,6 +429,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			protected.GET("/agents/:id/export", agentHandler.Export)
 			protected.GET("/agents/:id/workflow", agentHandler.GetWorkflow)
 			protected.POST("/agents/import", agentHandler.Import)
+			protected.POST("/agents/:id/share", agentHandler.Share)
 			protected.POST("/agents/super-agent", agentHandler.EnsureSuperAgent)
 
 			// Chat

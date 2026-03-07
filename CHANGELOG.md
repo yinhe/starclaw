@@ -5,6 +5,19 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-07
+
+### Added
+- **WebSocket Real-Time Push** — `ws` package with Hub/Client pattern, `/v1/ws?token=` endpoint, auto-reconnect frontend client. Replaces polling for notifications, task updates, agent status.
+- **Agent Share Links** — `POST /agents/:id/share` generates public URL, `GET /agents/shared/:id` returns agent JSON without auth. One-click share any agent.
+- **ParseToken Helper** — Reusable JWT parsing in `middleware.ParseToken()`, used by WebSocket auth and future features.
+
+### Changed
+- Dockerfile `REGISTRY` build arg now correctly overrides ALL base images (`golang`, `alpine`, `node`, `nginx`) for China mirror
+- `docker-compose.cn.yml` overrides MySQL/Redis images + build args for complete China mirror coverage
+
+---
+
 ## [0.3.0] - 2026-03-07
 
 ### Added

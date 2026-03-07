@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { MessageSquare, Bot, Cpu, BookOpen, Plug, Users, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Code2, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard } from 'lucide-react'
 import { notificationAPI, versionAPI } from '../lib/api'
+import { starclawWS } from '../lib/websocket'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -99,6 +100,18 @@ export default function Layout() {
         setUpdateInfo({ latest: res.data.latest, latest_url: res.data.latest_url })
       }
     }).catch(() => {})
+  }, [])
+
+  // WebSocket: connect for real-time push
+  useEffect(() => {
+    starclawWS.connect()
+    const unsubNotif = starclawWS.on('notification', () => {
+      setUnreadCount(prev => prev + 1)
+    })
+    return () => {
+      unsubNotif()
+      starclawWS.disconnect()
+    }
   }, [])
 
   const navGroups = getNavGroups(deployMode === 'hosted')
