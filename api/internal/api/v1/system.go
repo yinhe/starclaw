@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -184,30 +185,38 @@ func (h *SystemHandler) GetBridgeStatus(c *gin.Context) {
 }
 
 func performDockerUpdate() error {
-	// Step 1: Pull latest image
-	log.Println("[molt] pulling latest image...")
-	pull := exec.Command("docker", "pull", "ghcr.io/yinhe/starclaw:latest")
-	pull.Stdout = os.Stdout
-	pull.Stderr = os.Stderr
-	if err := pull.Run(); err != nil {
-		// Try alternative: docker compose pull
-		log.Println("[molt] docker pull failed, trying docker compose pull...")
-		composePull := exec.Command("docker", "compose", "pull", "api")
-		composePull.Stdout = os.Stdout
-		composePull.Stderr = os.Stderr
-		if err2 := composePull.Run(); err2 != nil {
-			return fmt.Errorf("pull failed: %v / %v", err, err2)
+	// Strategy 1: If MCP Bridge is available, use it to run host commands
+	// (the container can't rebuild itself, but the bridge can)
+	bridgeURL := mcp.DetectBridgeURL()
+	if mcp.ProbeBridge(bridgeURL) {
+		log.Println("[molt] MCP Bridge detected, updating via host shell...")
+		client := mcp.NewClient(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"})
+		result, err := client.CallTool(context.Background(), "shell_exec", `{"command":"cd /opt/starclaw/claw && git pull origin main && docker compose up -d --build"}`)
+		if err != nil {
+			log.Printf("[molt] bridge update failed: %v", err)
+		} else {
+			log.Printf("[molt] bridge update result: %.200s", result)
+			return nil
 		}
 	}
 
-	// Step 2: Restart via docker compose
-	log.Println("[molt] restarting service...")
+	// Strategy 2: Fallback — try docker commands from inside container
+	log.Println("[molt] falling back to in-container docker commands...")
+	pull := exec.Command("docker", "compose", "pull", "api")
+	pull.Stdout = os.Stdout
+	pull.Stderr = os.Stderr
+	if err := pull.Run(); err != nil {
+		log.Printf("[molt] compose pull failed: %v, sending SIGTERM for orchestrator restart", err)
+		p, _ := os.FindProcess(os.Getpid())
+		p.Signal(os.Interrupt)
+		return nil
+	}
+
 	restart := exec.Command("docker", "compose", "up", "-d", "--no-deps", "api")
 	restart.Stdout = os.Stdout
 	restart.Stderr = os.Stderr
 	if err := restart.Run(); err != nil {
-		// If running inside container, request graceful exit and let orchestrator restart
-		log.Println("[molt] compose restart failed, sending SIGTERM to self for orchestrator restart...")
+		log.Println("[molt] compose restart failed, sending SIGTERM...")
 		p, _ := os.FindProcess(os.Getpid())
 		p.Signal(os.Interrupt)
 		return nil
