@@ -87,18 +87,18 @@ export default function SettingsPage() {
       const targetVersion = res.data.to
 
       if (targetVersion) {
-        // Simulate progress steps based on timing
-        setTimeout(() => setUpdateStep(2), 8000)   // ~8s: building
-        setTimeout(() => setUpdateStep(3), 60000)   // ~60s: restarting
-        setTimeout(() => setUpdateStep(4), 90000)   // ~90s: verifying
+        // Simulate progress steps based on timing (build can take 3-5 min)
+        setTimeout(() => setUpdateStep(2), 10000)   // ~10s: building
+        setTimeout(() => setUpdateStep(3), 180000)  // ~3min: restarting
+        setTimeout(() => setUpdateStep(4), 210000)  // ~3.5min: verifying
 
         let attempts = 0
         let apiWasDown = false
         const poll = setInterval(async () => {
           attempts++
-          if (attempts > 60) {
+          if (attempts > 180) { // 15 min timeout (build + restart can take a while)
             clearInterval(poll)
-            setUpdateMsg('更新超时，请手动检查服务器状态')
+            setUpdateMsg('更新超时，请手动检查服务器状态。构建可能仍在进行中，请稍后刷新页面。')
             setUpdateStep(0)
             setUpdating(false)
             return

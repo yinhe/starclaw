@@ -273,7 +273,17 @@ func performDockerUpdate() error {
 	if mcp.ProbeBridge(bridgeURL) {
 		log.Println("[molt] MCP Bridge detected, updating via host shell...")
 		client := mcp.NewClient(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"})
-		result, err := client.CallTool(context.Background(), "shell_exec", `{"command":"cd /opt/starclaw/claw && git pull origin main && docker compose up -d --build"}`)
+		// Detect project directory: try common locations
+		findCmd := `DIR=$(find /opt /home /root -maxdepth 3 -name "docker-compose.yml" -path "*/claw/*" 2>/dev/null | head -1 | xargs dirname 2>/dev/null); [ -z "$DIR" ] && DIR="/opt/starclaw/claw"; echo "$DIR"`
+		dirResult, _ := client.CallTool(context.Background(), "shell_exec", fmt.Sprintf(`{"command":"%s"}`, findCmd))
+		projectDir := strings.TrimSpace(dirResult)
+		if projectDir == "" {
+			projectDir = "/opt/starclaw/claw"
+		}
+		log.Printf("[molt] project dir: %s", projectDir)
+		// Step 1: pull + build (slow), Step 2: restart (fast)
+		updateCmd := fmt.Sprintf("cd %s && git pull origin main 2>&1 && docker compose build api web 2>&1 && docker compose up -d --no-deps api web 2>&1", projectDir)
+		result, err := client.CallTool(context.Background(), "shell_exec", fmt.Sprintf(`{"command":"%s"}`, updateCmd))
 		if err != nil {
 			log.Printf("[molt] bridge update failed: %v", err)
 		} else {

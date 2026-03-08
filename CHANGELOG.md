@@ -5,6 +5,15 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-03-08
+
+### Fixed
+- **One-click update timeout** — Frontend polling increased from 5 min to 15 min to accommodate full Docker build cycles. Progress bar timing adjusted to match realistic build durations (~3-5 min).
+- **Update command improvements** — Auto-detects project directory on host (no longer hardcoded `/opt/starclaw/claw`). Split `docker compose up --build` into separate `build` + `up --no-deps` to avoid rebuilding mysql/redis. Only rebuilds `api` and `web` services.
+- **Update timeout message** — Now suggests "构建可能仍在进行中，请稍后刷新页面" instead of generic error.
+
+---
+
 ## [0.5.4] - 2026-03-08
 
 ### Added
