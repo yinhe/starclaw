@@ -9,6 +9,7 @@ const PROVIDERS = [
   { value: 'google', label: 'Google Gemini', icon: '🔵', placeholder: 'AIza...', url: 'https://aistudio.google.com/apikey', base_url: '' },
   { value: 'deepseek', label: 'DeepSeek', icon: '🐋', placeholder: 'sk-...', url: 'https://platform.deepseek.com/api_keys', base_url: '' },
   { value: 'anthropic', label: 'Anthropic', icon: '🟠', placeholder: 'sk-ant-...', url: 'https://console.anthropic.com/', base_url: '' },
+  { value: 'grok', label: 'Grok (xAI)', icon: '𝕏', placeholder: 'xai-...', url: 'https://console.x.ai/', base_url: '' },
 ]
 
 interface Props {

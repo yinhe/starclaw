@@ -50,8 +50,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="chat" element={<ChatPage />} />
-        <Route path="chat/:conversationId" element={<ChatPage />} />
+        <Route path="chat/:conversationId?" element={<ChatPage />} />
         <Route path="agents" element={<AgentsPage />} />
         <Route path="agents/:id" element={<AgentDetailPage />} />
         <Route path="marketplace" element={<MarketplacePage />} />

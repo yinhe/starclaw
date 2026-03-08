@@ -419,6 +419,126 @@ func (t *VideoTool) listModels() (string, error) {
 	}), nil
 }
 
+// ── Resolution helpers ──
+
+// probeResolution returns width, height of a video file using ffprobe.
+func probeResolution(path string) (int, int, error) {
+	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path).Output()
+	if err != nil {
+		return 0, 0, err
+	}
+	parts := strings.Split(strings.TrimSpace(string(out)), "x")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected ffprobe output: %s", string(out))
+	}
+	w, _ := strconv.Atoi(parts[0])
+	h, _ := strconv.Atoi(parts[1])
+	return w, h, nil
+}
+
+// ffmpegMergeClips merges clips, auto-detecting and normalizing different resolutions.
+// If all clips share the same resolution, uses fast concat demuxer (-c copy).
+// If resolutions differ, uses filter_complex to scale+pad all clips to the majority resolution.
+func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string) error {
+	if len(clipPaths) == 0 {
+		return fmt.Errorf("no clips to merge")
+	}
+
+	// Probe all resolutions
+	type res struct{ w, h int }
+	resolutions := make([]res, len(clipPaths))
+	resCounts := make(map[res]int)
+	for i, p := range clipPaths {
+		w, h, err := probeResolution(p)
+		if err != nil {
+			log.Printf("[VideoMerge] ffprobe failed for clip %d: %v, defaulting to 1280x720", i, err)
+			w, h = 1280, 720
+		}
+		resolutions[i] = res{w, h}
+		resCounts[res{w, h}]++
+	}
+
+	// Find majority resolution
+	var targetRes res
+	maxCount := 0
+	for r, c := range resCounts {
+		if c > maxCount {
+			maxCount = c
+			targetRes = r
+		}
+	}
+
+	allSame := len(resCounts) == 1
+	if allSame {
+		log.Printf("[VideoMerge] All %d clips are %dx%d, using fast concat", len(clipPaths), targetRes.w, targetRes.h)
+	} else {
+		log.Printf("[VideoMerge] Mixed resolutions detected (%d unique), normalizing to %dx%d", len(resCounts), targetRes.w, targetRes.h)
+	}
+
+	tmpDir := filepath.Dir(clipPaths[0])
+	if tmpDir == "" {
+		tmpDir = os.TempDir()
+	}
+
+	if allSame {
+		// Fast path: all same resolution, use concat demuxer
+		listPath := filepath.Join(tmpDir, "filelist.txt")
+		var listContent strings.Builder
+		for _, p := range clipPaths {
+			listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
+		}
+		os.WriteFile(listPath, []byte(listContent.String()), 0644)
+
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+			"-i", listPath, "-c", "copy", outputPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			// Fallback: re-encode
+			cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+				"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
+			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+				return fmt.Errorf("ffmpeg concat failed: %v\n%s\n%s", err2, string(out), string(out2))
+			}
+		}
+		return nil
+	}
+
+	// Slow path: normalize all clips to target resolution with scale+pad, then concat
+	// First, normalize each clip to a temp file
+	var normalizedPaths []string
+	for i, p := range clipPaths {
+		if resolutions[i] == targetRes {
+			normalizedPaths = append(normalizedPaths, p)
+			continue
+		}
+		normPath := filepath.Join(tmpDir, fmt.Sprintf("norm_%03d.mp4", i))
+		// scale to fit within target, pad to exact target size (letterbox/pillarbox)
+		filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black",
+			targetRes.w, targetRes.h, targetRes.w, targetRes.h)
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", p,
+			"-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", "-r", "30", normPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("ffmpeg normalize clip %d failed: %v\n%s", i, err, string(out))
+		}
+		normalizedPaths = append(normalizedPaths, normPath)
+	}
+
+	// Now concat all normalized clips
+	listPath := filepath.Join(tmpDir, "filelist_norm.txt")
+	var listContent strings.Builder
+	for _, p := range normalizedPaths {
+		listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
+	}
+	os.WriteFile(listPath, []byte(listContent.String()), 0644)
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+		"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ffmpeg merge normalized failed: %v\n%s", err, string(out))
+	}
+	return nil
+}
+
 // ── Merge Videos ──
 
 func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, error) {
@@ -491,26 +611,13 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 		clipPaths = append(clipPaths, clipPath)
 	}
 
-	listPath := filepath.Join(tmpDir, "filelist.txt")
-	var listContent strings.Builder
-	for _, p := range clipPaths {
-		listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
-	}
-	os.WriteFile(listPath, []byte(listContent.String()), 0644)
-
 	mergeID := uuid.New().String()
 	outputDir := "/app/merged_videos"
 	os.MkdirAll(outputDir, 0755)
 	outputPath := filepath.Join(outputDir, mergeID+".mp4")
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-		"-i", listPath, "-c", "copy", outputPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-			"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
-		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-			return "", fmt.Errorf("ffmpeg merge failed: %v\n%s\n%s", err2, string(out), string(out2))
-		}
+	if err := ffmpegMergeClips(ctx, clipPaths, outputPath); err != nil {
+		return "", err
 	}
 
 	fi, _ := os.Stat(outputPath)
@@ -612,23 +719,14 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 		clipPaths = append(clipPaths, clipPath)
 	}
 
-	listPath := filepath.Join(tmpDir, "filelist.txt")
-	var listContent strings.Builder
-	for _, p := range clipPaths {
-		listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
-	}
-	os.WriteFile(listPath, []byte(listContent.String()), 0644)
-
 	mergeID := uuid.New().String()
 	outputDir := "/app/merged_videos"
 	os.MkdirAll(outputDir, 0755)
 	outputPath := filepath.Join(outputDir, mergeID+".mp4")
 
 	ctx := context.Background()
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-		"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("[VideoTool] Auto-merge failed: %s", string(out))
+	if err := ffmpegMergeClips(ctx, clipPaths, outputPath); err != nil {
+		log.Printf("[VideoTool] Auto-merge failed: %v", err)
 		return
 	}
 

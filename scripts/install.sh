@@ -37,7 +37,7 @@ else
 fi
 
 # --- Check prerequisites ---
-echo -e "${YELLOW}[1/5] Checking prerequisites...${NC}"
+echo -e "${YELLOW}[1/6] Checking prerequisites...${NC}"
 
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}✗ Docker not found. Installing...${NC}"
@@ -87,7 +87,7 @@ fi
 
 # --- Clone or update repo ---
 echo ""
-echo -e "${YELLOW}[2/5] Getting StarClaw...${NC}"
+echo -e "${YELLOW}[2/6] Getting StarClaw...${NC}"
 
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo "  Updating existing installation at $INSTALL_DIR"
@@ -103,7 +103,7 @@ fi
 
 # --- Generate .env ---
 echo ""
-echo -e "${YELLOW}[3/5] Configuring environment...${NC}"
+echo -e "${YELLOW}[3/6] Configuring environment...${NC}"
 
 if [ -f .env ]; then
     echo -e "  ${GREEN}✓ .env already exists, keeping current config${NC}"
@@ -123,14 +123,60 @@ fi
 
 # --- Create data directories ---
 echo ""
-echo -e "${YELLOW}[4/5] Creating data directories...${NC}"
+echo -e "${YELLOW}[4/6] Creating data directories...${NC}"
 
 mkdir -p data/{mysql,redis,sandbox,merged_videos,thumbnails,music,images,workspaces}
 echo -e "  ${GREEN}✓ data/ directories ready${NC}"
 
+# --- Install MCP Bridge ---
+echo ""
+echo -e "${YELLOW}[5/6] Installing MCP Bridge (host control)...${NC}"
+
+BRIDGE_PORT=9101
+BRIDGE_BIN="/usr/local/bin/mcp-bridge"
+BRIDGE_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+BRIDGE_ARCH=$(uname -m)
+case "$BRIDGE_ARCH" in
+  x86_64|amd64) BRIDGE_GOARCH="amd64" ;;
+  arm64|aarch64) BRIDGE_GOARCH="arm64" ;;
+  *) BRIDGE_GOARCH="" ;;
+esac
+
+if [ -n "$BRIDGE_GOARCH" ]; then
+  BRIDGE_ASSET="mcp-bridge-${BRIDGE_OS}-${BRIDGE_GOARCH}"
+  BRIDGE_URL="https://github.com/yinhe/starclaw/releases/latest/download/${BRIDGE_ASSET}"
+
+  # Try download, fallback to local dist/
+  if curl -fsSL -o /tmp/mcp-bridge "$BRIDGE_URL" 2>/dev/null; then
+    sudo mv /tmp/mcp-bridge "$BRIDGE_BIN"
+  elif [ -f "$INSTALL_DIR/dist/$BRIDGE_ASSET" ]; then
+    sudo cp "$INSTALL_DIR/dist/$BRIDGE_ASSET" "$BRIDGE_BIN"
+  fi
+
+  if [ -f "$BRIDGE_BIN" ]; then
+    sudo chmod +x "$BRIDGE_BIN"
+
+    # Setup systemd auto-start
+    if command -v systemctl &>/dev/null; then
+      sudo cp "$INSTALL_DIR/deploy/mcp-bridge.service" /etc/systemd/system/
+      sudo systemctl daemon-reload
+      sudo systemctl enable mcp-bridge
+      sudo systemctl restart mcp-bridge
+      echo -e "  ${GREEN}✓ MCP Bridge installed with systemd auto-start (port $BRIDGE_PORT)${NC}"
+    else
+      nohup "$BRIDGE_BIN" -port $BRIDGE_PORT > /tmp/mcp-bridge.log 2>&1 &
+      echo -e "  ${GREEN}✓ MCP Bridge started in background (port $BRIDGE_PORT)${NC}"
+    fi
+  else
+    echo -e "  ${YELLOW}⚠ MCP Bridge download failed (optional, can install later)${NC}"
+  fi
+else
+  echo -e "  ${YELLOW}⚠ Unsupported arch for MCP Bridge (optional, can install later)${NC}"
+fi
+
 # --- Build and start ---
 echo ""
-echo -e "${YELLOW}[5/5] Building and starting services...${NC}"
+echo -e "${YELLOW}[6/6] Building and starting services...${NC}"
 echo "  This may take 5-10 minutes on first run..."
 echo ""
 
@@ -158,6 +204,10 @@ echo ""
 echo -e "  First registered user becomes admin."
 echo -e "  Add your AI API keys in Settings → Models."
 echo ""
+if [ -f "$BRIDGE_BIN" ]; then
+echo -e "  🔗 MCP Bridge: running on port ${CYAN}$BRIDGE_PORT${NC} (host control enabled)"
+echo ""
+fi
 echo -e "  Useful commands:"
 echo -e "    ${CYAN}cd $INSTALL_DIR${NC}"
 echo -e "    ${CYAN}docker compose logs -f${NC}        # View logs"

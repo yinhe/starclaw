@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, MicOff, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode, BookOpen } from 'lucide-react'
+import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode, BookOpen } from 'lucide-react'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -53,8 +53,6 @@ export default function ChatPage() {
   const [browserScreenshots, setBrowserScreenshots] = useState<string[]>([])
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
-  const [audioLevels, setAudioLevels] = useState<number[]>(new Array(32).fill(0))
-  const [recordingDuration, setRecordingDuration] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -62,11 +60,13 @@ export default function ChatPage() {
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const silenceStartRef = useRef<number>(0)
   const [attachedFiles, setAttachedFiles] = useState<{ id: string; filename: string; url: string; size: number; mime: string; category: string; stored: string }[]>([])
   const [fileUploading, setFileUploading] = useState(false)
   const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string; document_count: number }[]>([])
   const [selectedKBIds, setSelectedKBIds] = useState<string[]>([])
   const [showKBSelector, setShowKBSelector] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null)
   const [contextPanelOpen, setContextPanelOpen] = useState(false)
@@ -310,8 +310,6 @@ export default function ChatPage() {
       clearInterval(recordTimerRef.current)
       recordTimerRef.current = null
     }
-    setAudioLevels(new Array(32).fill(0))
-    setRecordingDuration(0)
   }
 
   const startAudioVisualization = (stream: MediaStream) => {
@@ -325,19 +323,30 @@ export default function ChatPage() {
       analyserRef.current = analyser
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount)
+      const start = Date.now()
+      silenceStartRef.current = 0
       const updateLevels = () => {
         if (!analyserRef.current) return
         analyserRef.current.getByteFrequencyData(dataArray)
         const levels = Array.from(dataArray).slice(0, 32).map(v => v / 255)
-        setAudioLevels(levels)
+
+        // Silence detection: auto-stop after 2s of silence (skip first 1.5s to let user start)
+        const avgLevel = levels.reduce((a, b) => a + b, 0) / levels.length
+        const now = Date.now()
+        if (avgLevel < 0.02 && now - start > 1500) {
+          if (silenceStartRef.current === 0) silenceStartRef.current = now
+          else if (now - silenceStartRef.current > 2000) {
+            stopRecording()
+            return
+          }
+        } else {
+          silenceStartRef.current = 0
+        }
+
         animFrameRef.current = requestAnimationFrame(updateLevels)
       }
       updateLevels()
 
-      const start = Date.now()
-      recordTimerRef.current = setInterval(() => {
-        setRecordingDuration(Math.floor((Date.now() - start) / 1000))
-      }, 1000)
     } catch { /* AudioContext not supported */ }
   }
 
@@ -359,58 +368,6 @@ export default function ChatPage() {
     setIsRecording(false)
     stopAudioVisualization()
     setTimeout(() => textareaRef.current?.focus(), 100)
-  }
-
-  // Check if browser supports Web Speech API
-  const getSpeechRecognition = (): any => {
-    const w = window as any
-    return w.SpeechRecognition || w.webkitSpeechRecognition || null
-  }
-
-  const startWithWebSpeech = async () => {
-    const SpeechRecognition = getSpeechRecognition()
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.maxAlternatives = 1
-
-    let finalTranscript = ''
-
-    recognition.onresult = (event: any) => {
-      let interim = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript
-        } else {
-          interim = transcript
-        }
-      }
-      // Show real-time transcription in input
-      setInput(prev => {
-        const base = prev.replace(/\[识别中: .*?\]$/, '').trimEnd()
-        const combined = base ? base + ' ' : ''
-        if (interim) {
-          return combined + finalTranscript + `[识别中: ${interim}]`
-        }
-        return combined + finalTranscript
-      })
-    }
-
-    recognition.onerror = (event: any) => {
-      console.error('SpeechRecognition error:', event.error)
-      if (event.error === 'no-speech') return // ignore silence
-      stopRecording()
-    }
-
-    recognition.onend = () => {
-      // Clean up interim markers
-      setInput(prev => prev.replace(/\[识别中: .*?\]$/, '').trimEnd())
-    }
-
-    speechRecognitionRef.current = recognition
-    recognition.start()
   }
 
   const startWithBackendSTT = async (stream: MediaStream) => {
@@ -450,13 +407,8 @@ export default function ChatPage() {
       setIsRecording(true)
       startAudioVisualization(stream)
 
-      // Prefer Web Speech API (real-time, free, works in Chrome/Edge)
-      if (getSpeechRecognition()) {
-        await startWithWebSpeech()
-      } else {
-        // Fallback to backend STT
-        await startWithBackendSTT(stream)
-      }
+      // Use backend STT (Qwen > OpenAI) for reliable transcription
+      await startWithBackendSTT(stream)
     } catch (err) {
       console.error('Mic access denied:', err)
       alert('无法访问麦克风，请允许浏览器使用麦克风权限')
@@ -471,6 +423,10 @@ export default function ChatPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInput(val)
+    // Auto-resize textarea
+    const ta = e.target
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
 
     // Detect @ mention
     const cursorPos = e.target.selectionStart || 0
@@ -1750,74 +1706,52 @@ export default function ChatPage() {
               <span>上传中...</span>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            {/* File upload (general) */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => { handleFileUpload(e.target.files); e.target.value = '' }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 text-gray-400 hover:text-primary-600 transition-colors"
-              title="上传文件（文档/音频/视频/代码等）"
-            >
-              <Paperclip className="w-5 h-5" />
-            </button>
-            {/* Image upload */}
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => handleImageUpload(e.target.files)}
-            />
-            <button
-              onClick={() => imageInputRef.current?.click()}
-              className="p-2.5 text-gray-400 hover:text-primary-600 transition-colors"
-              title="上传图片"
-            >
-              <ImagePlus className="w-5 h-5" />
-            </button>
-            {/* Knowledge base selector */}
-            <div className="relative">
+          {/* Hidden file inputs */}
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { handleFileUpload(e.target.files); e.target.value = '' }} />
+          <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(e.target.files)} />
+
+          {/* Grok-style unified input bar */}
+          <div className="relative flex items-center bg-gray-100 rounded-full border border-gray-200 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 transition-all">
+            {/* Left: Attach button */}
+            <div className="relative flex-shrink-0">
               <button
-                onClick={() => setShowKBSelector(!showKBSelector)}
-                className={`p-2.5 transition-colors ${selectedKBIds.length > 0 ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}
-                title={selectedKBIds.length > 0 ? `已选 ${selectedKBIds.length} 个知识库` : '选择知识库'}
+                onClick={() => { setShowAttachMenu(!showAttachMenu); setShowKBSelector(false) }}
+                className={`p-3 pl-4 rounded-l-full transition-colors ${showAttachMenu ? 'text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}
+                title="附件"
               >
-                <BookOpen className="w-5 h-5" />
-                {selectedKBIds.length > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">{selectedKBIds.length}</span>
-                )}
+                <Paperclip className="w-5 h-5" />
               </button>
+              {selectedKBIds.length > 0 && (
+                <span className="absolute top-1.5 right-0 w-4 h-4 bg-primary-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">{selectedKBIds.length}</span>
+              )}
+              {/* Attach popup */}
+              {showAttachMenu && (
+                <div className="absolute bottom-full left-0 mb-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
+                  <button onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }} className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <Paperclip className="w-4 h-4 text-gray-400" /><span>上传文件</span>
+                  </button>
+                  <button onClick={() => { imageInputRef.current?.click(); setShowAttachMenu(false) }} className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <ImagePlus className="w-4 h-4 text-gray-400" /><span>上传图片</span>
+                  </button>
+                  <button onClick={() => { setShowKBSelector(!showKBSelector); setShowAttachMenu(false) }} className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <BookOpen className="w-4 h-4 text-gray-400" /><span>知识库{selectedKBIds.length > 0 ? ` (${selectedKBIds.length})` : ''}</span>
+                  </button>
+                </div>
+              )}
+              {/* KB selector */}
               {showKBSelector && (
                 <div className="absolute bottom-full left-0 mb-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
                   <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
                     <span className="text-xs font-medium text-gray-600">知识库检索</span>
-                    {selectedKBIds.length > 0 && (
-                      <button onClick={() => setSelectedKBIds([])} className="text-[10px] text-gray-400 hover:text-red-500">清除全部</button>
-                    )}
+                    {selectedKBIds.length > 0 && <button onClick={() => setSelectedKBIds([])} className="text-[10px] text-gray-400 hover:text-red-500">清除全部</button>}
                   </div>
                   {knowledgeBases.length === 0 ? (
                     <div className="px-3 py-4 text-center text-xs text-gray-400">暂无知识库</div>
                   ) : (
                     <div className="max-h-48 overflow-y-auto">
                       {knowledgeBases.map((kb) => (
-                        <button
-                          key={kb.id}
-                          onClick={() => {
-                            setSelectedKBIds(prev =>
-                              prev.includes(kb.id)
-                                ? prev.filter(id => id !== kb.id)
-                                : [...prev, kb.id]
-                            )
-                          }}
-                          className={`w-full text-left px-3 py-2 flex items-center gap-2 text-sm transition-colors ${selectedKBIds.includes(kb.id) ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50 text-gray-700'}`}
-                        >
+                        <button key={kb.id} onClick={() => setSelectedKBIds(prev => prev.includes(kb.id) ? prev.filter(id => id !== kb.id) : [...prev, kb.id])}
+                          className={`w-full text-left px-3 py-2 flex items-center gap-2 text-sm transition-colors ${selectedKBIds.includes(kb.id) ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50 text-gray-700'}`}>
                           <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedKBIds.includes(kb.id) ? 'bg-primary-600 border-primary-600' : 'border-gray-300'}`}>
                             {selectedKBIds.includes(kb.id) && <Check className="w-3 h-3 text-white" />}
                           </div>
@@ -1832,26 +1766,16 @@ export default function ChatPage() {
                 </div>
               )}
             </div>
-            {/* Voice recording */}
-            <button
-              onClick={toggleRecording}
-              className={`p-2.5 transition-colors ${isRecording ? 'text-red-500' : isTranscribing ? 'text-amber-500 animate-pulse' : 'text-gray-400 hover:text-primary-600'}`}
-              title={isRecording ? '停止录音' : isTranscribing ? '转写中...' : '语音输入'}
-              disabled={isTranscribing}
-            >
-              {isRecording ? <MicOff className="w-5 h-5" /> : isTranscribing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
-            </button>
-            <div className="flex-1 relative">
+
+            {/* Center: Input area */}
+            <div className="flex-1 relative min-w-0">
               {/* @ mention popup */}
               {showMentionPopup && filteredMentionAgents.length > 0 && (
                 <div className="absolute bottom-full left-0 mb-1 w-72 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
                   <div className="px-3 py-1.5 text-xs text-gray-400 border-b">选择 Agent</div>
                   {filteredMentionAgents.map((agent, idx) => (
-                    <button
-                      key={agent.id}
-                      onClick={() => handleMentionSelect(agent)}
-                      className={`w-full text-left px-3 py-2 flex items-center gap-2 text-sm transition-colors ${idx === mentionIndex ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50 text-gray-700'}`}
-                    >
+                    <button key={agent.id} onClick={() => handleMentionSelect(agent)}
+                      className={`w-full text-left px-3 py-2 flex items-center gap-2 text-sm transition-colors ${idx === mentionIndex ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50 text-gray-700'}`}>
                       <Bot className="w-4 h-4 text-primary-500 flex-shrink-0" />
                       <div className="min-w-0">
                         <div className="font-medium truncate">{agent.name}</div>
@@ -1859,37 +1783,6 @@ export default function ChatPage() {
                       </div>
                     </button>
                   ))}
-                </div>
-              )}
-              {/* Recording wave overlay */}
-              {isRecording && (
-                <div
-                  className="absolute inset-0 flex items-center gap-1 px-4 bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl z-10 cursor-pointer"
-                  onClick={toggleRecording}
-                >
-                  <div className="flex items-center gap-1.5 mr-2">
-                    <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                    <span className="text-xs font-medium text-red-600">
-                      {Math.floor(recordingDuration / 60).toString().padStart(2, '0')}:{(recordingDuration % 60).toString().padStart(2, '0')}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-[2px] flex-1 h-8 overflow-hidden">
-                    {audioLevels.map((level, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 min-w-[2px] max-w-[6px] rounded-full bg-gradient-to-t from-red-400 to-orange-400 transition-all duration-75"
-                        style={{ height: `${Math.max(3, level * 28)}px` }}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-red-400 ml-2 whitespace-nowrap">点击停止</span>
-                </div>
-              )}
-              {/* Transcribing overlay */}
-              {isTranscribing && (
-                <div className="absolute inset-0 flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 rounded-xl z-10">
-                  <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
-                  <span className="text-sm text-amber-600 font-medium">语音转写中...</span>
                 </div>
               )}
               <textarea
@@ -1901,27 +1794,35 @@ export default function ChatPage() {
                 onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files) }}
                 onDragOver={(e) => e.preventDefault()}
                 rows={1}
-                placeholder={isRecording ? '正在录音...' : isTranscribing ? '转写中...' : '输入消息，@ 可指定Agent...'}
-                className="w-full resize-none px-4 py-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                placeholder={isRecording ? '录音中，说完自动识别...' : isTranscribing ? '语音识别中...' : '询问任何内容，@ 可指定 Agent...'}
+                className="w-full bg-transparent resize-none py-3 outline-none text-sm text-gray-800 placeholder-gray-400"
+                style={{ minHeight: '24px', maxHeight: '120px' }}
               />
             </div>
-            {isLoading ? (
+
+            {/* Right: Action buttons */}
+            <div className="flex items-center gap-1 pr-2 flex-shrink-0">
+              {/* Send / Stop */}
+              {isLoading ? (
+                <button onClick={handleStop} className="p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors" title="停止生成">
+                  <StopCircle className="w-4 h-4" />
+                </button>
+              ) : (
+                <button onClick={handleSend} disabled={!input.trim() && !isRecording}
+                  className="p-2 rounded-full text-gray-400 hover:text-primary-600 disabled:opacity-30 transition-colors" title="发送">
+                  <Send className="w-4 h-4" />
+                </button>
+              )}
+              {/* Mic */}
               <button
-                onClick={handleStop}
-                className="p-2.5 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors animate-pulse"
-                title="停止生成"
+                onClick={toggleRecording}
+                disabled={isTranscribing}
+                className={`p-2 rounded-full transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : isTranscribing ? 'text-amber-500' : 'text-gray-400 hover:text-gray-600'}`}
+                title={isRecording ? '录音中...' : '语音输入'}
               >
-                <StopCircle className="w-4 h-4" />
+                {isTranscribing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
               </button>
-            ) : (
-              <button
-                onClick={handleSend}
-                disabled={!input.trim()}
-                className="p-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            )}
+            </div>
           </div>
         </div>
       </div>

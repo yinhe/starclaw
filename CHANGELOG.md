@@ -5,6 +5,29 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-03-08
+
+### Added
+- **Grok (xAI) Provider** — New model provider for xAI's Grok-3/Grok-2 family. OpenAI-compatible API at `api.x.ai/v1`. Backend factory supports both `grok` and `xai` names. Added to Models page, Onboarding wizard.
+- **Grok-style Chat Input** — Redesigned input bar as unified pill shape: paperclip attach on left, textarea center, send + mic buttons on right. Clean, modern UI inspired by Grok.
+- **Smart Voice Input (STT)** — Backend STT now auto-selects provider from DB config (priority: Qwen → OpenAI → DeepSeek → any). Qwen uses `whisper-large-v3` model via DashScope. Voice recording auto-stops after 2s silence — no manual stop button needed.
+- **Video Gallery Tabs** — Split gallery into "合成视频" and "视频片段" tabs with count badges and status indicators.
+- **Smart Video Merge** — `ffmpegMergeClips` auto-detects clip resolutions via `ffprobe`. Same resolution uses fast concat; mixed resolutions auto-normalize with scale+pad (letterbox/pillarbox) to majority resolution.
+
+### Fixed
+- **Nginx proxy for media files** — Added `/api/v1/` location block with rewrite to strip `/api` prefix. Fixes video/image/music files not loading in gallery and resource center (URLs stored as `/api/v1/...` but nginx only proxied `/v1/`).
+- **STT API 404** — Backend STT was hardcoded to `cfg.OpenAI.APIKey` from config file. Now queries DB-configured providers dynamically. Fixed Qwen STT using wrong model name (`whisper-1` → `whisper-large-v3`).
+- **Video merge crash on mixed resolutions** — Clips with different aspect ratios (e.g., 1280×720 + 720×1280) no longer produce corrupt output. Auto-normalized before concat.
+- **Chat input alignment** — Fixed vertical misalignment between attach button and textarea.
+
+### Changed
+- Collapsed 4 chat input buttons (file, image, KB, voice) into single paperclip attach menu
+- Textarea auto-expands vertically with content (max 120px), supports manual resize-y
+- Removed Web Speech API dependency for voice input — backend STT is now the sole reliable path
+- Removed recording overlay and manual stop button — silence detection handles stop automatically
+
+---
+
 ## [0.5.3] - 2026-03-08
 
 ### Added

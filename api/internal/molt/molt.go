@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	Version    = "0.5.3"
+	Version    = "0.5.4"
 	owner      = "yinhe"
 	repo       = "starclaw"
-	checkEvery = 6 * time.Hour
+	checkEvery = 1 * time.Hour
 )
 
 type ReleaseInfo struct {

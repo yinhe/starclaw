@@ -47,5 +47,8 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	if m.ToolCalls == "" {
 		m.ToolCalls = "[]"
 	}
+	if m.Attachments == "" {
+		m.Attachments = "[]"
+	}
 	return nil
 }

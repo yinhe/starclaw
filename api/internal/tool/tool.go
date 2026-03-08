@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/yinhe/starclaw/internal/provider"
 )
@@ -76,8 +77,16 @@ func (r *Registry) GetDefinitions(names []string) []provider.ToolDefinition {
 		return defs
 	}
 
+	matched := make(map[string]bool)
 	for _, name := range names {
 		if t, ok := r.tools[name]; ok {
+			defs = append(defs, ToProviderDefinition(t))
+			matched[name] = true
+		}
+	}
+	// Auto-include all MCP tools (mcp_*) so agents can use MCP Bridge
+	for name, t := range r.tools {
+		if strings.HasPrefix(name, "mcp_") && !matched[name] {
 			defs = append(defs, ToProviderDefinition(t))
 		}
 	}

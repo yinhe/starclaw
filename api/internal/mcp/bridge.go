@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	BridgePort         = 9100
+	BridgePort         = 9101
 	BridgeServerName   = "host"
 	bridgeProbeTimeout = 3 * time.Second
 	owner              = "yinhe"

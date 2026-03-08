@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -14,14 +15,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/model"
+	"gorm.io/gorm"
 )
 
 type MultimodalHandler struct {
 	cfg *config.Config
+	db  *gorm.DB
 }
 
-func NewMultimodalHandler(cfg *config.Config) *MultimodalHandler {
-	return &MultimodalHandler{cfg: cfg}
+func NewMultimodalHandler(cfg *config.Config, db *gorm.DB) *MultimodalHandler {
+	return &MultimodalHandler{cfg: cfg, db: db}
 }
 
 // ServeScreenshot serves a cached browser screenshot by ID
@@ -81,7 +85,66 @@ func (h *MultimodalHandler) UploadImage(c *gin.Context) {
 	})
 }
 
-// SpeechToText accepts an audio file and returns transcribed text using OpenAI Whisper API
+// findSTTProvider looks for a provider with Whisper/STT support.
+// Priority: qwen > openai > deepseek > any other OpenAI-compatible provider.
+func (h *MultimodalHandler) findSTTProvider(userID string) (providerName, apiKey, baseURL string, found bool) {
+	// Priority order for STT providers
+	priority := []string{"qwen", "openai", "deepseek"}
+
+	for _, prov := range priority {
+		var cfg model.ModelConfig
+		if err := h.db.Where("provider = ? AND is_enabled = ? AND api_key != '' AND deleted_at IS NULL", prov, true).First(&cfg).Error; err == nil {
+			base := cfg.BaseURL
+			if base == "" {
+				switch prov {
+				case "qwen":
+					base = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+				case "openai":
+					base = "https://api.openai.com/v1"
+				case "deepseek":
+					base = "https://api.deepseek.com/v1"
+				}
+			}
+			log.Printf("[STT] Using provider: %s, base: %s", prov, base)
+			return prov, cfg.APIKey, base, true
+		}
+	}
+
+	// Fallback: any enabled provider with an API key
+	var cfg model.ModelConfig
+	if err := h.db.Where("is_enabled = ? AND api_key != '' AND deleted_at IS NULL", true).First(&cfg).Error; err == nil {
+		base := cfg.BaseURL
+		if base == "" {
+			base = "https://api.openai.com/v1"
+		}
+		log.Printf("[STT] Fallback provider: %s", cfg.Provider)
+		return cfg.Provider, cfg.APIKey, base, true
+	}
+
+	// Last resort: config file
+	if h.cfg.OpenAI.APIKey != "" {
+		base := h.cfg.OpenAI.BaseURL
+		if base == "" {
+			base = "https://api.openai.com/v1"
+		}
+		return "openai", h.cfg.OpenAI.APIKey, base, true
+	}
+
+	return "", "", "", false
+}
+
+// sttModelForProvider returns the correct whisper model name for each provider
+func sttModelForProvider(prov string) string {
+	switch prov {
+	case "qwen":
+		return "whisper-large-v3"
+	default:
+		return "whisper-1"
+	}
+}
+
+// SpeechToText accepts an audio file and returns transcribed text using Whisper API
+// Priority: Qwen (DashScope) > OpenAI > any configured provider
 func (h *MultimodalHandler) SpeechToText(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
@@ -90,15 +153,13 @@ func (h *MultimodalHandler) SpeechToText(c *gin.Context) {
 	}
 	defer file.Close()
 
-	apiKey := h.cfg.OpenAI.APIKey
-	baseURL := h.cfg.OpenAI.BaseURL
-	if apiKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenAI API key not configured for STT"})
+	userID := c.GetString("user_id")
+	provName, apiKey, baseURL, found := h.findSTTProvider(userID)
+	if !found {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "\u672a\u914d\u7f6e\u652f\u6301\u8bed\u97f3\u8bc6\u522b\u7684\u6a21\u578b\u63d0\u4f9b\u5546\uff08\u9700\u8981 Qwen \u6216 OpenAI\uff09"})
 		return
 	}
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
+	sttModel := sttModelForProvider(provName)
 
 	// Read file
 	data, err := io.ReadAll(file)
@@ -122,7 +183,7 @@ func (h *MultimodalHandler) SpeechToText(c *gin.Context) {
 	// model field
 	fmt.Fprintf(w, "--%s\r\n", boundary)
 	fmt.Fprintf(w, "Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-	fmt.Fprintf(w, "whisper-1\r\n")
+	fmt.Fprintf(w, "%s\r\n", sttModel)
 
 	// language field (optional, auto-detect)
 	fmt.Fprintf(w, "--%s--\r\n", boundary)

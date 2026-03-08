@@ -662,7 +662,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/memories/recall/:agent_id", memoryHandler.Recall)
 
 			// Multimodal (image upload, STT, TTS)
-			multimodalHandler := v1.NewMultimodalHandler(cfg)
+			multimodalHandler := v1.NewMultimodalHandler(cfg, db)
 			protected.POST("/multimodal/upload-image", multimodalHandler.UploadImage)
 			protected.POST("/multimodal/stt", multimodalHandler.SpeechToText)
 			protected.POST("/multimodal/tts", multimodalHandler.TextToSpeech)
