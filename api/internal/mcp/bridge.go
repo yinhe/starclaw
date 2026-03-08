@@ -95,6 +95,8 @@ func BridgeStatus() map[string]interface{} {
 		"connected":  connected,
 		"bridge_url": bridgeURL,
 		"port":       BridgePort,
+		"host_os":    runtime.GOOS,
+		"host_arch":  runtime.GOARCH,
 		"downloads":  BridgeDownloadURLs(),
 	}
 }

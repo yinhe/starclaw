@@ -335,11 +335,13 @@ export default function SettingsPage() {
             </div>
           </div>
           {!bridgeStatus?.connected && bridgeStatus?.downloads && (() => {
-            const ua = navigator.userAgent.toLowerCase()
-            let platform = 'linux_amd64'
+            const hostOS = bridgeStatus.host_os || 'linux'
+            const hostArch = bridgeStatus.host_arch || 'amd64'
+            let platform = `${hostOS}_${hostArch}`
             let label = 'Linux'
-            if (ua.includes('win')) { platform = 'windows_amd64'; label = 'Windows' }
-            else if (ua.includes('mac')) { platform = ua.includes('arm') ? 'darwin_arm64' : 'darwin_amd64'; label = 'macOS' }
+            if (hostOS === 'windows') { platform = 'windows_amd64'; label = 'Windows' }
+            else if (hostOS === 'darwin') { label = 'macOS' }
+            if (!bridgeStatus.downloads[platform]) { platform = 'linux_amd64' }
             const url = bridgeStatus.downloads[platform]
             return (
               <div className="space-y-3">

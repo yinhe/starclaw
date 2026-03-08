@@ -9,6 +9,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 - **MCP Bridge 下载 404** — 桥接下载链接从 `releases/latest/download` 改为使用固定版本号 `releases/download/v{BridgeVersion}/...`，避免新版本发布后因 release 未附带二进制而导致 404。新增 `BridgeVersion` 常量，桥接版本与应用版本解耦。
+- **MCP Bridge 平台检测错误** — 修复前端用浏览器 `navigator.userAgent` 检测平台导致显示错误下载版本的问题。改为由后端返回 `host_os`/`host_arch`（服务器宿主机的真实操作系统），前端据此推荐正确的下载版本。
 
 ---
 
