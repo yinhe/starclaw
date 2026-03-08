@@ -1,0 +1,25 @@
+@echo off
+REM StarClaw Claw — Deploy via GitHub (Windows)
+REM Usage: scripts\deploy.bat [commit message]
+REM Flow: sync to OSS repo → push GitHub → server git pull → docker rebuild
+
+setlocal
+set MSG=%~1
+if "%MSG%"=="" set MSG=update
+
+echo === [1/3] Sync to OSS repo ===
+robocopy "E:\starclaw\claw" "E:\starclaw-oss" /E /XD node_modules .git data .vite /XF *.tar.gz *.exe mcp-bridge-* server.exe > nul
+cd /d E:\starclaw-oss
+git add -A
+git diff --cached --quiet || git commit -m "%MSG%"
+git push origin main
+echo Pushed to GitHub
+
+echo.
+echo === [2/3] Deploy on server ===
+ssh root@starclaw.me "cd /opt/starclaw/claw && bash deploy-update.sh"
+
+echo.
+echo === [3/3] Done ===
+echo https://app.starclaw.me
+endlocal
