@@ -55,6 +55,10 @@ func main() {
 	swarmClient.Start()
 	defer swarmClient.Stop()
 
+	// Initialize Queen billing client (for hosted mode centralized billing)
+	billingClient := swarm.NewBillingClient(cfg.Swarm.QueenURL, cfg.JWT.Secret)
+	v1.SetQueenBilling(billingClient)
+
 	// Setup router
 	r := router.Setup(cfg, db, rdb, swarmClient)
 

@@ -19,6 +19,7 @@ const (
 	bridgeProbeTimeout = 3 * time.Second
 	owner              = "yinhe"
 	repoName           = "starclaw"
+	BridgeVersion      = "0.5.6"
 )
 
 // DetectBridgeURL determines the MCP Bridge URL based on runtime environment.
@@ -100,7 +101,7 @@ func BridgeStatus() map[string]interface{} {
 
 // BridgeDownloadURLs returns download URLs for each platform from GitHub Release.
 func BridgeDownloadURLs() map[string]string {
-	base := fmt.Sprintf("https://github.com/%s/%s/releases/latest/download", owner, repoName)
+	base := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s", owner, repoName, BridgeVersion)
 	return map[string]string{
 		"windows_amd64": base + "/mcp-bridge-windows-amd64.exe",
 		"darwin_amd64":  base + "/mcp-bridge-darwin-amd64",

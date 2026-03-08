@@ -5,6 +5,13 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-03-08
+
+### Fixed
+- **MCP Bridge 下载 404** — 桥接下载链接从 `releases/latest/download` 改为使用固定版本号 `releases/download/v{BridgeVersion}/...`，避免新版本发布后因 release 未附带二进制而导致 404。新增 `BridgeVersion` 常量，桥接版本与应用版本解耦。
+
+---
+
 ## [0.5.5] - 2026-03-08
 
 ### Fixed
