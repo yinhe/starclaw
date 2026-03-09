@@ -95,4 +95,4 @@ networks:
     driver: bridge
   queen-net:
     external: true
-    name: queen_starqueen
+    name: starqueen
