@@ -393,8 +393,8 @@ export default function SettingsPage() {
             <div className="flex items-center gap-3 p-3 mb-4 bg-amber-50 border border-amber-200 rounded-lg">
               <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-amber-800">需要设置公网地址才能与其他 Claw 互联</p>
-                <p className="text-xs text-amber-600 mt-0.5">其他节点需要通过这个地址连接到你，例如 https://your-domain.com</p>
+                <p className="text-sm font-medium text-amber-800">需要设置可访问地址才能与其他 Claw 互联</p>
+                <p className="text-xs text-amber-600 mt-0.5">域名或 IP 均可，例如 https://starclaw.me 或 http://192.168.1.100:8080</p>
               </div>
               <button
                 onClick={() => { setEditingNode(true); setNodeForm({ address: '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }}
@@ -486,7 +486,10 @@ export default function SettingsPage() {
                         <span className="text-gray-400 w-16 shrink-0">系统:</span>
                         <span className="text-gray-500">{nodeInfo.os}/{nodeInfo.arch} · {nodeInfo.go_version}</span>
                       </div>
-                      <p className="text-gray-400 mt-1">Node ID 由公钥哈希派生，不可伪造。私钥安全存储在节点本地。</p>
+                      <div className="mt-2 p-2.5 bg-white/60 rounded border border-violet-100">
+                        <p className="text-gray-500 font-medium mb-1">Ed25519 签名算法</p>
+                        <p className="text-gray-400 leading-relaxed">Ed25519 是基于 Curve25519 椭圆曲线的数字签名算法，由 Daniel J. Bernstein 设计。相比 RSA，它的密钥更短（32 字节）、签名更快、安全性更高。SSH、Signal、区块链（Solana）等广泛采用。每个 Claw 启动时自动生成一对密钥：私钥永不离开本地，公钥用于身份验证。Node ID = SHA-256(公钥) 前16位，如同区块链钱包地址不可伪造。</p>
+                      </div>
                     </div>
                   )}
                 </>
@@ -494,8 +497,9 @@ export default function SettingsPage() {
                 <div className="space-y-2 mt-1">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">公网地址 <span className="text-red-400">*</span></label>
-                      <input value={nodeForm.address} onChange={(e) => setNodeForm({ ...nodeForm, address: e.target.value })} className="w-full px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="https://your-domain.com" autoFocus />
+                      <label className="block text-xs text-gray-500 mb-1">可访问地址 <span className="text-red-400">*</span></label>
+                      <input value={nodeForm.address} onChange={(e) => setNodeForm({ ...nodeForm, address: e.target.value })} className="w-full px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="域名或IP，如 http://192.168.1.100:8080" autoFocus />
+                      <p className="text-xs text-gray-400 mt-0.5">域名、公网IP、局域网IP 均可</p>
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Claw 名称</label>
@@ -551,7 +555,7 @@ export default function SettingsPage() {
                   onChange={(e) => setPeerAddr(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link')?.click() } }}
                   className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                  placeholder="输入对方 Claw 地址，按回车建立链路"
+                  placeholder="对方地址，如 https://xx.com 或 http://192.168.1.x:8080"
                 />
                 <button
                   id="btn-nydus-link"
@@ -622,7 +626,7 @@ export default function SettingsPage() {
                   onChange={(e) => setPeerAddr(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link-empty')?.click() } }}
                   className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                  placeholder="对方 Claw 地址，如 https://their-claw.com"
+                  placeholder="对方地址，如 https://xx.com 或 http://192.168.1.x:8080"
                 />
                 <button
                   id="btn-nydus-link-empty"
