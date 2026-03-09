@@ -186,10 +186,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			c.JSON(200, molt.GetVersionInfo())
 		})
 
-		// Peer-to-Peer inter-node endpoints (public, token-based auth)
+		// Peer-to-Peer inter-node endpoints (public, signature-verified)
 		peerPublicHandler := v1.NewPeerHandler(db, cfg)
 		apiV1.GET("/peer/handshake", peerPublicHandler.HandleHandshake)
-		apiV1.POST("/peer/register", peerPublicHandler.HandlePeerRegister)
+		apiV1.POST("/peer/gossip", peerPublicHandler.HandleGossip)
 		apiV1.POST("/peer/relay", peerPublicHandler.HandleRelayTask)
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)

@@ -393,8 +393,9 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <Radio className="w-4 h-4 text-blue-600" />
                   <span className="text-sm font-semibold text-blue-800">本节点</span>
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Ed25519</span>
                 </div>
-                <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{nodeInfo.node_id?.slice(0, 12)}...</span>
+                <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{nodeInfo.node_id}</span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
                 <div><span className="text-gray-500">名称:</span> <span className="font-medium">{nodeInfo.name || '—'}</span></div>
@@ -402,17 +403,25 @@ export default function SettingsPage() {
                 <div><span className="text-gray-500">地域:</span> <span className="font-medium">{nodeInfo.region || '未设置'}</span></div>
                 <div><span className="text-gray-500">节点数:</span> <span className="font-medium">{nodeInfo.online_peers}/{nodeInfo.peer_count} 在线</span></div>
               </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-gray-500">节点地址:</span>
-                {nodeInfo.address ? (
-                  <span className="font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">{nodeInfo.address}</span>
-                ) : (
-                  <span className="text-orange-600">未设置（其他节点无法连接到你）</span>
-                )}
-                {nodeInfo.node_id && (
-                  <button onClick={() => { navigator.clipboard.writeText(nodeInfo.address || nodeInfo.node_id); setNodeMsg('已复制') ; setTimeout(() => setNodeMsg(''), 2000) }} className="text-gray-400 hover:text-gray-600"><Copy className="w-3 h-3" /></button>
-                )}
+              <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 w-16">指纹:</span>
+                  <span className="font-mono text-gray-600">{nodeInfo.fingerprint}</span>
+                  <button onClick={() => { navigator.clipboard.writeText(nodeInfo.fingerprint); setNodeMsg('指纹已复制'); setTimeout(() => setNodeMsg(''), 2000) }} className="text-gray-400 hover:text-gray-600"><Copy className="w-3 h-3" /></button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 w-16">地址:</span>
+                  {nodeInfo.address ? (
+                    <span className="font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">{nodeInfo.address}</span>
+                  ) : (
+                    <span className="text-orange-600">未设置（其他节点无法连接到你）</span>
+                  )}
+                  {nodeInfo.address && (
+                    <button onClick={() => { navigator.clipboard.writeText(nodeInfo.address); setNodeMsg('地址已复制'); setTimeout(() => setNodeMsg(''), 2000) }} className="text-gray-400 hover:text-gray-600"><Copy className="w-3 h-3" /></button>
+                  )}
+                </div>
               </div>
+              <p className="text-xs text-gray-400 mt-2">Node ID 由 Ed25519 公钥哈希派生，不可伪造。私钥安全存储在节点本地。</p>
             </div>
           )}
 

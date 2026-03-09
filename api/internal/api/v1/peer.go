@@ -1,9 +1,6 @@
 package v1
 
 import (
-	"bytes"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,35 +17,64 @@ import (
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/node"
 	"gorm.io/gorm"
 )
 
-// PeerHandler manages node identity and peer-to-peer networking
+// PeerHandler manages node identity and peer-to-peer networking.
+// Uses Ed25519 crypto identity: Node ID = SHA256(publicKey)[:16]
 type PeerHandler struct {
-	db     *gorm.DB
-	cfg    *config.Config
-	nodeID string
-	httpC  *http.Client
+	db       *gorm.DB
+	cfg      *config.Config
+	identity *node.Identity
+	gossip   *node.GossipEngine
+	httpC    *http.Client
 }
 
 func NewPeerHandler(db *gorm.DB, cfg *config.Config) *PeerHandler {
+	identity := node.LoadOrCreateIdentity()
+
 	h := &PeerHandler{
-		db:  db,
-		cfg: cfg,
-		httpC: &http.Client{Timeout: 10 * time.Second},
+		db:       db,
+		cfg:      cfg,
+		identity: identity,
+		httpC:    &http.Client{Timeout: 10 * time.Second},
 	}
-	h.nodeID = h.loadOrCreateNodeID()
+
+	// Initialize gossip engine
+	h.gossip = node.NewGossipEngine(identity, cfg.Node.Address, func(peers []node.PeerInfo) {
+		h.syncGossipToDB(peers)
+	})
+
+	// Seed gossip with existing DB peers
+	var dbPeers []model.Peer
+	db.Find(&dbPeers)
+	for _, p := range dbPeers {
+		h.gossip.AddPeer(node.PeerInfo{
+			NodeID:    p.NodeID,
+			Address:   p.Address,
+			Name:      p.Name,
+			Version:   p.Version,
+			Region:    p.Region,
+			PublicKey: p.PublicKey,
+			LastSeen:  p.LastSeen.Unix(),
+		})
+	}
+
+	// Start gossip loop (every 30s)
+	h.gossip.Start(30 * time.Second)
+
 	return h
 }
 
-// NodeID returns this node's unique identifier
+// NodeID returns this node's crypto-derived ID
 func (h *PeerHandler) NodeID() string {
-	return h.nodeID
+	return h.identity.NodeID
 }
 
 // --- Node Identity ---
 
-// GetNodeInfo returns this Claw's identity and capabilities
+// GetNodeInfo returns this Claw's cryptographic identity and capabilities
 func (h *PeerHandler) GetNodeInfo(c *gin.Context) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
@@ -59,16 +85,15 @@ func (h *PeerHandler) GetNodeInfo(c *gin.Context) {
 		name = hostname
 	}
 
-	// Count peers
 	var peerCount int64
 	h.db.Model(&model.Peer{}).Count(&peerCount)
-
-	// Count online peers
 	var onlineCount int64
 	h.db.Model(&model.Peer{}).Where("status = ?", "online").Count(&onlineCount)
 
 	c.JSON(http.StatusOK, gin.H{
-		"node_id":      h.nodeID,
+		"node_id":      h.identity.NodeID,
+		"public_key":   h.identity.PublicKeyHex(),
+		"fingerprint":  h.identity.Fingerprint(),
 		"name":         name,
 		"hostname":     hostname,
 		"address":      h.cfg.Node.Address,
@@ -99,6 +124,7 @@ func (h *PeerHandler) UpdateNodeConfig(c *gin.Context) {
 	if req.Address != "" {
 		h.cfg.Node.Address = req.Address
 		viper.Set("node.address", req.Address)
+		h.gossip.SetAddress(req.Address)
 	}
 	if req.Name != "" {
 		h.cfg.Node.Name = req.Name
@@ -123,11 +149,10 @@ func (h *PeerHandler) ListPeers(c *gin.Context) {
 	c.JSON(http.StatusOK, peers)
 }
 
-// AddPeer adds a remote Claw as a peer via handshake
+// AddPeer adds a remote Claw via signed handshake
 func (h *PeerHandler) AddPeer(c *gin.Context) {
 	var req struct {
 		Address string `json:"address" binding:"required"`
-		Token   string `json:"token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -136,57 +161,36 @@ func (h *PeerHandler) AddPeer(c *gin.Context) {
 
 	addr := strings.TrimRight(req.Address, "/")
 
-	// Generate a shared token if not provided
-	token := req.Token
-	if token == "" {
-		b := make([]byte, 16)
-		rand.Read(b)
-		token = hex.EncodeToString(b)
-	}
-
-	// Handshake: probe the remote node
-	remoteInfo, err := h.probeRemoteNode(addr, token)
+	// Signed handshake: send our identity, verify theirs
+	remoteInfo, err := h.signedHandshake(addr)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("无法连接到远程节点: %v", err)})
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("握手失败: %v", err)})
 		return
 	}
 
 	remoteNodeID, _ := remoteInfo["node_id"].(string)
-	if remoteNodeID == "" {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "远程节点未返回 node_id"})
+	remotePubKey, _ := remoteInfo["public_key"].(string)
+	if remoteNodeID == "" || remotePubKey == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "远程节点未返回有效身份"})
 		return
 	}
 
-	// Check if already exists
-	var existing model.Peer
-	if h.db.Where("node_id = ?", remoteNodeID).First(&existing).Error == nil {
-		// Update existing
-		existing.Address = addr
-		existing.Status = "online"
-		existing.LastSeen = time.Now()
-		existing.Token = token
-		if name, ok := remoteInfo["name"].(string); ok {
-			existing.Name = name
-		}
-		if ver, ok := remoteInfo["version"].(string); ok {
-			existing.Version = ver
-		}
-		if region, ok := remoteInfo["region"].(string); ok {
-			existing.Region = region
-		}
-		h.db.Save(&existing)
-		c.JSON(http.StatusOK, existing)
+	// Verify: node_id must match public key hash
+	derivedID, err := node.DeriveNodeIDFromPubKey(remotePubKey)
+	if err != nil || derivedID != remoteNodeID {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "远程节点身份验证失败: node_id 与公钥不匹配"})
 		return
 	}
 
-	peer := model.Peer{
-		ID:       uuid.New().String(),
-		NodeID:   remoteNodeID,
-		Address:  addr,
-		Token:    token,
-		Status:   "online",
-		LastSeen: time.Now(),
+	// Upsert peer
+	var peer model.Peer
+	if h.db.Where("node_id = ?", remoteNodeID).First(&peer).Error != nil {
+		peer = model.Peer{ID: uuid.New().String(), NodeID: remoteNodeID}
 	}
+	peer.Address = addr
+	peer.PublicKey = remotePubKey
+	peer.Status = "online"
+	peer.LastSeen = time.Now()
 	if name, ok := remoteInfo["name"].(string); ok {
 		peer.Name = name
 	}
@@ -197,29 +201,35 @@ func (h *PeerHandler) AddPeer(c *gin.Context) {
 		peer.Region = region
 	}
 
-	if err := h.db.Create(&peer).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存节点失败"})
-		return
-	}
+	h.db.Save(&peer)
 
-	// Register ourselves on the remote node (bidirectional)
-	go h.registerSelfOnRemote(addr, token)
+	// Add to gossip engine
+	h.gossip.AddPeer(node.PeerInfo{
+		NodeID:    remoteNodeID,
+		Address:   addr,
+		Name:      peer.Name,
+		Version:   peer.Version,
+		Region:    peer.Region,
+		PublicKey: remotePubKey,
+		LastSeen:  time.Now().Unix(),
+	})
 
-	log.Printf("[peer] added peer %s (%s) at %s", peer.Name, peer.NodeID[:8], addr)
+	log.Printf("[peer] added verified peer %s (%s) at %s", peer.Name, remoteNodeID[:8], addr)
 	c.JSON(http.StatusCreated, peer)
 }
 
 // RemovePeer removes a peer
 func (h *PeerHandler) RemovePeer(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.db.Where("id = ?", id).Delete(&model.Peer{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
-		return
+	var peer model.Peer
+	if h.db.First(&peer, "id = ?", id).Error == nil {
+		h.gossip.RemovePeer(peer.NodeID)
 	}
+	h.db.Where("id = ?", id).Delete(&model.Peer{})
 	c.JSON(http.StatusOK, gin.H{"message": "节点已移除"})
 }
 
-// PingPeer checks if a peer is reachable
+// PingPeer checks if a peer is reachable with signature verification
 func (h *PeerHandler) PingPeer(c *gin.Context) {
 	id := c.Param("id")
 	var peer model.Peer
@@ -228,7 +238,7 @@ func (h *PeerHandler) PingPeer(c *gin.Context) {
 		return
 	}
 
-	info, err := h.probeRemoteNode(peer.Address, peer.Token)
+	info, err := h.signedHandshake(peer.Address)
 	if err != nil {
 		peer.Status = "offline"
 		h.db.Save(&peer)
@@ -242,13 +252,12 @@ func (h *PeerHandler) PingPeer(c *gin.Context) {
 		peer.Version = ver
 	}
 	h.db.Save(&peer)
-
 	c.JSON(http.StatusOK, gin.H{"status": "online", "remote": info})
 }
 
-// --- Inter-node API (called by remote peers) ---
+// --- Inter-node API (called by remote peers, public) ---
 
-// HandleHandshake is called by a remote peer to probe this node
+// HandleHandshake returns this node's signed identity
 func (h *PeerHandler) HandleHandshake(c *gin.Context) {
 	hostname, _ := os.Hostname()
 	name := h.cfg.Node.Name
@@ -256,55 +265,50 @@ func (h *PeerHandler) HandleHandshake(c *gin.Context) {
 		name = hostname
 	}
 
+	challenge, signature := h.identity.SignChallenge()
+
 	c.JSON(http.StatusOK, gin.H{
-		"node_id": h.nodeID,
-		"name":    name,
-		"version": molt.Version,
-		"region":  h.cfg.Node.Region,
-		"address": h.cfg.Node.Address,
+		"node_id":    h.identity.NodeID,
+		"public_key": h.identity.PublicKeyHex(),
+		"name":       name,
+		"version":    molt.Version,
+		"region":     h.cfg.Node.Region,
+		"address":    h.cfg.Node.Address,
+		"challenge":  challenge,
+		"signature":  signature,
 	})
 }
 
-// HandlePeerRegister is called by a remote peer to register itself here
-func (h *PeerHandler) HandlePeerRegister(c *gin.Context) {
+// HandleGossip receives gossip from a remote peer (signature verified)
+func (h *PeerHandler) HandleGossip(c *gin.Context) {
 	var req struct {
-		NodeID  string `json:"node_id" binding:"required"`
-		Name    string `json:"name"`
-		Address string `json:"address" binding:"required"`
-		Version string `json:"version"`
-		Region  string `json:"region"`
-		Token   string `json:"token"`
+		FromNodeID string          `json:"from_node_id"`
+		PublicKey  string          `json:"public_key"`
+		Challenge  string          `json:"challenge"`
+		Signature  string          `json:"signature"`
+		Peers      []node.PeerInfo `json:"peers"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Upsert peer
-	var peer model.Peer
-	if h.db.Where("node_id = ?", req.NodeID).First(&peer).Error != nil {
-		peer = model.Peer{
-			ID:     uuid.New().String(),
-			NodeID: req.NodeID,
-		}
+	myPeers, err := h.gossip.HandleGossip(req.FromNodeID, req.PublicKey, req.Challenge, req.Signature, req.Peers)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
 	}
-	peer.Name = req.Name
-	peer.Address = req.Address
-	peer.Version = req.Version
-	peer.Region = req.Region
-	peer.Token = req.Token
-	peer.Status = "online"
-	peer.LastSeen = time.Now()
 
-	h.db.Save(&peer)
-	log.Printf("[peer] remote peer registered: %s (%s) at %s", peer.Name, peer.NodeID[:8], peer.Address)
-	c.JSON(http.StatusOK, gin.H{"message": "registered", "node_id": h.nodeID})
+	c.JSON(http.StatusOK, gin.H{"peers": myPeers})
 }
 
-// HandleRelayTask receives a task delegation from a remote peer
+// HandleRelayTask receives a signed task delegation from a remote peer
 func (h *PeerHandler) HandleRelayTask(c *gin.Context) {
 	var req struct {
 		FromNodeID string `json:"from_node_id"`
+		PublicKey  string `json:"public_key"`
+		Challenge  string `json:"challenge"`
+		Signature  string `json:"signature"`
 		TaskType   string `json:"task_type"`
 		Payload    string `json:"payload"`
 	}
@@ -313,44 +317,27 @@ func (h *PeerHandler) HandleRelayTask(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[peer] received relay task from %s: type=%s", req.FromNodeID, req.TaskType)
+	// Verify signature
+	if !node.VerifySignature(req.PublicKey, []byte(req.Challenge), req.Signature) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "签名验证失败"})
+		return
+	}
 
-	// TODO: Route to appropriate handler based on task_type
+	log.Printf("[peer] verified relay task from %s: type=%s", req.FromNodeID, req.TaskType)
+
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "task received",
-		"node_id":    h.nodeID,
-		"task_type":  req.TaskType,
-		"status":     "queued",
+		"message":   "task received",
+		"node_id":   h.identity.NodeID,
+		"task_type": req.TaskType,
+		"status":    "queued",
 	})
 }
 
 // --- Helpers ---
 
-func (h *PeerHandler) loadOrCreateNodeID() string {
-	// Try to load from file
-	data, err := os.ReadFile(".node_id")
-	if err == nil {
-		nid := strings.TrimSpace(string(data))
-		if nid != "" {
-			return nid
-		}
-	}
-
-	// Generate new node ID
-	nid := uuid.New().String()
-	os.WriteFile(".node_id", []byte(nid), 0600)
-	log.Printf("[node] generated new node ID: %s", nid)
-	return nid
-}
-
-func (h *PeerHandler) probeRemoteNode(address, token string) (map[string]interface{}, error) {
+func (h *PeerHandler) signedHandshake(address string) (map[string]interface{}, error) {
 	url := address + "/v1/peer/handshake"
-	req, _ := http.NewRequest("GET", url, nil)
-	if token != "" {
-		req.Header.Set("X-Peer-Token", token)
-	}
-
-	resp, err := h.httpC.Do(req)
+	resp, err := h.httpC.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("连接失败: %w", err)
 	}
@@ -365,70 +352,46 @@ func (h *PeerHandler) probeRemoteNode(address, token string) (map[string]interfa
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
+
+	// Verify remote node's signature
+	pubKey, _ := result["public_key"].(string)
+	challenge, _ := result["challenge"].(string)
+	signature, _ := result["signature"].(string)
+	if pubKey == "" || challenge == "" || signature == "" {
+		return nil, fmt.Errorf("远程节点未提供签名")
+	}
+
+	if !node.VerifySignature(pubKey, []byte(challenge), signature) {
+		return nil, fmt.Errorf("远程节点签名验证失败")
+	}
+
+	// Verify node_id matches public key
+	claimedID, _ := result["node_id"].(string)
+	derivedID, _ := node.DeriveNodeIDFromPubKey(pubKey)
+	if claimedID != derivedID {
+		return nil, fmt.Errorf("node_id 与公钥不匹配 (claimed=%s derived=%s)", claimedID, derivedID)
+	}
+
 	return result, nil
 }
 
-func (h *PeerHandler) registerSelfOnRemote(remoteAddr, token string) {
-	hostname, _ := os.Hostname()
-	name := h.cfg.Node.Name
-	if name == "" {
-		name = hostname
+// syncGossipToDB syncs gossip-discovered peers into the database
+func (h *PeerHandler) syncGossipToDB(peers []node.PeerInfo) {
+	for _, p := range peers {
+		if p.NodeID == h.identity.NodeID {
+			continue
+		}
+		var dbPeer model.Peer
+		if h.db.Where("node_id = ?", p.NodeID).First(&dbPeer).Error != nil {
+			dbPeer = model.Peer{ID: uuid.New().String(), NodeID: p.NodeID}
+		}
+		dbPeer.Address = p.Address
+		dbPeer.Name = p.Name
+		dbPeer.Version = p.Version
+		dbPeer.Region = p.Region
+		dbPeer.PublicKey = p.PublicKey
+		dbPeer.Status = "online"
+		dbPeer.LastSeen = time.Unix(p.LastSeen, 0)
+		h.db.Save(&dbPeer)
 	}
-
-	body := map[string]string{
-		"node_id": h.nodeID,
-		"name":    name,
-		"address": h.cfg.Node.Address,
-		"version": molt.Version,
-		"region":  h.cfg.Node.Region,
-		"token":   token,
-	}
-	data, _ := json.Marshal(body)
-
-	url := remoteAddr + "/v1/peer/register"
-	req, _ := http.NewRequest("POST", url, bytes.NewReader(data))
-	req.Header.Set("Content-Type", "application/json")
-	if token != "" {
-		req.Header.Set("X-Peer-Token", token)
-	}
-
-	resp, err := h.httpC.Do(req)
-	if err != nil {
-		log.Printf("[peer] failed to register on remote %s: %v", remoteAddr, err)
-		return
-	}
-	defer resp.Body.Close()
-	log.Printf("[peer] registered self on remote %s (HTTP %d)", remoteAddr, resp.StatusCode)
-}
-
-// RelayTaskToPeer sends a task to a specific peer
-func (h *PeerHandler) RelayTaskToPeer(peerID string, taskType string, payload string) (map[string]interface{}, error) {
-	var peer model.Peer
-	if err := h.db.First(&peer, "id = ?", peerID).Error; err != nil {
-		return nil, fmt.Errorf("peer not found")
-	}
-
-	body := map[string]string{
-		"from_node_id": h.nodeID,
-		"task_type":    taskType,
-		"payload":      payload,
-	}
-	data, _ := json.Marshal(body)
-
-	url := peer.Address + "/v1/peer/relay"
-	req, _ := http.NewRequest("POST", url, bytes.NewReader(data))
-	req.Header.Set("Content-Type", "application/json")
-	if peer.Token != "" {
-		req.Header.Set("X-Peer-Token", peer.Token)
-	}
-
-	resp, err := h.httpC.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-	return result, nil
 }
