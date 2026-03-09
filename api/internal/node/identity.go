@@ -14,12 +14,12 @@ import (
 )
 
 // Identity holds this node's cryptographic identity (Ed25519 keypair).
-// Node ID = first 16 hex chars of SHA-256(publicKey), similar to a blockchain address.
+// Node ID = "claw:" + first 40 hex chars of SHA-256(publicKey) = 160 bits, same as Bitcoin address space.
 type Identity struct {
 	PrivateKey ed25519.PrivateKey `json:"-"`
 	PublicKey  ed25519.PublicKey  `json:"public_key"`
-	NodeID    string             `json:"node_id"`
-	mu        sync.RWMutex
+	NodeID     string             `json:"node_id"`
+	mu         sync.RWMutex
 }
 
 const keyFile = ".node_key"
@@ -59,7 +59,7 @@ func LoadOrCreateIdentity() *Identity {
 		PublicKey  []byte `json:"public_key"`
 	}{
 		PrivateKey: priv,
-		PublicKey:   pub,
+		PublicKey:  pub,
 	}
 	data, _ := json.Marshal(stored)
 	if err := os.WriteFile(keyFile, data, 0600); err != nil {
@@ -70,10 +70,11 @@ func LoadOrCreateIdentity() *Identity {
 	return id
 }
 
-// deriveNodeID returns first 16 hex chars of SHA-256(publicKey)
+// deriveNodeID returns "claw:" + first 40 hex chars of SHA-256(publicKey) = 160 bits
+// 160-bit address space supports ~10^24 unique IDs without collision (same as Bitcoin)
 func deriveNodeID(pub ed25519.PublicKey) string {
 	hash := sha256.Sum256(pub)
-	return hex.EncodeToString(hash[:])[:16]
+	return "claw:" + hex.EncodeToString(hash[:])[:40]
 }
 
 // Fingerprint returns a human-readable fingerprint of the public key (like SSH)

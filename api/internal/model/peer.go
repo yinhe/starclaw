@@ -5,7 +5,7 @@ import "time"
 // Peer represents a known remote Claw node that this instance can communicate with.
 type Peer struct {
 	ID        string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	NodeID    string    `json:"node_id" gorm:"type:varchar(16);uniqueIndex;not null"` // SHA256(pubkey)[:16]
+	NodeID    string    `json:"node_id" gorm:"type:varchar(50);uniqueIndex;not null"` // claw: + SHA256(pubkey)[:40] = 160 bits
 	Name      string    `json:"name" gorm:"type:varchar(100)"`
 	Address   string    `json:"address" gorm:"type:varchar(255);not null"`
 	Region    string    `json:"region" gorm:"type:varchar(50)"`

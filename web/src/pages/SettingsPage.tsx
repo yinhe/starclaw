@@ -445,7 +445,7 @@ export default function SettingsPage() {
                       {nodeInfo.region && <span className="text-gray-400">{nodeInfo.region}</span>}
                       {nodeInfo.peer_count > 0 && <span className="text-violet-600 font-medium">{nodeInfo.online_peers}/{nodeInfo.peer_count} 在线</span>}
                     </div>
-                    <span className="font-mono text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded">{nodeInfo.node_id}</span>
+                    <button onClick={() => { navigator.clipboard.writeText(nodeInfo.node_id); setNodeMsg('Node ID 已复制'); setTimeout(() => setNodeMsg(''), 1500) }} className="font-mono text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded hover:bg-violet-200 cursor-pointer" title={nodeInfo.node_id}>{nodeInfo.node_id?.length > 20 ? nodeInfo.node_id.slice(0, 16) + '...' + nodeInfo.node_id.slice(-6) : nodeInfo.node_id}</button>
                   </div>
 
                   {/* Address line */}
@@ -584,7 +584,7 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className={`w-2 h-2 rounded-full shrink-0 ${peer.status === 'online' ? 'bg-green-500' : peer.status === 'offline' ? 'bg-red-400' : 'bg-gray-300'}`} />
                       <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{/^[0-9a-f]{10,}$/i.test(peer.name || '') ? '远程 Claw' : (peer.name || '远程 Claw')} <span className="text-xs font-mono text-gray-400">{peer.node_id?.slice(0, 8)}</span></div>
+                        <div className="text-sm font-medium truncate">{/^[0-9a-f]{10,}$/i.test(peer.name || '') ? '远程 Claw' : (peer.name || '远程 Claw')} <span className="text-xs font-mono text-gray-400" title={peer.node_id}>{peer.node_id?.startsWith('claw:') ? peer.node_id.slice(0, 11) + '...' : peer.node_id?.slice(0, 8)}</span></div>
                         <div className="text-xs text-gray-400 truncate">{peer.address} · v{peer.version}{peer.region ? ` · ${peer.region}` : ''}</div>
                       </div>
                     </div>
