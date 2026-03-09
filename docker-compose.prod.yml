@@ -56,7 +56,7 @@ services:
       STARCLAW_JWT_SECRET: ${JWT_SECRET}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       STARCLAW_SWARM_ENABLED: "true"
-      STARCLAW_SWARM_QUEEN_URL: http://host.docker.internal:8090
+      STARCLAW_SWARM_QUEEN_URL: http://starclaw-queen-swarm:8090
       NODE_KEY_PATH: /app/data/identity/.node_key
     volumes:
       - ./data/identity:/app/data/identity
@@ -75,6 +75,7 @@ services:
         condition: service_healthy
     networks:
       - starclaw-net
+      - queen-net
 
   web:
     build:
@@ -92,3 +93,6 @@ services:
 networks:
   starclaw-net:
     driver: bridge
+  queen-net:
+    external: true
+    name: queen_starqueen
