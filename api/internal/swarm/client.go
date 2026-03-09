@@ -17,13 +17,14 @@ import (
 
 // Client handles swarm registration and heartbeat with Queen/Overlord
 type Client struct {
-	cfg    config.SwarmConfig
-	nodeID string
-	token  string
-	clawID string
-	mu     sync.RWMutex
-	stopCh chan struct{}
-	httpC  *http.Client
+	cfg         config.SwarmConfig
+	nodeID      string
+	token       string
+	clawID      string
+	nodeAddress string
+	mu          sync.RWMutex
+	stopCh      chan struct{}
+	httpC       *http.Client
 }
 
 // NewClient creates a swarm client from config
@@ -99,6 +100,13 @@ func (c *Client) SetClawID(id string) {
 	c.mu.Unlock()
 }
 
+// SetAddress sets the node's public-facing address for swarm registration
+func (c *Client) SetAddress(addr string) {
+	c.mu.Lock()
+	c.nodeAddress = addr
+	c.mu.Unlock()
+}
+
 // QueenURL returns the configured Queen URL
 func (c *Client) QueenURL() string {
 	return c.cfg.QueenURL
@@ -147,11 +155,16 @@ func (c *Client) register() error {
 	cid := c.clawID
 	c.mu.RUnlock()
 
+	addr := c.nodeAddress
+	if addr == "" {
+		addr = fmt.Sprintf("%s:8080", getOutboundIP())
+	}
+
 	body := map[string]interface{}{
 		"name":    name,
 		"role":    "claw",
 		"version": molt.Version,
-		"address": fmt.Sprintf("%s:8080", getOutboundIP()),
+		"address": addr,
 		"region":  c.cfg.Region,
 		"claw_id": cid,
 	}

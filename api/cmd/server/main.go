@@ -58,6 +58,9 @@ func main() {
 	// Start Swarm client (register with Queen + heartbeat)
 	swarmClient := swarm.NewClient(cfg.Swarm)
 	swarmClient.SetClawID(identity.NodeID)
+	if cfg.Node.Address != "" {
+		swarmClient.SetAddress(cfg.Node.Address)
+	}
 	swarmClient.Start()
 	defer swarmClient.Stop()
 
