@@ -13,8 +13,15 @@ type Config struct {
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	OpenAI   OpenAIConfig   `mapstructure:"openai"`
 	OAuth    OAuthConfig    `mapstructure:"oauth"`
+	Node     NodeConfig     `mapstructure:"node"`
 	Swarm    SwarmConfig    `mapstructure:"swarm"`
 	Overlord OverlordConfig `mapstructure:"overlord"`
+}
+
+type NodeConfig struct {
+	Address string `mapstructure:"address"` // public address of this Claw, e.g. https://starclaw.me
+	Name    string `mapstructure:"name"`    // display name, default hostname
+	Region  string `mapstructure:"region"`  // e.g. cn-east, us-west
 }
 
 type SwarmConfig struct {
@@ -112,6 +119,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("overlord.overlord_url", "")
 	viper.SetDefault("overlord.node_name", "")
 	viper.SetDefault("overlord.region", "")
+	viper.SetDefault("node.address", "")
+	viper.SetDefault("node.name", "")
+	viper.SetDefault("node.region", "")
 	viper.SetDefault("overlord.heartbeat_interval", 30)
 
 	if err := viper.ReadInConfig(); err != nil {

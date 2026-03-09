@@ -116,7 +116,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	mcp.AutoRegisterBridge(toolRegistry)
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{})
 
 	// Seed built-in agent templates (Creep marketplace)
 	v1.SeedBuiltinTemplates(db)
@@ -185,6 +185,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.GET("/version", func(c *gin.Context) {
 			c.JSON(200, molt.GetVersionInfo())
 		})
+
+		// Peer-to-Peer inter-node endpoints (public, token-based auth)
+		peerPublicHandler := v1.NewPeerHandler(db, cfg)
+		apiV1.GET("/peer/handshake", peerPublicHandler.HandleHandshake)
+		apiV1.POST("/peer/register", peerPublicHandler.HandlePeerRegister)
+		apiV1.POST("/peer/relay", peerPublicHandler.HandleRelayTask)
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)
 		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
@@ -626,6 +632,15 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/swarm/join", systemHandler.JoinSwarm)
 			protected.POST("/system/swarm/leave", systemHandler.LeaveSwarm)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
+
+			// Node Identity & Peer Networking
+			peerHandler := v1.NewPeerHandler(db, cfg)
+			protected.GET("/node/info", peerHandler.GetNodeInfo)
+			protected.PUT("/node/config", peerHandler.UpdateNodeConfig)
+			protected.GET("/peers", peerHandler.ListPeers)
+			protected.POST("/peers", peerHandler.AddPeer)
+			protected.DELETE("/peers/:id", peerHandler.RemovePeer)
+			protected.POST("/peers/:id/ping", peerHandler.PingPeer)
 
 			// Workflow Templates (Marketplace)
 			wfTemplateHandler := v1.NewWorkflowTemplateHandler(db)

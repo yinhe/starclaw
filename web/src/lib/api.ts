@@ -59,6 +59,19 @@ export const systemAPI = {
   leaveOverlord: () => api.post('/system/overlord/leave'),
 }
 
+// Node Identity & Peer Networking
+export const nodeAPI = {
+  getInfo: () => api.get('/node/info'),
+  updateConfig: (data: { address?: string; name?: string; region?: string }) => api.put('/node/config', data),
+}
+
+export const peerAPI = {
+  list: () => api.get('/peers'),
+  add: (data: { address: string; token?: string }) => api.post('/peers', data),
+  remove: (id: string) => api.delete(`/peers/${id}`),
+  ping: (id: string) => api.post(`/peers/${id}/ping`),
+}
+
 // Agents
 export const agentAPI = {
   list: () => api.get('/agents'),
