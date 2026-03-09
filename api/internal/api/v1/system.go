@@ -321,13 +321,17 @@ func performDockerUpdate() error {
 	}
 	log.Printf("[molt] compose: %s/%s, services: %s %s", projectDir, composeFile, apiSvc, webSvc)
 
-	// Step 3: Update source code — try git pull, skip if not a git repo
-	pullResult, _ := execOnHost(client, fmt.Sprintf(`cd "%s" && if [ -d .git ]; then git pull origin main 2>&1; else echo "NO_GIT: tar-deployed, skipping git pull"; fi`, projectDir))
+	// Step 3: Update source code — try git pull
+	// Monorepo layout: git may be in claw/ subdir (OSS repo maps claw/ → root)
+	// Standalone layout: git is at project root
+	pullResult, _ := execOnHost(client, fmt.Sprintf(
+		`cd "%s" && if [ -d .git ]; then git pull origin main 2>&1; elif [ -d claw/.git ]; then cd claw && git pull origin main 2>&1; else echo "NO_GIT"; fi`,
+		projectDir))
 	log.Printf("[molt] source update: %.300s", pullResult)
 
 	if strings.Contains(pullResult, "NO_GIT") {
 		log.Println("[molt] WARNING: no git repo on server, source code not updated. Build will use existing code.")
-		log.Println("[molt] TIP: run 'cd /opt/starclaw && git init && git remote add origin <repo_url>' to enable git-based updates")
+		log.Println("[molt] TIP: for monorepo, run: cd /opt/starclaw/claw && git init && git remote add origin https://github.com/yinhe/starclaw.git && git fetch origin main && git reset --mixed origin/main")
 	}
 
 	// Step 4: Build and restart with correct compose file

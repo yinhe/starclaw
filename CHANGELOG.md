@@ -5,6 +5,13 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2026-03-09
+
+### Fixed
+- **一键更新 monorepo 兼容** — 支持 monorepo 布局（git 在 `claw/` 子目录），自动检测 `claw/.git` 并在正确目录执行 `git pull`。
+
+---
+
 ## [0.5.7] - 2026-03-09
 
 ### Fixed
