@@ -5,6 +5,19 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2026-03-09
+
+### Fixed
+- **一键更新完全重写** — 修复 4 个导致更新永远无法完成的 bug：
+  1. **JSON 转义错误** — Shell 命令中的双引号破坏 MCP Bridge JSON 参数，导致命令为空。改用 `json.Marshal` 正确序列化。
+  2. **git pull 失败** — 服务器通过 tar 部署（无 `.git` 目录），`git pull` 必定报错。现在自动检测：有 git 则 pull，无 git 则跳过并提示。
+  3. **错误的 compose 文件和服务名** — 硬编码 `docker compose build api web`，但生产环境使用 `-f docker-compose.prod.yml` 且服务名为 `backend/frontend`。现在自动检测 compose 文件和服务名。
+  4. **容器内 fallback 无效** — 容器内无 docker CLI，fallback 策略只会自杀不会更新。已移除，改为前置检查 MCP Bridge 可用性。
+- **更新前置检查** — 点击一键更新时先检查 MCP Bridge 是否运行，不可用则立即返回错误提示（而非等 15 分钟超时）。
+- **前端错误提示** — 更新失败时显示后端返回的具体错误信息（如"MCP Bridge 未运行"）。
+
+---
+
 ## [0.5.6] - 2026-03-08
 
 ### Fixed

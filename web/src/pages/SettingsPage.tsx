@@ -176,8 +176,9 @@ export default function SettingsPage() {
         setUpdateStep(0)
         setUpdating(false)
       }
-    } catch {
-      setUpdateMsg('更新失败')
+    } catch (e: any) {
+      const errMsg = e.response?.data?.error || e.response?.data?.message || '更新失败'
+      setUpdateMsg(`❌ ${errMsg}`)
       setUpdateStep(0)
       setUpdating(false)
     }

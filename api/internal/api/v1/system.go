@@ -2,11 +2,11 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 
@@ -162,6 +162,16 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 		return
 	}
 
+	// Pre-check: MCP Bridge must be available (container can't rebuild itself)
+	bridgeURL := mcp.DetectBridgeURL()
+	if !mcp.ProbeBridge(bridgeURL) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "MCP Bridge 未运行，无法执行一键更新",
+			"message": "请先启动 MCP Bridge，或在服务器手动执行更新命令",
+		})
+		return
+	}
+
 	log.Printf("[molt] user triggered update: %s → %s", vi.Current, vi.Latest)
 
 	// Run update in background
@@ -266,53 +276,69 @@ func (h *SystemHandler) LeaveOverlord(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已退出领主监控"})
 }
 
+// execOnHost sends a shell command to the MCP Bridge with proper JSON escaping.
+func execOnHost(client *mcp.Client, command string) (string, error) {
+	args, _ := json.Marshal(map[string]string{"command": command})
+	return client.CallTool(context.Background(), "shell_exec", string(args))
+}
+
 func performDockerUpdate() error {
-	// Strategy 1: If MCP Bridge is available, use it to run host commands
-	// (the container can't rebuild itself, but the bridge can)
+	// MCP Bridge is required — the container cannot rebuild itself
 	bridgeURL := mcp.DetectBridgeURL()
-	if mcp.ProbeBridge(bridgeURL) {
-		log.Println("[molt] MCP Bridge detected, updating via host shell...")
-		client := mcp.NewClient(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"})
-		// Detect project directory: try common locations
-		findCmd := `DIR=$(find /opt /home /root -maxdepth 3 -name "docker-compose.yml" -path "*/claw/*" 2>/dev/null | head -1 | xargs dirname 2>/dev/null); [ -z "$DIR" ] && DIR="/opt/starclaw/claw"; echo "$DIR"`
-		dirResult, _ := client.CallTool(context.Background(), "shell_exec", fmt.Sprintf(`{"command":"%s"}`, findCmd))
-		projectDir := strings.TrimSpace(dirResult)
-		if projectDir == "" {
-			projectDir = "/opt/starclaw/claw"
+	if !mcp.ProbeBridge(bridgeURL) {
+		log.Println("[molt] MCP Bridge not available, cannot update from inside container")
+		return fmt.Errorf("MCP Bridge 未运行，无法执行一键更新。请在宿主机手动执行 update.sh")
+	}
+
+	log.Println("[molt] MCP Bridge detected, updating via host shell...")
+	client := mcp.NewClient(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"})
+
+	// Step 1: Find project root directory
+	result, _ := execOnHost(client, `for d in /opt/starclaw /opt/claw /home/*/starclaw /root/starclaw; do [ -d "$d/claw/api" ] && echo "$d" && exit 0; done; echo /opt/starclaw`)
+	projectDir := strings.TrimSpace(result)
+	if projectDir == "" {
+		projectDir = "/opt/starclaw"
+	}
+	log.Printf("[molt] project dir: %s", projectDir)
+
+	// Step 2: Detect compose file (prod > default) and service names (backend/frontend vs api/web)
+	composeFile := "docker-compose.yml"
+	apiSvc, webSvc := "api", "web"
+
+	checkResult, _ := execOnHost(client, fmt.Sprintf(`[ -f "%s/docker-compose.prod.yml" ] && echo PROD || ([ -f "%s/claw/docker-compose.prod.yml" ] && echo CLAW_PROD || echo DEV)`, projectDir, projectDir))
+	checkResult = strings.TrimSpace(checkResult)
+	switch {
+	case strings.Contains(checkResult, "PROD"):
+		composeFile = "docker-compose.prod.yml"
+		// Root compose uses backend/frontend
+		svcCheck, _ := execOnHost(client, fmt.Sprintf(`grep -q "^\s*backend:" "%s/%s" 2>/dev/null && echo BACKEND || echo API`, projectDir, composeFile))
+		if strings.Contains(svcCheck, "BACKEND") {
+			apiSvc, webSvc = "backend", "frontend"
 		}
-		log.Printf("[molt] project dir: %s", projectDir)
-		// Step 1: pull + build (slow), Step 2: restart (fast)
-		updateCmd := fmt.Sprintf("cd %s && git pull origin main 2>&1 && docker compose build api web 2>&1 && docker compose up -d --no-deps api web 2>&1", projectDir)
-		result, err := client.CallTool(context.Background(), "shell_exec", fmt.Sprintf(`{"command":"%s"}`, updateCmd))
-		if err != nil {
-			log.Printf("[molt] bridge update failed: %v", err)
-		} else {
-			log.Printf("[molt] bridge update result: %.200s", result)
-			return nil
-		}
+	case strings.Contains(checkResult, "CLAW_PROD"):
+		projectDir = projectDir + "/claw"
+		composeFile = "docker-compose.prod.yml"
+	}
+	log.Printf("[molt] compose: %s/%s, services: %s %s", projectDir, composeFile, apiSvc, webSvc)
+
+	// Step 3: Update source code — try git pull, skip if not a git repo
+	pullResult, _ := execOnHost(client, fmt.Sprintf(`cd "%s" && if [ -d .git ]; then git pull origin main 2>&1; else echo "NO_GIT: tar-deployed, skipping git pull"; fi`, projectDir))
+	log.Printf("[molt] source update: %.300s", pullResult)
+
+	if strings.Contains(pullResult, "NO_GIT") {
+		log.Println("[molt] WARNING: no git repo on server, source code not updated. Build will use existing code.")
+		log.Println("[molt] TIP: run 'cd /opt/starclaw && git init && git remote add origin <repo_url>' to enable git-based updates")
 	}
 
-	// Strategy 2: Fallback — try docker commands from inside container
-	log.Println("[molt] falling back to in-container docker commands...")
-	pull := exec.Command("docker", "compose", "pull", "api")
-	pull.Stdout = os.Stdout
-	pull.Stderr = os.Stderr
-	if err := pull.Run(); err != nil {
-		log.Printf("[molt] compose pull failed: %v, sending SIGTERM for orchestrator restart", err)
-		p, _ := os.FindProcess(os.Getpid())
-		p.Signal(os.Interrupt)
-		return nil
+	// Step 4: Build and restart with correct compose file
+	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build %s %s 2>&1 && docker compose -f %s up -d --no-deps %s %s 2>&1`,
+		projectDir, composeFile, apiSvc, webSvc,
+		composeFile, apiSvc, webSvc)
+	result, err := execOnHost(client, updateCmd)
+	if err != nil {
+		log.Printf("[molt] update failed: %v", err)
+		return fmt.Errorf("更新失败: %v", err)
 	}
-
-	restart := exec.Command("docker", "compose", "up", "-d", "--no-deps", "api")
-	restart.Stdout = os.Stdout
-	restart.Stderr = os.Stderr
-	if err := restart.Run(); err != nil {
-		log.Println("[molt] compose restart failed, sending SIGTERM...")
-		p, _ := os.FindProcess(os.Getpid())
-		p.Signal(os.Interrupt)
-		return nil
-	}
-
+	log.Printf("[molt] update result: %.500s", result)
 	return nil
 }
