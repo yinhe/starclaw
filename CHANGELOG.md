@@ -5,6 +5,13 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.11] - 2026-03-09
+
+### Fixed
+- **一键更新 git 脏目录修复** — `git pull` 改为 `git fetch + git reset --hard`，解决 tar 部署后 working tree 脏导致 pull 失败的问题。
+
+---
+
 ## [0.5.10] - 2026-03-09
 
 ### Fixed
