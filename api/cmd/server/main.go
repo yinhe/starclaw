@@ -14,6 +14,7 @@ import (
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/router"
 	"github.com/yinhe/starclaw/internal/swarm"
 )
@@ -50,8 +51,13 @@ func main() {
 	molt.StartChecker()
 	log.Printf("StarClaw v%s starting...", molt.Version)
 
+	// Load crypto identity for claw: address
+	identity := node.LoadOrCreateIdentity()
+	log.Printf("Node ID: %s", identity.NodeID)
+
 	// Start Swarm client (register with Queen + heartbeat)
 	swarmClient := swarm.NewClient(cfg.Swarm)
+	swarmClient.SetClawID(identity.NodeID)
 	swarmClient.Start()
 	defer swarmClient.Stop()
 

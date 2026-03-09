@@ -20,6 +20,7 @@ type Client struct {
 	cfg    config.OverlordConfig
 	nodeID string
 	token  string
+	clawID string
 	mu     sync.RWMutex
 	stopCh chan struct{}
 	httpC  *http.Client
@@ -105,6 +106,50 @@ func (c *Client) NodeID() string {
 	return c.nodeID
 }
 
+// SetClawID sets the Ed25519-derived claw: address for registration
+func (c *Client) SetClawID(id string) {
+	c.mu.Lock()
+	c.clawID = id
+	c.mu.Unlock()
+}
+
+// OverlordURL returns the configured Overlord URL
+func (c *Client) OverlordURL() string {
+	return c.cfg.OverlordURL
+}
+
+// Connected returns whether this client is registered with Overlord
+func (c *Client) Connected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.nodeID != "" && c.cfg.Enabled
+}
+
+// Resolve queries Overlord's brood registry for a claw: address
+func (c *Client) Resolve(clawID string) (address string, found bool) {
+	if !c.Connected() || c.cfg.OverlordURL == "" {
+		return "", false
+	}
+	url := fmt.Sprintf("%s/brood/resolve?claw_id=%s", c.cfg.OverlordURL, clawID)
+	resp, err := c.httpC.Get(url)
+	if err != nil {
+		log.Printf("[overlord] resolve via Overlord failed: %v", err)
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if json.NewDecoder(resp.Body).Decode(&result) != nil {
+		return "", false
+	}
+	if f, ok := result["found"].(bool); ok && f {
+		if addr, ok := result["address"].(string); ok {
+			return addr, true
+		}
+	}
+	return "", false
+}
+
 func (c *Client) register() error {
 	name := c.cfg.NodeName
 	if name == "" {
@@ -112,12 +157,17 @@ func (c *Client) register() error {
 		name = hostname
 	}
 
+	c.mu.RLock()
+	cid := c.clawID
+	c.mu.RUnlock()
+
 	body := map[string]interface{}{
 		"name":    name,
 		"role":    "claw",
 		"version": molt.Version,
 		"address": fmt.Sprintf("%s:8080", getHostname()),
 		"region":  c.cfg.Region,
+		"claw_id": cid,
 	}
 
 	resp, err := c.post("/overlord/register", body)
@@ -151,10 +201,15 @@ func (c *Client) heartbeat() error {
 	runtime.ReadMemStats(&memStats)
 	memMB := memStats.Alloc / 1024 / 1024
 
+	c.mu.RLock()
+	cid := c.clawID
+	c.mu.RUnlock()
+
 	body := map[string]interface{}{
 		"node_id":       nid,
 		"token":         tok,
 		"version":       molt.Version,
+		"claw_id":       cid,
 		"cpu_percent":   0,
 		"mem_used_mb":   memMB,
 		"tasks_running": 0,

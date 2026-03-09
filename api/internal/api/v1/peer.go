@@ -423,6 +423,7 @@ func (h *PeerHandler) HandleRelayTask(c *gin.Context) {
 }
 
 // ResolveNode resolves a claw: node_id to a network address (protected, for frontend)
+// Resolution chain: Local DB → Gossip P2P → Overlord (Brood) → Queen (Swarm)
 func (h *PeerHandler) ResolveNode(c *gin.Context) {
 	nodeID := c.Query("node_id")
 	if nodeID == "" {
@@ -430,21 +431,76 @@ func (h *PeerHandler) ResolveNode(c *gin.Context) {
 		return
 	}
 
-	// 1. Check local DB
+	// 1. Check local DB (Nydus direct peers)
 	var peer model.Peer
 	if h.db.Where("node_id = ?", nodeID).First(&peer).Error == nil {
-		c.JSON(http.StatusOK, gin.H{"found": true, "address": peer.Address, "peer": peer})
+		c.JSON(http.StatusOK, gin.H{"found": true, "source": "nydus", "address": peer.Address, "peer": peer})
 		return
 	}
 
-	// 2. Ask gossip network
+	// 2. Ask gossip network (P2P query to known peers)
 	info, found := h.gossip.Resolve(nodeID)
 	if found && info.Address != "" {
-		c.JSON(http.StatusOK, gin.H{"found": true, "address": info.Address, "peer": info})
+		c.JSON(http.StatusOK, gin.H{"found": true, "source": "gossip", "address": info.Address, "peer": info})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"found": false, "message": "该节点不在已知网络中，请使用 IP 或域名连接"})
+	// 3. Ask Overlord / Brood (enterprise registry)
+	if h.cfg.Overlord.Enabled && h.cfg.Overlord.OverlordURL != "" {
+		addr, ok := h.resolveViaHTTP(h.cfg.Overlord.OverlordURL+"/brood/resolve", nodeID)
+		if ok {
+			c.JSON(http.StatusOK, gin.H{"found": true, "source": "brood", "address": addr})
+			return
+		}
+	}
+
+	// 4. Ask Queen / Swarm (public ecosystem registry)
+	if h.cfg.Swarm.Enabled && h.cfg.Swarm.QueenURL != "" {
+		addr, ok := h.resolveViaHTTP(h.cfg.Swarm.QueenURL+"/swarm/resolve", nodeID)
+		if ok {
+			c.JSON(http.StatusOK, gin.H{"found": true, "source": "swarm", "address": addr})
+			return
+		}
+	}
+
+	// Build helpful message
+	hints := []string{}
+	if !h.cfg.Swarm.Enabled {
+		hints = append(hints, "加入虫群网络可获得全网节点发现能力")
+	}
+	if !h.cfg.Overlord.Enabled {
+		hints = append(hints, "加入虫巢可发现企业内部节点")
+	}
+	msg := "无法解析该 Claw 地址 — 该节点不在已知网络中。"
+	if len(hints) > 0 {
+		msg += "\n提示: " + strings.Join(hints, "; ")
+	}
+
+	c.JSON(http.StatusOK, gin.H{"found": false, "message": msg})
+}
+
+// resolveViaHTTP queries an external resolve endpoint (Swarm or Brood)
+func (h *PeerHandler) resolveViaHTTP(baseURL, nodeID string) (string, bool) {
+	reqURL := fmt.Sprintf("%s?claw_id=%s", baseURL, nodeID)
+	resp, err := h.httpC.Get(reqURL)
+	if err != nil {
+		log.Printf("[resolve] query %s failed: %v", baseURL, err)
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Found   bool   `json:"found"`
+		Address string `json:"address"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&result) != nil {
+		return "", false
+	}
+	if result.Found && result.Address != "" {
+		log.Printf("[resolve] found %s via %s → %s", nodeID, baseURL, result.Address)
+		return result.Address, true
+	}
+	return "", false
 }
 
 // HandleResolve is the public endpoint for other nodes to query "do you know this node?"

@@ -86,13 +86,16 @@ export default function SettingsPage() {
         setNodeMsg('正在解析节点地址...')
         const res = await peerAPI.resolve(address)
         if (!res.data?.found) {
-          alert('无法解析该 Claw 地址 — 该节点不在已知网络中。\n\n请改用对方的 IP 或域名连接，例如：\nhttp://192.168.1.100:8080')
+          const msg = res.data?.message || '无法解析该 Claw 地址 — 该节点不在已知网络中。'
+          alert(msg + '\n\n也可以直接使用对方的 IP/域名连接。')
           setNodeMsg('')
           setAddingPeer(false)
           return
         }
+        const sourceMap: Record<string, string> = { nydus: '本地', gossip: 'P2P网络', brood: '虫巢', swarm: '虫群' }
+        const src = sourceMap[res.data.source] || res.data.source || ''
         address = res.data.address
-        setNodeMsg(`已解析: ${address}`)
+        setNodeMsg(`已通过${src}解析: ${address}`)
       }
       await peerAPI.add({ address })
       setPeerAddr('')

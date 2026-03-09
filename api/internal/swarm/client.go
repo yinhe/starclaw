@@ -17,12 +17,13 @@ import (
 
 // Client handles swarm registration and heartbeat with Queen/Overlord
 type Client struct {
-	cfg      config.SwarmConfig
-	nodeID   string
-	token    string
-	mu       sync.RWMutex
-	stopCh   chan struct{}
-	httpC    *http.Client
+	cfg    config.SwarmConfig
+	nodeID string
+	token  string
+	clawID string
+	mu     sync.RWMutex
+	stopCh chan struct{}
+	httpC  *http.Client
 }
 
 // NewClient creates a swarm client from config
@@ -91,6 +92,50 @@ func (c *Client) NodeID() string {
 	return c.nodeID
 }
 
+// SetClawID sets the Ed25519-derived claw: address for registration
+func (c *Client) SetClawID(id string) {
+	c.mu.Lock()
+	c.clawID = id
+	c.mu.Unlock()
+}
+
+// QueenURL returns the configured Queen URL
+func (c *Client) QueenURL() string {
+	return c.cfg.QueenURL
+}
+
+// Connected returns whether this client is registered with Queen
+func (c *Client) Connected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.nodeID != "" && c.cfg.Enabled
+}
+
+// Resolve queries Queen's swarm registry for a claw: address
+func (c *Client) Resolve(clawID string) (address string, found bool) {
+	if !c.Connected() || c.cfg.QueenURL == "" {
+		return "", false
+	}
+	url := fmt.Sprintf("%s/swarm/resolve?claw_id=%s", c.cfg.QueenURL, clawID)
+	resp, err := c.httpC.Get(url)
+	if err != nil {
+		log.Printf("[swarm] resolve via Queen failed: %v", err)
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if json.NewDecoder(resp.Body).Decode(&result) != nil {
+		return "", false
+	}
+	if f, ok := result["found"].(bool); ok && f {
+		if addr, ok := result["address"].(string); ok {
+			return addr, true
+		}
+	}
+	return "", false
+}
+
 func (c *Client) register() error {
 	name := c.cfg.NodeName
 	if name == "" {
@@ -98,12 +143,17 @@ func (c *Client) register() error {
 		name = hostname
 	}
 
+	c.mu.RLock()
+	cid := c.clawID
+	c.mu.RUnlock()
+
 	body := map[string]interface{}{
 		"name":    name,
 		"role":    "claw",
 		"version": molt.Version,
 		"address": fmt.Sprintf("%s:8080", getOutboundIP()),
 		"region":  c.cfg.Region,
+		"claw_id": cid,
 	}
 
 	resp, err := c.post("/swarm/register", body)
@@ -135,12 +185,17 @@ func (c *Client) heartbeat() error {
 	runtime.ReadMemStats(&memStats)
 	memPct := float64(memStats.Alloc) / float64(memStats.Sys) * 100
 
+	c.mu.RLock()
+	cid := c.clawID
+	c.mu.RUnlock()
+
 	body := map[string]interface{}{
-		"node_id":      nid,
-		"token":        tok,
-		"version":      molt.Version,
-		"cpu_percent":  0, // TODO: real CPU sampling
-		"mem_percent":  memPct,
+		"node_id":       nid,
+		"token":         tok,
+		"version":       molt.Version,
+		"claw_id":       cid,
+		"cpu_percent":   0, // TODO: real CPU sampling
+		"mem_percent":   memPct,
 		"tasks_running": 0,
 		"tasks_queued":  0,
 		"error_rate":    0,
