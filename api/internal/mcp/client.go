@@ -36,6 +36,15 @@ func NewClient(cfg ServerConfig) *Client {
 	}
 }
 
+// NewClientWithTimeout creates a new MCP client with a custom timeout (for long-running ops like docker build)
+func NewClientWithTimeout(cfg ServerConfig, timeout time.Duration) *Client {
+	return &Client{
+		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:  cfg.APIKey,
+		client:  &http.Client{Timeout: timeout},
+	}
+}
+
 // ToolInfo represents a tool exposed by an MCP server
 type ToolInfo struct {
 	Name        string      `json:"name"`
@@ -165,8 +174,8 @@ func (c *Client) jsonRPC(ctx context.Context, method string, params interface{})
 
 // MCPTool wraps a remote MCP tool as a local tool.Tool
 type MCPTool struct {
-	client    *Client
-	info      ToolInfo
+	client     *Client
+	info       ToolInfo
 	serverName string
 }
 

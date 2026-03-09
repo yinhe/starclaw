@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -291,7 +292,7 @@ func performDockerUpdate() error {
 	}
 
 	log.Println("[molt] MCP Bridge detected, updating via host shell...")
-	client := mcp.NewClient(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"})
+	client := mcp.NewClientWithTimeout(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"}, 5*time.Minute)
 
 	// Step 1: Find project root directory
 	result, _ := execOnHost(client, `for d in /opt/starclaw /opt/claw /home/*/starclaw /root/starclaw; do [ -d "$d/claw/api" ] && echo "$d" && exit 0; done; echo /opt/starclaw`)
