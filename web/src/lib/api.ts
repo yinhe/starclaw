@@ -67,9 +67,10 @@ export const nodeAPI = {
 
 export const peerAPI = {
   list: () => api.get('/peers'),
-  add: (data: { address: string; token?: string }) => api.post('/peers', data),
+  add: (data: { address: string }) => api.post('/peers', data),
   remove: (id: string) => api.delete(`/peers/${id}`),
   ping: (id: string) => api.post(`/peers/${id}/ping`),
+  resolve: (nodeId: string) => api.get(`/peers/resolve?node_id=${encodeURIComponent(nodeId)}`),
 }
 
 // Agents

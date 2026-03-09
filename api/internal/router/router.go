@@ -189,6 +189,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Peer-to-Peer inter-node endpoints (public, signature-verified)
 		peerPublicHandler := v1.NewPeerHandler(db, cfg)
 		apiV1.GET("/peer/handshake", peerPublicHandler.HandleHandshake)
+		apiV1.GET("/peer/resolve", peerPublicHandler.HandleResolve)
 		apiV1.POST("/peer/gossip", peerPublicHandler.HandleGossip)
 		apiV1.POST("/peer/relay", peerPublicHandler.HandleRelayTask)
 
@@ -637,6 +638,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			peerHandler := v1.NewPeerHandler(db, cfg)
 			protected.GET("/node/info", peerHandler.GetNodeInfo)
 			protected.PUT("/node/config", peerHandler.UpdateNodeConfig)
+			protected.GET("/peers/resolve", peerHandler.ResolveNode)
 			protected.GET("/peers", peerHandler.ListPeers)
 			protected.POST("/peers", peerHandler.AddPeer)
 			protected.DELETE("/peers/:id", peerHandler.RemovePeer)

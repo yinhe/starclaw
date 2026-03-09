@@ -333,6 +333,75 @@ func (h *PeerHandler) HandleRelayTask(c *gin.Context) {
 	})
 }
 
+// ResolveNode resolves a claw: node_id to a network address (protected, for frontend)
+func (h *PeerHandler) ResolveNode(c *gin.Context) {
+	nodeID := c.Query("node_id")
+	if nodeID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "node_id required"})
+		return
+	}
+
+	// 1. Check local DB
+	var peer model.Peer
+	if h.db.Where("node_id = ?", nodeID).First(&peer).Error == nil {
+		c.JSON(http.StatusOK, gin.H{"found": true, "address": peer.Address, "peer": peer})
+		return
+	}
+
+	// 2. Ask gossip network
+	info, found := h.gossip.Resolve(nodeID)
+	if found && info.Address != "" {
+		c.JSON(http.StatusOK, gin.H{"found": true, "address": info.Address, "peer": info})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"found": false, "message": "该节点不在已知网络中，请使用 IP 或域名连接"})
+}
+
+// HandleResolve is the public endpoint for other nodes to query "do you know this node?"
+func (h *PeerHandler) HandleResolve(c *gin.Context) {
+	nodeID := c.Query("node_id")
+	if nodeID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"found": false})
+		return
+	}
+
+	// Check if it's us
+	if nodeID == h.identity.NodeID {
+		c.JSON(http.StatusOK, gin.H{
+			"found": true,
+			"peer": node.PeerInfo{
+				NodeID:    h.identity.NodeID,
+				Address:   h.cfg.Node.Address,
+				Name:      h.cfg.Node.Name,
+				PublicKey: h.identity.PublicKeyHex(),
+				LastSeen:  time.Now().Unix(),
+			},
+		})
+		return
+	}
+
+	// Check local DB
+	var peer model.Peer
+	if h.db.Where("node_id = ?", nodeID).First(&peer).Error == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"found": true,
+			"peer": node.PeerInfo{
+				NodeID:    peer.NodeID,
+				Address:   peer.Address,
+				Name:      peer.Name,
+				Version:   peer.Version,
+				Region:    peer.Region,
+				PublicKey: peer.PublicKey,
+				LastSeen:  peer.LastSeen.Unix(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"found": false})
+}
+
 // --- Helpers ---
 
 func (h *PeerHandler) signedHandshake(address string) (map[string]interface{}, error) {

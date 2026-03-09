@@ -75,6 +75,36 @@ export default function SettingsPage() {
     } catch { /* ignore */ }
   }
 
+  // Connect to peer: supports both network address and claw: Node ID
+  const handleConnectPeer = async () => {
+    if (!peerAddr) return
+    setAddingPeer(true)
+    try {
+      let address = peerAddr.trim()
+      // Detect claw: address → resolve to network address first
+      if (address.startsWith('claw:')) {
+        setNodeMsg('正在解析节点地址...')
+        const res = await peerAPI.resolve(address)
+        if (!res.data?.found) {
+          alert('无法解析该 Claw 地址 — 该节点不在已知网络中。\n\n请改用对方的 IP 或域名连接，例如：\nhttp://192.168.1.100:8080')
+          setNodeMsg('')
+          setAddingPeer(false)
+          return
+        }
+        address = res.data.address
+        setNodeMsg(`已解析: ${address}`)
+      }
+      await peerAPI.add({ address })
+      setPeerAddr('')
+      setNodeMsg('')
+      loadSystemInfo()
+    } catch (e: any) {
+      alert(e.response?.data?.error || '链路建立失败')
+      setNodeMsg('')
+    }
+    setAddingPeer(false)
+  }
+
   const handleForceCheck = async () => {
     setChecking(true)
     try {
@@ -555,22 +585,11 @@ export default function SettingsPage() {
                   onChange={(e) => setPeerAddr(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link')?.click() } }}
                   className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                  placeholder="对方地址，如 https://xx.com 或 http://192.168.1.x:8080"
+                  placeholder="claw: 地址、域名或 IP，如 claw:b49e... 或 http://192.168.1.x:8080"
                 />
                 <button
                   id="btn-nydus-link"
-                  onClick={async () => {
-                    if (!peerAddr) return
-                    setAddingPeer(true)
-                    try {
-                      await peerAPI.add({ address: peerAddr })
-                      setPeerAddr('')
-                      loadSystemInfo()
-                    } catch (e: any) {
-                      alert(e.response?.data?.error || '链路建立失败')
-                    }
-                    setAddingPeer(false)
-                  }}
+                  onClick={handleConnectPeer}
                   disabled={addingPeer || !peerAddr}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap"
                 >
@@ -626,22 +645,11 @@ export default function SettingsPage() {
                   onChange={(e) => setPeerAddr(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link-empty')?.click() } }}
                   className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                  placeholder="对方地址，如 https://xx.com 或 http://192.168.1.x:8080"
+                  placeholder="claw: 地址、域名或 IP，如 claw:b49e... 或 http://192.168.1.x:8080"
                 />
                 <button
                   id="btn-nydus-link-empty"
-                  onClick={async () => {
-                    if (!peerAddr) return
-                    setAddingPeer(true)
-                    try {
-                      await peerAPI.add({ address: peerAddr })
-                      setPeerAddr('')
-                      loadSystemInfo()
-                    } catch (e: any) {
-                      alert(e.response?.data?.error || '链路建立失败')
-                    }
-                    setAddingPeer(false)
-                  }}
+                  onClick={handleConnectPeer}
                   disabled={addingPeer || !peerAddr}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap"
                 >

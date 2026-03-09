@@ -24,7 +24,7 @@ type PeerInfo struct {
 // GossipEngine periodically shares known peers with all neighbors
 type GossipEngine struct {
 	identity *Identity
-	address  string // this node's address
+	address  string               // this node's address
 	peers    map[string]*PeerInfo // node_id -> info
 	mu       sync.RWMutex
 	httpC    *http.Client
@@ -186,6 +186,66 @@ func (g *GossipEngine) sendGossip(address string, data []byte) {
 				g.onChange(g.GetPeers())
 			}
 		}
+	}
+}
+
+// Resolve looks up a node_id and returns its network address.
+// First checks local gossip table, then queries known peers.
+func (g *GossipEngine) Resolve(nodeID string) (PeerInfo, bool) {
+	// 1. Check local gossip table
+	g.mu.RLock()
+	if p, ok := g.peers[nodeID]; ok {
+		g.mu.RUnlock()
+		return *p, true
+	}
+	// Collect peer addresses to query
+	targets := make([]string, 0, len(g.peers))
+	for _, p := range g.peers {
+		if p.Address != "" {
+			targets = append(targets, p.Address)
+		}
+	}
+	g.mu.RUnlock()
+
+	// 2. Ask known peers: "do you know where this node is?"
+	type resolveResp struct {
+		Found bool     `json:"found"`
+		Peer  PeerInfo `json:"peer"`
+	}
+	resultCh := make(chan PeerInfo, 1)
+	var wg sync.WaitGroup
+	for _, addr := range targets {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			url := fmt.Sprintf("%s/v1/peer/resolve?node_id=%s", addr, nodeID)
+			resp, err := g.httpC.Get(url)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				var r resolveResp
+				if json.NewDecoder(resp.Body).Decode(&r) == nil && r.Found {
+					select {
+					case resultCh <- r.Peer:
+					default:
+					}
+				}
+			}
+		}(addr)
+	}
+
+	// Wait with timeout
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case p := <-resultCh:
+		return p, true
+	case <-done:
+		return PeerInfo{}, false
+	case <-time.After(5 * time.Second):
+		return PeerInfo{}, false
 	}
 }
 
