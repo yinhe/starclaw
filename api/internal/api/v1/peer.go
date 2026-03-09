@@ -554,21 +554,45 @@ func (h *PeerHandler) syncGossipToDB(peers []node.PeerInfo) {
 	}
 }
 
-// detectHostIPs returns the public IP (via external service) and all private IPs (from interfaces)
+// detectHostIPs returns the public IP (via external service) and all private IPs.
+// Works inside Docker by trying host.docker.internal and filtering Docker bridge IPs.
 func detectHostIPs() (publicIP string, privateIPs []string) {
-	// Get public IP
+	// Get public IP via ip-api.com (works from inside Docker)
 	client := &http.Client{Timeout: 3 * time.Second}
 	if resp, err := client.Get("http://ip-api.com/json/?fields=query"); err == nil {
 		defer resp.Body.Close()
 		var result struct {
 			Query string `json:"query"`
 		}
-		if json.NewDecoder(resp.Body).Decode(&result) == nil {
+		if json.NewDecoder(resp.Body).Decode(&result) == nil && result.Query != "" {
 			publicIP = result.Query
 		}
 	}
 
-	// Get private IPs from network interfaces
+	// Try host.docker.internal first (Docker Desktop / extra_hosts: host-gateway)
+	if ips, err := net.LookupIP("host.docker.internal"); err == nil {
+		for _, ip := range ips {
+			if ip4 := ip.To4(); ip4 != nil && ip.IsPrivate() {
+				privateIPs = append(privateIPs, ip4.String())
+			}
+		}
+	}
+
+	// Also try HOST_IP env var (user can set in docker-compose)
+	if hostIP := os.Getenv("HOST_IP"); hostIP != "" {
+		found := false
+		for _, p := range privateIPs {
+			if p == hostIP {
+				found = true
+				break
+			}
+		}
+		if !found {
+			privateIPs = append([]string{hostIP}, privateIPs...)
+		}
+	}
+
+	// Get private IPs from network interfaces (filter Docker bridge 172.x)
 	ifaces, err := net.Interfaces()
 	if err == nil {
 		for _, iface := range ifaces {
@@ -587,8 +611,24 @@ func detectHostIPs() (publicIP string, privateIPs []string) {
 				if ip == nil || ip.IsLoopback() || ip.To4() == nil {
 					continue
 				}
+				// Skip Docker bridge IPs (172.16-31.x.x)
 				if ip.IsPrivate() {
-					privateIPs = append(privateIPs, ip.String())
+					b := ip.To4()
+					if b[0] == 172 && b[1] >= 16 && b[1] <= 31 {
+						continue // Docker bridge network, skip
+					}
+					// Check not already added
+					s := ip.String()
+					found := false
+					for _, p := range privateIPs {
+						if p == s {
+							found = true
+							break
+						}
+					}
+					if !found {
+						privateIPs = append(privateIPs, s)
+					}
 				}
 			}
 		}

@@ -560,58 +560,78 @@ export default function SettingsPage() {
                   )}
                 </>
               ) : (
-                <div className="space-y-2 mt-1">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">可访问地址 <span className="text-red-400">*</span></label>
-                      <input value={nodeForm.address} onChange={(e) => setNodeForm({ ...nodeForm, address: e.target.value })} className="w-full px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="域名或IP，如 http://192.168.1.100:8080" autoFocus />
-                      <p className="text-xs text-gray-400 mt-0.5">域名、公网IP、局域网IP 均可</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Claw 名称</label>
-                      <input value={nodeForm.name} onChange={(e) => setNodeForm({ ...nodeForm, name: e.target.value })} className="w-full px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="留空使用主机名" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">地域</label>
-                      <select value={nodeForm.region} onChange={(e) => setNodeForm({ ...nodeForm, region: e.target.value })} className="w-full px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400 bg-white">
-                        <option value="">留空自动检测...</option>
-                        <option value="local">local (局域网)</option>
-                        <option value="cn-east">cn-east (华东)</option>
-                        <option value="cn-south">cn-south (华南)</option>
-                        <option value="cn-north">cn-north (华北)</option>
-                        <option value="cn-central">cn-central (华中)</option>
-                        <option value="cn-southwest">cn-southwest (西南)</option>
-                        <option value="hk">hk (香港)</option>
-                        <option value="us-west">us-west (美西)</option>
-                        <option value="us-east">us-east (美东)</option>
-                        <option value="eu-west">eu-west (西欧)</option>
-                        <option value="ap-southeast">ap-southeast (东南亚)</option>
-                        <option value="jp">jp (日本)</option>
-                      </select>
-                    </div>
+                <div className="space-y-3 mt-1">
+                  <p className="text-xs text-gray-500">选择一个地址，地域将自动检测：</p>
+                  <div className="flex flex-wrap gap-2">
+                    {nodeInfo.public_ip && (
+                      <button
+                        onClick={async () => {
+                          setSavingNode(true)
+                          try {
+                            const res = await nodeAPI.autoSetup({ use_public_ip: true })
+                            setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                            setTimeout(() => setNodeMsg(''), 3000)
+                            setEditingNode(false)
+                            loadSystemInfo()
+                          } catch { setNodeMsg('配置失败') }
+                          setSavingNode(false)
+                        }}
+                        disabled={savingNode}
+                        className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {savingNode ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                        公网: {nodeInfo.public_ip}
+                      </button>
+                    )}
+                    {(nodeInfo.private_ips || []).map((ip: string) => (
+                      <button
+                        key={ip}
+                        onClick={async () => {
+                          setSavingNode(true)
+                          try {
+                            const res = await nodeAPI.autoSetup({ use_public_ip: false })
+                            setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                            setTimeout(() => setNodeMsg(''), 3000)
+                            setEditingNode(false)
+                            loadSystemInfo()
+                          } catch { setNodeMsg('配置失败') }
+                          setSavingNode(false)
+                        }}
+                        disabled={savingNode}
+                        className="flex items-center gap-2 px-3 py-2 bg-white text-gray-700 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {savingNode ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Monitor className="w-3.5 h-3.5" />}
+                        内网: {ip}
+                      </button>
+                    ))}
+                    {!nodeInfo.public_ip && !(nodeInfo.private_ips || []).length && (
+                      <p className="text-xs text-amber-600">未检测到可用 IP，请手动输入</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">或手动输入:</span>
+                    <input value={nodeForm.address} onChange={(e) => setNodeForm({ ...nodeForm, address: e.target.value })} className="flex-1 px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="http://your-domain.com:8080" />
                     <button
                       onClick={async () => {
+                        if (!nodeForm.address) return
                         setSavingNode(true)
                         try {
-                          const res = await nodeAPI.updateConfig(nodeForm)
-                          if (res.data?.detected_region) {
-                            setNodeMsg(`地域已自动检测: ${res.data.detected_region}`)
-                            setTimeout(() => setNodeMsg(''), 3000)
-                          }
+                          await nodeAPI.updateConfig({ address: nodeForm.address })
+                          setNodeMsg('已保存')
+                          setTimeout(() => setNodeMsg(''), 2000)
                           setEditingNode(false)
                           loadSystemInfo()
                         } catch { setNodeMsg('保存失败') }
                         setSavingNode(false)
                       }}
-                      disabled={savingNode}
+                      disabled={savingNode || !nodeForm.address}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs bg-violet-600 text-white rounded hover:bg-violet-700 disabled:opacity-50"
                     >
                       {savingNode ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} 保存
                     </button>
-                    <button onClick={() => setEditingNode(false)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">取消</button>
+                    <button onClick={() => setEditingNode(false)} className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">取消</button>
                   </div>
+                  {nodeMsg && <p className="text-xs text-violet-600">{nodeMsg}</p>}
                 </div>
               )}
             </div>
