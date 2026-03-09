@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -22,7 +24,7 @@ import (
 )
 
 // PeerHandler manages node identity and peer-to-peer networking.
-// Uses Ed25519 crypto identity: Node ID = SHA256(publicKey)[:16]
+// Uses Ed25519 crypto identity: Node ID = "claw:" + SHA256(publicKey)[:40] (160-bit, Bitcoin-level)
 type PeerHandler struct {
 	db       *gorm.DB
 	cfg      *config.Config
@@ -134,10 +136,26 @@ func (h *PeerHandler) UpdateNodeConfig(c *gin.Context) {
 		h.cfg.Node.Region = req.Region
 		viper.Set("node.region", req.Region)
 	}
+
+	// Auto-detect region from address if not set
+	detectedRegion := ""
+	if h.cfg.Node.Region == "" && h.cfg.Node.Address != "" {
+		detectedRegion = detectRegionFromAddress(h.cfg.Node.Address)
+		if detectedRegion != "" {
+			h.cfg.Node.Region = detectedRegion
+			viper.Set("node.region", detectedRegion)
+			log.Printf("[node] auto-detected region: %s", detectedRegion)
+		}
+	}
+
 	_ = viper.WriteConfig()
 
 	log.Printf("[node] config updated: address=%s name=%s region=%s", h.cfg.Node.Address, h.cfg.Node.Name, h.cfg.Node.Region)
-	c.JSON(http.StatusOK, gin.H{"message": "节点配置已更新"})
+	resp := gin.H{"message": "节点配置已更新"}
+	if detectedRegion != "" {
+		resp["detected_region"] = detectedRegion
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // --- Peer Management ---
@@ -462,5 +480,102 @@ func (h *PeerHandler) syncGossipToDB(peers []node.PeerInfo) {
 		dbPeer.Status = "online"
 		dbPeer.LastSeen = time.Unix(p.LastSeen, 0)
 		h.db.Save(&dbPeer)
+	}
+}
+
+// detectRegionFromAddress extracts IP from address URL and detects region.
+// Private IPs → "local", public IPs → query ip-api.com, domains → resolve then query.
+func detectRegionFromAddress(address string) string {
+	// Parse URL to extract host
+	u, err := url.Parse(address)
+	if err != nil {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "" {
+		return ""
+	}
+
+	// Resolve domain to IP if needed
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// It's a domain, try to resolve
+		ips, err := net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return ""
+		}
+		ip = ips[0]
+	}
+
+	// Check for private/local IPs
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+		return "local"
+	}
+
+	// Query ip-api.com for geolocation (free, no key needed, 45 req/min)
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://ip-api.com/json/%s?fields=status,countryCode,regionName,city", ip.String()))
+	if err != nil {
+		log.Printf("[node] ip-api.com query failed: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	var geo struct {
+		Status      string `json:"status"`
+		CountryCode string `json:"countryCode"`
+		RegionName  string `json:"regionName"`
+		City        string `json:"city"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&geo) != nil || geo.Status != "success" {
+		return ""
+	}
+
+	// Map to our region codes
+	switch geo.CountryCode {
+	case "CN":
+		region := strings.ToLower(geo.RegionName)
+		switch {
+		case strings.Contains(region, "shanghai") || strings.Contains(region, "zhejiang") ||
+			strings.Contains(region, "jiangsu") || strings.Contains(region, "anhui") ||
+			strings.Contains(region, "fujian") || strings.Contains(region, "jiangxi"):
+			return "cn-east"
+		case strings.Contains(region, "guangdong") || strings.Contains(region, "guangxi") ||
+			strings.Contains(region, "hainan"):
+			return "cn-south"
+		case strings.Contains(region, "beijing") || strings.Contains(region, "tianjin") ||
+			strings.Contains(region, "hebei") || strings.Contains(region, "shandong") ||
+			strings.Contains(region, "liaoning") || strings.Contains(region, "jilin") ||
+			strings.Contains(region, "heilongjiang") || strings.Contains(region, "inner mongolia"):
+			return "cn-north"
+		case strings.Contains(region, "hubei") || strings.Contains(region, "hunan") ||
+			strings.Contains(region, "henan"):
+			return "cn-central"
+		case strings.Contains(region, "sichuan") || strings.Contains(region, "chongqing") ||
+			strings.Contains(region, "yunnan") || strings.Contains(region, "guizhou") ||
+			strings.Contains(region, "tibet"):
+			return "cn-southwest"
+		default:
+			return "cn-east" // fallback for China
+		}
+	case "HK", "MO":
+		return "hk"
+	case "TW":
+		return "hk" // closest region
+	case "JP":
+		return "jp"
+	case "US":
+		region := strings.ToLower(geo.RegionName)
+		if strings.Contains(region, "california") || strings.Contains(region, "oregon") ||
+			strings.Contains(region, "washington") || strings.Contains(region, "nevada") {
+			return "us-west"
+		}
+		return "us-east"
+	case "DE", "FR", "GB", "NL", "IE", "IT", "ES", "SE", "NO", "FI", "DK", "CH", "AT", "BE", "PL":
+		return "eu-west"
+	case "SG", "MY", "TH", "VN", "PH", "ID":
+		return "ap-southeast"
+	default:
+		return strings.ToLower(geo.CountryCode)
 	}
 }

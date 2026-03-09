@@ -518,7 +518,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="mt-2 p-2.5 bg-white/60 rounded border border-violet-100">
                         <p className="text-gray-500 font-medium mb-1">Ed25519 签名算法</p>
-                        <p className="text-gray-400 leading-relaxed">Ed25519 是基于 Curve25519 椭圆曲线的数字签名算法，由 Daniel J. Bernstein 设计。相比 RSA，它的密钥更短（32 字节）、签名更快、安全性更高。SSH、Signal、区块链（Solana）等广泛采用。每个 Claw 启动时自动生成一对密钥：私钥永不离开本地，公钥用于身份验证。Node ID = SHA-256(公钥) 前16位，如同区块链钱包地址不可伪造。</p>
+                        <p className="text-gray-400 leading-relaxed">Ed25519 是基于 Curve25519 椭圆曲线的数字签名算法，由 Daniel J. Bernstein 设计。相比 RSA，它的密钥更短（32 字节）、签名更快、安全性更高。SSH、Signal、区块链（Solana）等广泛采用。每个 Claw 启动时自动生成一对密钥：私钥永不离开本地，公钥用于身份验证。Node ID = "claw:" + SHA-256(公钥) 前40位 (160-bit)，与比特币同级地址空间，支持 10²⁴ 个唯一节点。输入对方的 claw: 地址即可自动解析并建立链路。地域信息可根据 IP 自动检测，无需手动选择。</p>
                       </div>
                     </div>
                   )}
@@ -538,7 +538,8 @@ export default function SettingsPage() {
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">地域</label>
                       <select value={nodeForm.region} onChange={(e) => setNodeForm({ ...nodeForm, region: e.target.value })} className="w-full px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400 bg-white">
-                        <option value="">选择地域...</option>
+                        <option value="">留空自动检测...</option>
+                        <option value="local">local (局域网)</option>
                         <option value="cn-east">cn-east (华东)</option>
                         <option value="cn-south">cn-south (华南)</option>
                         <option value="cn-north">cn-north (华北)</option>
@@ -558,7 +559,11 @@ export default function SettingsPage() {
                       onClick={async () => {
                         setSavingNode(true)
                         try {
-                          await nodeAPI.updateConfig(nodeForm)
+                          const res = await nodeAPI.updateConfig(nodeForm)
+                          if (res.data?.detected_region) {
+                            setNodeMsg(`地域已自动检测: ${res.data.detected_region}`)
+                            setTimeout(() => setNodeMsg(''), 3000)
+                          }
                           setEditingNode(false)
                           loadSystemInfo()
                         } catch { setNodeMsg('保存失败') }
@@ -628,7 +633,7 @@ export default function SettingsPage() {
               <div className="space-y-2.5 mb-4">
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">1</span>
-                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <><Check className="w-3 h-3 text-green-500 inline mr-1" />已设置公网地址</> : <>点击上方 <Pencil className="w-3 h-3 inline text-violet-500" /> 设置你的<strong className="text-gray-700">公网地址</strong></>}</span>
+                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <><Check className="w-3 h-3 text-green-500 inline mr-1" />已设置可访问地址</> : <>点击上方 <Pencil className="w-3 h-3 inline text-violet-500" /> 设置你的<strong className="text-gray-700">可访问地址</strong></>}</span>
                 </div>
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">2</span>
@@ -636,7 +641,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">3</span>
-                  <span className="text-gray-500 pt-0.5">在下方输入<strong className="text-gray-700">对方的 Claw 地址</strong>，点击建立链路</span>
+                  <span className="text-gray-500 pt-0.5">在下方输入<strong className="text-gray-700">对方的 claw: 地址或 IP/域名</strong>，点击建立链路</span>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -675,7 +680,7 @@ export default function SettingsPage() {
             )}
             <div>
               <p className="text-sm font-medium" style={{ color: overlordStatus?.connected ? '#166534' : '#6b7280' }}>
-                {overlordStatus?.connected ? `已加入虫巢 — 节点 ${overlordStatus.node_id?.slice(0, 8)}...` : '未加入'}
+                {overlordStatus?.connected ? `已加入虫巢 — ${overlordStatus.node_id?.startsWith('claw:') ? overlordStatus.node_id.slice(0, 16) + '...' : overlordStatus.node_id?.slice(0, 8) + '...'}` : '未加入'}
               </p>
               {overlordStatus?.overlord_url && overlordStatus.connected && (
                 <p className="text-xs text-gray-400">Overlord: {overlordStatus.overlord_url}</p>
@@ -704,13 +709,26 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选)</label>
-                  <input
+                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选，留空自动检测)</label>
+                  <select
                     value={overlordForm.region}
                     onChange={(e) => setOverlordForm({ ...overlordForm, region: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="cn-east"
-                  />
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  >
+                    <option value="">自动检测...</option>
+                    <option value="local">local (局域网)</option>
+                    <option value="cn-east">cn-east (华东)</option>
+                    <option value="cn-south">cn-south (华南)</option>
+                    <option value="cn-north">cn-north (华北)</option>
+                    <option value="cn-central">cn-central (华中)</option>
+                    <option value="cn-southwest">cn-southwest (西南)</option>
+                    <option value="hk">香港</option>
+                    <option value="us-west">us-west (美西)</option>
+                    <option value="us-east">us-east (美东)</option>
+                    <option value="eu-west">eu-west (西欧)</option>
+                    <option value="ap-southeast">ap-southeast (东南亚)</option>
+                    <option value="jp">日本</option>
+                  </select>
                 </div>
               </div>
               <button
@@ -772,7 +790,7 @@ export default function SettingsPage() {
             )}
             <div>
               <p className="text-sm font-medium" style={{ color: swarmStatus?.connected ? '#166534' : '#6b7280' }}>
-                {swarmStatus?.connected ? `已连接 — 节点 ${swarmStatus.node_id?.slice(0, 8)}...` : '未连接'}
+                {swarmStatus?.connected ? `已连接 — ${swarmStatus.node_id?.startsWith('claw:') ? swarmStatus.node_id.slice(0, 16) + '...' : swarmStatus.node_id?.slice(0, 8) + '...'}` : '未连接'}
               </p>
               {swarmStatus?.queen_url && swarmStatus.connected && (
                 <p className="text-xs text-gray-400">Queen: {swarmStatus.queen_url}</p>
@@ -801,13 +819,26 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选)</label>
-                  <input
+                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选，留空自动检测)</label>
+                  <select
                     value={swarmForm.region}
                     onChange={(e) => setSwarmForm({ ...swarmForm, region: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="cn-east, us-west..."
-                  />
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  >
+                    <option value="">自动检测...</option>
+                    <option value="local">local (局域网)</option>
+                    <option value="cn-east">cn-east (华东)</option>
+                    <option value="cn-south">cn-south (华南)</option>
+                    <option value="cn-north">cn-north (华北)</option>
+                    <option value="cn-central">cn-central (华中)</option>
+                    <option value="cn-southwest">cn-southwest (西南)</option>
+                    <option value="hk">香港</option>
+                    <option value="us-west">us-west (美西)</option>
+                    <option value="us-east">us-east (美东)</option>
+                    <option value="eu-west">eu-west (西欧)</option>
+                    <option value="ap-southeast">ap-southeast (东南亚)</option>
+                    <option value="jp">日本</option>
+                  </select>
                 </div>
               </div>
               <button
