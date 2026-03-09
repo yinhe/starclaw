@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff, Network, Unlink, Plus, Trash2, Radio, Copy } from 'lucide-react'
+import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff, Network, Unlink, Trash2, Radio, Copy, Pencil, X, Link } from 'lucide-react'
 import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI } from '../lib/api'
 
 export default function SettingsPage() {
@@ -35,6 +35,7 @@ export default function SettingsPage() {
   const [addingPeer, setAddingPeer] = useState(false)
   const [nodeMsg, setNodeMsg] = useState('')
   const [savingNode, setSavingNode] = useState(false)
+  const [editingNode, setEditingNode] = useState(false)
 
   useEffect(() => {
     loadProfile()
@@ -379,173 +380,152 @@ export default function SettingsPage() {
           })()}
         </section>
 
-        {/* Node Identity & Peer Networking */}
+        {/* Nydus Link — P2P Node Interconnection */}
         <section className="bg-white border rounded-xl p-6 mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
-            <Network className="w-4 h-4" /> 节点互联 (P2P)
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-1">
+            <Network className="w-4 h-4" /> 虫洞链路 (Nydus)
           </h2>
-          <p className="text-xs text-gray-400 mb-4">查看本节点信息，添加其他 Claw 节点实现互联协作：任务委派、Agent 迁移、资源共享。</p>
+          <p className="text-xs text-gray-400 mb-4">通过虫洞与其他 Claw 建立加密链路，实现任务委派、Agent 迁移、资源共享。</p>
 
-          {/* Node Info Card */}
+          {/* Node Identity Card — with inline edit */}
           {nodeInfo && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between mb-3">
+            <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-semibold text-blue-800">本节点</span>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Ed25519</span>
-                </div>
-                <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{nodeInfo.node_id}</span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
-                <div><span className="text-gray-500">名称:</span> <span className="font-medium">{nodeInfo.name || '—'}</span></div>
-                <div><span className="text-gray-500">版本:</span> <span className="font-medium">v{nodeInfo.version}</span></div>
-                <div><span className="text-gray-500">地域:</span> <span className="font-medium">{nodeInfo.region || '未设置'}</span></div>
-                <div><span className="text-gray-500">节点数:</span> <span className="font-medium">{nodeInfo.online_peers}/{nodeInfo.peer_count} 在线</span></div>
-              </div>
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 w-16">指纹:</span>
-                  <span className="font-mono text-gray-600">{nodeInfo.fingerprint}</span>
-                  <button onClick={() => { navigator.clipboard.writeText(nodeInfo.fingerprint); setNodeMsg('指纹已复制'); setTimeout(() => setNodeMsg(''), 2000) }} className="text-gray-400 hover:text-gray-600"><Copy className="w-3 h-3" /></button>
+                  <Radio className="w-4 h-4 text-violet-600" />
+                  <span className="text-sm font-semibold text-violet-800">本体 Claw</span>
+                  <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded">Ed25519</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 w-16">地址:</span>
-                  {nodeInfo.address ? (
-                    <span className="font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">{nodeInfo.address}</span>
-                  ) : (
-                    <span className="text-orange-600">未设置（其他节点无法连接到你）</span>
-                  )}
-                  {nodeInfo.address && (
-                    <button onClick={() => { navigator.clipboard.writeText(nodeInfo.address); setNodeMsg('地址已复制'); setTimeout(() => setNodeMsg(''), 2000) }} className="text-gray-400 hover:text-gray-600"><Copy className="w-3 h-3" /></button>
-                  )}
+                  <span className="text-xs font-mono bg-violet-100 text-violet-700 px-2 py-0.5 rounded">{nodeInfo.node_id}</span>
+                  <button onClick={() => { setEditingNode(!editingNode); if (!editingNode) setNodeForm({ address: nodeInfo.address || '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }} className="p-1 text-gray-400 hover:text-violet-600" title="编辑配置">
+                    {editingNode ? <X className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mt-2">Node ID 由 Ed25519 公钥哈希派生，不可伪造。私钥安全存储在节点本地。</p>
+
+              {!editingNode ? (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-2">
+                    <div><span className="text-gray-500">名称:</span> <span className="font-medium">{nodeInfo.name || '—'}</span></div>
+                    <div><span className="text-gray-500">版本:</span> <span className="font-medium">v{nodeInfo.version}</span></div>
+                    <div><span className="text-gray-500">地域:</span> <span className="font-medium">{nodeInfo.region || '—'}</span></div>
+                    <div><span className="text-gray-500">链路:</span> <span className="font-medium">{nodeInfo.online_peers}/{nodeInfo.peer_count} 在线</span></div>
+                  </div>
+                  <div className="space-y-0.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500 w-16 shrink-0">基因指纹:</span>
+                      <span className="font-mono text-gray-500 truncate">{nodeInfo.fingerprint}</span>
+                      <button onClick={() => { navigator.clipboard.writeText(nodeInfo.fingerprint); setNodeMsg('已复制'); setTimeout(() => setNodeMsg(''), 1500) }} className="text-gray-400 hover:text-gray-600 shrink-0"><Copy className="w-3 h-3" /></button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500 w-16 shrink-0">Nydus 入口:</span>
+                      {nodeInfo.address ? (
+                        <>
+                          <span className="font-mono text-violet-700 truncate">{nodeInfo.address}</span>
+                          <button onClick={() => { navigator.clipboard.writeText(nodeInfo.address); setNodeMsg('已复制'); setTimeout(() => setNodeMsg(''), 1500) }} className="text-gray-400 hover:text-gray-600 shrink-0"><Copy className="w-3 h-3" /></button>
+                        </>
+                      ) : (
+                        <span className="text-orange-500">未设置 — 点击 <Pencil className="w-3 h-3 inline" /> 配置公网地址</span>
+                      )}
+                    </div>
+                  </div>
+                  {nodeMsg && <p className="text-xs text-violet-600 mt-1">{nodeMsg}</p>}
+                  <p className="text-xs text-gray-400 mt-2">基因序列由 Ed25519 加密派生，如同虫族 DNA 不可伪造。私钥安全存储在本地。</p>
+                </>
+              ) : (
+                <div className="space-y-2 mt-1">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input value={nodeForm.address} onChange={(e) => setNodeForm({ ...nodeForm, address: e.target.value })} className="px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="Nydus 入口，如 https://starclaw.me" />
+                    <input value={nodeForm.name} onChange={(e) => setNodeForm({ ...nodeForm, name: e.target.value })} className="px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="Claw 名称（留空用主机名）" />
+                    <input value={nodeForm.region} onChange={(e) => setNodeForm({ ...nodeForm, region: e.target.value })} className="px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="地域，如 cn-east" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        setSavingNode(true)
+                        try {
+                          await nodeAPI.updateConfig(nodeForm)
+                          setEditingNode(false)
+                          loadSystemInfo()
+                        } catch { setNodeMsg('保存失败') }
+                        setSavingNode(false)
+                      }}
+                      disabled={savingNode}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs bg-violet-600 text-white rounded hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {savingNode ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} 保存
+                    </button>
+                    <button onClick={() => setEditingNode(false)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">取消</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Node Config Form */}
-          <div className="space-y-3 mb-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">节点地址（公网可访问）</label>
-                <input
-                  value={nodeForm.address}
-                  onChange={(e) => setNodeForm({ ...nodeForm, address: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如 https://starclaw.me 或 http://192.168.1.100:8080"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">节点名称</label>
-                <input
-                  value={nodeForm.name}
-                  onChange={(e) => setNodeForm({ ...nodeForm, name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="留空使用主机名"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">地域</label>
-                <input
-                  value={nodeForm.region}
-                  onChange={(e) => setNodeForm({ ...nodeForm, region: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="cn-east"
-                />
-              </div>
-            </div>
+          {/* Add Peer — compact */}
+          <div className="flex gap-2 mb-3">
+            <input
+              value={peerAddr}
+              onChange={(e) => setPeerAddr(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link')?.click() } }}
+              className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
+              placeholder="输入对方 Claw 地址，按回车建立虫洞链路"
+            />
             <button
+              id="btn-nydus-link"
               onClick={async () => {
-                setSavingNode(true)
+                if (!peerAddr) return
+                setAddingPeer(true)
                 try {
-                  await nodeAPI.updateConfig(nodeForm)
-                  setNodeMsg('节点配置已保存')
+                  await peerAPI.add({ address: peerAddr })
+                  setPeerAddr('')
                   loadSystemInfo()
-                  setTimeout(() => setNodeMsg(''), 3000)
-                } catch { setNodeMsg('保存失败') }
-                setSavingNode(false)
+                } catch (e: any) {
+                  alert(e.response?.data?.error || '链路建立失败')
+                }
+                setAddingPeer(false)
               }}
-              disabled={savingNode}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              disabled={addingPeer || !peerAddr}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap"
             >
-              {savingNode ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              保存节点配置
+              {addingPeer ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
+              建立链路
             </button>
-            {nodeMsg && <p className="text-sm text-blue-600">{nodeMsg}</p>}
           </div>
 
-          {/* Add Peer */}
-          <div className="border-t pt-4 mt-4">
-            <h3 className="text-xs font-semibold text-gray-600 mb-3">互联节点</h3>
-            <div className="flex gap-2 mb-4">
-              <input
-                value={peerAddr}
-                onChange={(e) => setPeerAddr(e.target.value)}
-                className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="输入对方节点地址，例如 https://other-claw.example.com"
-              />
-              <button
-                onClick={async () => {
-                  if (!peerAddr) return
-                  setAddingPeer(true)
-                  try {
-                    await peerAPI.add({ address: peerAddr })
-                    setPeerAddr('')
-                    loadSystemInfo()
-                  } catch (e: any) {
-                    alert(e.response?.data?.error || '连接失败')
-                  }
-                  setAddingPeer(false)
-                }}
-                disabled={addingPeer || !peerAddr}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {addingPeer ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                添加节点
-              </button>
-            </div>
-
-            {/* Peer List */}
-            {peers.length > 0 ? (
-              <div className="space-y-2">
-                {peers.map((peer: any) => (
-                  <div key={peer.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${peer.status === 'online' ? 'bg-green-500' : peer.status === 'offline' ? 'bg-red-400' : 'bg-gray-300'}`} />
-                      <div>
-                        <div className="text-sm font-medium">{peer.name || '未命名'} <span className="text-xs font-mono text-gray-400">{peer.node_id?.slice(0, 8)}</span></div>
-                        <div className="text-xs text-gray-400">{peer.address} · v{peer.version} · {peer.region || '—'}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${peer.status === 'online' ? 'bg-green-100 text-green-700' : peer.status === 'offline' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
-                        {peer.status === 'online' ? '在线' : peer.status === 'offline' ? '离线' : '未知'}
-                      </span>
-                      <button
-                        onClick={async () => { await peerAPI.ping(peer.id); loadSystemInfo() }}
-                        className="p-1 text-gray-400 hover:text-blue-600" title="Ping"
-                      >
-                        <Wifi className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={async () => { if (confirm('确认移除该节点？')) { await peerAPI.remove(peer.id); loadSystemInfo() } }}
-                        className="p-1 text-gray-400 hover:text-red-600" title="移除"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+          {/* Peer List */}
+          {peers.length > 0 ? (
+            <div className="space-y-1.5">
+              {peers.map((peer: any) => (
+                <div key={peer.id} className="flex items-center justify-between px-3 py-2.5 border rounded-lg hover:bg-gray-50 group">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${peer.status === 'online' ? 'bg-green-500' : peer.status === 'offline' ? 'bg-red-400' : 'bg-gray-300'}`} />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{peer.name || '未命名'} <span className="text-xs font-mono text-gray-400">{peer.node_id?.slice(0, 8)}</span></div>
+                      <div className="text-xs text-gray-400 truncate">{peer.address} · v{peer.version}{peer.region ? ` · ${peer.region}` : ''}</div>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-6 text-gray-400 text-sm">
-                <Unlink className="w-6 h-6 mx-auto mb-2 opacity-50" />
-                暂无互联节点，添加其他 Claw 的地址开始协作
-              </div>
-            )}
-          </div>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${peer.status === 'online' ? 'bg-green-100 text-green-700' : peer.status === 'offline' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                      {peer.status === 'online' ? '在线' : peer.status === 'offline' ? '离线' : '未知'}
+                    </span>
+                    <button onClick={async () => { await peerAPI.ping(peer.id); loadSystemInfo() }} className="p-1 text-gray-300 hover:text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" title="探测">
+                      <Wifi className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={async () => { if (confirm('断开与该 Claw 的虫洞链路？')) { await peerAPI.remove(peer.id); loadSystemInfo() } }} className="p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="断开链路">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-4 text-gray-400 text-xs">
+              <Unlink className="w-5 h-5 mx-auto mb-1.5 opacity-40" />
+              暂无虫洞链路 — 输入其他 Claw 地址建立连接
+            </div>
+          )}
         </section>
 
         {/* Brood */}
