@@ -14,9 +14,10 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	// Ensure system user exists (required by foreign key constraint)
 	var sysUser model.User
 	if err := db.Where("id = ?", systemUID).First(&sysUser).Error; err != nil {
+		sysEmail := "system@starclaw.me"
 		sysUser = model.User{
 			ID:       systemUID,
-			Email:    "system@starclaw.me",
+			Email:    &sysEmail,
 			Username: "StarClaw",
 			Password: "-",
 			Role:     "system",

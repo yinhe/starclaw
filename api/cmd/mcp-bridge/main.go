@@ -24,12 +24,12 @@ import (
 // inside Docker can control the host computer.
 //
 // Usage:
-//   go run ./cmd/mcp-bridge              # default :9100
-//   go run ./cmd/mcp-bridge -port 9100
+//   go run ./cmd/mcp-bridge              # default :9101
+//   go run ./cmd/mcp-bridge -port 9101
 //
 // Then add in Claw Settings → MCP 工具:
 //   Name:    host
-//   BaseURL: http://host.docker.internal:9100
+//   BaseURL: http://host.docker.internal:9101
 // ───────────────────────────────────────────────
 
 var version = "0.1.0"
@@ -1041,7 +1041,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	port := "9100"
+	port := "9101"
 	for i, arg := range os.Args {
 		if (arg == "-port" || arg == "--port") && i+1 < len(os.Args) {
 			port = os.Args[i+1]

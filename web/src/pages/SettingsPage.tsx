@@ -330,7 +330,7 @@ export default function SettingsPage() {
                 {bridgeStatus?.connected ? '已连接' : '未连接'}
               </p>
               {bridgeStatus?.connected && (
-                <p className="text-xs text-gray-400">{bridgeStatus.bridge_url} · 9 个宿主机工具已注册</p>
+                <p className="text-xs text-gray-400">{bridgeStatus.bridge_url} · {bridgeStatus.tool_count || '?'} 个宿主机工具已注册</p>
               )}
             </div>
           </div>

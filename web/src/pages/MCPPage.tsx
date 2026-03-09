@@ -103,7 +103,7 @@ export default function MCPPage() {
                 </div>
                 <div className="text-xs text-gray-400 mt-0.5">
                   {bridge.connected
-                    ? <>{bridge.bridge_url} · 9 个工具: shell_exec, file_read, file_write, file_list, system_info, open_url, open_app, clipboard_read, clipboard_write</>
+                    ? <>{bridge.bridge_url} · {bridge.tool_count || '?'} 个工具: {(bridge.tool_names || []).join(', ') || '加载中...'}</>
                     : '在宿主机运行 MCP Bridge 即可启用，详见 设置 → 宿主机控制'
                   }
                 </div>

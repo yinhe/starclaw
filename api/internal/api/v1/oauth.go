@@ -320,7 +320,7 @@ func (h *OAuthHandler) findOrCreateOAuthUser(provider, oauthID, username, email,
 
 	// Create new user (OAuth users have a random password since they don't use it)
 	user = model.User{
-		Email:         email,
+		Email:         &email,
 		Username:      finalUsername,
 		Password:      uuid.New().String(), // random, not used for OAuth login
 		Avatar:        avatar,
