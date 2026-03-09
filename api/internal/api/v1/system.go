@@ -283,6 +283,12 @@ func execOnHost(client *mcp.Client, command string) (string, error) {
 	return client.CallTool(context.Background(), "shell_exec", string(args))
 }
 
+// execOnHostTimeout sends a shell command with a custom timeout (for long-running ops like docker build).
+func execOnHostTimeout(client *mcp.Client, command string, timeoutSec int) (string, error) {
+	args, _ := json.Marshal(map[string]interface{}{"command": command, "timeout_seconds": timeoutSec})
+	return client.CallTool(context.Background(), "shell_exec", string(args))
+}
+
 func performDockerUpdate() error {
 	// MCP Bridge is required — the container cannot rebuild itself
 	bridgeURL := mcp.DetectBridgeURL()
@@ -331,10 +337,10 @@ func performDockerUpdate() error {
 		log.Println("[molt] TIP: for monorepo, run: cd /opt/starclaw/claw && git init && git remote add origin https://github.com/yinhe/starclaw.git && git fetch origin main && git reset --mixed origin/main")
 	}
 
-	// Step 4: Build and restart with correct compose file
+	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)
 	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,
 		projectDir, composeFile, composeFile)
-	result, err := execOnHost(client, updateCmd)
+	result, err := execOnHostTimeout(client, updateCmd, 300)
 	if err != nil {
 		log.Printf("[molt] update failed: %v", err)
 		return fmt.Errorf("更新失败: %v", err)
