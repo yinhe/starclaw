@@ -317,13 +317,13 @@ func performDockerUpdate() error {
 	}
 	log.Printf("[molt] compose: %s/%s", projectDir, composeFile)
 
-	// Step 3: Update source code — try git pull
+	// Step 3: Update source code — fetch + reset --hard (not pull, which fails with dirty working tree from tar deploys)
 	// Monorepo layout: git may be in claw/ subdir (OSS repo maps claw/ → root)
 	// Standalone layout: git is at project root
 	pullResult, _ := execOnHost(client, fmt.Sprintf(
-		`cd "%s" && if [ -d .git ]; then git pull origin main 2>&1; elif [ -d claw/.git ]; then cd claw && git pull origin main 2>&1; else echo "NO_GIT"; fi`,
+		`cd "%s" && if [ -d .git ]; then git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; elif [ -d claw/.git ]; then cd claw && git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; else echo "NO_GIT"; fi`,
 		projectDir))
-	log.Printf("[molt] source update: %.300s", pullResult)
+	log.Printf("[molt] source update: %.500s", pullResult)
 
 	if strings.Contains(pullResult, "NO_GIT") {
 		log.Println("[molt] WARNING: no git repo on server, source code not updated. Build will use existing code.")
