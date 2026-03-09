@@ -22,10 +22,18 @@ type Identity struct {
 	mu         sync.RWMutex
 }
 
-const keyFile = ".node_key"
+// getKeyFile returns the path to the node key file.
+// Supports NODE_KEY_PATH env var for Docker volume persistence.
+func getKeyFile() string {
+	if p := os.Getenv("NODE_KEY_PATH"); p != "" {
+		return p
+	}
+	return ".node_key"
+}
 
 // LoadOrCreateIdentity loads keypair from disk, or generates a new one.
 func LoadOrCreateIdentity() *Identity {
+	keyFile := getKeyFile()
 	id := &Identity{}
 
 	// Try loading existing key
