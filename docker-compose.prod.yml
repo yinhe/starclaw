@@ -55,6 +55,7 @@ services:
       STARCLAW_REDIS_PASSWORD: ${REDIS_PASSWORD:-starclaw_redis_2026}
       STARCLAW_JWT_SECRET: ${JWT_SECRET}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      STARCLAW_NODE_ADDRESS: https://starclaw.me
       STARCLAW_SWARM_ENABLED: "true"
       STARCLAW_SWARM_QUEEN_URL: http://starclaw-queen-swarm:8090
       NODE_KEY_PATH: /app/data/identity/.node_key
