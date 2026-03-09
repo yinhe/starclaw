@@ -638,6 +638,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			peerHandler := v1.NewPeerHandler(db, cfg)
 			protected.GET("/node/info", peerHandler.GetNodeInfo)
 			protected.PUT("/node/config", peerHandler.UpdateNodeConfig)
+			protected.POST("/node/auto-setup", peerHandler.AutoSetupNode)
 			protected.GET("/peers/resolve", peerHandler.ResolveNode)
 			protected.GET("/peers", peerHandler.ListPeers)
 			protected.POST("/peers", peerHandler.AddPeer)

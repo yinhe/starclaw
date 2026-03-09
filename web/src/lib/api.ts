@@ -63,6 +63,7 @@ export const systemAPI = {
 export const nodeAPI = {
   getInfo: () => api.get('/node/info'),
   updateConfig: (data: { address?: string; name?: string; region?: string }) => api.put('/node/config', data),
+  autoSetup: (data: { use_public_ip: boolean; port?: string; name?: string }) => api.post('/node/auto-setup', data),
 }
 
 export const peerAPI = {

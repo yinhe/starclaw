@@ -418,20 +418,56 @@ export default function SettingsPage() {
           </h2>
           <p className="text-xs text-gray-400 mb-3">通过虫洞与其他 Claw 建立加密链路，实现任务委派、Agent 迁移、资源共享。</p>
 
-          {/* Warning: address not set */}
+          {/* Warning: address not set — show auto-detect buttons */}
           {nodeInfo && !nodeInfo.address && !editingNode && (
-            <div className="flex items-center gap-3 p-3 mb-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-amber-800">需要设置可访问地址才能与其他 Claw 互联</p>
-                <p className="text-xs text-amber-600 mt-0.5">域名或 IP 均可，例如 https://starclaw.me 或 http://192.168.1.100:8080</p>
+            <div className="p-4 mb-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                <p className="text-sm font-medium text-amber-800">选择一个地址，让其他 Claw 能连接到你</p>
               </div>
-              <button
-                onClick={() => { setEditingNode(true); setNodeForm({ address: '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }}
-                className="px-3 py-1.5 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 whitespace-nowrap shrink-0"
-              >
-                立即设置
-              </button>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {nodeInfo.public_ip && (
+                  <button
+                    onClick={async () => {
+                      setSavingNode(true)
+                      try {
+                        const res = await nodeAPI.autoSetup({ use_public_ip: true })
+                        setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                        setTimeout(() => setNodeMsg(''), 3000)
+                        loadSystemInfo()
+                      } catch { setNodeMsg('配置失败') }
+                      setSavingNode(false)
+                    }}
+                    disabled={savingNode}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {savingNode ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                    公网 IP: {nodeInfo.public_ip}
+                  </button>
+                )}
+                {(nodeInfo.private_ips || []).map((ip: string) => (
+                  <button
+                    key={ip}
+                    onClick={async () => {
+                      setSavingNode(true)
+                      try {
+                        const res = await nodeAPI.autoSetup({ use_public_ip: false })
+                        setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                        setTimeout(() => setNodeMsg(''), 3000)
+                        loadSystemInfo()
+                      } catch { setNodeMsg('配置失败') }
+                      setSavingNode(false)
+                    }}
+                    disabled={savingNode}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {savingNode ? <Loader2 className="w-4 h-4 animate-spin" /> : <Monitor className="w-4 h-4" />}
+                    内网 IP: {ip}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-amber-600">点击即可一键配置，地域将根据 IP 自动检测。<button onClick={() => { setEditingNode(true); setNodeForm({ address: '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }} className="text-violet-600 hover:underline ml-1">手动输入域名</button></p>
+              {nodeMsg && <p className="text-xs text-violet-600 mt-1">{nodeMsg}</p>}
             </div>
           )}
 
@@ -590,7 +626,7 @@ export default function SettingsPage() {
                   onChange={(e) => setPeerAddr(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link')?.click() } }}
                   className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                  placeholder="claw: 地址、域名或 IP，如 claw:b49e... 或 http://192.168.1.x:8080"
+                  placeholder="输入对方 claw: 地址，如 claw:b49edd9cebbc..."
                 />
                 <button
                   id="btn-nydus-link"
@@ -633,15 +669,15 @@ export default function SettingsPage() {
               <div className="space-y-2.5 mb-4">
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">1</span>
-                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <><Check className="w-3 h-3 text-green-500 inline mr-1" />已设置可访问地址</> : <>点击上方 <Pencil className="w-3 h-3 inline text-violet-500" /> 设置你的<strong className="text-gray-700">可访问地址</strong></>}</span>
+                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <><Check className="w-3 h-3 text-green-500 inline mr-1" />已配置: <span className="font-mono text-violet-600">{nodeInfo.address}</span></> : <>点击上方按钮<strong className="text-gray-700">一键配置地址</strong>（自动检测IP和地域）</>}</span>
                 </div>
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">2</span>
-                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <>点击 <Share2 className="w-3 h-3 inline text-violet-500" /> 复制邀请信息，发送给<strong className="text-gray-700">对方</strong></> : <>将你的地址告诉对方，或复制邀请信息发送</>}</span>
+                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <>点击 <Share2 className="w-3 h-3 inline text-violet-500" /> 复制你的 <strong className="text-gray-700">claw: 地址</strong>发给对方</> : <>复制你的 claw: 地址发给对方</>}</span>
                 </div>
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">3</span>
-                  <span className="text-gray-500 pt-0.5">在下方输入<strong className="text-gray-700">对方的 claw: 地址或 IP/域名</strong>，点击建立链路</span>
+                  <span className="text-gray-500 pt-0.5">输入对方的 <strong className="text-gray-700">claw: 地址</strong>，自动解析并建立加密链路</span>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -650,7 +686,7 @@ export default function SettingsPage() {
                   onChange={(e) => setPeerAddr(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link-empty')?.click() } }}
                   className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                  placeholder="claw: 地址、域名或 IP，如 claw:b49e... 或 http://192.168.1.x:8080"
+                  placeholder="输入对方 claw: 地址，如 claw:b49edd9cebbc..."
                 />
                 <button
                   id="btn-nydus-link-empty"

@@ -92,6 +92,9 @@ func (h *PeerHandler) GetNodeInfo(c *gin.Context) {
 	var onlineCount int64
 	h.db.Model(&model.Peer{}).Where("status = ?", "online").Count(&onlineCount)
 
+	// Auto-detect host IPs for display
+	publicIP, privateIPs := detectHostIPs()
+
 	c.JSON(http.StatusOK, gin.H{
 		"node_id":      h.identity.NodeID,
 		"public_key":   h.identity.PublicKeyHex(),
@@ -108,6 +111,74 @@ func (h *PeerHandler) GetNodeInfo(c *gin.Context) {
 		"goroutines":   runtime.NumGoroutine(),
 		"peer_count":   peerCount,
 		"online_peers": onlineCount,
+		"public_ip":    publicIP,
+		"private_ips":  privateIPs,
+	})
+}
+
+// AutoSetupNode auto-detects address and region, saves config (one-click setup)
+func (h *PeerHandler) AutoSetupNode(c *gin.Context) {
+	var req struct {
+		UsePublicIP bool   `json:"use_public_ip"` // true=public, false=first private
+		Port        string `json:"port"`          // default "8080"
+		Name        string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	publicIP, privateIPs := detectHostIPs()
+
+	// Choose IP
+	chosenIP := ""
+	if req.UsePublicIP && publicIP != "" {
+		chosenIP = publicIP
+	} else if len(privateIPs) > 0 {
+		chosenIP = privateIPs[0]
+	} else if publicIP != "" {
+		chosenIP = publicIP
+	}
+
+	if chosenIP == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法检测到任何可用 IP 地址"})
+		return
+	}
+
+	port := req.Port
+	if port == "" {
+		port = "8080"
+	}
+
+	// Build address
+	address := fmt.Sprintf("http://%s:%s", chosenIP, port)
+
+	// Auto-detect region
+	region := detectRegionFromAddress(address)
+
+	// Save config
+	h.cfg.Node.Address = address
+	viper.Set("node.address", address)
+	h.gossip.SetAddress(address)
+
+	if region != "" {
+		h.cfg.Node.Region = region
+		viper.Set("node.region", region)
+	}
+
+	if req.Name != "" {
+		h.cfg.Node.Name = req.Name
+		viper.Set("node.name", req.Name)
+	}
+
+	_ = viper.WriteConfig()
+
+	log.Printf("[node] auto-setup: address=%s region=%s", address, region)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "节点已自动配置",
+		"address": address,
+		"region":  region,
+		"ip":      chosenIP,
 	})
 }
 
@@ -481,6 +552,48 @@ func (h *PeerHandler) syncGossipToDB(peers []node.PeerInfo) {
 		dbPeer.LastSeen = time.Unix(p.LastSeen, 0)
 		h.db.Save(&dbPeer)
 	}
+}
+
+// detectHostIPs returns the public IP (via external service) and all private IPs (from interfaces)
+func detectHostIPs() (publicIP string, privateIPs []string) {
+	// Get public IP
+	client := &http.Client{Timeout: 3 * time.Second}
+	if resp, err := client.Get("http://ip-api.com/json/?fields=query"); err == nil {
+		defer resp.Body.Close()
+		var result struct {
+			Query string `json:"query"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&result) == nil {
+			publicIP = result.Query
+		}
+	}
+
+	// Get private IPs from network interfaces
+	ifaces, err := net.Interfaces()
+	if err == nil {
+		for _, iface := range ifaces {
+			if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+				continue
+			}
+			addrs, _ := iface.Addrs()
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip == nil || ip.IsLoopback() || ip.To4() == nil {
+					continue
+				}
+				if ip.IsPrivate() {
+					privateIPs = append(privateIPs, ip.String())
+				}
+			}
+		}
+	}
+	return
 }
 
 // detectRegionFromAddress extracts IP from address URL and detects region.
