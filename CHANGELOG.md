@@ -5,6 +5,13 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.9] - 2026-03-09
+
+### Fixed
+- **统一 Docker Compose 服务命名** — 所有 compose 文件（含根目录 `docker-compose.prod.yml`）服务名统一为 `api`/`web`，移除旧的 `backend`/`frontend` 命名。一键更新逻辑简化，不再需要动态检测服务名。
+
+---
+
 ## [0.5.8] - 2026-03-09
 
 ### Fixed

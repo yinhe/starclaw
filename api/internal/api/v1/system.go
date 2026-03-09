@@ -301,25 +301,21 @@ func performDockerUpdate() error {
 	}
 	log.Printf("[molt] project dir: %s", projectDir)
 
-	// Step 2: Detect compose file (prod > default) and service names (backend/frontend vs api/web)
+	// Step 2: Detect compose file — all compose files use api/web service names
+	// Prefer claw/ subdir compose (standalone/monorepo OSS layout), then root
 	composeFile := "docker-compose.yml"
-	apiSvc, webSvc := "api", "web"
 
-	checkResult, _ := execOnHost(client, fmt.Sprintf(`[ -f "%s/docker-compose.prod.yml" ] && echo PROD || ([ -f "%s/claw/docker-compose.prod.yml" ] && echo CLAW_PROD || echo DEV)`, projectDir, projectDir))
+	checkResult, _ := execOnHost(client, fmt.Sprintf(
+		`[ -f "%s/claw/docker-compose.prod.yml" ] && echo CLAW_PROD || ([ -f "%s/docker-compose.prod.yml" ] && echo ROOT_PROD || echo DEV)`,
+		projectDir, projectDir))
 	checkResult = strings.TrimSpace(checkResult)
-	switch {
-	case strings.Contains(checkResult, "PROD"):
-		composeFile = "docker-compose.prod.yml"
-		// Root compose uses backend/frontend
-		svcCheck, _ := execOnHost(client, fmt.Sprintf(`grep -q "^\s*backend:" "%s/%s" 2>/dev/null && echo BACKEND || echo API`, projectDir, composeFile))
-		if strings.Contains(svcCheck, "BACKEND") {
-			apiSvc, webSvc = "backend", "frontend"
-		}
-	case strings.Contains(checkResult, "CLAW_PROD"):
+	if strings.Contains(checkResult, "CLAW_PROD") {
 		projectDir = projectDir + "/claw"
 		composeFile = "docker-compose.prod.yml"
+	} else if strings.Contains(checkResult, "ROOT_PROD") {
+		composeFile = "docker-compose.prod.yml"
 	}
-	log.Printf("[molt] compose: %s/%s, services: %s %s", projectDir, composeFile, apiSvc, webSvc)
+	log.Printf("[molt] compose: %s/%s", projectDir, composeFile)
 
 	// Step 3: Update source code — try git pull
 	// Monorepo layout: git may be in claw/ subdir (OSS repo maps claw/ → root)
@@ -335,9 +331,8 @@ func performDockerUpdate() error {
 	}
 
 	// Step 4: Build and restart with correct compose file
-	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build %s %s 2>&1 && docker compose -f %s up -d --no-deps %s %s 2>&1`,
-		projectDir, composeFile, apiSvc, webSvc,
-		composeFile, apiSvc, webSvc)
+	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,
+		projectDir, composeFile, composeFile)
 	result, err := execOnHost(client, updateCmd)
 	if err != nil {
 		log.Printf("[molt] update failed: %v", err)
