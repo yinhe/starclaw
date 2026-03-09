@@ -26,14 +26,20 @@ import (
 // PeerHandler manages node identity and peer-to-peer networking.
 // Uses Ed25519 crypto identity: Node ID = "claw:" + SHA256(publicKey)[:40] (160-bit, Bitcoin-level)
 type PeerHandler struct {
-	db       *gorm.DB
-	cfg      *config.Config
-	identity *node.Identity
-	gossip   *node.GossipEngine
-	httpC    *http.Client
+	db          *gorm.DB
+	cfg         *config.Config
+	identity    *node.Identity
+	gossip      *node.GossipEngine
+	httpC       *http.Client
+	swarmClient swarmAddressSetter
 }
 
-func NewPeerHandler(db *gorm.DB, cfg *config.Config) *PeerHandler {
+// swarmAddressSetter is satisfied by swarm.Client (avoid import cycle)
+type swarmAddressSetter interface {
+	SetAddress(addr string)
+}
+
+func NewPeerHandler(db *gorm.DB, cfg *config.Config, opts ...interface{}) *PeerHandler {
 	identity := node.LoadOrCreateIdentity()
 
 	h := &PeerHandler{
@@ -65,6 +71,13 @@ func NewPeerHandler(db *gorm.DB, cfg *config.Config) *PeerHandler {
 
 	// Start gossip loop (every 30s)
 	h.gossip.Start(30 * time.Second)
+
+	// Accept optional swarm client for address sync
+	for _, opt := range opts {
+		if sc, ok := opt.(swarmAddressSetter); ok {
+			h.swarmClient = sc
+		}
+	}
 
 	return h
 }
@@ -160,6 +173,9 @@ func (h *PeerHandler) AutoSetupNode(c *gin.Context) {
 	h.cfg.Node.Address = address
 	viper.Set("node.address", address)
 	h.gossip.SetAddress(address)
+	if h.swarmClient != nil {
+		h.swarmClient.SetAddress(address)
+	}
 
 	if region != "" {
 		h.cfg.Node.Region = region

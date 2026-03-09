@@ -635,7 +635,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
 
 			// Node Identity & Peer Networking
-			peerHandler := v1.NewPeerHandler(db, cfg)
+			var scOpt []interface{}
+			if len(swarmClient) > 0 && swarmClient[0] != nil {
+				scOpt = append(scOpt, swarmClient[0])
+			}
+			peerHandler := v1.NewPeerHandler(db, cfg, scOpt...)
 			protected.GET("/node/info", peerHandler.GetNodeInfo)
 			protected.PUT("/node/config", peerHandler.UpdateNodeConfig)
 			protected.POST("/node/auto-setup", peerHandler.AutoSetupNode)

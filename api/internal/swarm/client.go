@@ -200,6 +200,7 @@ func (c *Client) heartbeat() error {
 
 	c.mu.RLock()
 	cid := c.clawID
+	addr := c.nodeAddress
 	c.mu.RUnlock()
 
 	body := map[string]interface{}{
@@ -207,6 +208,7 @@ func (c *Client) heartbeat() error {
 		"token":         tok,
 		"version":       molt.Version,
 		"claw_id":       cid,
+		"address":       addr,
 		"cpu_percent":   0, // TODO: real CPU sampling
 		"mem_percent":   memPct,
 		"tasks_running": 0,
