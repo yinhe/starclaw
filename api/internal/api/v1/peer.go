@@ -531,7 +531,11 @@ func detectRegionFromAddress(address string) string {
 		return ""
 	}
 
-	// Map to our region codes
+	// Build city suffix (lowercase, ascii only)
+	city := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(geo.City), " ", ""))
+
+	// Map to our region codes: big-region-city
+	var base string
 	switch geo.CountryCode {
 	case "CN":
 		region := strings.ToLower(geo.RegionName)
@@ -539,43 +543,49 @@ func detectRegionFromAddress(address string) string {
 		case strings.Contains(region, "shanghai") || strings.Contains(region, "zhejiang") ||
 			strings.Contains(region, "jiangsu") || strings.Contains(region, "anhui") ||
 			strings.Contains(region, "fujian") || strings.Contains(region, "jiangxi"):
-			return "cn-east"
+			base = "cn-east"
 		case strings.Contains(region, "guangdong") || strings.Contains(region, "guangxi") ||
 			strings.Contains(region, "hainan"):
-			return "cn-south"
+			base = "cn-south"
 		case strings.Contains(region, "beijing") || strings.Contains(region, "tianjin") ||
 			strings.Contains(region, "hebei") || strings.Contains(region, "shandong") ||
 			strings.Contains(region, "liaoning") || strings.Contains(region, "jilin") ||
 			strings.Contains(region, "heilongjiang") || strings.Contains(region, "inner mongolia"):
-			return "cn-north"
+			base = "cn-north"
 		case strings.Contains(region, "hubei") || strings.Contains(region, "hunan") ||
 			strings.Contains(region, "henan"):
-			return "cn-central"
+			base = "cn-central"
 		case strings.Contains(region, "sichuan") || strings.Contains(region, "chongqing") ||
 			strings.Contains(region, "yunnan") || strings.Contains(region, "guizhou") ||
 			strings.Contains(region, "tibet"):
-			return "cn-southwest"
+			base = "cn-southwest"
 		default:
-			return "cn-east" // fallback for China
+			base = "cn-east"
 		}
 	case "HK", "MO":
-		return "hk"
+		base = "hk"
 	case "TW":
-		return "hk" // closest region
+		base = "hk"
 	case "JP":
-		return "jp"
+		base = "jp"
 	case "US":
 		region := strings.ToLower(geo.RegionName)
 		if strings.Contains(region, "california") || strings.Contains(region, "oregon") ||
 			strings.Contains(region, "washington") || strings.Contains(region, "nevada") {
-			return "us-west"
+			base = "us-west"
+		} else {
+			base = "us-east"
 		}
-		return "us-east"
 	case "DE", "FR", "GB", "NL", "IE", "IT", "ES", "SE", "NO", "FI", "DK", "CH", "AT", "BE", "PL":
-		return "eu-west"
+		base = "eu-west"
 	case "SG", "MY", "TH", "VN", "PH", "ID":
-		return "ap-southeast"
+		base = "ap-southeast"
 	default:
-		return strings.ToLower(geo.CountryCode)
+		base = strings.ToLower(geo.CountryCode)
 	}
+
+	if city != "" {
+		return base + "-" + city
+	}
+	return base
 }

@@ -892,7 +892,7 @@ export default function SettingsPage() {
               { name: '领主监控', desc: '资源配额与可观测性', url: 'https://overlord.starclaw.me', color: 'violet', port: null },
               { name: '赏金网络', desc: 'Agent 任务发布与协作', url: 'https://bounty.starclaw.me', color: 'amber', port: 8092 },
               { name: '社区论坛', desc: '用户交流与经验分享', url: 'https://forum.starclaw.me', color: 'emerald', port: 8093 },
-              { name: '机器人社区', desc: 'Agent 自主交流与协作', url: 'https://arena.starclaw.me', color: 'pink', port: 8094 },
+              { name: '龙虾社区', desc: 'Agent 自主交流与协作', url: 'https://arena.starclaw.me', color: 'pink', port: 8094 },
               { name: '官方文档', desc: '部署指南与 API 参考', url: 'https://starclaw.me/docs', color: 'cyan', port: null },
             ].map((svc) => (
               <a
