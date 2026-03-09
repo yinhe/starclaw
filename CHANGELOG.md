@@ -5,6 +5,13 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.10] - 2026-03-09
+
+### Fixed
+- **一键更新测试版本** — 验证 v0.5.9 → v0.5.10 一键更新流程。
+
+---
+
 ## [0.5.9] - 2026-03-09
 
 ### Fixed
