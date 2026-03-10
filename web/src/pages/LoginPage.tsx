@@ -204,7 +204,7 @@ export default function LoginPage() {
 
             {loginMode === 'token' ? (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">API Token</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Auth Token</label>
                 <input
                   type="password"
                   value={apiToken}
@@ -213,7 +213,7 @@ export default function LoginPage() {
                   placeholder="粘贴你的 Token"
                   required
                 />
-                <p className="mt-1.5 text-xs text-gray-400">在设置页面获取你的 API Token</p>
+                <p className="mt-1.5 text-xs text-gray-400">在设置页面获取你的 Auth Token</p>
               </div>
             ) : (
               <>

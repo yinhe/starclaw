@@ -1136,13 +1136,13 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* API Token */}
+        {/* Auth Token */}
         <section className="bg-white border rounded-xl p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
-            <Shield className="w-4 h-4" /> API Token
+            <Shield className="w-4 h-4" /> Auth Token
           </h2>
           <p className="text-xs text-gray-400 mb-3">
-            用服务器 Ed25519 私钥签名，绑定当前服务器身份。多台电脑可使用同一 Token 登录此服务器。
+            绑定当前服务器身份，多台电脑可使用同一 Token 登录。复制后在登录页 Token 标签粘贴即可。
           </p>
           {tokenNodeId && (
             <p className="text-xs text-gray-400 mb-4 flex items-center gap-1">
