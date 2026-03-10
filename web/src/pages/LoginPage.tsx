@@ -28,11 +28,12 @@ interface OAuthProvider {
 
 export default function LoginPage() {
   const [isRegister, setIsRegister] = useState(false)
-  const [loginMode, setLoginMode] = useState<'email' | 'phone'>('email')
+  const [loginMode, setLoginMode] = useState<'email' | 'phone' | 'token'>('email')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [apiToken, setApiToken] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
@@ -91,7 +92,9 @@ export default function LoginPage() {
 
     try {
       let res
-      if (loginMode === 'phone') {
+      if (loginMode === 'token') {
+        res = await authAPI.tokenLogin({ token: apiToken })
+      } else if (loginMode === 'phone') {
         res = isRegister
           ? await authAPI.phoneRegister({ phone, password, username: username || undefined })
           : await authAPI.phoneLogin({ phone, password })
@@ -134,101 +137,146 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email / Phone mode toggle */}
-            <div className="flex rounded-lg bg-gray-100 p-1">
-              <button
-                type="button"
-                onClick={() => { setLoginMode('email'); setError('') }}
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                邮箱
-              </button>
-              <button
-                type="button"
-                onClick={() => { setLoginMode('phone'); setError('') }}
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                手机号
-              </button>
-            </div>
-
-            {loginMode === 'email' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="your@email.com"
-                  required
-                />
-              </div>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="13800138000"
-                  required
-                />
+            {/* Email / Phone / Token mode toggle */}
+            {!isRegister && (
+              <div className="flex rounded-lg bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('email'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  邮箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('phone'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  手机号
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('token'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'token' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Token
+                </button>
               </div>
             )}
 
             {isRegister && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  用户名{loginMode === 'phone' ? '（可选）' : ''}
-                </label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="your_username"
-                  required={loginMode === 'email'}
-                  minLength={3}
-                />
+              <div className="flex rounded-lg bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('email'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  邮箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('phone'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  手机号
+                </button>
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                密码
-              </label>
-              <div className="relative">
+            {loginMode === 'token' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">API Token</label>
                 <input
-                  type={showPwd ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="••••••"
+                  type="password"
+                  value={apiToken}
+                  onChange={(e) => setApiToken(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                  placeholder="sk-..."
                   required
-                  minLength={6}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                <p className="mt-1.5 text-xs text-gray-400">在设置页面获取你的 API Token</p>
               </div>
-            </div>
+            ) : (
+              <>
+                {loginMode === 'email' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="your@email.com"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="13800138000"
+                      required
+                    />
+                  </div>
+                )}
 
-            {!isRegister && (
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                记住我
-              </label>
+                {isRegister && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      用户名{loginMode === 'phone' ? '（可选）' : ''}
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="your_username"
+                      required={loginMode === 'email'}
+                      minLength={3}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="••••••"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPwd(!showPwd)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {!isRegister && (
+                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    记住我
+                  </label>
+                )}
+              </>
             )}
 
             <button
@@ -267,18 +315,20 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div className="mt-6 text-center text-sm text-gray-500">
-            {isRegister ? '已有账号？' : '没有账号？'}
-            <button
-              onClick={() => {
-                setIsRegister(!isRegister)
-                setError('')
-              }}
-              className="text-primary-600 hover:text-primary-700 font-medium ml-1"
-            >
-              {isRegister ? '去登录' : '注册'}
-            </button>
-          </div>
+          {loginMode !== 'token' && (
+            <div className="mt-6 text-center text-sm text-gray-500">
+              {isRegister ? '已有账号？' : '没有账号？'}
+              <button
+                onClick={() => {
+                  setIsRegister(!isRegister)
+                  setError('')
+                }}
+                className="text-primary-600 hover:text-primary-700 font-medium ml-1"
+              >
+                {isRegister ? '去登录' : '注册'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

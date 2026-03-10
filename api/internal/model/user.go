@@ -1,6 +1,8 @@
 package model
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +20,7 @@ type User struct {
 	TenantID      string         `json:"tenant_id" gorm:"type:varchar(36);index"`
 	OAuthProvider string         `json:"oauth_provider" gorm:"type:varchar(20);index"`
 	OAuthID       string         `json:"oauth_id" gorm:"type:varchar(100);index"`
+	APIToken      string         `json:"api_token,omitempty" gorm:"type:varchar(100);index"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
@@ -27,5 +30,14 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == "" {
 		u.ID = uuid.New().String()
 	}
+	if u.APIToken == "" {
+		u.APIToken = GenerateAPIToken()
+	}
 	return nil
+}
+
+func GenerateAPIToken() string {
+	b := make([]byte, 24)
+	rand.Read(b)
+	return "sk-" + hex.EncodeToString(b)
 }

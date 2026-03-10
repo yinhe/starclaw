@@ -34,6 +34,10 @@ export const authAPI = {
     api.post('/auth/phone/register', data),
   phoneLogin: (data: { phone: string; password: string }) =>
     api.post('/auth/phone/login', data),
+  tokenLogin: (data: { token: string }) =>
+    api.post('/auth/token/login', data),
+  getAPIToken: () => api.get('/auth/token'),
+  regenerateToken: () => api.post('/auth/token/regenerate'),
   oauthProviders: () => api.get('/auth/oauth/providers'),
   oauthGitHub: (code: string) => api.post('/auth/oauth/github', { code }),
   oauthGoogle: (code: string) => api.post('/auth/oauth/google', { code }),

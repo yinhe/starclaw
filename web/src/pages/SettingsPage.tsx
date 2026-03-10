@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff, Network, Trash2, Radio, Copy, Pencil, X, Link, ChevronDown, ChevronRight, Share2, AlertTriangle } from 'lucide-react'
-import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI } from '../lib/api'
+import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI } from '../lib/api'
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState({ username: '', email: '', phone: '' })
@@ -38,11 +38,18 @@ export default function SettingsPage() {
   const [editingNode, setEditingNode] = useState(false)
   const [showNodeDetails, setShowNodeDetails] = useState(false)
 
+  // API Token state
+  const [myToken, setMyToken] = useState('')
+  const [showToken, setShowToken] = useState(false)
+  const [tokenCopied, setTokenCopied] = useState(false)
+  const [regeneratingToken, setRegeneratingToken] = useState(false)
+
   useEffect(() => {
     loadProfile()
     loadAPIKeys()
     loadAuditLogs()
     loadSystemInfo()
+    loadMyToken()
   }, [])
 
   const loadSystemInfo = async () => {
@@ -221,6 +228,30 @@ export default function SettingsPage() {
       const res = await auditAPI.list()
       setAuditLogs(res.data.logs || [])
     } catch { /* ignore */ }
+  }
+
+  const loadMyToken = async () => {
+    try {
+      const res = await authAPI.getAPIToken()
+      setMyToken(res.data.api_token || '')
+    } catch { /* ignore */ }
+  }
+
+  const handleRegenerateToken = async () => {
+    if (!confirm('重新生成后，旧 Token 将立即失效。确定？')) return
+    setRegeneratingToken(true)
+    try {
+      const res = await authAPI.regenerateToken()
+      setMyToken(res.data.api_token)
+      setShowToken(true)
+    } catch { /* ignore */ }
+    setRegeneratingToken(false)
+  }
+
+  const copyToken = () => {
+    navigator.clipboard.writeText(myToken)
+    setTokenCopied(true)
+    setTimeout(() => setTokenCopied(false), 2000)
   }
 
   const loadAPIKeys = async () => {
@@ -1082,6 +1113,32 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
+        </section>
+
+        {/* API Token */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <Shield className="w-4 h-4" /> API Token
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            使用此 Token 可直接登录，无需密码。适用于 API 调用和自动化场景。
+          </p>
+          {myToken && (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 bg-gray-50 rounded-lg text-sm font-mono text-gray-700 truncate">
+                {showToken ? myToken : myToken.slice(0, 6) + '••••••••••••••••'}
+              </code>
+              <button onClick={() => setShowToken(!showToken)} className="p-2 text-gray-400 hover:text-gray-600" title={showToken ? '隐藏' : '显示'}>
+                {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+              <button onClick={copyToken} className="p-2 text-gray-400 hover:text-gray-600" title="复制">
+                {tokenCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              </button>
+              <button onClick={handleRegenerateToken} disabled={regeneratingToken} className="p-2 text-gray-400 hover:text-red-500" title="重新生成">
+                <RefreshCw className={`w-4 h-4 ${regeneratingToken ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          )}
         </section>
 
         {/* API Keys */}

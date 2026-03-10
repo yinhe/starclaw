@@ -4,34 +4,62 @@ This document defines the versioning rules and release process for the StarClaw 
 
 ---
 
-## 0. GitHub Repository Scope
+## 0. Repository Structure
 
-The GitHub repository `yinhe/starclaw` contains **ONLY the open-source Claw** component.
+StarClaw uses a **dual-repo** setup:
 
-**What gets pushed to GitHub:**
-- `claw/` — all Claw source code (API, Web, MCP Bridge, scripts, docs)
-- `.github/workflows/` — CI/CD for Claw only (ci.yml, release.yml)
-- `.gitignore`, `README.md`, `.env.example`
+| Repo | Path | Remote | Visibility |
+|------|------|--------|------------|
+| Private monorepo | `E:\starclaw` | none (local only) | Private — contains ALL code |
+| OSS repo | `E:\starclaw-oss` | `github.com:yinhe/starclaw` | Public — Claw only |
 
-**What NEVER gets pushed to GitHub:**
+**Private monorepo** (`E:\starclaw`):
+```
+E:\starclaw/
+  claw/          ← open-source Claw (API, Web, MCP Bridge)
+  queen/         ← closed-source central control
+  overlord/      ← closed-source enterprise management
+```
+
+**OSS repo** (`E:\starclaw-oss`):
+```
+E:\starclaw-oss/         ← git root, pushed to GitHub
+  .github/workflows/    ← CI/CD (ci.yml, release.yml)
+  api/                  ← Claw API (Go)
+  web/                  ← Claw Web (React)
+  docs/                 ← Documentation
+  deploy/               ← Deployment configs
+  scripts/              ← Helper scripts
+  Makefile, README.md, LICENSE, etc.
+```
+
+The OSS repo contains the **contents** of `claw/` at its root level (not `claw/` as a subdirectory).
+
+### 0.1 Sync Workflow
+
+To publish changes from monorepo to GitHub:
+
+```powershell
+# Windows (robocopy)
+robocopy "E:\starclaw\claw" "E:\starclaw-oss" /MIR /XD node_modules .git data build /XF sync-oss.sh *.tar.gz
+
+# Linux/macOS (rsync)
+bash claw/scripts/sync-oss.sh "commit message"
+```
+
+Then commit and push from the OSS repo:
+```bash
+cd E:\starclaw-oss
+git add -A
+git commit -m "description of changes"
+git push origin main
+```
+
+### 0.2 What NEVER goes to GitHub
+
 - `queen/` — closed-source central control (API, Swarm, Bounty, Forum, Arena, Core, Web, Mobile)
 - `overlord/` — closed-source enterprise management (Manager, Console)
-- Root-level private configs (`deploy.sh`, `update.sh`, `docker-compose.prod.yml`, etc.)
-- Private CI workflows (`queen.yml`, `overlord.yml`)
-- Temporary files (`tmp_*`)
-- Build artifacts (`dist/`, `*.tar.gz`, `*.exe`, `*.so`)
-
-**Monorepo structure (local only):**
-```
-e:\starclaw/              ← local monorepo root (git root)
-  .github/workflows/     ← GitHub Actions (claw CI only)
-  claw/                  ← open-source → pushed to GitHub
-  queen/                 ← closed-source → gitignored
-  overlord/              ← closed-source → gitignored
-  .gitignore             ← enforces the above rules
-```
-
-**CI workflow paths** use `claw/` prefix (e.g., `context: ./claw/api`) since the repo root is the monorepo root.
+- Any mention of Queen/Overlord in code, docs, release notes, or commit messages
 
 ---
 

@@ -174,6 +174,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/auth/login", authHandler.Login)
 		apiV1.POST("/auth/phone/register", authHandler.PhoneRegister)
 		apiV1.POST("/auth/phone/login", authHandler.PhoneLogin)
+		apiV1.POST("/auth/token/login", authHandler.TokenLogin)
 
 		// OAuth routes (public)
 		oauthHandler := v1.NewOAuthHandler(db, cfg)
@@ -622,6 +623,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.PUT("/settings/profile", settingsHandler.UpdateProfile)
 			protected.PUT("/settings/password", settingsHandler.ChangePassword)
 			protected.GET("/settings/api-keys", settingsHandler.GetAPIKeys)
+			protected.GET("/auth/token", authHandler.GetAPIToken)
+			protected.POST("/auth/token/regenerate", authHandler.RegenerateToken)
 
 			// System: Swarm, Bounty, Updates
 			var sc *swarm.Client

@@ -5,6 +5,24 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-03-10
+
+### Added
+- **Date-based versioning** — Replaced SemVer with `YYYY.MMDD.HHmm` (UTC) timestamp format. Version injected at build time via `-ldflags` (no more hardcoded constants). `make tag` generates and pushes version tag automatically.
+- **Cross-platform release binaries** — CI workflow builds StarClaw API + MCP Bridge for 5 targets: linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64. All 10 binaries uploaded as GitHub Release assets.
+- **Prometheus metrics** — `/metrics` endpoint exposing `http_requests_total`, `http_request_duration_seconds`, `http_requests_in_flight`, `websocket_connections_active`.
+- **Release guide** — `docs/RELEASE_GUIDE.md` documenting version format, release commands, CI pipeline, GitHub Release rules, and dual-repo sync workflow.
+- **GitHub Actions CI** — `ci.yml` (lint + build on PR/push) and `release.yml` (build + push Docker images + binaries on tag).
+
+### Changed
+- `molt.Version` changed from `const` to `var` for ldflags injection, with `dev` default for local builds
+- `mcp-bridge` version also injectable via ldflags
+- All Docker Compose files (`docker-compose.yml`, `docker-compose.prod.yml`, `docker-compose.cn.yml`) pass `BUILD_VERSION` build arg
+- Makefile `up`/`up-cn` targets pass `BUILD_VERSION` to Docker Compose
+- Dockerfile accepts `BUILD_VERSION` ARG and injects into Go binary
+
+---
+
 ## [0.5.11] - 2026-03-09
 
 ### Fixed
