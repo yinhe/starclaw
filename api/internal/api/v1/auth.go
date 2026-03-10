@@ -75,7 +75,7 @@ func NewAuthHandler(db *gorm.DB, cfg *config.Config, identity *node.Identity) *A
 
 type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
-	Username string `json:"username" binding:"required,min=3,max=50"`
+	Username string `json:"username"`
 	Password string `json:"password" binding:"required,min=6"`
 }
 
@@ -115,11 +115,25 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	// Auto-generate username if not provided
+	username := req.Username
+	if username == "" {
+		b := make([]byte, 2)
+		rand.Read(b)
+		username = "Claw#" + hex.EncodeToString(b)
+	}
+
 	// Check username uniqueness
-	h.db.Model(&model.User{}).Where("username = ?", req.Username).Count(&count)
+	h.db.Model(&model.User{}).Where("username = ?", username).Count(&count)
 	if count > 0 {
-		c.JSON(http.StatusConflict, gin.H{"error": "该用户名已被使用"})
-		return
+		if req.Username == "" {
+			b := make([]byte, 3)
+			rand.Read(b)
+			username = "Claw#" + hex.EncodeToString(b)
+		} else {
+			c.JSON(http.StatusConflict, gin.H{"error": "该用户名已被使用"})
+			return
+		}
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -130,7 +144,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	user := model.User{
 		Email:    &req.Email,
-		Username: req.Username,
+		Username: username,
 		Password: string(hashedPassword),
 	}
 
@@ -345,7 +359,7 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 
 // GetAPIToken returns the current user's API token (one per user).
 func (h *AuthHandler) GetAPIToken(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, _ := c.Get("user_id")
 	newToken := h.identity.GenerateAPIToken(userID.(string))
 	c.JSON(http.StatusOK, gin.H{
 		"api_token": newToken,
@@ -355,7 +369,7 @@ func (h *AuthHandler) GetAPIToken(c *gin.Context) {
 
 // RegenerateToken creates a new token, invalidates old one, clears all devices.
 func (h *AuthHandler) RegenerateToken(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, _ := c.Get("user_id")
 	now := time.Now()
 	h.db.Model(&model.User{}).Where("id = ?", userID).Update("token_issued_at", now)
 	h.db.Where("user_id = ?", userID).Delete(&model.AuthorizedDevice{})
@@ -368,7 +382,7 @@ func (h *AuthHandler) RegenerateToken(c *gin.Context) {
 
 // ListDevices returns all devices that have used the token.
 func (h *AuthHandler) ListDevices(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, _ := c.Get("user_id")
 	var devices []model.AuthorizedDevice
 	h.db.Where("user_id = ?", userID).Order("created_at desc").Find(&devices)
 	c.JSON(http.StatusOK, gin.H{"devices": devices})
@@ -376,7 +390,7 @@ func (h *AuthHandler) ListDevices(c *gin.Context) {
 
 // RevokeDevice blocks a specific device from using the token.
 func (h *AuthHandler) RevokeDevice(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userID, _ := c.Get("user_id")
 	deviceID := c.Param("deviceID")
 	result := h.db.Model(&model.AuthorizedDevice{}).
 		Where("user_id = ? AND device_id = ?", userID, deviceID).

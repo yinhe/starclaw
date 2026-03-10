@@ -18,7 +18,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
     <path d="M13 19.5l0.5 2.5" />
   </svg>
 )
-import { authAPI } from '../lib/api'
+import { authAPI, setupAPI } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 
 interface OAuthProvider {
@@ -46,8 +46,9 @@ function getDeviceName(): string {
 }
 
 export default function LoginPage() {
+  const [deployMode, setDeployMode] = useState<string | null>(null)
   const [isRegister, setIsRegister] = useState(false)
-  const [loginMode, setLoginMode] = useState<'email' | 'phone' | 'token'>('email')
+  const [loginMode, setLoginMode] = useState<'email' | 'phone' | 'token' | 'owner'>('email')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [username, setUsername] = useState('')
@@ -62,12 +63,25 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
 
-  // Fetch available OAuth providers
+  // Detect deploy mode and set appropriate login mode
   useEffect(() => {
-    authAPI.oauthProviders().then(res => {
-      setOauthProviders(res.data.providers || [])
-    }).catch(() => {})
+    setupAPI.status().then(res => {
+      const mode = res.data.deploy_mode || 'opensource'
+      setDeployMode(mode)
+      if (mode === 'opensource') {
+        setLoginMode('owner')
+      }
+    }).catch(() => setDeployMode('opensource'))
   }, [])
+
+  // Fetch available OAuth providers (hosted mode only)
+  useEffect(() => {
+    if (deployMode === 'hosted') {
+      authAPI.oauthProviders().then(res => {
+        setOauthProviders(res.data.providers || [])
+      }).catch(() => {})
+    }
+  }, [deployMode])
 
   // Handle OAuth callback (code in URL params)
   const handleOAuthCode = useCallback(async (provider: string, code: string) => {
@@ -111,7 +125,13 @@ export default function LoginPage() {
 
     try {
       let res
-      if (loginMode === 'token') {
+      if (loginMode === 'owner') {
+        // Owner password login (opensource mode) — returns owner_token
+        res = await setupAPI.ownerLogin({ password })
+        setAuth(res.data.owner_token, res.data.user)
+        navigate('/', { replace: true })
+        return
+      } else if (loginMode === 'token') {
         res = await authAPI.tokenLogin({ token: apiToken, device_id: getDeviceID(), device_name: getDeviceName() })
       } else if (loginMode === 'phone') {
         res = isRegister
@@ -119,7 +139,7 @@ export default function LoginPage() {
           : await authAPI.phoneLogin({ phone, password })
       } else {
         res = isRegister
-          ? await authAPI.register({ email, username, password })
+          ? await authAPI.register({ email, username: username || undefined, password })
           : await authAPI.login({ email, password })
       }
 
@@ -146,7 +166,7 @@ export default function LoginPage() {
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-2xl font-semibold mb-6">
-            {isRegister ? '创建账号' : '登录'}
+            {loginMode === 'owner' ? '密码登录' : isRegister ? '创建账号' : '登录'}
           </h2>
 
           {error && (
@@ -156,6 +176,46 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Owner mode: simplified password-only login */}
+            {loginMode === 'owner' ? (
+              <>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                  <p className="text-xs text-blue-800">
+                    Owner Token 丢失？用初始化时设置的密码找回。
+                    <br />
+                    未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">starclaw reset-token</code>
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                  <div className="relative">
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="输入你的密码"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPwd(!showPwd)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading ? '验证中...' : '找回 Token'}
+                </button>
+              </>
+            ) : (
+            <>
             {/* Email / Phone / Token mode toggle */}
             {!isRegister && (
               <div className="flex rounded-lg bg-gray-100 p-1">
@@ -246,16 +306,14 @@ export default function LoginPage() {
                 {isRegister && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      用户名{loginMode === 'phone' ? '（可选）' : ''}
+                      用户名（可选）
                     </label>
                     <input
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                      placeholder="your_username"
-                      required={loginMode === 'email'}
-                      minLength={3}
+                      placeholder="留空自动生成 Claw#xxxx"
                     />
                   </div>
                 )}
@@ -305,9 +363,11 @@ export default function LoginPage() {
             >
               {loading ? '处理中...' : isRegister ? '注册' : '登录'}
             </button>
+            </>
+            )}
           </form>
 
-          {oauthProviders.length > 0 && (
+          {deployMode === 'hosted' && oauthProviders.length > 0 && (
             <div className="mt-6">
               <div className="relative mb-4">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
@@ -334,7 +394,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {loginMode !== 'token' && (
+          {deployMode === 'hosted' && loginMode !== 'token' && (
             <div className="mt-6 text-center text-sm text-gray-500">
               {isRegister ? '已有账号？' : '没有账号？'}
               <button

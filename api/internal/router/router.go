@@ -178,6 +178,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/auth/phone/login", authHandler.PhoneLogin)
 		apiV1.POST("/auth/token/login", authHandler.TokenLogin)
 
+		// Setup (single-user Owner mode, opensource only)
+		setupHandler := v1.NewSetupHandler(db, cfg, identity)
+		apiV1.GET("/setup/status", setupHandler.Status)
+		apiV1.POST("/setup", setupHandler.Setup)
+		apiV1.POST("/auth/owner-login", setupHandler.PasswordLogin)
+
 		// OAuth routes (public)
 		oauthHandler := v1.NewOAuthHandler(db, cfg)
 		apiV1.GET("/auth/oauth/providers", oauthHandler.GetOAuthConfig)
@@ -422,7 +428,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.PUT("/app/:workspace_id/*path", appProxy)
 		apiV1.DELETE("/app/:workspace_id/*path", appProxy)
 
-		// WebSocket endpoint (authenticated via query param token)
+		// WebSocket endpoint (authenticated via query param token — supports JWT and Owner Token)
 		wsHub := ws.GetHub()
 		apiV1.GET("/ws", func(c *gin.Context) {
 			token := c.Query("token")
@@ -430,7 +436,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				c.JSON(401, gin.H{"error": "token required"})
 				return
 			}
-			claims, err := middleware.ParseToken(token, cfg.JWT.Secret)
+			claims, err := middleware.ResolveToken(token, cfg, db)
 			if err != nil {
 				c.JSON(401, gin.H{"error": "invalid token"})
 				return
@@ -444,7 +450,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 		// Protected routes
 		protected := apiV1.Group("")
-		protected.Use(middleware.AuthRequired(cfg))
+		protected.Use(middleware.AuthRequired(cfg, db))
 		{
 			// Agents
 			agentHandler := v1.NewAgentHandler(db)

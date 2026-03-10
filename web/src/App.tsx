@@ -1,10 +1,13 @@
+import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ErrorBoundary from './components/ErrorBoundary'
 import ToastContainer from './components/ToastContainer'
 import CommandPalette from './components/CommandPalette'
 import { useAuthStore } from './stores/authStore'
+import { setupAPI } from './lib/api'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
+import SetupPage from './pages/SetupPage'
 import ChatPage from './pages/ChatPage'
 import AgentsPage from './pages/AgentsPage'
 import AgentDetailPage from './pages/AgentDetailPage'
@@ -29,6 +32,38 @@ import BillingPage from './pages/BillingPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
+  const [setupDone, setSetupDone] = useState<boolean | null>(null)
+  const [deployMode, setDeployMode] = useState<string>('opensource')
+
+  useEffect(() => {
+    setupAPI.status()
+      .then((res) => {
+        setSetupDone(res.data.setup_completed)
+        setDeployMode(res.data.deploy_mode || 'opensource')
+      })
+      .catch(() => setSetupDone(true)) // on error, assume setup done (fallback)
+  }, [])
+
+  // Loading setup status
+  if (setupDone === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-primary-100 rounded-xl mb-3">
+            <span className="text-2xl">🦞</span>
+          </div>
+          <p className="text-gray-400 text-sm">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Setup not completed → redirect to setup page
+  if (!setupDone && deployMode === 'opensource') {
+    return <Navigate to="/setup" replace />
+  }
+
+  // No token → redirect to login
   if (!token) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -39,6 +74,7 @@ export default function App() {
     <ToastContainer />
     <CommandPalette />
     <Routes>
+      <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/"

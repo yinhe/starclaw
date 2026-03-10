@@ -8,9 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/model"
+	"gorm.io/gorm"
 )
 
-// TokenClaims holds parsed JWT claims
+// TokenClaims holds parsed JWT or Owner Token claims
 type TokenClaims struct {
 	UserID   string
 	Username string
@@ -42,7 +44,30 @@ func ParseToken(tokenStr string, secret string) (*TokenClaims, error) {
 	return tc, nil
 }
 
-func AuthRequired(cfg *config.Config) gin.HandlerFunc {
+// ResolveToken validates either a JWT or Owner Token (claw_ prefix) and returns claims.
+// Used by both AuthRequired middleware and WebSocket handler.
+func ResolveToken(tokenStr string, cfg *config.Config, db *gorm.DB) (*TokenClaims, error) {
+	// Owner Token: claw_ + 32 hex chars = 37 chars
+	if strings.HasPrefix(tokenStr, "claw_") {
+		var user model.User
+		if err := db.Where("owner_token = ?", tokenStr).First(&user).Error; err != nil {
+			return nil, fmt.Errorf("invalid owner token")
+		}
+		role := user.Role
+		if role == "" {
+			role = "owner"
+		}
+		return &TokenClaims{
+			UserID:   user.ID,
+			Username: user.Username,
+			Role:     role,
+		}, nil
+	}
+	// JWT
+	return ParseToken(tokenStr, cfg.JWT.Secret)
+}
+
+func AuthRequired(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -58,29 +83,16 @@ func AuthRequired(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-			return []byte(cfg.JWT.Secret), nil
-		})
-		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+		claims, err := ResolveToken(tokenStr, cfg, db)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
 			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
-			c.Abort()
-			return
-		}
-
-		c.Set("user_id", claims["sub"])
-		c.Set("username", claims["username"])
-		if role, ok := claims["role"].(string); ok {
-			c.Set("role", role)
-		} else {
-			c.Set("role", "user")
-		}
+		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("role", claims.Role)
 		c.Next()
 	}
 }

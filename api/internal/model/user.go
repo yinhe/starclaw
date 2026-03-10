@@ -18,6 +18,7 @@ type User struct {
 	TenantID      string         `json:"tenant_id" gorm:"type:varchar(36);index"`
 	OAuthProvider string         `json:"oauth_provider" gorm:"type:varchar(20);index"`
 	OAuthID       string         `json:"oauth_id" gorm:"type:varchar(100);index"`
+	OwnerToken    *string        `json:"-" gorm:"type:varchar(70);uniqueIndex"`
 	TokenIssuedAt *time.Time     `json:"token_issued_at,omitempty" gorm:"type:datetime"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`

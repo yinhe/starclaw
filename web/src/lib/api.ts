@@ -17,8 +17,12 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('starclaw_token')
-      window.location.href = '/login'
+      const path = window.location.pathname
+      // Don't redirect if already on setup or login page
+      if (path !== '/setup' && path !== '/login') {
+        localStorage.removeItem('starclaw_token')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(err)
   }
@@ -26,7 +30,7 @@ api.interceptors.response.use(
 
 // Auth
 export const authAPI = {
-  register: (data: { email: string; username: string; password: string }) =>
+  register: (data: { email: string; username?: string; password: string }) =>
     api.post('/auth/register', data),
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
@@ -147,6 +151,15 @@ export const musicAPI = {
 // Config (public, no auth)
 export const configAPI = {
   get: () => axios.get('/v1/config'),
+}
+
+// Setup (single-user Owner mode, public endpoints)
+export const setupAPI = {
+  status: () => axios.get('/v1/setup/status'),
+  setup: (data?: { password?: string; username?: string }) =>
+    axios.post('/v1/setup', data || {}),
+  ownerLogin: (data: { password: string }) =>
+    axios.post('/v1/auth/owner-login', data),
 }
 
 // Billing & Tenant
