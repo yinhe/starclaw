@@ -169,12 +169,6 @@ export default function LoginPage() {
             {deployMode === 'opensource' ? '登录' : isRegister ? '创建账号' : '登录'}
           </h2>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-              {error}
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Opensource mode: password or token login */}
             {deployMode === 'opensource' ? (
@@ -198,13 +192,6 @@ export default function LoginPage() {
 
                 {loginMode === 'owner' ? (
                   <>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
-                      <p className="text-xs text-blue-800">
-                        Token 丢失？用初始化时设置的密码找回。
-                        <br />
-                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">starclaw reset-token</code>
-                      </p>
-                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
                       <div className="relative">
@@ -225,6 +212,11 @@ export default function LoginPage() {
                         </button>
                       </div>
                     </div>
+                    {error && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                        {error}
+                      </div>
+                    )}
                     <button
                       type="submit"
                       disabled={loading}
@@ -232,6 +224,13 @@ export default function LoginPage() {
                     >
                       {loading ? '验证中...' : '找回 Token'}
                     </button>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs text-blue-800">
+                        Token 丢失？用初始化时设置的密码找回。
+                        <br />
+                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">claw reset-token</code>
+                      </p>
+                    </div>
                   </>
                 ) : (
                   <>
@@ -247,6 +246,11 @@ export default function LoginPage() {
                       />
                       <p className="mt-1.5 text-xs text-gray-400">初始化时获取的 Token，或在设置页面复制</p>
                     </div>
+                    {error && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                        {error}
+                      </div>
+                    )}
                     <button
                       type="submit"
                       disabled={loading}

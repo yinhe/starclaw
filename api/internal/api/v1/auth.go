@@ -297,27 +297,29 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 		return
 	}
 
-	// Cryptographic verification (HMAC-SHA256)
-	payload := h.identity.VerifyAPIToken(req.Token)
-	if payload == nil {
-		recordTokenFailure(ip)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token"})
-		return
-	}
-
-	// Look up user
+	// Try HMAC verification first (identity-based token)
 	var user model.User
-	if err := h.db.Where("id = ?", payload.UserID).First(&user).Error; err != nil {
-		recordTokenFailure(ip)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token"})
-		return
-	}
-
-	// Check token revocation (regenerate invalidates old tokens)
-	if user.TokenIssuedAt != nil && payload.IssuedAt < user.TokenIssuedAt.Unix() {
-		recordTokenFailure(ip)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token 已失效，请重新生成"})
-		return
+	payload := h.identity.VerifyAPIToken(req.Token)
+	if payload != nil {
+		// Look up user by HMAC payload
+		if err := h.db.Where("id = ?", payload.UserID).First(&user).Error; err != nil {
+			recordTokenFailure(ip)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token"})
+			return
+		}
+		// Check token revocation (regenerate invalidates old tokens)
+		if user.TokenIssuedAt != nil && payload.IssuedAt < user.TokenIssuedAt.Unix() {
+			recordTokenFailure(ip)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token 已失效，请重新生成"})
+			return
+		}
+	} else {
+		// Fallback: try as owner_token (opensource mode)
+		if err := h.db.Where("owner_token = ?", req.Token).First(&user).Error; err != nil {
+			recordTokenFailure(ip)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token"})
+			return
+		}
 	}
 
 	// Check device authorization
