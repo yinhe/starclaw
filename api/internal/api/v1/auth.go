@@ -363,7 +363,7 @@ func (h *AuthHandler) GetAPIToken(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	// Check if user has an owner_token (opensource / single-user mode)
 	var user model.User
-	if err := h.db.Select("owner_token").Where("id = ?", userID).First(&user).Error; err == nil && user.OwnerToken != nil && *user.OwnerToken != "" {
+	if err := h.db.Where("id = ?", userID).First(&user).Error; err == nil && user.OwnerToken != nil && *user.OwnerToken != "" {
 		c.JSON(http.StatusOK, gin.H{
 			"api_token": *user.OwnerToken,
 			"node_id":   h.identity.NodeID,
@@ -385,7 +385,7 @@ func (h *AuthHandler) RegenerateToken(c *gin.Context) {
 	h.db.Where("user_id = ?", userID).Delete(&model.AuthorizedDevice{})
 	// Check if user has owner_token — regenerate it
 	var user model.User
-	if err := h.db.Select("owner_token").Where("id = ?", userID).First(&user).Error; err == nil && user.OwnerToken != nil && *user.OwnerToken != "" {
+	if err := h.db.Where("id = ?", userID).First(&user).Error; err == nil && user.OwnerToken != nil && *user.OwnerToken != "" {
 		tokenBytes := make([]byte, 16)
 		rand.Read(tokenBytes)
 		newOwnerToken := hex.EncodeToString(tokenBytes)

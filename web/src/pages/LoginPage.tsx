@@ -166,7 +166,7 @@ export default function LoginPage() {
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-2xl font-semibold mb-6">
-            {loginMode === 'owner' ? '密码登录' : isRegister ? '创建账号' : '登录'}
+            {deployMode === 'opensource' ? '登录' : isRegister ? '创建账号' : '登录'}
           </h2>
 
           {error && (
@@ -176,43 +176,86 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Owner mode: simplified password-only login */}
-            {loginMode === 'owner' ? (
+            {/* Opensource mode: password or token login */}
+            {deployMode === 'opensource' ? (
               <>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
-                  <p className="text-xs text-blue-800">
-                    Owner Token 丢失？用初始化时设置的密码找回。
-                    <br />
-                    未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">starclaw reset-token</code>
-                  </p>
+                <div className="flex rounded-lg bg-gray-100 p-1 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('owner'); setError('') }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'owner' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    密码
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('token'); setError('') }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'token' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Auth Token
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
-                  <div className="relative">
-                    <input
-                      type={showPwd ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                      placeholder="输入你的密码"
-                      required
-                    />
+
+                {loginMode === 'owner' ? (
+                  <>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                      <p className="text-xs text-blue-800">
+                        Token 丢失？用初始化时设置的密码找回。
+                        <br />
+                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">starclaw reset-token</code>
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                      <div className="relative">
+                        <input
+                          type={showPwd ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                          placeholder="输入你的密码"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPwd(!showPwd)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
                     <button
-                      type="button"
-                      onClick={() => setShowPwd(!showPwd)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {loading ? '验证中...' : '找回 Token'}
                     </button>
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {loading ? '验证中...' : '找回 Token'}
-                </button>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Auth Token</label>
+                      <input
+                        type="password"
+                        value={apiToken}
+                        onChange={(e) => setApiToken(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                        placeholder="粘贴你的 Auth Token"
+                        required
+                      />
+                      <p className="mt-1.5 text-xs text-gray-400">初始化时获取的 Token，或在设置页面复制</p>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {loading ? '验证中...' : '登录'}
+                    </button>
+                  </>
+                )}
               </>
             ) : (
             <>
