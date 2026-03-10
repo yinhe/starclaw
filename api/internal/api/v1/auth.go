@@ -3,7 +3,9 @@ package v1
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +16,52 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+// ── Token login rate limiter: 5 failures per IP → lock 15 min ──
+
+const (
+	tokenMaxAttempts  = 5
+	tokenLockDuration = 15 * time.Minute
+)
+
+type loginAttempt struct {
+	count    int
+	lockedAt time.Time
+}
+
+var (
+	tokenAttempts sync.Map // map[ip]loginAttempt
+)
+
+func checkTokenRateLimit(ip string) error {
+	val, ok := tokenAttempts.Load(ip)
+	if !ok {
+		return nil
+	}
+	a := val.(loginAttempt)
+	if a.count >= tokenMaxAttempts {
+		remaining := tokenLockDuration - time.Since(a.lockedAt)
+		if remaining > 0 {
+			return fmt.Errorf("登录失败次数过多，请 %d 分钟后重试", int(remaining.Minutes())+1)
+		}
+		tokenAttempts.Delete(ip)
+	}
+	return nil
+}
+
+func recordTokenFailure(ip string) {
+	val, _ := tokenAttempts.Load(ip)
+	a, _ := val.(loginAttempt)
+	a.count++
+	if a.count >= tokenMaxAttempts {
+		a.lockedAt = time.Now()
+	}
+	tokenAttempts.Store(ip, a)
+}
+
+func clearTokenFailure(ip string) {
+	tokenAttempts.Delete(ip)
+}
 
 type AuthHandler struct {
 	db       *gorm.DB
@@ -214,9 +262,17 @@ func (h *AuthHandler) PhoneLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, AuthResponse{Token: token, User: user})
 }
 
-// TokenLogin authenticates with a server-bound API token (sk-xxx.xxx)
-// Token is verified cryptographically using this server's Ed25519 public key.
+// TokenLogin authenticates with a compact server-bound API token.
+// Rate limited: 5 failures per IP → locked 15 minutes.
 func (h *AuthHandler) TokenLogin(c *gin.Context) {
+	ip := c.ClientIP()
+
+	// Rate limit check
+	if err := checkTokenRateLimit(ip); err != nil {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
+		return
+	}
+
 	var req struct {
 		Token string `json:"token" binding:"required"`
 	}
@@ -225,25 +281,31 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 		return
 	}
 
-	// Cryptographic verification: check signature + nodeID
+	// Cryptographic verification (HMAC-SHA256)
 	payload := h.identity.VerifyAPIToken(req.Token)
 	if payload == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token（签名验证失败或服务器不匹配）"})
+		recordTokenFailure(ip)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token"})
 		return
 	}
 
 	// Look up user
 	var user model.User
 	if err := h.db.Where("id = ?", payload.UserID).First(&user).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+		recordTokenFailure(ip)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token"})
 		return
 	}
 
 	// Check revocation: token must be issued after TokenIssuedAt
 	if user.TokenIssuedAt != nil && payload.IssuedAt < user.TokenIssuedAt.Unix() {
+		recordTokenFailure(ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token 已失效，请重新生成"})
 		return
 	}
+
+	// Success — clear rate limit
+	clearTokenFailure(ip)
 
 	token, err := h.generateToken(&user)
 	if err != nil {

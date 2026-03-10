@@ -191,7 +191,7 @@ export default function LoginPage() {
                   value={apiToken}
                   onChange={(e) => setApiToken(e.target.value)}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
-                  placeholder="sk-..."
+                  placeholder="粘贴你的 Token"
                   required
                 />
                 <p className="mt-1.5 text-xs text-gray-400">在设置页面获取你的 API Token</p>

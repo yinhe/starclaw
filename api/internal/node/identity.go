@@ -2,6 +2,7 @@ package node
 
 import (
 	"crypto/ed25519"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -141,65 +142,97 @@ func DeriveNodeIDFromPubKey(publicKeyHex string) (string, error) {
 	return deriveNodeID(pubKey), nil
 }
 
-// ── API Token (Ed25519-signed, server-bound) ──
+// ── API Token (HMAC-SHA256, server-bound, compact) ──
+//
+// Format: base64url(uuid_bytes[16] + iat_uint32_be[4] + hmac[16]) = 48 chars
+// HMAC key = SHA-256(ed25519_private_key + nodeID) — binds token to this server.
+// No prefix. ~48 characters total.
 
-// TokenPayload is the signed payload inside an API token.
+// TokenPayload is the decoded content of an API token.
 type TokenPayload struct {
-	UserID   string `json:"uid"`
-	NodeID   string `json:"nid"`
-	IssuedAt int64  `json:"iat"`
+	UserID   string
+	IssuedAt int64
 }
 
-// GenerateAPIToken creates a server-bound API token for a user.
-// Format: sk-<base64url(payload)>.<base64url(signature)>
+// tokenHMACKey derives the HMAC signing key from this node's identity.
+// key = SHA-256(private_key_bytes + nodeID_string)
+func (id *Identity) tokenHMACKey() []byte {
+	h := sha256.New()
+	h.Write(id.PrivateKey)
+	h.Write([]byte(id.NodeID))
+	return h.Sum(nil)
+}
+
+// GenerateAPIToken creates a compact, server-bound API token for a user.
 func (id *Identity) GenerateAPIToken(userID string) string {
-	payload := TokenPayload{
-		UserID:   userID,
-		NodeID:   id.NodeID,
-		IssuedAt: time.Now().Unix(),
+	// Parse UUID string → 16 raw bytes
+	uidBytes, err := uuidToBytes(userID)
+	if err != nil {
+		return ""
 	}
-	payloadBytes, _ := json.Marshal(payload)
-	sig := ed25519.Sign(id.PrivateKey, payloadBytes)
 
-	return "sk-" + base64.RawURLEncoding.EncodeToString(payloadBytes) + "." + base64.RawURLEncoding.EncodeToString(sig)
+	// iat as uint32 big-endian (good until 2106)
+	iat := uint32(time.Now().Unix())
+	var iatBuf [4]byte
+	iatBuf[0] = byte(iat >> 24)
+	iatBuf[1] = byte(iat >> 16)
+	iatBuf[2] = byte(iat >> 8)
+	iatBuf[3] = byte(iat)
+
+	// payload = uid[16] + iat[4]
+	payload := make([]byte, 20)
+	copy(payload[:16], uidBytes)
+	copy(payload[16:], iatBuf[:])
+
+	// HMAC-SHA256, truncated to 16 bytes (128-bit security)
+	mac := hmac.New(sha256.New, id.tokenHMACKey())
+	mac.Write(payload)
+	sig := mac.Sum(nil)[:16]
+
+	// token = base64url(payload + sig) = base64url(36 bytes) = 48 chars
+	raw := append(payload, sig...)
+	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-// VerifyAPIToken verifies a token was signed by this server and returns the payload.
-// Returns nil if the token is invalid, forged, or meant for a different server.
+// VerifyAPIToken verifies a compact token and returns the payload.
+// Returns nil if invalid, forged, or meant for a different server.
 func (id *Identity) VerifyAPIToken(token string) *TokenPayload {
-	if !strings.HasPrefix(token, "sk-") {
-		return nil
-	}
-	token = token[3:] // strip "sk-"
-
-	parts := strings.SplitN(token, ".", 2)
-	if len(parts) != 2 {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(raw) != 36 {
 		return nil
 	}
 
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return nil
-	}
-	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
+	payload := raw[:20]
+	sig := raw[20:]
+
+	// Recompute HMAC and compare
+	mac := hmac.New(sha256.New, id.tokenHMACKey())
+	mac.Write(payload)
+	expected := mac.Sum(nil)[:16]
+	if !hmac.Equal(sig, expected) {
 		return nil
 	}
 
-	// Verify signature with this server's public key
-	if !ed25519.Verify(id.PublicKey, payloadBytes, sig) {
-		return nil
-	}
+	// Decode UUID bytes → string
+	userID := bytesToUUID(payload[:16])
 
-	var payload TokenPayload
-	if json.Unmarshal(payloadBytes, &payload) != nil {
-		return nil
-	}
+	// Decode iat
+	iat := int64(payload[16])<<24 | int64(payload[17])<<16 | int64(payload[18])<<8 | int64(payload[19])
 
-	// Verify token is for THIS server
-	if payload.NodeID != id.NodeID {
-		return nil
-	}
+	return &TokenPayload{UserID: userID, IssuedAt: iat}
+}
 
-	return &payload
+// uuidToBytes converts "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" → 16 bytes
+func uuidToBytes(s string) ([]byte, error) {
+	s = strings.ReplaceAll(s, "-", "")
+	if len(s) != 32 {
+		return nil, fmt.Errorf("invalid uuid")
+	}
+	return hex.DecodeString(s)
+}
+
+// bytesToUUID converts 16 bytes → "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+func bytesToUUID(b []byte) string {
+	h := hex.EncodeToString(b)
+	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }
