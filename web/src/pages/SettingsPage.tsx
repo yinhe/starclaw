@@ -40,6 +40,7 @@ export default function SettingsPage() {
 
   // API Token state
   const [myToken, setMyToken] = useState('')
+  const [tokenNodeId, setTokenNodeId] = useState('')
   const [showToken, setShowToken] = useState(false)
   const [tokenCopied, setTokenCopied] = useState(false)
   const [regeneratingToken, setRegeneratingToken] = useState(false)
@@ -234,6 +235,7 @@ export default function SettingsPage() {
     try {
       const res = await authAPI.getAPIToken()
       setMyToken(res.data.api_token || '')
+      setTokenNodeId(res.data.node_id || '')
     } catch { /* ignore */ }
   }
 
@@ -243,6 +245,7 @@ export default function SettingsPage() {
     try {
       const res = await authAPI.regenerateToken()
       setMyToken(res.data.api_token)
+      setTokenNodeId(res.data.node_id || '')
       setShowToken(true)
     } catch { /* ignore */ }
     setRegeneratingToken(false)
@@ -1120,9 +1123,15 @@ export default function SettingsPage() {
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
             <Shield className="w-4 h-4" /> API Token
           </h2>
-          <p className="text-xs text-gray-400 mb-4">
-            使用此 Token 可直接登录，无需密码。适用于 API 调用和自动化场景。
+          <p className="text-xs text-gray-400 mb-3">
+            用服务器 Ed25519 私钥签名，绑定当前服务器身份。多台电脑可使用同一 Token 登录此服务器。
           </p>
+          {tokenNodeId && (
+            <p className="text-xs text-gray-400 mb-4 flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-400"></span>
+              绑定服务器: <code className="text-gray-500">{tokenNodeId.length > 20 ? tokenNodeId.slice(0, 12) + '...' + tokenNodeId.slice(-6) : tokenNodeId}</code>
+            </p>
+          )}
           {myToken && (
             <div className="flex items-center gap-2">
               <code className="flex-1 px-3 py-2 bg-gray-50 rounded-lg text-sm font-mono text-gray-700 truncate">
@@ -1134,7 +1143,7 @@ export default function SettingsPage() {
               <button onClick={copyToken} className="p-2 text-gray-400 hover:text-gray-600" title="复制">
                 {tokenCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
               </button>
-              <button onClick={handleRegenerateToken} disabled={regeneratingToken} className="p-2 text-gray-400 hover:text-red-500" title="重新生成">
+              <button onClick={handleRegenerateToken} disabled={regeneratingToken} className="p-2 text-gray-400 hover:text-red-500" title="重新生成（旧 Token 失效）">
                 <RefreshCw className={`w-4 h-4 ${regeneratingToken ? 'animate-spin' : ''}`} />
               </button>
             </div>

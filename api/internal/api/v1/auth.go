@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"time"
 
@@ -8,17 +10,19 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/node"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 type AuthHandler struct {
-	db  *gorm.DB
-	cfg *config.Config
+	db       *gorm.DB
+	cfg      *config.Config
+	identity *node.Identity
 }
 
-func NewAuthHandler(db *gorm.DB, cfg *config.Config) *AuthHandler {
-	return &AuthHandler{db: db, cfg: cfg}
+func NewAuthHandler(db *gorm.DB, cfg *config.Config, identity *node.Identity) *AuthHandler {
+	return &AuthHandler{db: db, cfg: cfg, identity: identity}
 }
 
 type RegisterRequest struct {
@@ -148,7 +152,9 @@ func (h *AuthHandler) PhoneRegister(c *gin.Context) {
 	if count > 0 {
 		if req.Username == "" {
 			// Auto-generated username collided, append random suffix
-			username = username + "_" + model.GenerateAPIToken()[3:7]
+			b := make([]byte, 2)
+			rand.Read(b)
+			username = username + "_" + hex.EncodeToString(b)
 		} else {
 			c.JSON(http.StatusConflict, gin.H{"error": "该用户名已被使用"})
 			return
@@ -208,7 +214,8 @@ func (h *AuthHandler) PhoneLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, AuthResponse{Token: token, User: user})
 }
 
-// TokenLogin authenticates with an API token (sk-xxx) instead of password
+// TokenLogin authenticates with a server-bound API token (sk-xxx.xxx)
+// Token is verified cryptographically using this server's Ed25519 public key.
 func (h *AuthHandler) TokenLogin(c *gin.Context) {
 	var req struct {
 		Token string `json:"token" binding:"required"`
@@ -218,9 +225,23 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 		return
 	}
 
+	// Cryptographic verification: check signature + nodeID
+	payload := h.identity.VerifyAPIToken(req.Token)
+	if payload == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token（签名验证失败或服务器不匹配）"})
+		return
+	}
+
+	// Look up user
 	var user model.User
-	if err := h.db.Where("api_token = ?", req.Token).First(&user).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的 Token"})
+	if err := h.db.Where("id = ?", payload.UserID).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+		return
+	}
+
+	// Check revocation: token must be issued after TokenIssuedAt
+	if user.TokenIssuedAt != nil && payload.IssuedAt < user.TokenIssuedAt.Unix() {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token 已失效，请重新生成"})
 		return
 	}
 
@@ -233,26 +254,30 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, AuthResponse{Token: token, User: user})
 }
 
-// RegenerateToken creates a new API token for the current user
+// RegenerateToken creates a new server-bound API token for the current user.
+// Old tokens are invalidated by updating TokenIssuedAt.
 func (h *AuthHandler) RegenerateToken(c *gin.Context) {
 	userID, _ := c.Get("userID")
-	newToken := model.GenerateAPIToken()
-	if err := h.db.Model(&model.User{}).Where("id = ?", userID).Update("api_token", newToken).Error; err != nil {
+	now := time.Now()
+	if err := h.db.Model(&model.User{}).Where("id = ?", userID).Update("token_issued_at", now).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to regenerate token"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"api_token": newToken})
+	newToken := h.identity.GenerateAPIToken(userID.(string))
+	c.JSON(http.StatusOK, gin.H{
+		"api_token": newToken,
+		"node_id":   h.identity.NodeID,
+	})
 }
 
-// GetAPIToken returns the current user's API token
+// GetAPIToken returns a freshly signed API token for the current user.
 func (h *AuthHandler) GetAPIToken(c *gin.Context) {
 	userID, _ := c.Get("userID")
-	var user model.User
-	if err := h.db.Select("api_token").Where("id = ?", userID).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"api_token": user.APIToken})
+	newToken := h.identity.GenerateAPIToken(userID.(string))
+	c.JSON(http.StatusOK, gin.H{
+		"api_token": newToken,
+		"node_id":   h.identity.NodeID,
+	})
 }
 
 func (h *AuthHandler) generateToken(user *model.User) (string, error) {

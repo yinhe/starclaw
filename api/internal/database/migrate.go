@@ -37,12 +37,5 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
-	// Generate API tokens for existing users who don't have one
-	var users []model.User
-	db.Where("api_token = '' OR api_token IS NULL").Find(&users)
-	for _, u := range users {
-		db.Model(&u).Update("api_token", model.GenerateAPIToken())
-	}
-
 	return nil
 }

@@ -4,11 +4,13 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -137,4 +139,67 @@ func DeriveNodeIDFromPubKey(publicKeyHex string) (string, error) {
 		return "", fmt.Errorf("invalid public key")
 	}
 	return deriveNodeID(pubKey), nil
+}
+
+// ── API Token (Ed25519-signed, server-bound) ──
+
+// TokenPayload is the signed payload inside an API token.
+type TokenPayload struct {
+	UserID   string `json:"uid"`
+	NodeID   string `json:"nid"`
+	IssuedAt int64  `json:"iat"`
+}
+
+// GenerateAPIToken creates a server-bound API token for a user.
+// Format: sk-<base64url(payload)>.<base64url(signature)>
+func (id *Identity) GenerateAPIToken(userID string) string {
+	payload := TokenPayload{
+		UserID:   userID,
+		NodeID:   id.NodeID,
+		IssuedAt: time.Now().Unix(),
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	sig := ed25519.Sign(id.PrivateKey, payloadBytes)
+
+	return "sk-" + base64.RawURLEncoding.EncodeToString(payloadBytes) + "." + base64.RawURLEncoding.EncodeToString(sig)
+}
+
+// VerifyAPIToken verifies a token was signed by this server and returns the payload.
+// Returns nil if the token is invalid, forged, or meant for a different server.
+func (id *Identity) VerifyAPIToken(token string) *TokenPayload {
+	if !strings.HasPrefix(token, "sk-") {
+		return nil
+	}
+	token = token[3:] // strip "sk-"
+
+	parts := strings.SplitN(token, ".", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil
+	}
+
+	// Verify signature with this server's public key
+	if !ed25519.Verify(id.PublicKey, payloadBytes, sig) {
+		return nil
+	}
+
+	var payload TokenPayload
+	if json.Unmarshal(payloadBytes, &payload) != nil {
+		return nil
+	}
+
+	// Verify token is for THIS server
+	if payload.NodeID != id.NodeID {
+		return nil
+	}
+
+	return &payload
 }

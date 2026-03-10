@@ -27,6 +27,7 @@ import (
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
 	"github.com/yinhe/starclaw/internal/sandbox"
@@ -169,7 +170,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	apiV1 := r.Group("/v1")
 	{
 		// Public routes
-		authHandler := v1.NewAuthHandler(db, cfg)
+		identity := node.LoadOrCreateIdentity()
+		authHandler := v1.NewAuthHandler(db, cfg, identity)
 		apiV1.POST("/auth/register", authHandler.Register)
 		apiV1.POST("/auth/login", authHandler.Login)
 		apiV1.POST("/auth/phone/register", authHandler.PhoneRegister)
