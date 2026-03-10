@@ -5,9 +5,14 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-03-10
+## [2026.0310.1430] - 2026-03-10
 
 ### Added
+- **Single-user Owner mode** — Each Claw instance has exactly one owner. First visit shows a setup page to initialize. Generates a permanent Owner Token (`claw_` + 32 hex chars) stored in browser for automatic login. No registration required in opensource mode.
+- **Setup API** — `GET /v1/setup/status` returns setup state and deploy mode. `POST /v1/setup` performs one-time initialization (creates owner user, generates token). Handles both fresh install and upgrade from existing multi-user data.
+- **Owner Token authentication** — Auth middleware accepts both JWT and Owner Token (`claw_` prefix) via `ResolveToken()` helper. Owner tokens are permanent (no expiry), validated via DB lookup. WebSocket auth also supports owner tokens.
+- **Password recovery login** — `POST /v1/auth/owner-login` allows the owner to recover their token using a password (if set during setup). For instances without a password, CLI reset is available.
+- **Setup page** — New frontend page with two-step flow: initialization form (optional password/username) → token display with copy button and backup reminder.
 - **Date-based versioning** — Replaced SemVer with `YYYY.MMDD.HHmm` (UTC) timestamp format. Version injected at build time via `-ldflags` (no more hardcoded constants). `make tag` generates and pushes version tag automatically.
 - **Cross-platform release binaries** — CI workflow builds StarClaw API + MCP Bridge for 5 targets: linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64. All 10 binaries uploaded as GitHub Release assets.
 - **Prometheus metrics** — `/metrics` endpoint exposing `http_requests_total`, `http_request_duration_seconds`, `http_requests_in_flight`, `websocket_connections_active`.
@@ -15,11 +20,18 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **GitHub Actions CI** — `ci.yml` (lint + build on PR/push) and `release.yml` (build + push Docker images + binaries on tag).
 
 ### Changed
+- Auth middleware signature updated from `AuthRequired(cfg)` to `AuthRequired(cfg, db)` to support owner token DB lookup
+- Login page detects deploy mode: opensource shows simplified password-only recovery, hosted preserves full email/phone/OAuth login
+- `PrivateRoute` checks setup status before routing — redirects to `/setup` if not initialized
+- 401 interceptor skips redirect when already on `/setup` or `/login` page
 - `molt.Version` changed from `const` to `var` for ldflags injection, with `dev` default for local builds
 - `mcp-bridge` version also injectable via ldflags
 - All Docker Compose files (`docker-compose.yml`, `docker-compose.prod.yml`, `docker-compose.cn.yml`) pass `BUILD_VERSION` build arg
 - Makefile `up`/`up-cn` targets pass `BUILD_VERSION` to Docker Compose
 - Dockerfile accepts `BUILD_VERSION` ARG and injects into Go binary
+
+### Fixed
+- Auth handler context key bug — `c.Get("userID")` corrected to `c.Get("user_id")` in `GetAPIToken`, `RegenerateToken`, `ListDevices`, `RevokeDevice` (previously would panic when called)
 
 ---
 
