@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
@@ -62,7 +63,14 @@ func (h *SettingsHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	if len(updates) > 0 {
-		h.db.Model(&model.User{}).Where("id = ?", userID).Updates(updates)
+		if err := h.db.Model(&model.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
+			if strings.Contains(err.Error(), "Duplicate") {
+				c.JSON(http.StatusConflict, gin.H{"error": "用户名或邮箱已被使用"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败: " + err.Error()})
+			}
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
