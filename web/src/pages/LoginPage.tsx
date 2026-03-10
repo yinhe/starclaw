@@ -222,15 +222,8 @@ export default function LoginPage() {
                       disabled={loading}
                       className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {loading ? '验证中...' : '找回 Token'}
+                      {loading ? '验证中...' : '登录'}
                     </button>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs text-blue-800">
-                        Token 丢失？用初始化时设置的密码找回。
-                        <br />
-                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">claw reset-token</code>
-                      </p>
-                    </div>
                   </>
                 ) : (
                   <>
@@ -258,6 +251,13 @@ export default function LoginPage() {
                     >
                       {loading ? '验证中...' : '登录'}
                     </button>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs text-blue-800">
+                        Token 丢失？用初始化时设置的密码找回。
+                        <br />
+                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">claw reset-token</code>
+                      </p>
+                    </div>
                   </>
                 )}
               </>
