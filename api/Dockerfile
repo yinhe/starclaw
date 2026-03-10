@@ -26,7 +26,7 @@ RUN VERSION="$BUILD_VERSION" && \
       VERSION=$(wget -qO- "https://api.github.com/repos/yinhe/starclaw/releases/latest" 2>/dev/null \
         | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true); \
     fi && \
-    [ -z "$VERSION" ] && VERSION=dev && \
+    [ -z "$VERSION" ] && VERSION=dev; \
     echo "Building with version: $VERSION" && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" -o /starclaw ./cmd/server
 
