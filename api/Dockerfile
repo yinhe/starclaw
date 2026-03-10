@@ -10,8 +10,9 @@ ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
 
+ARG BUILD_VERSION=dev
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /starclaw ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${BUILD_VERSION}" -o /starclaw ./cmd/server
 
 ARG REGISTRY=docker.io
 FROM ${REGISTRY}/alpine:latest

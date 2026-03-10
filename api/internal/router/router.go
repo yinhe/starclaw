@@ -17,6 +17,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	agentpkg "github.com/yinhe/starclaw/internal/agent"
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
@@ -54,6 +55,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	// Prometheus metrics
+	r.Use(middleware.PrometheusMetrics())
 
 	// Rate limiting
 	r.Use(middleware.RateLimit(300, time.Minute, rdb))
@@ -137,6 +141,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// A2A Agent Card discovery (must be at root, not under /v1)
 	a2aCardHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
 	r.GET("/.well-known/agent.json", a2aCardHandler.AgentCardHandler)
+
+	// Prometheus metrics endpoint
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Health check
 	startTime := time.Now()

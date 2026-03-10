@@ -32,7 +32,8 @@ import (
 //   BaseURL: http://host.docker.internal:9101
 // ───────────────────────────────────────────────
 
-var version = "0.1.0"
+// Set at build time: go build -ldflags "-X main.version=2026.0310.1214"
+var version = "dev"
 
 // --- JSON-RPC types ---
 
