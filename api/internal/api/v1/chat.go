@@ -205,6 +205,13 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	if agent.ModelName != "" {
 		chatModel = agent.ModelName
 	}
+	// If model_name is empty or "default", auto-select the provider's first model
+	if chatModel == "" || chatModel == "default" {
+		if models := p.Models(); len(models) > 0 {
+			chatModel = models[0]
+			log.Printf("[Chat] Auto-selected model %q for provider %s", chatModel, modelCfg.Provider)
+		}
+	}
 
 	maxTok := modelCfg.MaxTokens
 	if maxTok < 16384 {

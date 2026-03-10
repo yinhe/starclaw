@@ -932,11 +932,17 @@ export default function ChatPage() {
                 navigate(`/chat/${activeConvId}`, { replace: true })
               }
 
+              // Display LLM/provider errors as visible content
+              if (data.error) {
+                fullContent += (fullContent ? '\n\n' : '') + '⚠️ ' + data.error
+                setStreamingContent(fullContent)
+              }
+
               if (data.done) {
                 addMessage({
                   id: Date.now().toString(),
                   role: 'assistant',
-                  content: fullContent,
+                  content: fullContent || '⚠️ 模型未返回任何内容，请检查模型配置是否正确。',
                   created_at: new Date().toISOString(),
                 })
                 setStreamingContent('')
