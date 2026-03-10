@@ -192,7 +192,7 @@ func (h *AuthHandler) PhoneRegister(c *gin.Context) {
 
 	username := req.Username
 	if username == "" {
-		username = "user_" + req.Phone[len(req.Phone)-4:]
+		username = "Claw#" + req.Phone[len(req.Phone)-4:]
 	}
 
 	// Check username uniqueness
@@ -202,7 +202,7 @@ func (h *AuthHandler) PhoneRegister(c *gin.Context) {
 			// Auto-generated username collided, append random suffix
 			b := make([]byte, 2)
 			rand.Read(b)
-			username = username + "_" + hex.EncodeToString(b)
+			username = "Claw#" + hex.EncodeToString(b)
 		} else {
 			c.JSON(http.StatusConflict, gin.H{"error": "该用户名已被使用"})
 			return

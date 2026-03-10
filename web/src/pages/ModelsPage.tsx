@@ -29,7 +29,7 @@ const PROVIDERS = [
   { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀', base_url: 'https://openrouter.ai/api/v1' },
   { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡', base_url: 'https://fal.run/fal-ai/any-llm/v1' },
   { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏', base_url: 'https://api.x.ai/v1' },
-  { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimax.chat/v1' },
+  { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimax.io/v1' },
   { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
   { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙', base_url: 'https://api.moonshot.cn/v1' },
   { value: 'custom', label: '自定义 (OpenAI 兼容)', desc: '任何兼容 OpenAI API 的服务', icon: '⚙️', base_url: '' },

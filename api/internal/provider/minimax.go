@@ -17,7 +17,7 @@ type MiniMaxConfig struct {
 func NewMiniMaxProvider(cfg MiniMaxConfig) *MiniMaxProvider {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
-		baseURL = "https://api.minimax.chat/v1"
+		baseURL = "https://api.minimax.io/v1"
 	}
 	inner := NewOpenAIProvider(OpenAIConfig{
 		APIKey:  cfg.APIKey,

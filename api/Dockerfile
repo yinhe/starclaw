@@ -10,9 +10,14 @@ ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
 
-ARG BUILD_VERSION=dev
+ARG BUILD_VERSION=
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${BUILD_VERSION}" -o /starclaw ./cmd/server
+RUN if [ -z "$BUILD_VERSION" ] || [ "$BUILD_VERSION" = "dev" ]; then \
+      BUILD_VERSION=$(wget -qO- "https://api.github.com/repos/yinhe/starclaw/releases/latest" 2>/dev/null \
+        | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true); \
+      [ -z "$BUILD_VERSION" ] && BUILD_VERSION=dev; \
+    fi && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${BUILD_VERSION}" -o /starclaw ./cmd/server
 
 ARG REGISTRY=docker.io
 FROM ${REGISTRY}/alpine:latest
