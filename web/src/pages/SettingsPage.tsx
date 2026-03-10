@@ -253,10 +253,13 @@ export default function SettingsPage() {
     setRegeneratingToken(true)
     try {
       const res = await authAPI.regenerateToken()
-      setMyToken(res.data.api_token)
+      const newToken = res.data.api_token
+      setMyToken(newToken)
       setTokenNodeId(res.data.node_id || '')
       setShowToken(true)
       setDevices([])
+      // Update localStorage so subsequent API calls use the new token
+      localStorage.setItem('starclaw_token', newToken)
     } catch { /* ignore */ }
     setRegeneratingToken(false)
   }
@@ -289,8 +292,9 @@ export default function SettingsPage() {
       await settingsAPI.updateProfile(profile)
       setSaveMsg('保存成功')
       setTimeout(() => setSaveMsg(''), 2000)
-    } catch {
-      setSaveMsg('保存失败')
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } }
+      setSaveMsg(axiosErr.response?.data?.error || '保存失败')
     }
     setSaving(false)
   }

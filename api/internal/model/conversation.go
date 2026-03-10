@@ -11,6 +11,7 @@ type Conversation struct {
 	ID        string         `json:"id" gorm:"type:varchar(36);primaryKey"`
 	UserID    string         `json:"user_id" gorm:"type:varchar(36);index;not null"`
 	AgentID   string         `json:"agent_id" gorm:"type:varchar(36);index;not null"`
+	ModelID   string         `json:"model_id,omitempty" gorm:"type:varchar(36)"` // per-conversation model override
 	Title     string         `json:"title" gorm:"type:varchar(500)"`
 	IsPinned  bool           `json:"is_pinned" gorm:"default:false"`
 	CreatedAt time.Time      `json:"created_at"`

@@ -77,7 +77,7 @@ func AuthRequired(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+		tokenStr := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 		if tokenStr == authHeader {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization format"})
 			c.Abort()

@@ -860,8 +860,22 @@ export default function ChatPage() {
     })
 
     try {
-      // Use SSE for streaming
       const token = localStorage.getItem('starclaw_token')
+
+      // Handle /model command (non-streaming)
+      if (userMessage.startsWith('/model')) {
+        const res = await fetch('/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ agent_id: agentIdToUse, conversation_id: currentConversationId || '', message: userMessage }),
+        })
+        const data = await res.json()
+        addMessage({ id: Date.now().toString(), role: 'assistant', content: data.message || data.error || '命令执行失败', created_at: new Date().toISOString() })
+        setLoading(false)
+        return
+      }
+
+      // Use SSE for streaming
       const abortController = new AbortController()
       abortControllerRef.current = abortController
 

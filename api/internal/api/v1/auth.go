@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -296,6 +297,7 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.Token = strings.TrimSpace(req.Token)
 
 	// Try HMAC verification first (identity-based token)
 	var user model.User
