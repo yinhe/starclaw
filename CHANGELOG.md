@@ -5,6 +5,29 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.0310.1838] - 2026-03-11
+
+### Added
+- **`/model` slash command** — Type `/model` in chat to quickly switch between configured models without leaving the conversation.
+- **No-model-configured guide** — When no models are set up, chat shows a helpful setup link instead of failing silently.
+- **WebSocket Nginx proxy** — Production Nginx config now includes WebSocket upgrade headers for real-time push.
+- **Auth Token localStorage sync** — Owner token persists correctly across browser sessions.
+
+### Fixed
+- **MiniMax model not responding** — Auto-select first provider model when `model_name` is empty or `"default"`. Providers that don't accept generic model names (e.g., MiniMax) now work correctly out of the box.
+- **SSE errors swallowed in chat** — LLM/provider errors are now displayed as visible messages in the chat instead of silently hanging. Empty responses show a configuration check prompt.
+- **Profile update silent failure** — `UpdateProfile` returns proper HTTP errors (409 for duplicate, 500 for DB errors) instead of always returning 200.
+- **Login page shows error instead of setup** — `LoginPage` now checks `setup_completed` and redirects to `/setup` when no owner exists, instead of showing "未找到 Owner 用户".
+- **Version always showing "vdev"** — Dockerfile reads `.version` file from build context as primary source. Docker Compose defaults changed from `"dev"` to empty string. `.version` committed to repo and auto-updated by `make tag`.
+- **Owner Token login** — `tokenLogin` endpoint now accepts owner tokens in addition to API tokens. `claw reset-token` CLI hint added for token recovery.
+
+### Changed
+- Makefile version detection prefers git tags over timestamp generation.
+- `make tag` automatically updates `api/.version` and commits before tagging.
+- Docker Compose `BUILD_VERSION` defaults to empty string (triggers Dockerfile auto-detect) instead of `"dev"`.
+
+---
+
 ## [2026.0310.1430] - 2026-03-10
 
 ### Added
