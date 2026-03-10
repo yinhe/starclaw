@@ -69,10 +69,15 @@ export default function LoginPage() {
       const mode = res.data.deploy_mode || 'opensource'
       setDeployMode(mode)
       if (mode === 'opensource') {
+        // No owner yet → redirect to setup page
+        if (!res.data.setup_completed) {
+          navigate('/setup', { replace: true })
+          return
+        }
         setLoginMode('owner')
       }
     }).catch(() => setDeployMode('opensource'))
-  }, [])
+  }, [navigate])
 
   // Fetch available OAuth providers (hosted mode only)
   useEffect(() => {
