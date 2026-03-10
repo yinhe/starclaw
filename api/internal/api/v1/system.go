@@ -298,7 +298,7 @@ func performDockerUpdate() error {
 	}
 
 	log.Println("[molt] MCP Bridge detected, updating via host shell...")
-	client := mcp.NewClientWithTimeout(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"}, 5*time.Minute)
+	client := mcp.NewClientWithTimeout(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"}, 15*time.Minute)
 
 	// Step 1: Find project root directory
 	result, _ := execOnHost(client, `for d in /opt/starclaw /opt/claw /home/*/starclaw /root/starclaw; do [ -d "$d/claw/api" ] && echo "$d" && exit 0; done; echo /opt/starclaw`)
@@ -340,7 +340,7 @@ func performDockerUpdate() error {
 	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)
 	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,
 		projectDir, composeFile, composeFile)
-	result, err := execOnHostTimeout(client, updateCmd, 300)
+	result, err := execOnHostTimeout(client, updateCmd, 900)
 	if err != nil {
 		log.Printf("[molt] update failed: %v", err)
 		return fmt.Errorf("更新失败: %v", err)
