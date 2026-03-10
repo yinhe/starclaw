@@ -29,6 +29,7 @@ const PROVIDERS = [
   { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀' },
   { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡' },
   { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏' },
+  { value: 'minimax', label: 'MiniMax', desc: 'MiniMax-Text-01, M1 等海螺模型', icon: '🐚' },
   { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎' },
   { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙' },
   { value: 'custom', label: '自定义 (OpenAI 兼容)', desc: '任何兼容 OpenAI API 的服务', icon: '⚙️' },

@@ -10,6 +10,7 @@ const PROVIDERS = [
   { value: 'deepseek', label: 'DeepSeek', icon: '🐋', placeholder: 'sk-...', url: 'https://platform.deepseek.com/api_keys', base_url: '' },
   { value: 'anthropic', label: 'Anthropic', icon: '🟠', placeholder: 'sk-ant-...', url: 'https://console.anthropic.com/', base_url: '' },
   { value: 'grok', label: 'Grok (xAI)', icon: '𝕏', placeholder: 'xai-...', url: 'https://console.x.ai/', base_url: '' },
+  { value: 'minimax', label: 'MiniMax', icon: '🐚', placeholder: 'eyJ...', url: 'https://platform.minimaxi.com/user-center/basic-information/interface-key', base_url: '' },
 ]
 
 interface Props {
