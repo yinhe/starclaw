@@ -26,6 +26,25 @@ interface OAuthProvider {
   client_id: string
 }
 
+function getDeviceID(): string {
+  let id = localStorage.getItem('starclaw_device_id')
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem('starclaw_device_id', id)
+  }
+  return id
+}
+
+function getDeviceName(): string {
+  const ua = navigator.userAgent
+  if (ua.includes('Windows')) return 'Windows'
+  if (ua.includes('Mac')) return 'macOS'
+  if (ua.includes('Linux')) return 'Linux'
+  if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS'
+  if (ua.includes('Android')) return 'Android'
+  return 'Unknown'
+}
+
 export default function LoginPage() {
   const [isRegister, setIsRegister] = useState(false)
   const [loginMode, setLoginMode] = useState<'email' | 'phone' | 'token'>('email')
@@ -93,7 +112,7 @@ export default function LoginPage() {
     try {
       let res
       if (loginMode === 'token') {
-        res = await authAPI.tokenLogin({ token: apiToken })
+        res = await authAPI.tokenLogin({ token: apiToken, device_id: getDeviceID(), device_name: getDeviceName() })
       } else if (loginMode === 'phone') {
         res = isRegister
           ? await authAPI.phoneRegister({ phone, password, username: username || undefined })

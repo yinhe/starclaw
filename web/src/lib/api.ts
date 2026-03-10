@@ -34,10 +34,12 @@ export const authAPI = {
     api.post('/auth/phone/register', data),
   phoneLogin: (data: { phone: string; password: string }) =>
     api.post('/auth/phone/login', data),
-  tokenLogin: (data: { token: string }) =>
+  tokenLogin: (data: { token: string; device_id: string; device_name?: string }) =>
     api.post('/auth/token/login', data),
   getAPIToken: () => api.get('/auth/token'),
   regenerateToken: () => api.post('/auth/token/regenerate'),
+  listDevices: () => api.get('/auth/devices'),
+  revokeDevice: (deviceID: string) => api.post(`/auth/devices/${deviceID}/revoke`),
   oauthProviders: () => api.get('/auth/oauth/providers'),
   oauthGitHub: (code: string) => api.post('/auth/oauth/github', { code }),
   oauthGoogle: (code: string) => api.post('/auth/oauth/google', { code }),

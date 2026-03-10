@@ -44,6 +44,7 @@ export default function SettingsPage() {
   const [showToken, setShowToken] = useState(false)
   const [tokenCopied, setTokenCopied] = useState(false)
   const [regeneratingToken, setRegeneratingToken] = useState(false)
+  const [devices, setDevices] = useState<{id: string; device_id: string; device_name: string; revoked: boolean; last_used_at: string | null; created_at: string}[]>([])
 
   useEffect(() => {
     loadProfile()
@@ -51,6 +52,7 @@ export default function SettingsPage() {
     loadAuditLogs()
     loadSystemInfo()
     loadMyToken()
+    loadDevices()
   }, [])
 
   const loadSystemInfo = async () => {
@@ -239,16 +241,32 @@ export default function SettingsPage() {
     } catch { /* ignore */ }
   }
 
+  const loadDevices = async () => {
+    try {
+      const res = await authAPI.listDevices()
+      setDevices(res.data.devices || [])
+    } catch { /* ignore */ }
+  }
+
   const handleRegenerateToken = async () => {
-    if (!confirm('重新生成后，旧 Token 将立即失效。确定？')) return
+    if (!confirm('重新生成后，旧 Token 和所有已授权设备将被清除。确定？')) return
     setRegeneratingToken(true)
     try {
       const res = await authAPI.regenerateToken()
       setMyToken(res.data.api_token)
       setTokenNodeId(res.data.node_id || '')
       setShowToken(true)
+      setDevices([])
     } catch { /* ignore */ }
     setRegeneratingToken(false)
+  }
+
+  const handleRevokeDevice = async (deviceID: string) => {
+    if (!confirm('撤销后该设备将无法使用 Token 登录。确定？')) return
+    try {
+      await authAPI.revokeDevice(deviceID)
+      loadDevices()
+    } catch { /* ignore */ }
   }
 
   const copyToken = () => {
@@ -1146,6 +1164,26 @@ export default function SettingsPage() {
               <button onClick={handleRegenerateToken} disabled={regeneratingToken} className="p-2 text-gray-400 hover:text-red-500" title="重新生成（旧 Token 失效）">
                 <RefreshCw className={`w-4 h-4 ${regeneratingToken ? 'animate-spin' : ''}`} />
               </button>
+            </div>
+          )}
+          {devices.filter(d => !d.revoked).length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-xs font-medium text-gray-500 mb-2">已授权设备 ({devices.filter(d => !d.revoked).length})</h3>
+              <div className="space-y-2">
+                {devices.filter(d => !d.revoked).map(d => (
+                  <div key={d.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
+                    <div className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-gray-400" />
+                      <span className="text-gray-700">{d.device_name || '未知设备'}</span>
+                      <span className="text-xs text-gray-400">{d.device_id.slice(0, 8)}...</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {d.last_used_at && <span className="text-xs text-gray-400">{new Date(d.last_used_at).toLocaleDateString()}</span>}
+                      <button onClick={() => handleRevokeDevice(d.device_id)} className="text-xs text-red-400 hover:text-red-600">撤销</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>

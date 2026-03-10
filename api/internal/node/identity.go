@@ -144,9 +144,10 @@ func DeriveNodeIDFromPubKey(publicKeyHex string) (string, error) {
 
 // ── API Token (HMAC-SHA256, server-bound, compact) ──
 //
-// Format: base64url(uuid_bytes[16] + iat_uint32_be[4] + hmac[16]) = 48 chars
+// Format: base64url(uid[16] + iat[4] + hmac[16]) = 36 bytes → 48 chars
 // HMAC key = SHA-256(ed25519_private_key + nodeID) — binds token to this server.
-// No prefix. ~48 characters total.
+// One token per user. Multiple devices can use the same token.
+// Device tracking is handled separately via AuthorizedDevice table.
 
 // TokenPayload is the decoded content of an API token.
 type TokenPayload struct {
@@ -165,13 +166,11 @@ func (id *Identity) tokenHMACKey() []byte {
 
 // GenerateAPIToken creates a compact, server-bound API token for a user.
 func (id *Identity) GenerateAPIToken(userID string) string {
-	// Parse UUID string → 16 raw bytes
 	uidBytes, err := uuidToBytes(userID)
 	if err != nil {
 		return ""
 	}
 
-	// iat as uint32 big-endian (good until 2106)
 	iat := uint32(time.Now().Unix())
 	var iatBuf [4]byte
 	iatBuf[0] = byte(iat >> 24)
@@ -189,7 +188,7 @@ func (id *Identity) GenerateAPIToken(userID string) string {
 	mac.Write(payload)
 	sig := mac.Sum(nil)[:16]
 
-	// token = base64url(payload + sig) = base64url(36 bytes) = 48 chars
+	// token = base64url(36 bytes) = 48 chars
 	raw := append(payload, sig...)
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
@@ -213,10 +212,7 @@ func (id *Identity) VerifyAPIToken(token string) *TokenPayload {
 		return nil
 	}
 
-	// Decode UUID bytes → string
 	userID := bytesToUUID(payload[:16])
-
-	// Decode iat
 	iat := int64(payload[16])<<24 | int64(payload[17])<<16 | int64(payload[18])<<8 | int64(payload[19])
 
 	return &TokenPayload{UserID: userID, IssuedAt: iat}

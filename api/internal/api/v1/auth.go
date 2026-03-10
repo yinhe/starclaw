@@ -263,18 +263,20 @@ func (h *AuthHandler) PhoneLogin(c *gin.Context) {
 }
 
 // TokenLogin authenticates with a compact server-bound API token.
+// Tracks device on first use; rejects revoked devices.
 // Rate limited: 5 failures per IP → locked 15 minutes.
 func (h *AuthHandler) TokenLogin(c *gin.Context) {
 	ip := c.ClientIP()
 
-	// Rate limit check
 	if err := checkTokenRateLimit(ip); err != nil {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
 		return
 	}
 
 	var req struct {
-		Token string `json:"token" binding:"required"`
+		Token      string `json:"token" binding:"required"`
+		DeviceID   string `json:"device_id" binding:"required"`
+		DeviceName string `json:"device_name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -297,18 +299,43 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 		return
 	}
 
-	// Check revocation: token must be issued after TokenIssuedAt
+	// Check token revocation (regenerate invalidates old tokens)
 	if user.TokenIssuedAt != nil && payload.IssuedAt < user.TokenIssuedAt.Unix() {
 		recordTokenFailure(ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token 已失效，请重新生成"})
 		return
 	}
 
-	// Success — clear rate limit
+	// Check device authorization
+	var device model.AuthorizedDevice
+	err := h.db.Where("user_id = ? AND device_id = ?", user.ID, req.DeviceID).First(&device).Error
+	if err == nil && device.Revoked {
+		recordTokenFailure(ip)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "此设备已被撤销授权"})
+		return
+	}
+
+	// Auto-register new device
+	now := time.Now()
+	if err != nil {
+		device = model.AuthorizedDevice{
+			UserID:     user.ID,
+			DeviceID:   req.DeviceID,
+			DeviceName: req.DeviceName,
+			LastUsedAt: &now,
+		}
+		h.db.Create(&device)
+	} else {
+		h.db.Model(&device).Updates(map[string]interface{}{
+			"last_used_at": now,
+			"device_name":  req.DeviceName,
+		})
+	}
+
 	clearTokenFailure(ip)
 
-	token, err := h.generateToken(&user)
-	if err != nil {
+	token, err2 := h.generateToken(&user)
+	if err2 != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 		return
 	}
@@ -316,23 +343,7 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, AuthResponse{Token: token, User: user})
 }
 
-// RegenerateToken creates a new server-bound API token for the current user.
-// Old tokens are invalidated by updating TokenIssuedAt.
-func (h *AuthHandler) RegenerateToken(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	now := time.Now()
-	if err := h.db.Model(&model.User{}).Where("id = ?", userID).Update("token_issued_at", now).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to regenerate token"})
-		return
-	}
-	newToken := h.identity.GenerateAPIToken(userID.(string))
-	c.JSON(http.StatusOK, gin.H{
-		"api_token": newToken,
-		"node_id":   h.identity.NodeID,
-	})
-}
-
-// GetAPIToken returns a freshly signed API token for the current user.
+// GetAPIToken returns the current user's API token (one per user).
 func (h *AuthHandler) GetAPIToken(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	newToken := h.identity.GenerateAPIToken(userID.(string))
@@ -340,6 +351,41 @@ func (h *AuthHandler) GetAPIToken(c *gin.Context) {
 		"api_token": newToken,
 		"node_id":   h.identity.NodeID,
 	})
+}
+
+// RegenerateToken creates a new token, invalidates old one, clears all devices.
+func (h *AuthHandler) RegenerateToken(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	now := time.Now()
+	h.db.Model(&model.User{}).Where("id = ?", userID).Update("token_issued_at", now)
+	h.db.Where("user_id = ?", userID).Delete(&model.AuthorizedDevice{})
+	newToken := h.identity.GenerateAPIToken(userID.(string))
+	c.JSON(http.StatusOK, gin.H{
+		"api_token": newToken,
+		"node_id":   h.identity.NodeID,
+	})
+}
+
+// ListDevices returns all devices that have used the token.
+func (h *AuthHandler) ListDevices(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	var devices []model.AuthorizedDevice
+	h.db.Where("user_id = ?", userID).Order("created_at desc").Find(&devices)
+	c.JSON(http.StatusOK, gin.H{"devices": devices})
+}
+
+// RevokeDevice blocks a specific device from using the token.
+func (h *AuthHandler) RevokeDevice(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	deviceID := c.Param("deviceID")
+	result := h.db.Model(&model.AuthorizedDevice{}).
+		Where("user_id = ? AND device_id = ?", userID, deviceID).
+		Update("revoked", true)
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "设备已撤销"})
 }
 
 func (h *AuthHandler) generateToken(user *model.User) (string, error) {

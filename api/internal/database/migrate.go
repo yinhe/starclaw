@@ -33,6 +33,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.Transaction{},
 		&model.Invoice{},
 		&model.AgentTemplate{},
+		&model.AuthorizedDevice{},
 	); err != nil {
 		return err
 	}

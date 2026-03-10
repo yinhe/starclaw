@@ -30,3 +30,23 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// AuthorizedDevice tracks devices that have logged in via API token.
+// One token per user, but multiple devices can use it.
+// Individual devices can be revoked without affecting others.
+type AuthorizedDevice struct {
+	ID         string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	UserID     string     `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	DeviceID   string     `json:"device_id" gorm:"type:varchar(36);not null"`
+	DeviceName string     `json:"device_name" gorm:"type:varchar(100)"`
+	Revoked    bool       `json:"revoked" gorm:"default:false"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+func (d *AuthorizedDevice) BeforeCreate(tx *gorm.DB) error {
+	if d.ID == "" {
+		d.ID = uuid.New().String()
+	}
+	return nil
+}

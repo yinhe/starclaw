@@ -627,6 +627,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/settings/api-keys", settingsHandler.GetAPIKeys)
 			protected.GET("/auth/token", authHandler.GetAPIToken)
 			protected.POST("/auth/token/regenerate", authHandler.RegenerateToken)
+			protected.GET("/auth/devices", authHandler.ListDevices)
+			protected.POST("/auth/devices/:deviceID/revoke", authHandler.RevokeDevice)
 
 			// System: Swarm, Bounty, Updates
 			var sc *swarm.Client
