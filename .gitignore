@@ -5,7 +5,6 @@ vendor/
 # Build outputs
 build/
 dist/
-api/.version
 *.exe
 *.dll
 *.so

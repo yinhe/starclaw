@@ -163,6 +163,8 @@ build-api: ## Build API binary with version stamp
 
 .PHONY: tag
 tag: ## Create git tag with timestamp version (usage: make tag)
+	@echo $(VERSION) > api/.version
+	@git add api/.version && git commit -m "chore: bump version to $(VERSION)" --allow-empty || true
 	@echo "Tagging v$(VERSION)..."
 	git tag -a "v$(VERSION)" -m "Release $(VERSION)"
 	@echo "✓ Tagged v$(VERSION). Push with: git push origin v$(VERSION)"
