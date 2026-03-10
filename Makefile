@@ -4,8 +4,8 @@
 COMPOSE = docker compose
 COMPOSE_CN = docker compose -f docker-compose.yml -f docker-compose.cn.yml
 
-# Version: YYYY.MMDD.HHmm (UTC)
-VERSION ?= $(shell date -u +"%Y.%m%d.%H%M")
+# Version: prefer git tag, fallback to YYYY.MMDD.HHmm (UTC)
+VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || date -u +"%Y.%m%d.%H%M")
 LDFLAGS_API = -X github.com/yinhe/starclaw/internal/molt.Version=$(VERSION)
 LDFLAGS_BRIDGE = -X main.version=$(VERSION)
 
@@ -78,14 +78,21 @@ health: ## Check API health endpoint
 
 # ======================== Update ========================
 
+.PHONY: write-version
+write-version: ## Write .version file for Docker build
+	@echo $(VERSION) > api/.version
+	@echo "✓ api/.version = $(VERSION)"
+
 .PHONY: update
 update: ## Pull latest code and rebuild
 	git pull
+	@echo $(VERSION) > api/.version
 	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
 
 .PHONY: update-cn
 update-cn: ## Pull latest code and rebuild (China mirror)
 	git pull
+	@echo $(VERSION) > api/.version
 	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
 
 # ======================== Rebuild Single Service ========================

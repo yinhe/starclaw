@@ -43,7 +43,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
       args:
-        BUILD_VERSION: ${BUILD_VERSION:-dev}
+        BUILD_VERSION: ${BUILD_VERSION:-}
     container_name: starclaw-api
     extra_hosts:
       - "host.docker.internal:host-gateway"
