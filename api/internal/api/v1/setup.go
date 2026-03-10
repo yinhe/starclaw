@@ -72,13 +72,13 @@ func (h *SetupHandler) Setup(c *gin.Context) {
 	}
 	c.ShouldBindJSON(&req)
 
-	// Generate owner token: claw_ + 32 hex chars (16 bytes = 128-bit entropy)
+	// Generate owner token: 32 hex chars (16 bytes = 128-bit entropy)
 	tokenBytes := make([]byte, 16)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 		return
 	}
-	ownerToken := "claw_" + hex.EncodeToString(tokenBytes)
+	ownerToken := hex.EncodeToString(tokenBytes)
 
 	// Hash password if provided
 	var hashedPw string

@@ -44,27 +44,28 @@ func ParseToken(tokenStr string, secret string) (*TokenClaims, error) {
 	return tc, nil
 }
 
-// ResolveToken validates either a JWT or Owner Token (claw_ prefix) and returns claims.
+// ResolveToken validates either a JWT or Owner Token and returns claims.
+// Strategy: try JWT first; if it fails, fallback to DB lookup as Owner Token.
 // Used by both AuthRequired middleware and WebSocket handler.
 func ResolveToken(tokenStr string, cfg *config.Config, db *gorm.DB) (*TokenClaims, error) {
-	// Owner Token: claw_ + 32 hex chars = 37 chars
-	if strings.HasPrefix(tokenStr, "claw_") {
-		var user model.User
-		if err := db.Where("owner_token = ?", tokenStr).First(&user).Error; err != nil {
-			return nil, fmt.Errorf("invalid owner token")
-		}
-		role := user.Role
-		if role == "" {
-			role = "owner"
-		}
-		return &TokenClaims{
-			UserID:   user.ID,
-			Username: user.Username,
-			Role:     role,
-		}, nil
+	// Try JWT first
+	if claims, err := ParseToken(tokenStr, cfg.JWT.Secret); err == nil {
+		return claims, nil
 	}
-	// JWT
-	return ParseToken(tokenStr, cfg.JWT.Secret)
+	// Fallback: Owner Token (plain hex string stored in DB)
+	var user model.User
+	if err := db.Where("owner_token = ?", tokenStr).First(&user).Error; err != nil {
+		return nil, fmt.Errorf("invalid token")
+	}
+	role := user.Role
+	if role == "" {
+		role = "owner"
+	}
+	return &TokenClaims{
+		UserID:   user.ID,
+		Username: user.Username,
+		Role:     role,
+	}, nil
 }
 
 func AuthRequired(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {

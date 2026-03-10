@@ -358,8 +358,18 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 }
 
 // GetAPIToken returns the current user's API token (one per user).
+// In opensource mode (owner_token set), returns the owner token directly.
 func (h *AuthHandler) GetAPIToken(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	// Check if user has an owner_token (opensource / single-user mode)
+	var user model.User
+	if err := h.db.Select("owner_token").Where("id = ?", userID).First(&user).Error; err == nil && user.OwnerToken != nil && *user.OwnerToken != "" {
+		c.JSON(http.StatusOK, gin.H{
+			"api_token": *user.OwnerToken,
+			"node_id":   h.identity.NodeID,
+		})
+		return
+	}
 	newToken := h.identity.GenerateAPIToken(userID.(string))
 	c.JSON(http.StatusOK, gin.H{
 		"api_token": newToken,
@@ -373,6 +383,19 @@ func (h *AuthHandler) RegenerateToken(c *gin.Context) {
 	now := time.Now()
 	h.db.Model(&model.User{}).Where("id = ?", userID).Update("token_issued_at", now)
 	h.db.Where("user_id = ?", userID).Delete(&model.AuthorizedDevice{})
+	// Check if user has owner_token — regenerate it
+	var user model.User
+	if err := h.db.Select("owner_token").Where("id = ?", userID).First(&user).Error; err == nil && user.OwnerToken != nil && *user.OwnerToken != "" {
+		tokenBytes := make([]byte, 16)
+		rand.Read(tokenBytes)
+		newOwnerToken := hex.EncodeToString(tokenBytes)
+		h.db.Model(&model.User{}).Where("id = ?", userID).Update("owner_token", newOwnerToken)
+		c.JSON(http.StatusOK, gin.H{
+			"api_token": newOwnerToken,
+			"node_id":   h.identity.NodeID,
+		})
+		return
+	}
 	newToken := h.identity.GenerateAPIToken(userID.(string))
 	c.JSON(http.StatusOK, gin.H{
 		"api_token": newToken,

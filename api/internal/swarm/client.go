@@ -51,34 +51,76 @@ func (c *Client) Start() {
 		log.Printf("[swarm] registered as node %s", c.nodeID)
 	}
 
-	// Heartbeat loop
-	interval := time.Duration(c.cfg.HeartbeatInterval) * time.Second
-	if interval < 10*time.Second {
-		interval = 30 * time.Second
+	// Heartbeat loop with exponential backoff + jitter
+	baseInterval := time.Duration(c.cfg.HeartbeatInterval) * time.Second
+	if baseInterval < 10*time.Second {
+		baseInterval = 60 * time.Second
 	}
 
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if c.nodeID == "" {
-					// Retry registration
-					if err := c.register(); err != nil {
-						log.Printf("[swarm] re-registration failed: %v", err)
-						continue
-					}
-					log.Printf("[swarm] registered as node %s", c.nodeID)
-				}
-				if err := c.heartbeat(); err != nil {
-					log.Printf("[swarm] heartbeat failed: %v", err)
-				}
-			case <-c.stopCh:
-				return
-			}
+	go c.heartbeatLoop(baseInterval)
+}
+
+// heartbeatLoop runs heartbeat with exponential backoff on failure.
+// On success: reset to baseInterval. On failure: double delay (cap 5min), ±20% jitter.
+func (c *Client) heartbeatLoop(baseInterval time.Duration) {
+	const maxBackoff = 5 * time.Minute
+	backoff := time.Duration(0) // 0 means use baseInterval
+	consecutiveFails := 0
+
+	for {
+		// Calculate sleep duration with jitter
+		sleep := baseInterval
+		if backoff > 0 {
+			sleep = backoff
 		}
-	}()
+		sleep = addJitter(sleep, 0.2) // ±20%
+
+		select {
+		case <-time.After(sleep):
+		case <-c.stopCh:
+			return
+		}
+
+		// Retry registration if not registered
+		if c.nodeID == "" {
+			if err := c.register(); err != nil {
+				consecutiveFails++
+				backoff = calcBackoff(consecutiveFails, maxBackoff)
+				log.Printf("[swarm] registration failed (retry in %s): %v", backoff, err)
+				continue
+			}
+			log.Printf("[swarm] registered as node %s", c.nodeID)
+		}
+
+		// Send heartbeat
+		if err := c.heartbeat(); err != nil {
+			consecutiveFails++
+			backoff = calcBackoff(consecutiveFails, maxBackoff)
+			log.Printf("[swarm] heartbeat failed (retry in %s): %v", backoff, err)
+		} else {
+			if consecutiveFails > 0 {
+				log.Printf("[swarm] heartbeat recovered after %d failures", consecutiveFails)
+			}
+			consecutiveFails = 0
+			backoff = 0
+		}
+	}
+}
+
+// calcBackoff returns exponential backoff: 1s, 2s, 4s, 8s, ... capped at max.
+func calcBackoff(failures int, max time.Duration) time.Duration {
+	d := time.Second << uint(failures-1) // 2^(n-1) seconds
+	if d > max {
+		d = max
+	}
+	return d
+}
+
+// addJitter adds ±pct random jitter to a duration.
+func addJitter(d time.Duration, pct float64) time.Duration {
+	jitterRange := float64(d) * pct * 2
+	jitter := float64(time.Now().UnixNano()%1000) / 1000 * jitterRange // pseudo-random [0, range)
+	return d - time.Duration(float64(d)*pct) + time.Duration(jitter)
 }
 
 // Stop gracefully stops the heartbeat loop
