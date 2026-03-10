@@ -80,7 +80,35 @@ curl http://localhost/v1/health           # 应返回 OK
 
 浏览器访问 `http://你的服务器IP` 即可使用。
 
-## 四、配置 AI 模型
+## 四、更新到最新版本
+
+服务器代码直接从 GitHub 拉取，更新流程：
+
+```bash
+cd /opt/starclaw
+
+# 拉取最新代码
+git pull origin main
+
+# 重新构建并重启（仅 API 和 Web，不影响数据库）
+docker compose -f docker-compose.prod.yml build api web
+docker compose -f docker-compose.prod.yml up -d api web
+
+# ⚠️ 国内服务器请使用加速配置：
+# docker compose -f docker-compose.prod.yml -f docker-compose.cn.yml build api web
+# docker compose -f docker-compose.prod.yml -f docker-compose.cn.yml up -d api web
+```
+
+或使用 CLI 快捷命令：
+```bash
+claw update            # git pull + 重新构建全部
+claw rebuild-api       # 仅重建 API 服务
+claw rebuild-web       # 仅重建 Web 前端
+```
+
+> **注意：** MySQL 和 Redis 数据不受影响，`data/` 目录通过 volume 挂载持久化。
+
+## 五、配置 AI 模型
 
 进入 Web 界面 → 设置 → 模型管理 → 添加你的 API Key：
 
@@ -91,7 +119,7 @@ curl http://localhost/v1/health           # 应返回 OK
 | DeepSeek | https://platform.deepseek.com |
 | Ollama（本地） | 无需 Key，填写 Ollama 地址即可 |
 
-## 五、加入虫群（可选）
+## 六、加入虫群（可选）
 
 默认情况下你的小龙虾独立运行。如果想加入虫群网络：
 
@@ -108,7 +136,7 @@ server:
 - 📦 共享 Agent/Workflow 模板（Creep 菌毯）
 - 💰 赏金任务发布能力（Bounty）
 
-## 六、升级为领主 Overlord（可选）
+## 七、升级为领主 Overlord（可选）
 
 如果你需要管理多个 Claw 节点：
 
@@ -122,7 +150,7 @@ Overlord 节点可以：
 - 企业内部负载均衡
 - 通过 Nydus 隧道实现 Claw 间直连
 
-## 七、域名 + HTTPS
+## 八、域名 + HTTPS
 
 ```bash
 # 安装 certbot
@@ -174,7 +202,7 @@ sudo ln -s /etc/nginx/sites-available/starclaw /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 八、日常运维
+## 九、日常运维
 
 ### 安装 CLI 别名（推荐）
 
@@ -270,7 +298,7 @@ claw prune             # 清理未使用的 Docker 镜像（别名: claw clean�
 
 > **提示:** 所有命令仍然兼容 `make` 方式调用，如 `make up`、`make logs` 等。
 
-## 九、常见问题
+## 十、常见问题
 
 **Q: 构建太慢？**
 国内服务器配置 Docker 镜像加速，后续构建使用缓存会很快。

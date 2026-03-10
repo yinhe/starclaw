@@ -81,22 +81,22 @@ health: ## Check API health endpoint
 .PHONY: update
 update: ## Pull latest code and rebuild
 	git pull
-	$(COMPOSE) up -d --build
+	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
 
 .PHONY: update-cn
 update-cn: ## Pull latest code and rebuild (China mirror)
 	git pull
-	$(COMPOSE_CN) up -d --build
+	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
 
 # ======================== Rebuild Single Service ========================
 
 .PHONY: rebuild-api
 rebuild-api: ## Rebuild and restart only the API service
-	$(COMPOSE) up -d --build --no-deps api
+	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build --no-deps api
 
 .PHONY: rebuild-web
 rebuild-web: ## Rebuild and restart only the Web service
-	$(COMPOSE) up -d --build --no-deps web
+	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build --no-deps web
 
 # ======================== Backup & Restore ========================
 
