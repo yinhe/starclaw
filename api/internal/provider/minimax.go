@@ -24,12 +24,30 @@ func NewMiniMaxProvider(cfg MiniMaxConfig) *MiniMaxProvider {
 		BaseURL: baseURL,
 	})
 	inner.models = []string{
+		// Text — M2.5 flagship (2026-02)
+		"MiniMax-M2.5",
+		"MiniMax-M2.5-highspeed",
+		// Text — M2.1 multilingual coding (2025-12)
+		"MiniMax-M2.1",
+		"MiniMax-M2.1-highspeed",
+		// Text — M2 series
+		"MiniMax-M2",
+		"MiniMax-M2-her",
+		// Text — earlier
 		"MiniMax-Text-01",
-		"MiniMax-M1",
-		"abab7",
-		"abab6.5s",
-		"abab6.5t",
-		"abab6.5g",
+		"MiniMax-VL-01",
+		// Video — Hailuo 2.3 (2025-10)
+		"MiniMax-Hailuo-2.3",
+		"MiniMax-Hailuo-2.3-Fast",
+		// Speech / TTS
+		"MiniMax-Speech-2.8-hd",
+		"MiniMax-Speech-2.6",
+		// Music
+		"MiniMax-Music-2.5+",
+		"MiniMax-Music-2.5",
+		// Image
+		"image-01",
+		"image-01-live",
 	}
 	return &MiniMaxProvider{inner: inner}
 }
