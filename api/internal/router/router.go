@@ -265,8 +265,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			c.File(filePath)
 		})
 
-		// Generated documents (public, secured by UUID filename)
-		apiV1.GET("/documents/:filename", func(c *gin.Context) {
+		// Generated Word documents (public, secured by UUID filename)
+		apiV1.GET("/docx/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
 			if !strings.HasSuffix(filename, ".docx") {
 				c.JSON(400, gin.H{"error": "invalid document format"})

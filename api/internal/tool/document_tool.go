@@ -139,13 +139,13 @@ func (t *DocumentTool) summarize(args documentArgs) (string, error) {
 	}
 
 	return toJSON(map[string]interface{}{
-		"status":         "success",
-		"action":         "summarize",
+		"status":          "success",
+		"action":          "summarize",
 		"conversation_id": conv.ID,
-		"title":          conv.Title,
-		"message_count":  len(messages),
-		"transcript":     sb.String(),
-		"hint":           "You can now summarize this transcript and call export_word to generate a Word document, or use summary_to_word for a one-step export.",
+		"title":           conv.Title,
+		"message_count":   len(messages),
+		"transcript":      sb.String(),
+		"hint":            "You can now summarize this transcript and call export_word to generate a Word document, or use summary_to_word for a one-step export.",
 	}), nil
 }
 
@@ -183,7 +183,7 @@ func (t *DocumentTool) exportWord(ctx context.Context, args documentArgs) (strin
 		"action":       "export_word",
 		"filename":     filename,
 		"size_bytes":   len(docxBytes),
-		"download_url": fmt.Sprintf("/v1/documents/%s", filename),
+		"download_url": fmt.Sprintf("/v1/docx/%s", filename),
 		"message":      fmt.Sprintf("Word 文档已生成：%s（%d 字节）。点击链接下载。", filename, len(docxBytes)),
 	}), nil
 }
@@ -266,13 +266,13 @@ func (t *DocumentTool) summaryToWord(ctx context.Context, args documentArgs) (st
 	log.Printf("[DocumentTool] Generated summary %s (%d bytes, %d messages)", filename, len(docxBytes), len(messages))
 
 	return toJSON(map[string]interface{}{
-		"status":         "success",
-		"action":         "summary_to_word",
-		"filename":       filename,
-		"size_bytes":     len(docxBytes),
-		"message_count":  len(messages),
-		"download_url":   fmt.Sprintf("/v1/documents/%s", filename),
-		"message":        fmt.Sprintf("对话总结已导出为 Word 文档：%s。包含 %d 条消息。", filename, len(messages)),
+		"status":        "success",
+		"action":        "summary_to_word",
+		"filename":      filename,
+		"size_bytes":    len(docxBytes),
+		"message_count": len(messages),
+		"download_url":  fmt.Sprintf("/v1/docx/%s", filename),
+		"message":       fmt.Sprintf("对话总结已导出为 Word 文档：%s。包含 %d 条消息。", filename, len(messages)),
 	}), nil
 }
 
