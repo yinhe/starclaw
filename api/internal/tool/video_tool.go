@@ -36,7 +36,7 @@ func NewVideoTool(db *gorm.DB) *VideoTool {
 func (t *VideoTool) Name() string { return "video_generation" }
 
 func (t *VideoTool) Description() string {
-	return `AI 视频生成工具，支持多种视频模型。支持的模型：
+	return `AI 视频生成工具，支持多种视频模型和场景衔接。支持的模型：
 - wan2.6-t2v: 阿里云万相文生视频（默认），最高10秒
 - wan2.6-i2v: 阿里云万相图生视频，需要img_url
 - veo3: Google Veo 3 文生视频 (fal.ai)，电影级画质
@@ -45,38 +45,42 @@ func (t *VideoTool) Description() string {
 - minimax-video: MiniMax 视频生成 (fal.ai)
 - luma: Luma Dream Machine (fal.ai)
 
-操作：generate_video、check_status、merge_videos、list_models
-制作流程：1) 编写脚本 2) 逐场景调用 generate_video 3) 所有场景完成后自动合成最终视频。`
+操作：generate_video、check_status、merge_videos、list_models、extract_last_frame
+制作流程：1) 编写脚本 2) 逐场景调用 generate_video（用 ref_video_id 衔接上一场景尾帧，用 style_prefix 统一风格） 3) 所有场景完成后自动合成最终视频（带 crossfade 转场效果）。`
 }
 
 func (t *VideoTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":   {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models"},
-			"prompt":   {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
-			"model":    {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, sora2, kling-v2, minimax-video, luma"},
-			"img_url":  {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v)."},
-			"size":     {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
-			"duration": {Type: "string", Description: "Video duration in seconds: 5 or 10. Default: 5"},
-			"task_id":  {Type: "string", Description: "Task ID or record ID for check_status"},
-			"scene":    {Type: "string", Description: "Scene label for multi-scene projects (e.g. 'scene_1')"},
-			"task_ids": {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
+			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame"},
+			"prompt":       {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
+			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, sora2, kling-v2, minimax-video, luma"},
+			"img_url":      {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
+			"size":         {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
+			"duration":     {Type: "string", Description: "Video duration in seconds: 5 or 10. Default: 5"},
+			"task_id":      {Type: "string", Description: "Task ID or record ID for check_status / extract_last_frame"},
+			"scene":        {Type: "string", Description: "Scene label for multi-scene projects (e.g. 'scene_1')"},
+			"task_ids":     {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
+			"style_prefix": {Type: "string", Description: "Shared style prefix prepended to all scene prompts for visual consistency (e.g. 'cinematic film style, warm color grading, shallow depth of field'). Stored with the record."},
+			"ref_video_id": {Type: "string", Description: "Previous scene's video record ID. Auto-extracts its last frame as img_url for i2v, ensuring visual continuity between scenes."},
 		},
 		Required: []string{"action"},
 	}
 }
 
 type videoArgs struct {
-	Action   string `json:"action"`
-	Prompt   string `json:"prompt"`
-	Model    string `json:"model"`
-	ImgURL   string `json:"img_url"`
-	Size     string `json:"size"`
-	Duration string `json:"duration"`
-	TaskID   string `json:"task_id"`
-	Scene    string `json:"scene"`
-	TaskIDs  string `json:"task_ids"`
+	Action      string `json:"action"`
+	Prompt      string `json:"prompt"`
+	Model       string `json:"model"`
+	ImgURL      string `json:"img_url"`
+	Size        string `json:"size"`
+	Duration    string `json:"duration"`
+	TaskID      string `json:"task_id"`
+	Scene       string `json:"scene"`
+	TaskIDs     string `json:"task_ids"`
+	StylePrefix string `json:"style_prefix"`
+	RefVideoID  string `json:"ref_video_id"`
 }
 
 // fal.ai video model endpoints
@@ -102,8 +106,10 @@ func (t *VideoTool) Execute(ctx context.Context, argsJSON string) (string, error
 		return t.mergeVideos(ctx, args)
 	case "list_models":
 		return t.listModels()
+	case "extract_last_frame":
+		return t.extractLastFrame(ctx, args)
 	default:
-		return "", fmt.Errorf("unknown action: %s. Use: generate_video, check_status, merge_videos, list_models", args.Action)
+		return "", fmt.Errorf("unknown action: %s. Use: generate_video, check_status, merge_videos, list_models, extract_last_frame", args.Action)
 	}
 }
 
@@ -135,10 +141,99 @@ func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, 
 		duration = 10
 	}
 
+	// Prepend style_prefix to prompt for visual consistency across scenes
+	if args.StylePrefix != "" {
+		args.Prompt = args.StylePrefix + ", " + args.Prompt
+	}
+
+	// ref_video_id: auto-extract last frame from previous scene → switch to i2v for continuity
+	if args.RefVideoID != "" && args.ImgURL == "" {
+		frameURL, err := t.getLastFrameURL(args.RefVideoID)
+		if err != nil {
+			log.Printf("[VideoTool] ref_video_id %s last frame extraction failed: %v, continuing with t2v", args.RefVideoID, err)
+		} else {
+			args.ImgURL = frameURL
+			// Auto-switch to i2v model for DashScope
+			if args.Model == "wan2.6-t2v" {
+				args.Model = "wan2.6-i2v"
+				log.Printf("[VideoTool] Auto-switched to i2v with last frame from %s", args.RefVideoID)
+			}
+		}
+	}
+
 	if isFalVideoModel(args.Model) {
 		return t.generateVideoFal(ctx, userID, convID, args, duration)
 	}
 	return t.generateVideoWan(ctx, userID, convID, args, duration)
+}
+
+// extractLastFrame extracts the last frame of a completed video and saves it as a JPEG.
+// Returns the URL to the extracted frame image.
+func (t *VideoTool) extractLastFrame(ctx context.Context, args videoArgs) (string, error) {
+	if args.TaskID == "" {
+		return "", fmt.Errorf("task_id (video record ID or task ID) is required")
+	}
+	frameURL, err := t.getLastFrameURL(args.TaskID)
+	if err != nil {
+		return "", err
+	}
+	return toJSON(map[string]interface{}{
+		"action":    "extract_last_frame",
+		"frame_url": frameURL,
+		"message":   fmt.Sprintf("已提取视频最后一帧。可将此 URL 作为下一场景的 img_url 使用 wan2.6-i2v 模型实现场景衔接。"),
+	}), nil
+}
+
+// getLastFrameURL extracts the last frame from a video record and returns its accessible URL.
+func (t *VideoTool) getLastFrameURL(recordOrTaskID string) (string, error) {
+	var rec model.VideoRecord
+	if err := t.db.Where("id = ? OR task_id = ?", recordOrTaskID, recordOrTaskID).First(&rec).Error; err != nil {
+		return "", fmt.Errorf("video record not found: %s", recordOrTaskID)
+	}
+	if rec.Status != "succeeded" || rec.VideoURL == "" {
+		return "", fmt.Errorf("video not ready (status=%s)", rec.Status)
+	}
+
+	// Resolve video to local path
+	videoPath := rec.VideoURL
+	if strings.HasPrefix(videoPath, "/v1/videos/merged/") {
+		fn := strings.TrimPrefix(videoPath, "/v1/videos/merged/")
+		videoPath = filepath.Join("/app/merged_videos", fn)
+	}
+
+	// Extract last frame using ffmpeg (seek to near-end)
+	dur := ProbeDuration(videoPath)
+	if dur <= 0 {
+		dur = 5.0
+	}
+	seekTime := dur - 0.1
+	if seekTime < 0 {
+		seekTime = 0
+	}
+
+	frameDir := "/app/images"
+	os.MkdirAll(frameDir, 0755)
+	frameFile := fmt.Sprintf("lastframe_%s.jpg", rec.ID)
+	framePath := filepath.Join(frameDir, frameFile)
+
+	extractCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(extractCtx, "ffmpeg", "-y",
+		"-ss", fmt.Sprintf("%.2f", seekTime),
+		"-i", videoPath,
+		"-frames:v", "1", "-q:v", "2", framePath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("ffmpeg last frame extraction failed: %v\n%s", err, string(out))
+	}
+
+	if _, err := os.Stat(framePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("extracted frame file not found")
+	}
+
+	frameURL := fmt.Sprintf("/v1/images/%s", frameFile)
+	log.Printf("[VideoTool] Extracted last frame from %s → %s", rec.ID, frameURL)
+	return frameURL, nil
 }
 
 // ── DashScope Wan Provider ──
@@ -437,12 +532,20 @@ func probeResolution(path string) (int, int, error) {
 	return w, h, nil
 }
 
-// ffmpegMergeClips merges clips, auto-detecting and normalizing different resolutions.
-// If all clips share the same resolution, uses fast concat demuxer (-c copy).
-// If resolutions differ, uses filter_complex to scale+pad all clips to the majority resolution.
+// ffmpegMergeClips merges clips with crossfade transitions between scenes.
+// Uses xfade filter for smooth dissolve transitions (0.5s default).
+// Auto-detects and normalizes different resolutions to majority resolution.
 func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string) error {
 	if len(clipPaths) == 0 {
 		return fmt.Errorf("no clips to merge")
+	}
+	if len(clipPaths) == 1 {
+		// Single clip: just copy
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", clipPaths[0], "-c", "copy", outputPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("ffmpeg copy failed: %v\n%s", err, string(out))
+		}
+		return nil
 	}
 
 	// Probe all resolutions
@@ -469,64 +572,132 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 		}
 	}
 
-	allSame := len(resCounts) == 1
-	if allSame {
-		log.Printf("[VideoMerge] All %d clips are %dx%d, using fast concat", len(clipPaths), targetRes.w, targetRes.h)
-	} else {
-		log.Printf("[VideoMerge] Mixed resolutions detected (%d unique), normalizing to %dx%d", len(resCounts), targetRes.w, targetRes.h)
-	}
-
 	tmpDir := filepath.Dir(clipPaths[0])
 	if tmpDir == "" {
 		tmpDir = os.TempDir()
 	}
 
-	if allSame {
-		// Fast path: all same resolution, use concat demuxer
-		listPath := filepath.Join(tmpDir, "filelist.txt")
-		var listContent strings.Builder
-		for _, p := range clipPaths {
-			listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
-		}
-		os.WriteFile(listPath, []byte(listContent.String()), 0644)
-
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-			"-i", listPath, "-c", "copy", outputPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			// Fallback: re-encode
-			cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-				"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
-			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-				return fmt.Errorf("ffmpeg concat failed: %v\n%s\n%s", err2, string(out), string(out2))
-			}
-		}
-		return nil
-	}
-
-	// Slow path: normalize all clips to target resolution with scale+pad, then concat
-	// First, normalize each clip to a temp file
+	// Step 1: Normalize all clips to same resolution + codec (required for xfade)
 	var normalizedPaths []string
 	for i, p := range clipPaths {
-		if resolutions[i] == targetRes {
-			normalizedPaths = append(normalizedPaths, p)
-			continue
-		}
 		normPath := filepath.Join(tmpDir, fmt.Sprintf("norm_%03d.mp4", i))
-		// scale to fit within target, pad to exact target size (letterbox/pillarbox)
-		filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black",
-			targetRes.w, targetRes.h, targetRes.w, targetRes.h)
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", p,
-			"-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", "-r", "30", normPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("ffmpeg normalize clip %d failed: %v\n%s", i, err, string(out))
+		if resolutions[i] == targetRes && len(resCounts) == 1 {
+			// Same resolution, but still need to re-encode for xfade compatibility
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", p,
+				"-c:v", "libx264", "-c:a", "aac", "-preset", "fast", "-r", "30",
+				"-pix_fmt", "yuv420p", normPath)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				log.Printf("[VideoMerge] re-encode clip %d failed: %s, trying copy", i, string(out))
+				exec.CommandContext(ctx, "cp", p, normPath).Run()
+			}
+		} else {
+			filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black",
+				targetRes.w, targetRes.h, targetRes.w, targetRes.h)
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", p,
+				"-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", "-r", "30",
+				"-pix_fmt", "yuv420p", normPath)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("ffmpeg normalize clip %d failed: %v\n%s", i, err, string(out))
+			}
 		}
 		normalizedPaths = append(normalizedPaths, normPath)
 	}
 
-	// Now concat all normalized clips
-	listPath := filepath.Join(tmpDir, "filelist_norm.txt")
+	log.Printf("[VideoMerge] %d clips normalized to %dx%d, applying crossfade transitions", len(normalizedPaths), targetRes.w, targetRes.h)
+
+	// Step 2: Merge with xfade crossfade transitions
+	// xfade needs pairwise chaining: merge clip0+clip1 → result01, merge result01+clip2 → result012, etc.
+	const xfadeDuration = 0.5 // 0.5 second crossfade between scenes
+
+	// Probe durations for calculating xfade offsets
+	durations := make([]float64, len(normalizedPaths))
+	for i, p := range normalizedPaths {
+		durations[i] = ProbeDuration(p)
+		if durations[i] <= 0 {
+			durations[i] = 5.0
+		}
+	}
+
+	// Chain xfade: for N clips, we do N-1 xfade passes
+	currentPath := normalizedPaths[0]
+	currentDuration := durations[0]
+
+	for i := 1; i < len(normalizedPaths); i++ {
+		nextPath := normalizedPaths[i]
+		outPath := filepath.Join(tmpDir, fmt.Sprintf("xfade_%03d.mp4", i))
+
+		// xfade offset = current accumulated duration - xfade overlap
+		offset := currentDuration - xfadeDuration
+		if offset < 0.1 {
+			offset = 0.1
+		}
+
+		// Choose transition type: alternate between dissolve and fadeblack for variety
+		transition := "fade"
+		switch i % 4 {
+		case 0:
+			transition = "fade"
+		case 1:
+			transition = "dissolve"
+		case 2:
+			transition = "smoothleft"
+		case 3:
+			transition = "fadeblack"
+		}
+
+		// Build xfade filter for video + acrossfade for audio
+		vFilter := fmt.Sprintf("[0:v][1:v]xfade=transition=%s:duration=%.2f:offset=%.2f[outv]",
+			transition, xfadeDuration, offset)
+		aFilter := fmt.Sprintf("[0:a][1:a]acrossfade=d=%.2f:c1=tri:c2=tri[outa]", xfadeDuration)
+
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+			"-i", currentPath, "-i", nextPath,
+			"-filter_complex", vFilter+";"+aFilter,
+			"-map", "[outv]", "-map", "[outa]",
+			"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+			"-c:a", "aac", "-b:a", "192k", outPath)
+
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			// Fallback: try without audio crossfade (some clips may lack audio)
+			log.Printf("[VideoMerge] xfade with audio failed for clip %d: %s, trying video-only xfade", i, string(out))
+			vOnly := fmt.Sprintf("[0:v][1:v]xfade=transition=%s:duration=%.2f:offset=%.2f[outv]",
+				transition, xfadeDuration, offset)
+			cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y",
+				"-i", currentPath, "-i", nextPath,
+				"-filter_complex", vOnly,
+				"-map", "[outv]",
+				"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+				"-an", outPath)
+			out2, err2 := cmd2.CombinedOutput()
+			if err2 != nil {
+				// Final fallback: simple concat without transition
+				log.Printf("[VideoMerge] xfade failed for clip %d: %s, falling back to concat", i, string(out2))
+				return ffmpegSimpleConcat(ctx, normalizedPaths, outputPath)
+			}
+		}
+
+		currentPath = outPath
+		// New duration = accumulated - overlap + next clip duration - overlap (from next xfade)
+		currentDuration = currentDuration + durations[i] - xfadeDuration
+	}
+
+	// Copy final result to output
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", currentPath, "-c", "copy", outputPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ffmpeg final copy failed: %v\n%s", err, string(out))
+	}
+
+	log.Printf("[VideoMerge] Crossfade merge complete: %d clips → %s", len(clipPaths), outputPath)
+	return nil
+}
+
+// ffmpegSimpleConcat is a fallback that concatenates clips without transitions.
+func ffmpegSimpleConcat(ctx context.Context, clipPaths []string, outputPath string) error {
+	tmpDir := filepath.Dir(clipPaths[0])
+	listPath := filepath.Join(tmpDir, "filelist_fallback.txt")
 	var listContent strings.Builder
-	for _, p := range normalizedPaths {
+	for _, p := range clipPaths {
 		listContent.WriteString(fmt.Sprintf("file '%s'\n", p))
 	}
 	os.WriteFile(listPath, []byte(listContent.String()), 0644)
@@ -534,8 +705,9 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
 		"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffmpeg merge normalized failed: %v\n%s", err, string(out))
+		return fmt.Errorf("ffmpeg simple concat failed: %v\n%s", err, string(out))
 	}
+	log.Printf("[VideoMerge] Simple concat fallback complete: %d clips", len(clipPaths))
 	return nil
 }
 
