@@ -1,4 +1,8 @@
-# StarClaw 🦞 部署指南
+# Claw 🦞 部署指南
+
+> 服务器 A — starclaw.me (开源官网 + 应用)
+>
+> 域名: starclaw.me / app.starclaw.me / api.starclaw.me
 
 ## 一、服务器要求
 
@@ -127,7 +131,7 @@ claw rebuild-web       # 仅重建 Web 前端
 ```yaml
 server:
   node_role: claw
-  queen_url: "https://api.starclaw.me"   # 连接到 Queen
+  queen_url: "https://swarm.starclaw.net"  # 连接到 Queen
   auto_update: true                       # 自动接收蜕皮更新
 ```
 
@@ -311,3 +315,45 @@ sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
 
 **Q: 断开虫群后还能用吗？**
 可以。进入 Feral（失控）模式后所有 AI 功能正常，只是失去自动更新和共享知识。重连后自动恢复。
+
+## 十一、团队代理上线流程（研发 + DevOps）
+
+当你在「Agents」页面使用“团队代理（研发DevOps团队）”时，推荐按以下 SOP 执行上线：
+
+1. `deploy_web`：触发部署（preview/production）
+2. `bind_domain`：绑定/更新域名 DNS（Cloudflare）
+3. `verify_online`：检查线上可达性 + 关键词验收
+
+### 审批闸门（强烈建议）
+
+- 生产部署前先人工确认
+- DNS 变更前再人工确认
+
+### 团队代理测试提示词（可直接复制）
+
+```text
+请研发DevOps团队执行上线流程：
+1) deploy_web 生产部署
+2) bind_domain 绑定 app.example.com
+3) verify_online 验证 https://app.example.com
+
+要求：生产发布前审批一次，DNS 修改前再审批一次；失败时给回滚建议。
+```
+
+### bind_domain 示例参数（Cloudflare）
+
+```json
+{
+  "action": "upsert",
+  "provider": "cloudflare",
+  "api_token": "<CLOUDFLARE_API_TOKEN>",
+  "zone_id": "<ZONE_ID>",
+  "record_type": "CNAME",
+  "record_name": "app.example.com",
+  "record_value": "cname.vercel-dns.com",
+  "proxied": "false",
+  "ttl": "120"
+}
+```
+
+> 安全提示：`api_token` 只应通过运行时参数传入，不要写入仓库文件或提交到 Git。

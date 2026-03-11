@@ -85,6 +85,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewDocumentTool(db))
 	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))
 	toolRegistry.Register(tool.NewDeployWebTool())
+	toolRegistry.Register(tool.NewBindDomainTool())
 	toolRegistry.Register(tool.NewVerifyOnlineTool())
 
 	// Generate thumbnails for existing videos on startup
@@ -527,7 +528,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				var skills []SkillInfo
 
 				// Built-in tools
-				builtinNames := []string{"system", "code", "web_search", "http_request", "browser", "video_generation", "deploy_web", "verify_online"}
+				builtinNames := []string{"system", "code", "web_search", "http_request", "browser", "video_generation", "deploy_web", "bind_domain", "verify_online"}
 				for _, name := range toolRegistry.List() {
 					t, ok := toolRegistry.Get(name)
 					if !ok {

@@ -175,6 +175,7 @@ return toJSON(map[string]interface{}{
 | `comic` | `comic_tool.go` | Comic/manga composition |
 | `mv` | `mv_tool.go` | Music video composition |
 | `deploy_web` | `lifecycle_deploy_tool.go` | Trigger deploy/status/rollback for web release |
+| `bind_domain` | `lifecycle_bind_domain_tool.go` | Manage DNS binding records on Cloudflare |
 | `verify_online` | `lifecycle_verify_tool.go` | Post-deploy URL health + keyword verification |
 
 ### Lifecycle MVP Example
@@ -199,6 +200,21 @@ Use these two tools together to complete the final release stage:
   "expected_keywords": "StarClaw,AI Agent",
   "retry": "3",
   "interval_sec": "5"
+}
+```
+
+3. Bind custom domain DNS (Cloudflare):
+```json
+{
+  "action": "upsert",
+  "provider": "cloudflare",
+  "api_token": "<CLOUDFLARE_API_TOKEN>",
+  "zone_id": "<ZONE_ID>",
+  "record_type": "CNAME",
+  "record_name": "app.your-domain.com",
+  "record_value": "cname.vercel-dns.com",
+  "proxied": "false",
+  "ttl": "120"
 }
 ```
 
