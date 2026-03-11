@@ -44,6 +44,12 @@
 curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
 ```
 
+### One-Click Install (China Mainland)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install-cn.sh | bash
+```
+
 This will automatically install Docker (if needed), clone the repo, generate secure config, and start all services.
 
 ### Manual Install
@@ -159,6 +165,12 @@ StarClaw 是一个功能完整的**开源 AI Agent 编排平台**，支持：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
+```
+
+### 一键部署（中国大陆加速版）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install-cn.sh | bash
 ```
 
 或手动安装：

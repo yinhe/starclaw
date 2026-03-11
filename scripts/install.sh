@@ -1,6 +1,7 @@
 #!/bin/bash
 # StarClaw 🦞 One-Click Install Script
 # Usage: curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
+# China: curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install-cn.sh | bash
 #
 # This script will:
 # 1. Check prerequisites (Docker, Docker Compose)
@@ -29,7 +30,13 @@ echo ""
 
 # --- Detect China network ---
 IN_CHINA=false
-if curl -sI --connect-timeout 3 https://www.google.com &>/dev/null; then
+if [ "${STARCLAW_USE_CN:-auto}" = "true" ] || [ "${STARCLAW_USE_CN:-auto}" = "1" ]; then
+    IN_CHINA=true
+    echo -e "${YELLOW}  China mode forced (STARCLAW_USE_CN=${STARCLAW_USE_CN})${NC}"
+elif [ "${STARCLAW_USE_CN:-auto}" = "false" ] || [ "${STARCLAW_USE_CN:-auto}" = "0" ]; then
+    IN_CHINA=false
+    echo -e "${YELLOW}  Global mode forced (STARCLAW_USE_CN=${STARCLAW_USE_CN})${NC}"
+elif curl -sI --connect-timeout 3 https://www.google.com &>/dev/null; then
     IN_CHINA=false
 else
     IN_CHINA=true
