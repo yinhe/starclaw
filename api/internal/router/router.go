@@ -82,6 +82,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewComicTool(db))
 	toolRegistry.Register(tool.NewMusicTool(db))
 	toolRegistry.Register(tool.NewImageTool(db))
+	toolRegistry.Register(tool.NewDocumentTool(db))
 	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))
 
 	// Generate thumbnails for existing videos on startup
@@ -261,6 +262,23 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				return
 			}
 			c.Header("Cache-Control", "public, max-age=86400")
+			c.File(filePath)
+		})
+
+		// Generated documents (public, secured by UUID filename)
+		apiV1.GET("/documents/:filename", func(c *gin.Context) {
+			filename := c.Param("filename")
+			if !strings.HasSuffix(filename, ".docx") {
+				c.JSON(400, gin.H{"error": "invalid document format"})
+				return
+			}
+			filePath := "/app/data/documents/" + filename
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				c.JSON(404, gin.H{"error": "document not found"})
+				return
+			}
+			c.Header("Content-Disposition", "attachment; filename="+filename)
+			c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 			c.File(filePath)
 		})
 
