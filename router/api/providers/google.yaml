@@ -1,0 +1,24 @@
+name: "Google (Gemini)"
+type: "llm"
+enabled: true
+endpoint: "https://generativelanguage.googleapis.com/v1beta/openai"
+auth:
+  type: "bearer"
+  key_env: "GOOGLE_API_KEY"
+models:
+  - name: "google/gemini-2.5-pro"
+    type: "chat"
+    context_length: 1048576
+    input_price: 1.25
+    output_price: 10.00
+  - name: "google/gemini-2.5-flash"
+    type: "chat"
+    context_length: 1048576
+    input_price: 0.15
+    output_price: 0.60
+  - name: "google/gemini-2.0-flash"
+    type: "chat"
+    context_length: 1048576
+    input_price: 0.10
+    output_price: 0.40
+regions: ["us", "eu", "asia"]

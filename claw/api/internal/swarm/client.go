@@ -17,12 +17,14 @@ import (
 
 // Client handles swarm registration and heartbeat with Queen/Overlord
 type Client struct {
-	cfg      config.SwarmConfig
-	nodeID   string
-	token    string
-	mu       sync.RWMutex
-	stopCh   chan struct{}
-	httpC    *http.Client
+	cfg         config.SwarmConfig
+	nodeID      string
+	token       string
+	clawID      string
+	nodeAddress string
+	mu          sync.RWMutex
+	stopCh      chan struct{}
+	httpC       *http.Client
 }
 
 // NewClient creates a swarm client from config
@@ -49,34 +51,76 @@ func (c *Client) Start() {
 		log.Printf("[swarm] registered as node %s", c.nodeID)
 	}
 
-	// Heartbeat loop
-	interval := time.Duration(c.cfg.HeartbeatInterval) * time.Second
-	if interval < 10*time.Second {
-		interval = 30 * time.Second
+	// Heartbeat loop with exponential backoff + jitter
+	baseInterval := time.Duration(c.cfg.HeartbeatInterval) * time.Second
+	if baseInterval < 10*time.Second {
+		baseInterval = 60 * time.Second
 	}
 
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if c.nodeID == "" {
-					// Retry registration
-					if err := c.register(); err != nil {
-						log.Printf("[swarm] re-registration failed: %v", err)
-						continue
-					}
-					log.Printf("[swarm] registered as node %s", c.nodeID)
-				}
-				if err := c.heartbeat(); err != nil {
-					log.Printf("[swarm] heartbeat failed: %v", err)
-				}
-			case <-c.stopCh:
-				return
-			}
+	go c.heartbeatLoop(baseInterval)
+}
+
+// heartbeatLoop runs heartbeat with exponential backoff on failure.
+// On success: reset to baseInterval. On failure: double delay (cap 5min), ±20% jitter.
+func (c *Client) heartbeatLoop(baseInterval time.Duration) {
+	const maxBackoff = 5 * time.Minute
+	backoff := time.Duration(0) // 0 means use baseInterval
+	consecutiveFails := 0
+
+	for {
+		// Calculate sleep duration with jitter
+		sleep := baseInterval
+		if backoff > 0 {
+			sleep = backoff
 		}
-	}()
+		sleep = addJitter(sleep, 0.2) // ±20%
+
+		select {
+		case <-time.After(sleep):
+		case <-c.stopCh:
+			return
+		}
+
+		// Retry registration if not registered
+		if c.nodeID == "" {
+			if err := c.register(); err != nil {
+				consecutiveFails++
+				backoff = calcBackoff(consecutiveFails, maxBackoff)
+				log.Printf("[swarm] registration failed (retry in %s): %v", backoff, err)
+				continue
+			}
+			log.Printf("[swarm] registered as node %s", c.nodeID)
+		}
+
+		// Send heartbeat
+		if err := c.heartbeat(); err != nil {
+			consecutiveFails++
+			backoff = calcBackoff(consecutiveFails, maxBackoff)
+			log.Printf("[swarm] heartbeat failed (retry in %s): %v", backoff, err)
+		} else {
+			if consecutiveFails > 0 {
+				log.Printf("[swarm] heartbeat recovered after %d failures", consecutiveFails)
+			}
+			consecutiveFails = 0
+			backoff = 0
+		}
+	}
+}
+
+// calcBackoff returns exponential backoff: 1s, 2s, 4s, 8s, ... capped at max.
+func calcBackoff(failures int, max time.Duration) time.Duration {
+	d := time.Second << uint(failures-1) // 2^(n-1) seconds
+	if d > max {
+		d = max
+	}
+	return d
+}
+
+// addJitter adds ±pct random jitter to a duration.
+func addJitter(d time.Duration, pct float64) time.Duration {
+	jitterRange := float64(d) * pct * 2
+	jitter := float64(time.Now().UnixNano()%1000) / 1000 * jitterRange // pseudo-random [0, range)
+	return d - time.Duration(float64(d)*pct) + time.Duration(jitter)
 }
 
 // Stop gracefully stops the heartbeat loop
@@ -91,6 +135,57 @@ func (c *Client) NodeID() string {
 	return c.nodeID
 }
 
+// SetClawID sets the Ed25519-derived claw: address for registration
+func (c *Client) SetClawID(id string) {
+	c.mu.Lock()
+	c.clawID = id
+	c.mu.Unlock()
+}
+
+// SetAddress sets the node's public-facing address for swarm registration
+func (c *Client) SetAddress(addr string) {
+	c.mu.Lock()
+	c.nodeAddress = addr
+	c.mu.Unlock()
+}
+
+// QueenURL returns the configured Queen URL
+func (c *Client) QueenURL() string {
+	return c.cfg.QueenURL
+}
+
+// Connected returns whether this client is registered with Queen
+func (c *Client) Connected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.nodeID != "" && c.cfg.Enabled
+}
+
+// Resolve queries Queen's swarm registry for a claw: address
+func (c *Client) Resolve(clawID string) (address string, found bool) {
+	if !c.Connected() || c.cfg.QueenURL == "" {
+		return "", false
+	}
+	url := fmt.Sprintf("%s/swarm/resolve?claw_id=%s", c.cfg.QueenURL, clawID)
+	resp, err := c.httpC.Get(url)
+	if err != nil {
+		log.Printf("[swarm] resolve via Queen failed: %v", err)
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if json.NewDecoder(resp.Body).Decode(&result) != nil {
+		return "", false
+	}
+	if f, ok := result["found"].(bool); ok && f {
+		if addr, ok := result["address"].(string); ok {
+			return addr, true
+		}
+	}
+	return "", false
+}
+
 func (c *Client) register() error {
 	name := c.cfg.NodeName
 	if name == "" {
@@ -98,12 +193,22 @@ func (c *Client) register() error {
 		name = hostname
 	}
 
+	c.mu.RLock()
+	cid := c.clawID
+	c.mu.RUnlock()
+
+	addr := c.nodeAddress
+	if addr == "" {
+		addr = fmt.Sprintf("%s:8080", getOutboundIP())
+	}
+
 	body := map[string]interface{}{
 		"name":    name,
 		"role":    "claw",
 		"version": molt.Version,
-		"address": fmt.Sprintf("%s:8080", getOutboundIP()),
+		"address": addr,
 		"region":  c.cfg.Region,
+		"claw_id": cid,
 	}
 
 	resp, err := c.post("/swarm/register", body)
@@ -135,12 +240,19 @@ func (c *Client) heartbeat() error {
 	runtime.ReadMemStats(&memStats)
 	memPct := float64(memStats.Alloc) / float64(memStats.Sys) * 100
 
+	c.mu.RLock()
+	cid := c.clawID
+	addr := c.nodeAddress
+	c.mu.RUnlock()
+
 	body := map[string]interface{}{
-		"node_id":      nid,
-		"token":        tok,
-		"version":      molt.Version,
-		"cpu_percent":  0, // TODO: real CPU sampling
-		"mem_percent":  memPct,
+		"node_id":       nid,
+		"token":         tok,
+		"version":       molt.Version,
+		"claw_id":       cid,
+		"address":       addr,
+		"cpu_percent":   0, // TODO: real CPU sampling
+		"mem_percent":   memPct,
 		"tasks_running": 0,
 		"tasks_queued":  0,
 		"error_rate":    0,

@@ -3,11 +3,14 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/yinhe/starclaw-queen/bounty/internal/billing"
 	"github.com/yinhe/starclaw-queen/bounty/internal/handler"
 	"github.com/yinhe/starclaw-queen/bounty/internal/model"
 	"gorm.io/driver/mysql"
@@ -22,8 +25,19 @@ func main() {
 	}
 	db.AutoMigrate(&model.Bounty{}, &model.BountyUser{})
 
-	// Expire stale bounties
-	go expireLoop(db)
+	// Init billing client for fund escrow (optional — gracefully disabled if not configured)
+	var billingClient *billing.Client
+	queenAPIURL := getEnv("QUEEN_API_URL", "")
+	nodeToken := getEnv("NODE_TOKEN", "")
+	if queenAPIURL != "" && nodeToken != "" {
+		billingClient = billing.NewClient(queenAPIURL, nodeToken)
+		log.Printf("[bounty] Billing integration enabled (queen-api=%s)", queenAPIURL)
+	} else {
+		log.Println("[bounty] Billing integration disabled (QUEEN_API_URL or NODE_TOKEN not set)")
+	}
+
+	// Expire stale bounties (with billing unfreeze)
+	go expireLoop(db, billingClient)
 
 	mode := getEnv("GIN_MODE", "debug")
 	if mode == "release" {
@@ -39,7 +53,7 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	h := handler.NewBountyHandler(db)
+	h := handler.NewBountyHandler(db, billingClient)
 
 	bounties := r.Group("/bounties")
 	{
@@ -55,6 +69,7 @@ func main() {
 		bounties.POST("/:id/dispute", h.Dispute)
 	}
 
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "queen-bounty"})
 	})
@@ -66,14 +81,26 @@ func main() {
 	}
 }
 
-// expireLoop marks open bounties past their deadline as expired
-func expireLoop(db *gorm.DB) {
+// expireLoop marks open bounties past their deadline as expired and unfreezes funds
+func expireLoop(db *gorm.DB, bc *billing.Client) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	for range ticker.C {
-		db.Model(&model.Bounty{}).
-			Where("status = ? AND deadline IS NOT NULL AND deadline < ?", model.BountyOpen, time.Now()).
-			Update("status", model.BountyExpired)
+		// Find bounties to expire
+		var expiring []model.Bounty
+		db.Where("status = ? AND deadline IS NOT NULL AND deadline < ?", model.BountyOpen, time.Now()).
+			Find(&expiring)
+
+		for _, b := range expiring {
+			// Unfreeze funds back to creator
+			if bc != nil {
+				cents := int64(math.Round(b.Reward * 100))
+				if err := bc.Unfreeze(b.UserID, cents, b.ID); err != nil {
+					log.Printf("[bounty] Expire unfreeze failed for bounty=%s: %v", b.ID, err)
+				}
+			}
+			db.Model(&b).Update("status", model.BountyExpired)
+		}
 	}
 }
 

@@ -3,11 +3,11 @@ import 'package:flutter/services.dart';
 import 'services/auth_service.dart';
 import 'theme.dart';
 import 'screens/login_screen.dart';
-import 'screens/chat_list_screen.dart';
-import 'screens/videos_screen.dart';
-import 'screens/music_screen.dart';
-import 'screens/images_screen.dart';
-import 'screens/settings_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/bounty_screen.dart';
+import 'screens/forum_screen.dart';
+import 'screens/billing_screen.dart';
+import 'screens/profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +35,7 @@ class StarClawApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.darkTheme,
           home: AuthService().isLoggedIn
-              ? const HomeScreen()
+              ? const MainShell()
               : const LoginScreen(),
         );
       },
@@ -43,22 +43,22 @@ class StarClawApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<MainShell> createState() => _MainShellState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = const [
-    ChatListScreen(),
-    VideosScreen(),
-    MusicScreen(),
-    ImagesScreen(),
-    SettingsScreen(),
+    HomeScreen(),
+    BountyScreen(),
+    ForumScreen(),
+    BillingScreen(),
+    ProfileScreen(),
   ];
 
   @override
@@ -69,11 +69,20 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.chat), label: '对话'),
-          BottomNavigationBarItem(icon: Icon(Icons.videocam), label: '视频'),
-          BottomNavigationBarItem(icon: Icon(Icons.music_note), label: '音乐'),
-          BottomNavigationBarItem(icon: Icon(Icons.image), label: '图片'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
+          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '首页'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.emoji_events_rounded),
+            label: '赏金',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.forum_rounded), label: '社区'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet_rounded),
+            label: '钱包',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_rounded),
+            label: '我的',
+          ),
         ],
       ),
     );

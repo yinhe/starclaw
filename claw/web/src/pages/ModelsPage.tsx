@@ -20,17 +20,19 @@ interface EditForm {
 }
 
 const PROVIDERS = [
-  { value: 'qwen', label: '通义千问 (Qwen)', desc: '阿里云百炼，180+ 模型，文本/图像/视频/语音全覆盖', icon: '🤖' },
-  { value: 'openai', label: 'OpenAI', desc: 'GPT-4o, o1, DALL-E 等', icon: '🟢' },
-  { value: 'anthropic', label: 'Anthropic', desc: 'Claude 4, Claude 3.5 Sonnet 等', icon: '🟠' },
-  { value: 'google', label: 'Google', desc: 'Gemini 2.0, Gemini Pro 等', icon: '🔵' },
-  { value: 'deepseek', label: 'DeepSeek', desc: 'DeepSeek V3, R1 推理模型', icon: '🐋' },
-  { value: 'ollama', label: 'Ollama (本地)', desc: '本地部署开源模型', icon: '🏠' },
-  { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀' },
-  { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡' },
-  { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎' },
-  { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙' },
-  { value: 'custom', label: '自定义 (OpenAI 兼容)', desc: '任何兼容 OpenAI API 的服务', icon: '⚙️' },
+  { value: 'qwen', label: '通义千问 (Qwen)', desc: '阿里云百炼，180+ 模型，文本/图像/视频/语音全覆盖', icon: '🤖', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  { value: 'openai', label: 'OpenAI', desc: 'GPT-4o, o1, DALL-E 等', icon: '🟢', base_url: 'https://api.openai.com/v1' },
+  { value: 'anthropic', label: 'Anthropic', desc: 'Claude 4, Claude 3.5 Sonnet 等', icon: '🟠', base_url: 'https://api.anthropic.com' },
+  { value: 'google', label: 'Google', desc: 'Gemini 2.0, Gemini Pro 等', icon: '🔵', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+  { value: 'deepseek', label: 'DeepSeek', desc: 'DeepSeek V3, R1 推理模型', icon: '🐋', base_url: 'https://api.deepseek.com/v1' },
+  { value: 'ollama', label: 'Ollama (本地)', desc: '本地部署开源模型', icon: '🏠', base_url: 'http://localhost:11434' },
+  { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀', base_url: 'https://openrouter.ai/api/v1' },
+  { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡', base_url: 'https://fal.run/fal-ai/any-llm/v1' },
+  { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏', base_url: 'https://api.x.ai/v1' },
+  { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimax.io/v1' },
+  { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
+  { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙', base_url: 'https://api.moonshot.cn/v1' },
+  { value: 'custom', label: '自定义 (OpenAI 兼容)', desc: '任何兼容 OpenAI API 的服务', icon: '⚙️', base_url: '' },
 ]
 
 const QWEN_REGIONS = [
@@ -48,6 +50,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   ollama: 'Ollama',
   openrouter: 'OpenRouter',
   fal: 'fal.ai',
+  grok: 'Grok (xAI)',
   zhipu: '智谱 (GLM)',
   moonshot: 'Moonshot',
   custom: '自定义',
@@ -251,7 +254,7 @@ export default function ModelsPage() {
                                   value={editForm.base_url}
                                   onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value })}
                                   className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                                  placeholder="留空使用默认地址"
+                                  placeholder={PROVIDERS.find(p => p.value === m.provider)?.base_url || '留空使用默认地址'}
                                 />
                               </>
                             )}
@@ -368,7 +371,7 @@ export default function ModelsPage() {
                     value={form.base_url}
                     onChange={(e) => setForm({ ...form, base_url: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder={form.provider === 'openai' ? 'https://api.openai.com/v1' : form.provider === 'anthropic' ? 'https://api.anthropic.com' : form.provider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'https://api.example.com/v1'}
+                    placeholder={PROVIDERS.find(p => p.value === form.provider)?.base_url || 'https://api.example.com/v1'}
                   />
                 </div>
               )}

@@ -43,6 +43,7 @@ export default function VideosPage() {
   const [dubVoice, setDubVoice] = useState('longyuan')
   const [dubSubtitle, setDubSubtitle] = useState(true)
   const [dubLoading, setDubLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<'merged' | 'clips'>('merged')
   const [musicModal, setMusicModal] = useState<{ videoId: string } | null>(null)
   const [musicList, setMusicList] = useState<{ id: string; prompt: string; lyrics: string; local_url: string; status: string; duration: number; model: string; created_at: string }[]>([])
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null)
@@ -164,7 +165,6 @@ export default function VideosPage() {
     if (sa !== sb) return sa - sb
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
-  const completedCount = clipVideos.filter(v => v.status === 'succeeded').length
   const runningCount = clipVideos.filter(v => v.status === 'running' || v.status === 'pending').length
   const failedCount = clipVideos.filter(v => v.status === 'failed' || v.status === 'cancelled').length
 
@@ -289,19 +289,29 @@ export default function VideosPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-4 mb-6 flex-wrap">
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            共 <strong className="text-gray-900 dark:text-white">{clipVideos.length}</strong> 个片段
-          </span>
-          {mergedVideos.length > 0 && (
-            <span className="text-sm text-violet-600 dark:text-violet-400">
-              <Layers className="w-3.5 h-3.5 inline mr-0.5" /> {mergedVideos.length} 个合成视频
-            </span>
-          )}
-          {completedCount > 0 && <span className="text-sm text-green-600 dark:text-green-400">{completedCount} 已完成</span>}
-          {runningCount > 0 && <span className="text-sm text-blue-600 dark:text-blue-400">{runningCount} 生成中</span>}
-          {failedCount > 0 && <span className="text-sm text-red-500">{failedCount} 失败/取消</span>}
-          <button onClick={loadVideos} className="ml-auto text-sm text-violet-600 hover:text-violet-700 dark:text-violet-400">刷新</button>
+        {/* Tab bar */}
+        <div className="flex items-center gap-1 mb-6 border-b border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => setActiveTab('merged')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'merged' ? 'border-violet-500 text-violet-600 dark:text-violet-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+          >
+            <Layers className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+            合成视频
+            {mergedVideos.length > 0 && <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">{mergedVideos.length}</span>}
+          </button>
+          <button
+            onClick={() => setActiveTab('clips')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'clips' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+          >
+            <Film className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+            视频片段
+            {clipVideos.length > 0 && <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">{clipVideos.length}</span>}
+          </button>
+          <div className="ml-auto flex items-center gap-3 pb-1">
+            {runningCount > 0 && <span className="text-xs text-blue-500"><Loader2 className="w-3 h-3 inline animate-spin mr-0.5" />{runningCount} 生成中</span>}
+            {failedCount > 0 && <span className="text-xs text-red-500">{failedCount} 失败</span>}
+            <button onClick={loadVideos} className="text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400">刷新</button>
+          </div>
         </div>
 
         {loading && videos.length === 0 ? (
@@ -317,13 +327,9 @@ export default function VideosPage() {
           </div>
         ) : (
           <>
-            {/* Merged Videos Section (includes narrated versions) */}
-            {(mergedVideos.length > 0 || orphanedNarrated.length > 0) && (
-              <div className="mb-8">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-violet-500" />
-                  合成视频
-                </h2>
+            {/* Merged Videos Tab */}
+            {activeTab === 'merged' && (
+              <div>
                 <div className="space-y-4">
                   {mergedVideos.map(mv => {
                     const isMV = mv.type === 'mv'
@@ -455,15 +461,9 @@ export default function VideosPage() {
               </div>
             )}
 
-            {/* Clips Section */}
-            {clipVideos.length > 0 && (
+            {/* Clips Tab */}
+            {activeTab === 'clips' && (
               <div>
-                {mergedVideos.length > 0 && (
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                    <Film className="w-5 h-5 text-blue-500" />
-                    视频片段
-                  </h2>
-                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {clipVideos.map(video => {
                     const st = STATUS_MAP[video.status] || STATUS_MAP.pending

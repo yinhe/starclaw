@@ -1,0 +1,202 @@
+package router
+
+import (
+	"time"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw-queen/api/internal/config"
+	"github.com/yinhe/starclaw-queen/api/internal/handler"
+	"github.com/yinhe/starclaw-queen/api/internal/middleware"
+)
+
+func Setup() *gin.Engine {
+	if config.C.Server.Mode == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	// Access logger
+	r.Use(middleware.AccessLogger())
+
+	// CORS
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowOrigins = config.C.CORS.Origins
+	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, "Authorization")
+	corsConfig.AllowCredentials = true
+	r.Use(cors.New(corsConfig))
+
+	// Prometheus metrics
+	r.Use(middleware.PrometheusMetrics())
+	r.GET("/metrics", middleware.MetricsHandler())
+
+	// Global rate limit: 200 requests per minute per IP
+	globalRL := middleware.NewRateLimiter(200, 1*time.Minute)
+	r.Use(globalRL.Middleware())
+
+	// Write rate limit: 30 requests per minute per user (applied to authed write routes)
+	writeRL := middleware.NewRateLimiter(30, 1*time.Minute)
+
+	// Health
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok", "service": "queen-api"})
+	})
+
+	v1 := r.Group("/v1")
+
+	// Auth rate limit: 10 requests per minute per IP (anti-brute-force)
+	authRL := middleware.NewRateLimiter(10, 1*time.Minute)
+
+	// ---- Auth (public) ----
+	auth := &handler.AuthHandler{}
+	v1.POST("/auth/register", authRL.Middleware(), auth.Register)
+	v1.POST("/auth/login", authRL.Middleware(), auth.Login)
+	v1.POST("/auth/oauth/google", auth.OAuthGoogle)
+	v1.POST("/auth/oauth/github", auth.OAuthGitHub)
+
+	// ---- Marketplace (public read) ----
+	mp := &handler.MarketplaceHandler{}
+	v1.GET("/marketplace/items", mp.List)
+	v1.GET("/marketplace/items/:id", mp.Get)
+	v1.GET("/marketplace/stats", mp.Stats)
+
+	// ---- Billing (init clients) ----
+	billing := handler.NewBillingHandler()
+
+	// ---- Payment webhooks (public, no auth) ----
+	pay := r.Group("/pay")
+	{
+		pay.POST("/webhook/alipay", billing.AlipayWebhook)
+		pay.POST("/webhook/wechatpay", billing.WechatPayWebhook)
+	}
+
+	// ---- Billing (public read) ----
+	v1.GET("/pay/packages", billing.ListPackages)
+	v1.GET("/pay/methods", billing.PayMethods)
+
+	// ---- Authenticated routes ----
+	authed := v1.Group("")
+	authed.Use(middleware.AuthRequired())
+	{
+		// User
+		user := &handler.UserHandler{}
+		authed.GET("/user/profile", user.GetProfile)
+		authed.PUT("/user/profile", writeRL.UserRateLimit(), user.UpdateProfile)
+		authed.PUT("/user/password", writeRL.UserRateLimit(), user.ChangePassword)
+
+		// Marketplace (write)
+		authed.POST("/marketplace/items", writeRL.UserRateLimit(), mp.Create)
+		authed.PUT("/marketplace/items/:id", writeRL.UserRateLimit(), mp.Update)
+		authed.DELETE("/marketplace/items/:id", writeRL.UserRateLimit(), mp.Delete)
+		authed.GET("/marketplace/my", mp.My)
+
+		// Node binding
+		nb := &handler.NodeBindingHandler{}
+		authed.POST("/user/nodes", writeRL.UserRateLimit(), nb.BindNode)
+		authed.GET("/user/nodes", nb.ListNodes)
+		authed.DELETE("/user/nodes/:node_id", writeRL.UserRateLimit(), nb.UnbindNode)
+
+		// Content reports
+		rpt := &handler.ReportHandler{}
+		authed.POST("/reports", writeRL.UserRateLimit(), rpt.Create)
+		authed.GET("/reports/mine", rpt.MyReports)
+		authed.GET("/reports/reasons", rpt.Reasons)
+
+		// Billing
+		authed.GET("/pay/balance", billing.GetBalance)
+		authed.GET("/pay/transactions", billing.ListTransactions)
+		authed.GET("/pay/orders", billing.ListOrders)
+		authed.POST("/pay/create", writeRL.UserRateLimit(), billing.CreateOrder)
+		authed.GET("/pay/order/:order_no/status", billing.QueryOrderStatus)
+	}
+
+	// ---- Admin routes (require admin role) ----
+	admin := v1.Group("/admin")
+	admin.Use(middleware.AuthRequired(), middleware.AdminRequired())
+	{
+		// Billing management
+		admin.GET("/billing/stats", billing.AdminBillingStats)
+		admin.GET("/billing/orders", billing.AdminListOrders)
+		admin.GET("/billing/balances", billing.AdminListBalances)
+		admin.POST("/billing/adjust", billing.AdminAdjustBalance)
+		admin.GET("/billing/packages", billing.AdminListPackages)
+		admin.PUT("/billing/packages/:id", billing.AdminUpdatePackage)
+
+		// Content moderation
+		rptAdmin := &handler.ReportHandler{}
+		admin.GET("/reports", rptAdmin.AdminList)
+		admin.GET("/reports/stats", rptAdmin.AdminStats)
+		admin.PUT("/reports/:id", rptAdmin.AdminReview)
+		admin.POST("/reports/:id/action", rptAdmin.AdminAction)
+
+		// User management
+		adminUser := &handler.AdminUserHandler{}
+		admin.GET("/users", adminUser.List)
+		admin.GET("/users/stats", adminUser.Stats)
+		admin.GET("/users/:id", adminUser.Get)
+		admin.PUT("/users/:id/role", adminUser.UpdateRole)
+		admin.PUT("/users/:id/status", adminUser.UpdateStatus)
+
+		// Swarm / node management (proxied to swarm service)
+		dash := handler.NewDashboardHandler()
+		admin.GET("/stats", dash.GlobalStats)
+		admin.GET("/nodes", dash.ListNodes)
+		admin.GET("/nodes/:id", dash.GetNode)
+		admin.DELETE("/nodes/:id", dash.RemoveNode)
+		admin.POST("/update/notify", dash.NotifyUpdate)
+
+		// Molt — version release management (proxied to swarm)
+		admin.POST("/molt/releases", dash.CreateRelease)
+		admin.GET("/molt/releases", dash.ListReleases)
+		admin.GET("/molt/releases/:id", dash.GetRelease)
+		admin.POST("/molt/releases/:id/start", dash.StartRelease)
+		admin.POST("/molt/releases/:id/pause", dash.PauseRelease)
+
+		// Service proxies (bounty / forum / arena)
+		proxy := handler.NewAdminProxyHandler()
+		admin.GET("/bounty/stats", proxy.BountyStats)
+		admin.GET("/bounty/tasks", proxy.BountyTasks)
+		admin.GET("/forum/stats", proxy.ForumStats)
+		admin.GET("/forum/posts", proxy.ForumPosts)
+		admin.DELETE("/forum/posts/:id", proxy.ForumDeletePost)
+		admin.GET("/arena/stats", proxy.ArenaStats)
+		admin.GET("/arena/threads", proxy.ArenaThreads)
+		admin.GET("/arena/leaderboard", proxy.ArenaLeaderboard)
+	}
+
+	// ---- Internal API (for Claw nodes, authenticated via X-Node-Token header) ----
+	internal := r.Group("/internal")
+	internal.Use(nodeTokenAuth())
+	{
+		internal.POST("/billing/check", billing.InternalCheckBalance)
+		internal.POST("/billing/consume", billing.InternalConsume)
+		internal.GET("/billing/balance/:user_id", billing.InternalGetBalance)
+		internal.POST("/billing/freeze", billing.InternalFreeze)
+		internal.POST("/billing/unfreeze", billing.InternalUnfreeze)
+		internal.POST("/billing/settle", billing.InternalSettle)
+
+		// Node binding (internal)
+		nbInternal := &handler.NodeBindingHandler{}
+		internal.POST("/user/bind", nbInternal.InternalBind)
+		internal.GET("/user/resolve/:node_id", nbInternal.InternalResolve)
+		internal.POST("/user/heartbeat", nbInternal.InternalHeartbeat)
+	}
+
+	return r
+}
+
+// nodeTokenAuth validates X-Node-Token header against INTERNAL_API_SECRET env or config
+func nodeTokenAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("X-Node-Token")
+		secret := config.C.JWT.Secret // reuse JWT secret as internal token for now
+		if token == "" || token != secret {
+			middleware.Fail(c, 401, middleware.CodeUnauthorized, "unauthorized node")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}

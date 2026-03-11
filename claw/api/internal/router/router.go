@@ -17,6 +17,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	agentpkg "github.com/yinhe/starclaw/internal/agent"
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
@@ -26,6 +27,7 @@ import (
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
 	"github.com/yinhe/starclaw/internal/sandbox"
@@ -55,6 +57,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Prometheus metrics
+	r.Use(middleware.PrometheusMetrics())
+
 	// Rate limiting
 	r.Use(middleware.RateLimit(300, time.Minute, rdb))
 
@@ -77,6 +82,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewComicTool(db))
 	toolRegistry.Register(tool.NewMusicTool(db))
 	toolRegistry.Register(tool.NewImageTool(db))
+	toolRegistry.Register(tool.NewDocumentTool(db))
 	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))
 
 	// Generate thumbnails for existing videos on startup
@@ -116,7 +122,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	mcp.AutoRegisterBridge(toolRegistry)
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{})
 
 	// Seed built-in agent templates (Creep marketplace)
 	v1.SeedBuiltinTemplates(db)
@@ -137,6 +143,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// A2A Agent Card discovery (must be at root, not under /v1)
 	a2aCardHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
 	r.GET("/.well-known/agent.json", a2aCardHandler.AgentCardHandler)
+
+	// Prometheus metrics endpoint
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Health check
 	startTime := time.Now()
@@ -162,11 +171,19 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	apiV1 := r.Group("/v1")
 	{
 		// Public routes
-		authHandler := v1.NewAuthHandler(db, cfg)
+		identity := node.LoadOrCreateIdentity()
+		authHandler := v1.NewAuthHandler(db, cfg, identity)
 		apiV1.POST("/auth/register", authHandler.Register)
 		apiV1.POST("/auth/login", authHandler.Login)
 		apiV1.POST("/auth/phone/register", authHandler.PhoneRegister)
 		apiV1.POST("/auth/phone/login", authHandler.PhoneLogin)
+		apiV1.POST("/auth/token/login", authHandler.TokenLogin)
+
+		// Setup (single-user Owner mode, opensource only)
+		setupHandler := v1.NewSetupHandler(db, cfg, identity)
+		apiV1.GET("/setup/status", setupHandler.Status)
+		apiV1.POST("/setup", setupHandler.Setup)
+		apiV1.POST("/auth/owner-login", setupHandler.PasswordLogin)
 
 		// OAuth routes (public)
 		oauthHandler := v1.NewOAuthHandler(db, cfg)
@@ -185,6 +202,13 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.GET("/version", func(c *gin.Context) {
 			c.JSON(200, molt.GetVersionInfo())
 		})
+
+		// Peer-to-Peer inter-node endpoints (public, signature-verified)
+		peerPublicHandler := v1.NewPeerHandler(db, cfg)
+		apiV1.GET("/peer/handshake", peerPublicHandler.HandleHandshake)
+		apiV1.GET("/peer/resolve", peerPublicHandler.HandleResolve)
+		apiV1.POST("/peer/gossip", peerPublicHandler.HandleGossip)
+		apiV1.POST("/peer/relay", peerPublicHandler.HandleRelayTask)
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)
 		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
@@ -238,6 +262,23 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				return
 			}
 			c.Header("Cache-Control", "public, max-age=86400")
+			c.File(filePath)
+		})
+
+		// Generated Word documents (public, secured by UUID filename)
+		apiV1.GET("/docx/:filename", func(c *gin.Context) {
+			filename := c.Param("filename")
+			if !strings.HasSuffix(filename, ".docx") {
+				c.JSON(400, gin.H{"error": "invalid document format"})
+				return
+			}
+			filePath := "/app/data/documents/" + filename
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				c.JSON(404, gin.H{"error": "document not found"})
+				return
+			}
+			c.Header("Content-Disposition", "attachment; filename="+filename)
+			c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 			c.File(filePath)
 		})
 
@@ -405,7 +446,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.PUT("/app/:workspace_id/*path", appProxy)
 		apiV1.DELETE("/app/:workspace_id/*path", appProxy)
 
-		// WebSocket endpoint (authenticated via query param token)
+		// WebSocket endpoint (authenticated via query param token — supports JWT and Owner Token)
 		wsHub := ws.GetHub()
 		apiV1.GET("/ws", func(c *gin.Context) {
 			token := c.Query("token")
@@ -413,7 +454,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				c.JSON(401, gin.H{"error": "token required"})
 				return
 			}
-			claims, err := middleware.ParseToken(token, cfg.JWT.Secret)
+			claims, err := middleware.ResolveToken(token, cfg, db)
 			if err != nil {
 				c.JSON(401, gin.H{"error": "invalid token"})
 				return
@@ -427,7 +468,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 		// Protected routes
 		protected := apiV1.Group("")
-		protected.Use(middleware.AuthRequired(cfg))
+		protected.Use(middleware.AuthRequired(cfg, db))
 		{
 			// Agents
 			agentHandler := v1.NewAgentHandler(db)
@@ -608,6 +649,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.PUT("/settings/profile", settingsHandler.UpdateProfile)
 			protected.PUT("/settings/password", settingsHandler.ChangePassword)
 			protected.GET("/settings/api-keys", settingsHandler.GetAPIKeys)
+			protected.GET("/auth/token", authHandler.GetAPIToken)
+			protected.POST("/auth/token/regenerate", authHandler.RegenerateToken)
+			protected.GET("/auth/devices", authHandler.ListDevices)
+			protected.POST("/auth/devices/:deviceID/revoke", authHandler.RevokeDevice)
 
 			// System: Swarm, Bounty, Updates
 			var sc *swarm.Client
@@ -626,6 +671,21 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/swarm/join", systemHandler.JoinSwarm)
 			protected.POST("/system/swarm/leave", systemHandler.LeaveSwarm)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
+
+			// Node Identity & Peer Networking
+			var scOpt []interface{}
+			if len(swarmClient) > 0 && swarmClient[0] != nil {
+				scOpt = append(scOpt, swarmClient[0])
+			}
+			peerHandler := v1.NewPeerHandler(db, cfg, scOpt...)
+			protected.GET("/node/info", peerHandler.GetNodeInfo)
+			protected.PUT("/node/config", peerHandler.UpdateNodeConfig)
+			protected.POST("/node/auto-setup", peerHandler.AutoSetupNode)
+			protected.GET("/peers/resolve", peerHandler.ResolveNode)
+			protected.GET("/peers", peerHandler.ListPeers)
+			protected.POST("/peers", peerHandler.AddPeer)
+			protected.DELETE("/peers/:id", peerHandler.RemovePeer)
+			protected.POST("/peers/:id/ping", peerHandler.PingPeer)
 
 			// Workflow Templates (Marketplace)
 			wfTemplateHandler := v1.NewWorkflowTemplateHandler(db)
@@ -662,7 +722,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/memories/recall/:agent_id", memoryHandler.Recall)
 
 			// Multimodal (image upload, STT, TTS)
-			multimodalHandler := v1.NewMultimodalHandler(cfg)
+			multimodalHandler := v1.NewMultimodalHandler(cfg, db)
 			protected.POST("/multimodal/upload-image", multimodalHandler.UploadImage)
 			protected.POST("/multimodal/stt", multimodalHandler.SpeechToText)
 			protected.POST("/multimodal/tts", multimodalHandler.TextToSpeech)

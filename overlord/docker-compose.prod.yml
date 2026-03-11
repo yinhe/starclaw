@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  mysql-overlord:
+    image: mysql:8.0
+    container_name: starclaw-overlord-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${OVERLORD_MYSQL_PASSWORD:-starclaw_prod_secret}
+      MYSQL_DATABASE: starclaw_overlord
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks:
+      - overlord
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  manager:
+    build:
+      context: ./manager
+    container_name: starclaw-overlord-manager
+    restart: always
+    environment:
+      OVERLORD_DSN: "root:${OVERLORD_MYSQL_PASSWORD:-starclaw_prod_secret}@tcp(mysql-overlord:3306)/starclaw_overlord?charset=utf8mb4&parseTime=True&loc=Local"
+      OVERLORD_PORT: "8095"
+      OVERLORD_ADMIN_PASSWORD: ${OVERLORD_ADMIN_PASSWORD:-admin123}
+      GIN_MODE: release
+    depends_on:
+      mysql-overlord:
+        condition: service_healthy
+    networks:
+      - overlord
+
+  console:
+    build:
+      context: ./console
+    container_name: starclaw-overlord-console
+    restart: always
+    ports:
+      - "${OVERLORD_CONSOLE_PORT:-3095}:80"
+    depends_on:
+      - manager
+    networks:
+      - overlord
+
+networks:
+  overlord:
+    driver: bridge

@@ -5,7 +5,7 @@ Documentation=https://github.com/yinhe/starclaw
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/mcp-bridge -port 9100
+ExecStart=/usr/local/bin/mcp-bridge -port 9101
 Restart=always
 RestartSec=5
 StandardOutput=journal

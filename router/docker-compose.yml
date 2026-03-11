@@ -1,0 +1,153 @@
+# ⛽ Extractor — star-ai.net
+# AI 算力提取器：API (Go) + Web (React) + Proxy (Node.js 海外中转)
+#
+# 架构：
+#   用户 → Web (:3096) → API (:8096) → 国内直连 / Proxy (:8000) → 海外 Provider
+#   Proxy 仅内网访问，不暴露端口到宿主机
+
+services:
+  # 🚪 Go 后端：认证 / 计费 / 路由 / LLM 直连代理
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      args:
+        GOPROXY: https://goproxy.cn,direct
+        REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
+    container_name: star-ai-api
+    ports:
+      - "8096:8096"
+    environment:
+      # Viper config overrides (prefix: STAR_AI_)
+      - STAR_AI_SERVER_PORT=8096
+      - STAR_AI_SERVER_MODE=release
+      - STAR_AI_DATABASE_HOST=mysql
+      - STAR_AI_DATABASE_PORT=3306
+      - STAR_AI_DATABASE_USER=root
+      - STAR_AI_DATABASE_PASSWORD=${MYSQL_ROOT_PASSWORD:-starclaw123}
+      - STAR_AI_DATABASE_DBNAME=star_ai
+      - STAR_AI_REDIS_HOST=redis
+      - STAR_AI_REDIS_PORT=6379
+      - STAR_AI_PROXY_URL=${STAR_AI_PROXY_URL:-http://proxy:8000}
+      - STAR_AI_PROXY_SECRET_KEY=${STAR_AI_PROXY_SECRET_KEY:-star-ai-internal-secret}
+      - STAR_AI_JWT_SECRET=${JWT_SECRET:-star-ai-jwt-change-me}
+      # Provider API Keys（直接作为 env，provider registry 通过 key_env 读取）
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - FAL_API_KEY=${FAL_API_KEY}
+    env_file:
+      - ./api/.env   # Alipay + WeChat Pay config
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # proxy:
+      #   condition: service_started
+    restart: unless-stopped
+
+  # 🌏 海外中转：代理 OpenAI / Anthropic / Grok / fal.ai / RunwayML
+  # 不暴露端口到宿主机，仅 api 可通过 Docker 内网访问
+  proxy:
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
+    container_name: star-ai-proxy
+    # 不暴露端口！仅内网 proxy:8000 可达
+    expose:
+      - "8000"
+    environment:
+      - PORT=8000
+      - NODE_ENV=production
+      # Proxy 自身的内部认证密钥（API → Proxy 通信）
+      - PROXY_API_KEY=${PROXY_INTERNAL_SECRET:-star-ai-internal-secret}
+      - PROXY_INTERNAL_FETCH_SECRET=${PROXY_INTERNAL_SECRET:-star-ai-internal-secret}
+      # Provider API Keys
+      - API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FAL_KEY=${FAL_API_KEY}
+      - RUNWAYML_API_SECRET=${RUNWAYML_API_SECRET}
+      - GROK_API_KEY_1=${GROK_API_KEY_1}
+      - GROK_BASE_URL_1=${GROK_BASE_URL_1:-https://api.x.ai/v1}
+      - GROK_API_KEY_2=${GROK_API_KEY_2}
+      - GROK_BASE_URL_2=${GROK_BASE_URL_2:-https://api.x.ai/v1}
+      - GROK_API_KEY_3=${GROK_API_KEY_3}
+      - GROK_BASE_URL_3=${GROK_BASE_URL_3:-https://api.x.ai/v1}
+      - GROK_API_KEY_4=${GROK_API_KEY_4}
+      - GROK_BASE_URL_4=${GROK_BASE_URL_4:-https://api.x.ai/v1}
+      - GROK_API_KEY_5=${GROK_API_KEY_5}
+      - GROK_BASE_URL_5=${GROK_BASE_URL_5:-https://api.x.ai/v1}
+      # Redis（共享，用于 Bull 队列）
+      - REDIS_URL=redis://redis:6379
+      # 数据目录
+      - PROXY_DATA_DIR=/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - proxy_data:/app/data
+    restart: unless-stopped
+
+  # 🖥️ React 前端 (Nginx + SPA + API proxy)
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
+    container_name: star-ai-web
+    ports:
+      - "3096:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # 🛡️ Admin 管理后台 (Nginx + SPA + Admin API proxy)
+  core:
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
+    container_name: star-ai-core
+    ports:
+      - "3097:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  mysql:
+    image: docker.m.daocloud.io/library/mysql:8.0
+    container_name: star-ai-mysql
+    ports:
+      - "13306:3306"   # dev access (remove in production)
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-starclaw123}
+      MYSQL_DATABASE: star_ai
+    volumes:
+      - star_ai_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    container_name: star-ai-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  star_ai_mysql:
+  proxy_data:

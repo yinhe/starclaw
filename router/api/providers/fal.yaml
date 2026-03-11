@@ -1,0 +1,53 @@
+name: "fal.ai"
+type: "compute"
+enabled: true
+endpoint: "https://queue.fal.run"
+auth:
+  type: "bearer"
+  key_env: "FAL_API_KEY"
+models:
+  # Image Generation
+  - name: "fal/flux-pro"
+    type: "image"
+    price_per_call: 0.05
+    description: "FLUX.1 Pro - 高质量文生图"
+  - name: "fal/flux-dev"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.1 Dev - 开发者版文生图"
+  - name: "fal/flux-schnell"
+    type: "image"
+    price_per_call: 0.003
+    description: "FLUX.1 Schnell - 快速文生图"
+  - name: "fal/stable-diffusion-xl"
+    type: "image"
+    price_per_call: 0.01
+  # Video Generation
+  - name: "fal/kling-video"
+    type: "video"
+    price_per_call: 0.10
+    description: "Kling - AI 视频生成"
+  - name: "fal/minimax-video"
+    type: "video"
+    price_per_call: 0.10
+    description: "MiniMax Hailuo - 视频生成"
+  - name: "fal/luma-dream-machine"
+    type: "video"
+    price_per_call: 0.10
+  # Audio
+  - name: "fal/f5-tts"
+    type: "tts"
+    price_per_call: 0.01
+    description: "F5-TTS 语音合成"
+  # Image Editing
+  - name: "fal/inpaint"
+    type: "image_edit"
+    price_per_call: 0.02
+  - name: "fal/remove-bg"
+    type: "image_edit"
+    price_per_call: 0.01
+  - name: "fal/upscale"
+    type: "image_edit"
+    price_per_call: 0.02
+regions: ["us", "eu"]
+execution_mode: "async"       # 异步任务模式（提交 → 轮询 → 获取结果）

@@ -19,41 +19,123 @@ StarClaw 的领主同样掌控**资源配额、监控视野和任务分发**。
 🦞🦞🦞 Claw（小龙虾）    开源，最小执行单元
 ```
 
-## 核心功能（计划中）
+## 已实现功能
 
-| 功能 | 说明 |
+| 模块 | 功能 | 数据表 |
+|------|------|--------|
+| **Claw 管理** | 注册/心跳/配额/调度/解析/审计 | claw_nodes, task_assignments, audit_logs |
+| **多租户 RBAC** | 团队隔离 + 4 级角色权限 | teams, admin_users |
+| **Nydus 隧道** | TCP/UDP 正向/反向隧道管理 | nydus_tunnels |
+| **Molt 更新审批** | 版本提交→审批→滚动更新→自动熔断 | molt_releases, molt_node_statuses |
+| **Webhook 通知** | HMAC 签名投递 + 事件驱动 | webhooks, webhook_logs |
+| **管理控制台** | 10 页 React SPA（含登录） | — |
+
+### RBAC 角色权限
+
+| 角色 | 权限范围 |
+|------|---------|
+| `superadmin` | 全部权限 (`*`) |
+| `admin` | Claw 全操作、团队管理、隧道管理、Molt 管理、Webhook、审计、统计 |
+| `operator` | Claw 读写、隧道管理、Molt 审批、审计只读、统计 |
+| `viewer` | 全部只读 |
+
+### API 端点（40+）
+
+| 权限 | 端点 |
 |------|------|
-| **Claw 注册管理** | 下属 Claw 节点注册、心跳监控、健康检查 |
-| **资源配额（人口上限）** | 管控并发任务数、Token 消耗限额 |
-| **侦察视野（监控）** | 实时采集全网指标（CPU/内存/错误率/延迟） |
-| **任务编排（运输）** | 将任务智能分配到最优 Claw（负载均衡） |
-| **企业管理控制台** | Web UI 管理下属 Claw、查看用量、配置策略 |
-| **Nydus 隧道管理** | 管理 Brood 内部 Claw 间的 P2P 直连 |
-| **数据聚合** | 汇聚下属 Claw 的用量/日志，向上报告给 Queen |
-| **审批更新** | 企业模式下审批 Molt 蜕皮更新 |
-| **本地缓存** | 缓存 Queen 下发的配置/模板，降低延迟 |
-| **多租户隔离** | 企业内部团队/部门级数据隔离 |
-| **审计日志** | 所有管理操作记录审计日志 |
+| 公开 | `POST /brood/register` · `/heartbeat` · `/auth/login` · `/molt/node-status` |
+| viewer+ | `GET /brood/claws` · `/stats` · `/audit` · `/resolve` · `/tunnels` · `/molt/releases` · `/webhooks` |
+| operator+ | `PUT /brood/claws/:id/quota` · `POST /task/assign` · 隧道/Molt CRUD |
+| admin+ | `DELETE /brood/claws/:id` · 团队 CRUD · Molt 审批 |
+| superadmin | `GET/POST/DELETE /brood/admins` |
 
-## 目录结构（计划）
+### Webhook 事件
+
+| 事件 | 触发时机 |
+|------|---------|
+| `node.online` | Claw 心跳从非在线恢复为在线 |
+| `node.feral` | 90 秒无心跳，Claw 进入失控状态 |
+| `node.offline` | 5 分钟无心跳，Claw 标记离线 |
+| `test` | 手动测试投递 |
+
+### 管理控制台（10 页）
+
+| 页面 | 路由 | 功能 |
+|------|------|------|
+| 登录 | — | 用户名密码认证，Token 存储 |
+| 总览 | `/` | 节点统计、CPU/内存、任务数、Token、团队分布 |
+| 节点管理 | `/claws` | 列表/筛选/详情/配额/删除 |
+| 团队管理 | `/teams` | 创建/删除团队，配额管理 |
+| Nydus 隧道 | `/tunnels` | 隧道 CRUD，流量统计，状态筛选 |
+| Molt 更新 | `/molt` | 版本提交/审批/滚动更新，节点进度 |
+| Webhook | `/webhooks` | 创建/删除/测试投递，投递日志 |
+| 审计日志 | `/audit` | 操作日志（颜色编码） |
+| 地址解析 | `/resolve` | claw: ID → 网络地址 |
+
+## 技术栈
+
+| 组件 | 技术 |
+|------|------|
+| 后端 | Go 1.24 + Gin + GORM + MySQL 8.0 |
+| 前端 | React 18 + TypeScript + Vite 6 + TailwindCSS 3 |
+| 图标 | Lucide React |
+| 路由 | React Router 6 |
+| 容器 | Docker (Go multi-stage / node:20-alpine → nginx:alpine) |
+
+## 目录结构
 
 ```
 overlord/
-├── manager/               # Overlord 管理服务（Go）
-│   ├── cmd/               # 入口
+├── manager/                       # Go 管理服务 (:8095)
+│   ├── cmd/server/main.go         # 入口
 │   ├── internal/
-│   │   ├── registry/      # Claw 节点注册 & 发现
-│   │   ├── scheduler/     # 任务调度 & 负载均衡
-│   │   ├── monitor/       # 健康监控 & 指标采集
-│   │   ├── nydus/         # P2P 隧道管理
-│   │   ├── cache/         # 配置/模板本地缓存
-│   │   └── api/           # 管理 API
+│   │   ├── handler/
+│   │   │   ├── registry.go        # Claw 注册/心跳/配额/调度/解析
+│   │   │   ├── team.go            # 团队 CRUD + 管理员 + 登录
+│   │   │   ├── nydus.go           # Nydus 隧道 CRUD
+│   │   │   ├── molt.go            # 版本发布/审批/滚动更新
+│   │   │   └── webhook.go         # Webhook CRUD + HMAC 投递
+│   │   ├── middleware/auth.go     # AdminAuth + RBAC + TeamScope
+│   │   └── model/                 # GORM 模型（5 文件，10 表）
 │   ├── Dockerfile
 │   └── go.mod
-├── console/               # Overlord 管理控制台（Web UI）
+├── console/                       # React 控制台 (:3095)
 │   ├── src/
-│   └── package.json
-└── README.md              # ← 本文件
+│   │   ├── api/brood.ts           # 类型化 API 客户端
+│   │   ├── pages/                 # 10 个页面
+│   │   ├── App.tsx                # 侧边栏 + 路由 + 鉴权
+│   │   └── main.tsx
+│   ├── Dockerfile
+│   └── nginx.conf
+├── docker-compose.yml             # 开发环境
+├── docker-compose.prod.yml        # 生产环境
+└── README.md                      # ← 本文件
+```
+
+## 快速启动
+
+```bash
+# 开发环境
+cd overlord
+docker compose up -d
+
+# 访问控制台
+open http://localhost:3095
+
+# 默认账号
+# 用户名: admin
+# 密码:   admin123（可通过 OVERLORD_ADMIN_PASSWORD 环境变量修改）
+```
+
+## 生产部署
+
+```bash
+# 设置密码
+export OVERLORD_MYSQL_PASSWORD=your_secure_password
+export OVERLORD_ADMIN_PASSWORD=your_admin_password
+
+# 启动
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 ## 与 Claw 的关系

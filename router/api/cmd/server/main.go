@@ -1,0 +1,160 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw-router/internal/billing"
+	"github.com/yinhe/starclaw-router/internal/config"
+	"github.com/yinhe/starclaw-router/internal/database"
+	"github.com/yinhe/starclaw-router/internal/handler"
+	"github.com/yinhe/starclaw-router/internal/middleware"
+	"github.com/yinhe/starclaw-router/internal/provider"
+	"github.com/yinhe/starclaw-router/internal/proxy"
+)
+
+func main() {
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("[star-ai] failed to load config: %v", err)
+	}
+
+	if cfg.Server.Mode == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	// Database
+	db, err := database.InitMySQL(cfg)
+	if err != nil {
+		log.Fatalf("[star-ai] MySQL: %v", err)
+	}
+	database.AutoMigrate(db)
+
+	// Redis
+	rdb, err := database.InitRedis(cfg)
+	if err != nil {
+		log.Printf("[star-ai] Redis unavailable: %v (rate limiting disabled)", err)
+	}
+
+	// Proxy client (Node.js overseas relay)
+	proxyClient := proxy.NewClient(cfg.Proxy.URL, cfg.Proxy.SecretKey)
+
+	// Provider registry (load YAML configs)
+	reg := provider.NewRegistry()
+	if err := reg.LoadDir("./providers"); err != nil {
+		log.Printf("[star-ai] warning: failed to load providers: %v", err)
+	}
+
+	// Billing meter
+	meter := billing.NewMeter(db, reg)
+
+	// Gin router
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.RequestLogger())
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		ExposeHeaders:    []string{"X-RateLimit-Limit", "X-RateLimit-Remaining"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	// Health check (no auth)
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok", "service": "star-ai"})
+	})
+
+	// ── Auth routes (no auth required) ──
+	authHandler := handler.NewAuthHandler(db, cfg.JWT.Secret, cfg.JWT.ExpireHours)
+	r.POST("/auth/register", authHandler.Register)
+	r.POST("/auth/login", authHandler.Login)
+
+	// ── Dashboard routes (JWT auth) ──
+	dash := r.Group("/dash")
+	dash.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	dash.GET("/profile", authHandler.Profile)
+	dash.PUT("/profile", authHandler.UpdateProfile)
+	dash.POST("/password", authHandler.ChangePassword)
+
+	// Dashboard can also manage keys/usage/balance via JWT
+	dashKeys := handler.NewKeysHandler(db)
+	dash.GET("/keys", dashKeys.List)
+	dash.POST("/keys", dashKeys.Create)
+	dash.DELETE("/keys/:id", dashKeys.Delete)
+
+	dashUsage := handler.NewUsageHandler(db)
+	dash.GET("/usage", dashUsage.Query)
+	dash.GET("/logs", dashUsage.Logs)
+	dash.GET("/balance", dashUsage.Balance)
+
+	// Payment (JWT auth for creating orders, public for callbacks)
+	payHandler := handler.NewPaymentHandler(db, cfg.Alipay, cfg.Wechat)
+	dash.GET("/pay/packages", payHandler.Packages)
+	dash.POST("/pay/alipay", payHandler.CreateAlipay)
+	dash.POST("/pay/wechat", payHandler.CreateWechat)
+	dash.GET("/pay/orders", payHandler.Orders)
+
+	// Payment callbacks (called by Alipay/WeChat servers — no auth)
+	r.POST("/pay/callback/alipay", payHandler.CallbackAlipay)
+	r.POST("/pay/callback/wechat", payHandler.CallbackWechat)
+
+	// ── Admin routes (JWT + RBAC) ──
+	adminHandler := handler.NewAdminHandler(db, reg)
+	admin := r.Group("/admin")
+	admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	admin.Use(middleware.RBACAuth(db))
+	admin.GET("/overview", middleware.RequirePermission("view_overview"), adminHandler.Overview)
+	admin.GET("/users", middleware.RequirePermission("view_users"), adminHandler.ListUsers)
+	admin.GET("/users/:id", middleware.RequirePermission("view_users"), adminHandler.GetUser)
+	admin.PUT("/users/:id", middleware.RequirePermission("manage_users"), adminHandler.UpdateUser)
+	admin.GET("/logs", middleware.RequirePermission("view_logs"), adminHandler.AllLogs)
+	admin.GET("/orders", middleware.RequirePermission("view_orders"), adminHandler.AllOrders)
+	admin.GET("/providers", middleware.RequirePermission("view_providers"), adminHandler.ListProviders)
+	// RBAC management
+	admin.GET("/roles", middleware.RequirePermission("manage_roles"), adminHandler.ListRoles)
+	admin.GET("/roles/:id", middleware.RequirePermission("manage_roles"), adminHandler.GetRole)
+	admin.POST("/users/:id/roles", middleware.RequirePermission("manage_roles"), adminHandler.AssignRole)
+	admin.DELETE("/users/:id/roles/:role_id", middleware.RequirePermission("manage_roles"), adminHandler.RevokeRole)
+	admin.GET("/permissions", middleware.RequirePermission("manage_roles"), adminHandler.ListPermissions)
+	admin.GET("/me", adminHandler.AdminMe)
+
+	// ── OpenAI-compatible API routes (API Key auth) ──
+	v1 := r.Group("/v1")
+	v1.Use(middleware.APIKeyAuth(db))
+	if rdb != nil {
+		v1.Use(middleware.RateLimit(rdb, 60, time.Minute)) // 60 req/min per key
+	}
+
+	chatHandler := handler.NewChatHandler(db, proxyClient, reg, meter)
+	v1.POST("/chat/completions", chatHandler.ChatCompletions)
+
+	modelsHandler := handler.NewModelsHandler(reg)
+	v1.GET("/models", modelsHandler.ListModels)
+
+	keysHandler := handler.NewKeysHandler(db)
+	v1.GET("/keys", keysHandler.List)
+	v1.POST("/keys", keysHandler.Create)
+	v1.DELETE("/keys/:id", keysHandler.Delete)
+
+	usageHandler := handler.NewUsageHandler(db)
+	v1.GET("/usage", usageHandler.Query)
+	v1.GET("/balance", usageHandler.Balance)
+
+	proxyHandler := handler.NewProxyHandler(proxyClient)
+	v1.POST("/images/generations", proxyHandler.Forward)
+	v1.POST("/audio/speech", proxyHandler.Forward)
+	v1.POST("/audio/transcriptions", proxyHandler.Forward)
+	v1.POST("/embeddings", chatHandler.Embeddings)
+
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	log.Printf("[star-ai] API starting on %s (proxy → %s)", addr, cfg.Proxy.URL)
+	if err := r.Run(addr); err != nil {
+		log.Fatalf("[star-ai] failed to start: %v", err)
+	}
+}

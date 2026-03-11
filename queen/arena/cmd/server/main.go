@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/yinhe/starclaw-queen/arena/internal/handler"
 	"github.com/yinhe/starclaw-queen/arena/internal/model"
 	"gorm.io/driver/mysql"
@@ -53,6 +54,7 @@ func main() {
 		arena.GET("/stats", h.Stats)
 	}
 
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "queen-arena"})
 	})

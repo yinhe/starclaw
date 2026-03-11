@@ -315,12 +315,12 @@ func (h *OAuthHandler) findOrCreateOAuthUser(provider, oauthID, username, email,
 	var count int64
 	h.db.Model(&model.User{}).Where("username = ?", finalUsername).Count(&count)
 	if count > 0 {
-		finalUsername = fmt.Sprintf("%s_%s", username, uuid.New().String()[:6])
+		finalUsername = fmt.Sprintf("Claw#%s", uuid.New().String()[:6])
 	}
 
 	// Create new user (OAuth users have a random password since they don't use it)
 	user = model.User{
-		Email:         email,
+		Email:         &email,
 		Username:      finalUsername,
 		Password:      uuid.New().String(), // random, not used for OAuth login
 		Avatar:        avatar,

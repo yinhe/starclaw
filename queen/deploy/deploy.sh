@@ -54,7 +54,7 @@ if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
     echo "  certbot certonly --manual --preferred-challenges dns -d '$DOMAIN' -d '*.$DOMAIN' --email $EMAIL --agree-tos"
     echo ""
     echo "Option 2 — Individual certs (automatic with nginx):"
-    echo "  certbot --nginx -d swarm.$DOMAIN -d core.$DOMAIN -d bounty.$DOMAIN -d forum.$DOMAIN -d arena.$DOMAIN --email $EMAIL --agree-tos"
+    echo "  certbot --nginx -d $DOMAIN -d www.$DOMAIN -d swarm.$DOMAIN -d core.$DOMAIN -d bounty.$DOMAIN -d forum.$DOMAIN -d arena.$DOMAIN --email $EMAIL --agree-tos"
     echo ""
     
     read -p "Run certbot now? [w]ildcard / [i]ndividual / [s]kip: " cert_choice
@@ -66,6 +66,7 @@ if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
             ;;
         i|I)
             certbot --nginx \
+                -d "$DOMAIN" -d "www.$DOMAIN" \
                 -d "swarm.$DOMAIN" -d "core.$DOMAIN" -d "bounty.$DOMAIN" \
                 -d "forum.$DOMAIN" -d "arena.$DOMAIN" \
                 --email "$EMAIL" --agree-tos
@@ -115,7 +116,7 @@ sleep 10
 echo -e "${CYAN}[5/5] Verifying services...${NC}"
 echo ""
 
-services=("swarm:8090" "core:8091" "bounty:8092" "forum:8093" "arena:8094")
+services=("queen-web:8086" "queen-api:8085" "swarm:8090" "core:8091" "bounty:8092" "forum:8093" "arena:8094")
 all_ok=true
 
 for svc in "${services[@]}"; do
@@ -140,6 +141,8 @@ fi
 
 echo ""
 echo -e "${GREEN}Service URLs:${NC}"
+echo "  Website: https://$DOMAIN"
+echo "  API:     https://$DOMAIN/api/"
 echo "  Swarm:   https://swarm.$DOMAIN"
 echo "  Core:    https://core.$DOMAIN"
 echo "  Bounty:  https://bounty.$DOMAIN"

@@ -1,0 +1,83 @@
+name: Queen CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'queen/**'
+  pull_request:
+    paths:
+      - 'queen/**'
+
+jobs:
+  build-go-services:
+    name: Build Go Services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, swarm, bounty, forum, arena]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: queen/${{ matrix.service }}/go.sum
+      - name: Build ${{ matrix.service }}
+        run: cd queen/${{ matrix.service }} && CGO_ENABLED=0 go build -o /dev/null ./cmd/server
+      - name: Vet ${{ matrix.service }}
+        run: cd queen/${{ matrix.service }} && go vet ./...
+
+  build-frontends:
+    name: Build Frontends
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:
+          - { dir: 'queen/core', name: 'Core Admin' }
+          - { dir: 'queen/web', name: 'Web Portal' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install & Build ${{ matrix.app.name }}
+        run: |
+          cd ${{ matrix.app.dir }}
+          npm ci
+          npx vite build
+      - name: Report bundle size
+        run: |
+          echo "### ${{ matrix.app.name }} Bundle" >> $GITHUB_STEP_SUMMARY
+          ls -lh ${{ matrix.app.dir }}/dist/assets/*.js | awk '{print "- "$NF": "$5}' >> $GITHUB_STEP_SUMMARY
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [build-go-services, build-frontends]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    strategy:
+      matrix:
+        service: [api, swarm, bounty, forum, arena, core, web]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.service }} image
+        run: docker build -t queen-${{ matrix.service }}:ci ./queen/${{ matrix.service }}
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.QUEEN_HOST }}
+          username: ${{ secrets.QUEEN_USER }}
+          key: ${{ secrets.QUEEN_SSH_KEY }}
+          script: |
+            cd /opt/starclaw/queen
+            git pull origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            echo "Queen deployed at $(date)"

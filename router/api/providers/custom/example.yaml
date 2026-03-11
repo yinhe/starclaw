@@ -1,0 +1,48 @@
+# 算力提供商入驻模板
+# 复制此文件并修改为你的配置，提交到 star-ai.net 审核
+
+name: "YourCompany GPU Cloud"
+type: "compute"                      # llm | compute | hybrid
+enabled: false                       # 审核通过后由 star-ai.net 启用
+description: "高性价比 GPU 推理服务，A100/H100 集群"
+contact: "partner@yourcompany.com"
+website: "https://yourcompany.com"
+
+endpoint: "https://api.yourcompany.com/v1"
+auth:
+  type: "bearer"                     # bearer | x-api-key | custom_header
+  key_env: "YOURCOMPANY_API_KEY"
+
+# 提供的模型/服务列表
+models:
+  - name: "yourcompany/llama-3.1-70b"
+    type: "chat"
+    context_length: 128000
+    input_price: 0.0005              # per 1K tokens (USD)
+    output_price: 0.001
+    regions: ["cn-east"]
+    description: "Llama 3.1 70B，国内低延迟"
+
+  - name: "yourcompany/sdxl-turbo"
+    type: "image"
+    price_per_call: 0.008            # per image (USD)
+    regions: ["cn-east", "cn-south"]
+    description: "SDXL Turbo 快速出图"
+
+  - name: "yourcompany/whisper-large"
+    type: "stt"
+    price_per_min: 0.003
+    regions: ["cn-east"]
+
+# 结算方式
+settlement:
+  method: "monthly"                  # monthly | realtime
+  currency: "CNY"                    # CNY | USD
+  min_payout: 100                    # 最低结算金额
+  commission_rate: 0.15              # star-ai.net 抽成比例 (15%)
+
+# SLA 保障
+sla:
+  uptime: 99.9                       # 可用性承诺 (%)
+  max_latency_ms: 3000               # 最大响应延迟
+  support_email: "support@yourcompany.com"

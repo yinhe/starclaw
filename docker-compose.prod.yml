@@ -36,11 +36,11 @@ services:
     networks:
       - starclaw-net
 
-  backend:
+  api:
     build:
       context: ./claw/api
       dockerfile: Dockerfile
-    container_name: starclaw-backend
+    container_name: starclaw-api
     restart: always
     environment:
       STARCLAW_SERVER_MODE: release
@@ -71,16 +71,16 @@ services:
     networks:
       - starclaw-net
 
-  frontend:
+  web:
     build:
       context: ./claw/web
       dockerfile: Dockerfile
-    container_name: starclaw-frontend
+    container_name: starclaw-web
     restart: always
     ports:
       - "127.0.0.1:8081:80"
     depends_on:
-      - backend
+      - api
     networks:
       - starclaw-net
 

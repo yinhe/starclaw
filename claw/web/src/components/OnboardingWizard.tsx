@@ -5,10 +5,12 @@ import { modelAPI } from '../lib/api'
 
 const PROVIDERS = [
   { value: 'qwen', label: '通义千问 (Qwen)', icon: '🤖', placeholder: 'sk-...', url: 'https://dashscope.console.aliyun.com/', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-  { value: 'openai', label: 'OpenAI', icon: '🟢', placeholder: 'sk-...', url: 'https://platform.openai.com/api-keys', base_url: '' },
-  { value: 'google', label: 'Google Gemini', icon: '🔵', placeholder: 'AIza...', url: 'https://aistudio.google.com/apikey', base_url: '' },
-  { value: 'deepseek', label: 'DeepSeek', icon: '🐋', placeholder: 'sk-...', url: 'https://platform.deepseek.com/api_keys', base_url: '' },
-  { value: 'anthropic', label: 'Anthropic', icon: '🟠', placeholder: 'sk-ant-...', url: 'https://console.anthropic.com/', base_url: '' },
+  { value: 'openai', label: 'OpenAI', icon: '🟢', placeholder: 'sk-...', url: 'https://platform.openai.com/api-keys', base_url: 'https://api.openai.com/v1' },
+  { value: 'google', label: 'Google Gemini', icon: '🔵', placeholder: 'AIza...', url: 'https://aistudio.google.com/apikey', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+  { value: 'deepseek', label: 'DeepSeek', icon: '🐋', placeholder: 'sk-...', url: 'https://platform.deepseek.com/api_keys', base_url: 'https://api.deepseek.com/v1' },
+  { value: 'anthropic', label: 'Anthropic', icon: '🟠', placeholder: 'sk-ant-...', url: 'https://console.anthropic.com/', base_url: 'https://api.anthropic.com' },
+  { value: 'grok', label: 'Grok (xAI)', icon: '𝕏', placeholder: 'xai-...', url: 'https://console.x.ai/', base_url: 'https://api.x.ai/v1' },
+  { value: 'minimax', label: 'MiniMax', icon: '🐚', placeholder: 'eyJ...', url: 'https://platform.minimaxi.com/user-center/basic-information/interface-key', base_url: 'https://api.minimax.io/v1' },
 ]
 
 interface Props {

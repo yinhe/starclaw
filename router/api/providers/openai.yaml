@@ -1,0 +1,56 @@
+name: "OpenAI"
+type: "llm"
+enabled: true
+endpoint: "https://api.openai.com/v1"
+auth:
+  type: "bearer"
+  key_env: "OPENAI_API_KEY"
+models:
+  - name: "openai/gpt-4o"
+    type: "chat"
+    context_length: 128000
+    input_price: 2.50       # per 1M tokens (USD)
+    output_price: 10.00
+  - name: "openai/gpt-4o-mini"
+    type: "chat"
+    context_length: 128000
+    input_price: 0.15
+    output_price: 0.60
+  - name: "openai/gpt-4.1"
+    type: "chat"
+    context_length: 1047576
+    input_price: 2.00
+    output_price: 8.00
+  - name: "openai/gpt-4.1-mini"
+    type: "chat"
+    context_length: 1047576
+    input_price: 0.40
+    output_price: 1.60
+  - name: "openai/gpt-4.1-nano"
+    type: "chat"
+    context_length: 1047576
+    input_price: 0.10
+    output_price: 0.40
+  - name: "openai/o3"
+    type: "reasoning"
+    context_length: 200000
+    input_price: 2.00
+    output_price: 8.00
+  - name: "openai/o4-mini"
+    type: "reasoning"
+    context_length: 200000
+    input_price: 1.10
+    output_price: 4.40
+  - name: "openai/dall-e-3"
+    type: "image"
+    price_per_call: 0.04    # 1024x1024 standard
+  - name: "openai/tts-1"
+    type: "tts"
+    price_per_char: 0.000015
+  - name: "openai/whisper-1"
+    type: "stt"
+    price_per_min: 0.006
+  - name: "openai/text-embedding-3-small"
+    type: "embedding"
+    input_price: 0.02
+regions: ["us", "eu"]

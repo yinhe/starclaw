@@ -23,5 +23,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Certificates (payment keys — NEVER commit)
+**/certs/
+
 # Data (videos, thumbnails)
 data/

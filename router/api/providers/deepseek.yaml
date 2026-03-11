@@ -1,0 +1,19 @@
+name: "DeepSeek"
+type: "llm"
+enabled: true
+endpoint: "https://api.deepseek.com/v1"
+auth:
+  type: "bearer"
+  key_env: "DEEPSEEK_API_KEY"
+models:
+  - name: "deepseek/deepseek-chat"
+    type: "chat"
+    context_length: 128000
+    input_price_cny: 0.002    # per 千 tokens (CNY)
+    output_price_cny: 0.008
+  - name: "deepseek/deepseek-reasoner"
+    type: "reasoning"
+    context_length: 128000
+    input_price_cny: 0.004
+    output_price_cny: 0.016
+regions: ["cn", "global"]

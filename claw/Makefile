@@ -4,15 +4,20 @@
 COMPOSE = docker compose
 COMPOSE_CN = docker compose -f docker-compose.yml -f docker-compose.cn.yml
 
+# Version: prefer git tag, fallback to YYYY.MMDD.HHmm (UTC)
+VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || date -u +"%Y.%m%d.%H%M")
+LDFLAGS_API = -X github.com/yinhe/starclaw/internal/molt.Version=$(VERSION)
+LDFLAGS_BRIDGE = -X main.version=$(VERSION)
+
 # ======================== Build & Start ========================
 
 .PHONY: up
-up: ## Build and start all services
-	$(COMPOSE) up -d --build
+up: ## Build and start all services (version stamped)
+	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
 
 .PHONY: up-cn
 up-cn: ## Build and start (China mirror acceleration)
-	$(COMPOSE_CN) up -d --build
+	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
 
 .PHONY: start
 start: ## Start existing containers (no rebuild)
@@ -73,25 +78,32 @@ health: ## Check API health endpoint
 
 # ======================== Update ========================
 
+.PHONY: write-version
+write-version: ## Write .version file for Docker build
+	@echo $(VERSION) > api/.version
+	@echo "✓ api/.version = $(VERSION)"
+
 .PHONY: update
 update: ## Pull latest code and rebuild
 	git pull
-	$(COMPOSE) up -d --build
+	@echo $(VERSION) > api/.version
+	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
 
 .PHONY: update-cn
 update-cn: ## Pull latest code and rebuild (China mirror)
 	git pull
-	$(COMPOSE_CN) up -d --build
+	@echo $(VERSION) > api/.version
+	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
 
 # ======================== Rebuild Single Service ========================
 
 .PHONY: rebuild-api
 rebuild-api: ## Rebuild and restart only the API service
-	$(COMPOSE) up -d --build --no-deps api
+	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build --no-deps api
 
 .PHONY: rebuild-web
 rebuild-web: ## Rebuild and restart only the Web service
-	$(COMPOSE) up -d --build --no-deps web
+	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build --no-deps web
 
 # ======================== Backup & Restore ========================
 
@@ -138,17 +150,36 @@ init: ## First-time setup: create data dirs + copy .env
 	@test -f .env || cp .env.example .env && echo "✓ .env created from .env.example — please edit it"
 	@echo "✓ Data directories ready. Run 'make up' to start."
 
+# ======================== Versioned Build ========================
+
+.PHONY: version
+version: ## Show current build version
+	@echo $(VERSION)
+
+.PHONY: build-api
+build-api: ## Build API binary with version stamp
+	cd api && CGO_ENABLED=0 go build -ldflags '$(LDFLAGS_API)' -o ../starclaw-api ./cmd/server/
+	@echo "✓ Built starclaw-api ($(VERSION))"
+
+.PHONY: tag
+tag: ## Create git tag with timestamp version (usage: make tag)
+	@echo $(VERSION) > api/.version
+	@git add api/.version && git commit -m "chore: bump version to $(VERSION)" --allow-empty || true
+	@echo "Tagging v$(VERSION)..."
+	git tag -a "v$(VERSION)" -m "Release $(VERSION)"
+	@echo "✓ Tagged v$(VERSION). Push with: git push origin v$(VERSION)"
+
 # ======================== MCP Bridge (Host Control) ========================
 
 .PHONY: bridge
 bridge: ## Build MCP Bridge binary for current OS
-	cd api && go build -o ../mcp-bridge ./cmd/mcp-bridge/
-	@echo "✓ Built mcp-bridge. Run: ./mcp-bridge -port 9100"
+	cd api && go build -ldflags '$(LDFLAGS_BRIDGE)' -o ../mcp-bridge ./cmd/mcp-bridge/
+	@echo "✓ Built mcp-bridge $(VERSION). Run: ./mcp-bridge -port 9100"
 
 .PHONY: bridge-linux
 bridge-linux: ## Cross-compile MCP Bridge for Linux (server deployment)
-	cd api && GOOS=linux GOARCH=amd64 go build -o ../mcp-bridge-linux ./cmd/mcp-bridge/
-	@echo "✓ Built mcp-bridge-linux"
+	cd api && GOOS=linux GOARCH=amd64 go build -ldflags '$(LDFLAGS_BRIDGE)' -o ../mcp-bridge-linux ./cmd/mcp-bridge/
+	@echo "✓ Built mcp-bridge-linux $(VERSION)"
 
 .PHONY: bridge-start
 bridge-start: bridge ## Build and start MCP Bridge

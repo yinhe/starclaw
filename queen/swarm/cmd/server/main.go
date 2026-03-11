@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/yinhe/starclaw-queen/swarm/internal/handler"
 	"github.com/yinhe/starclaw-queen/swarm/internal/model"
 	"gorm.io/driver/mysql"
@@ -21,7 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
-	db.AutoMigrate(&model.Node{})
+	db.AutoMigrate(&model.Node{}, &model.MoltRelease{}, &model.MoltNodeStatus{})
 
 	// Start offline detector (mark nodes offline if heartbeat missed)
 	go offlineDetector(db)
@@ -56,7 +57,21 @@ func main() {
 		swarm.DELETE("/nodes/:id", h.RemoveNode)
 		swarm.POST("/update/notify", h.NotifyUpdate)
 		swarm.GET("/stats", h.Stats)
+		swarm.GET("/resolve", h.Resolve)
+
+		// Molt — version update management
+		molt := handler.NewMoltHandler(db)
+		swarm.POST("/molt/releases", molt.CreateRelease)
+		swarm.GET("/molt/releases", molt.ListReleases)
+		swarm.GET("/molt/releases/:id", molt.GetRelease)
+		swarm.POST("/molt/releases/:id/start", molt.StartRelease)
+		swarm.POST("/molt/releases/:id/pause", molt.PauseRelease)
+		swarm.POST("/molt/report", molt.Report)
+		swarm.GET("/molt/check", molt.Check)
 	}
+
+	// Prometheus metrics
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {

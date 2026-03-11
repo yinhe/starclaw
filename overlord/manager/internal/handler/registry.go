@@ -7,12 +7,19 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw-overlord/manager/internal/middleware"
 	"github.com/yinhe/starclaw-overlord/manager/internal/model"
 	"gorm.io/gorm"
 )
 
+// WebhookDispatcher dispatches events to registered webhooks
+type WebhookDispatcher interface {
+	Dispatch(event string, payload map[string]interface{})
+}
+
 type RegistryHandler struct {
-	db *gorm.DB
+	db         *gorm.DB
+	Dispatcher WebhookDispatcher
 }
 
 func NewRegistryHandler(db *gorm.DB) *RegistryHandler {
@@ -25,6 +32,7 @@ type RegisterRequest struct {
 	Name    string `json:"name" binding:"required"`
 	Address string `json:"address" binding:"required"`
 	Version string `json:"version"`
+	ClawID  string `json:"claw_id"`
 	Team    string `json:"team"`
 	Tags    string `json:"tags"`
 }
@@ -41,6 +49,7 @@ func (h *RegistryHandler) Register(c *gin.Context) {
 		Name:          req.Name,
 		Address:       req.Address,
 		Version:       req.Version,
+		ClawID:        req.ClawID,
 		Status:        "online",
 		Token:         token,
 		Team:          req.Team,
@@ -53,10 +62,10 @@ func (h *RegistryHandler) Register(c *gin.Context) {
 		return
 	}
 
-	h.audit(c, "register", node.ID, "Claw registered: "+req.Name)
+	audit(h.db, c, "register", node.ID, "Claw registered: "+req.Name)
 
 	c.JSON(http.StatusCreated, gin.H{
-		"claw_id": node.ID,
+		"node_id": node.ID,
 		"token":   token,
 		"message": "claw registered to brood",
 	})
@@ -65,9 +74,11 @@ func (h *RegistryHandler) Register(c *gin.Context) {
 // ---------- POST /brood/heartbeat ----------
 
 type HeartbeatRequest struct {
-	ClawID       string  `json:"claw_id" binding:"required"`
+	NodeID       string  `json:"node_id" binding:"required"`
 	Token        string  `json:"token" binding:"required"`
 	Version      string  `json:"version"`
+	ClawID       string  `json:"claw_id"`
+	Address      string  `json:"address"`
 	CPUPercent   float64 `json:"cpu_percent"`
 	MemPercent   float64 `json:"mem_percent"`
 	TasksRunning int     `json:"tasks_running"`
@@ -85,8 +96,8 @@ func (h *RegistryHandler) Heartbeat(c *gin.Context) {
 	}
 
 	var node model.ClawNode
-	if err := h.db.Where("id = ? AND token = ?", req.ClawID, req.Token).First(&node).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid claw_id or token"})
+	if err := h.db.Where("id = ? AND token = ?", req.NodeID, req.Token).First(&node).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid node_id or token"})
 		return
 	}
 
@@ -104,8 +115,24 @@ func (h *RegistryHandler) Heartbeat(c *gin.Context) {
 	if req.Version != "" {
 		updates["version"] = req.Version
 	}
+	if req.ClawID != "" {
+		updates["claw_id"] = req.ClawID
+	}
+	if req.Address != "" {
+		updates["address"] = req.Address
+	}
 
+	oldStatus := node.Status
 	h.db.Model(&node).Updates(updates)
+
+	// Fire webhook if node came online
+	if oldStatus != "online" && h.Dispatcher != nil {
+		h.Dispatcher.Dispatch("node.online", map[string]interface{}{
+			"node_id": node.ID, "name": node.Name, "claw_id": node.ClawID,
+			"team": node.Team, "address": node.Address, "old_status": oldStatus,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -161,7 +188,7 @@ func (h *RegistryHandler) UpdateQuota(c *gin.Context) {
 		return
 	}
 
-	h.audit(c, "update_quota", id, "quota updated")
+	audit(h.db, c, "update_quota", id, "quota updated")
 	c.JSON(http.StatusOK, gin.H{"message": "quota updated"})
 }
 
@@ -173,7 +200,7 @@ func (h *RegistryHandler) RemoveClaw(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove claw"})
 		return
 	}
-	h.audit(c, "remove", id, "claw removed from brood")
+	audit(h.db, c, "remove", id, "claw removed from brood")
 	c.JSON(http.StatusOK, gin.H{"message": "claw removed"})
 }
 
@@ -209,15 +236,15 @@ func (h *RegistryHandler) Stats(c *gin.Context) {
 		Group("team").Order("count DESC").Scan(&teams)
 
 	c.JSON(http.StatusOK, gin.H{
-		"total":          total,
-		"online":         online,
-		"feral":          feral,
-		"offline":        offline,
-		"avg_cpu":        agg.AvgCPU,
-		"avg_mem":        agg.AvgMem,
-		"total_tasks":    agg.TotalTasks,
-		"total_tokens":   agg.TotalTokens,
-		"teams":          teams,
+		"total":        total,
+		"online":       online,
+		"feral":        feral,
+		"offline":      offline,
+		"avg_cpu":      agg.AvgCPU,
+		"avg_mem":      agg.AvgMem,
+		"total_tasks":  agg.TotalTasks,
+		"total_tokens": agg.TotalTokens,
+		"teams":        teams,
 	})
 }
 
@@ -267,7 +294,7 @@ func (h *RegistryHandler) AssignTask(c *gin.Context) {
 	}
 	h.db.Create(&assignment)
 
-	h.audit(c, "assign_task", best.ID, "task "+req.TaskID+" assigned")
+	audit(h.db, c, "assign_task", best.ID, "task "+req.TaskID+" assigned")
 
 	c.JSON(http.StatusOK, gin.H{
 		"claw_id":   best.ID,
@@ -277,20 +304,37 @@ func (h *RegistryHandler) AssignTask(c *gin.Context) {
 	})
 }
 
-// ---------- helpers ----------
+// ---------- GET /brood/resolve — resolve claw: address to network address ----------
 
-func (h *RegistryHandler) audit(c *gin.Context, action, targetID, detail string) {
-	actor := c.GetHeader("X-Admin-User")
-	if actor == "" {
-		actor = c.ClientIP()
+func (h *RegistryHandler) Resolve(c *gin.Context) {
+	clawID := c.Query("claw_id")
+	if clawID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"found": false, "error": "claw_id required"})
+		return
 	}
-	h.db.Create(&model.AuditLog{
-		Actor:    actor,
-		Action:   action,
-		TargetID: targetID,
-		Detail:   detail,
+
+	var node model.ClawNode
+	if err := h.db.Where("claw_id = ? AND status != ?", clawID, "offline").First(&node).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"found": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"found":   true,
+		"address": node.Address,
+		"name":    node.Name,
+		"claw_id": node.ClawID,
+		"version": node.Version,
+		"status":  node.Status,
+		"team":    node.Team,
 	})
 }
+
+// ---------- helpers ----------
+
+// audit is now defined in team.go as a package-level function
+
+var _ = middleware.GetAdminActor // ensure import used
 
 func generateToken(n int) string {
 	b := make([]byte, n)

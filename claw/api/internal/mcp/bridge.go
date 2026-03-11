@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,21 +15,28 @@ import (
 )
 
 const (
-	BridgePort         = 9100
+	BridgePort         = 9101
 	BridgeServerName   = "host"
 	bridgeProbeTimeout = 3 * time.Second
 	owner              = "yinhe"
 	repoName           = "starclaw"
+	BridgeVersion      = "0.5.6"
 )
 
 // DetectBridgeURL determines the MCP Bridge URL based on runtime environment.
 // In Docker: use host.docker.internal. On bare metal: use 127.0.0.1.
 func DetectBridgeURL() string {
+	port := BridgePort
+	if v := os.Getenv("STARCLAW_BRIDGE_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			port = p
+		}
+	}
 	// Check if running inside Docker (/.dockerenv exists on Linux containers)
 	if _, err := os.Stat("/.dockerenv"); err == nil {
-		return fmt.Sprintf("http://host.docker.internal:%d", BridgePort)
+		return fmt.Sprintf("http://host.docker.internal:%d", port)
 	}
-	return fmt.Sprintf("http://127.0.0.1:%d", BridgePort)
+	return fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
 // ProbeBridge checks if the MCP Bridge is reachable at the given URL.
@@ -90,17 +98,36 @@ func BridgeStatus() map[string]interface{} {
 	bridgeURL := DetectBridgeURL()
 	connected := ProbeBridge(bridgeURL)
 
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"connected":  connected,
 		"bridge_url": bridgeURL,
 		"port":       BridgePort,
+		"host_os":    runtime.GOOS,
+		"host_arch":  runtime.GOARCH,
 		"downloads":  BridgeDownloadURLs(),
 	}
+
+	if connected {
+		client := NewClient(ServerConfig{BaseURL: bridgeURL, Name: BridgeServerName})
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		tools, err := client.ListTools(ctx)
+		cancel()
+		if err == nil {
+			result["tool_count"] = len(tools)
+			names := make([]string, len(tools))
+			for i, t := range tools {
+				names[i] = t.Name
+			}
+			result["tool_names"] = names
+		}
+	}
+
+	return result
 }
 
 // BridgeDownloadURLs returns download URLs for each platform from GitHub Release.
 func BridgeDownloadURLs() map[string]string {
-	base := fmt.Sprintf("https://github.com/%s/%s/releases/latest/download", owner, repoName)
+	base := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s", owner, repoName, BridgeVersion)
 	return map[string]string{
 		"windows_amd64": base + "/mcp-bridge-windows-amd64.exe",
 		"darwin_amd64":  base + "/mcp-bridge-darwin-amd64",

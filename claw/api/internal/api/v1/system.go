@@ -2,13 +2,14 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -162,6 +163,16 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 		return
 	}
 
+	// Pre-check: MCP Bridge must be available (container can't rebuild itself)
+	bridgeURL := mcp.DetectBridgeURL()
+	if !mcp.ProbeBridge(bridgeURL) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "MCP Bridge 未运行，无法执行一键更新",
+			"message": "请先启动 MCP Bridge，或在服务器手动执行更新命令",
+		})
+		return
+	}
+
 	log.Printf("[molt] user triggered update: %s → %s", vi.Current, vi.Latest)
 
 	// Run update in background
@@ -266,43 +277,74 @@ func (h *SystemHandler) LeaveOverlord(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已退出领主监控"})
 }
 
+// execOnHost sends a shell command to the MCP Bridge with proper JSON escaping.
+func execOnHost(client *mcp.Client, command string) (string, error) {
+	args, _ := json.Marshal(map[string]string{"command": command})
+	return client.CallTool(context.Background(), "shell_exec", string(args))
+}
+
+// execOnHostTimeout sends a shell command with a custom timeout (for long-running ops like docker build).
+func execOnHostTimeout(client *mcp.Client, command string, timeoutSec int) (string, error) {
+	args, _ := json.Marshal(map[string]interface{}{"command": command, "timeout_seconds": timeoutSec})
+	return client.CallTool(context.Background(), "shell_exec", string(args))
+}
+
 func performDockerUpdate() error {
-	// Strategy 1: If MCP Bridge is available, use it to run host commands
-	// (the container can't rebuild itself, but the bridge can)
+	// MCP Bridge is required — the container cannot rebuild itself
 	bridgeURL := mcp.DetectBridgeURL()
-	if mcp.ProbeBridge(bridgeURL) {
-		log.Println("[molt] MCP Bridge detected, updating via host shell...")
-		client := mcp.NewClient(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"})
-		result, err := client.CallTool(context.Background(), "shell_exec", `{"command":"cd /opt/starclaw/claw && git pull origin main && docker compose up -d --build"}`)
-		if err != nil {
-			log.Printf("[molt] bridge update failed: %v", err)
-		} else {
-			log.Printf("[molt] bridge update result: %.200s", result)
-			return nil
-		}
+	if !mcp.ProbeBridge(bridgeURL) {
+		log.Println("[molt] MCP Bridge not available, cannot update from inside container")
+		return fmt.Errorf("MCP Bridge 未运行，无法执行一键更新。请在宿主机手动执行 update.sh")
 	}
 
-	// Strategy 2: Fallback — try docker commands from inside container
-	log.Println("[molt] falling back to in-container docker commands...")
-	pull := exec.Command("docker", "compose", "pull", "api")
-	pull.Stdout = os.Stdout
-	pull.Stderr = os.Stderr
-	if err := pull.Run(); err != nil {
-		log.Printf("[molt] compose pull failed: %v, sending SIGTERM for orchestrator restart", err)
-		p, _ := os.FindProcess(os.Getpid())
-		p.Signal(os.Interrupt)
-		return nil
+	log.Println("[molt] MCP Bridge detected, updating via host shell...")
+	client := mcp.NewClientWithTimeout(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"}, 15*time.Minute)
+
+	// Step 1: Find project root directory
+	result, _ := execOnHost(client, `for d in /opt/starclaw /opt/claw /home/*/starclaw /root/starclaw; do [ -d "$d/claw/api" ] && echo "$d" && exit 0; done; echo /opt/starclaw`)
+	projectDir := strings.TrimSpace(result)
+	if projectDir == "" {
+		projectDir = "/opt/starclaw"
+	}
+	log.Printf("[molt] project dir: %s", projectDir)
+
+	// Step 2: Detect compose file — all compose files use api/web service names
+	// Prefer claw/ subdir compose (standalone/monorepo OSS layout), then root
+	composeFile := "docker-compose.yml"
+
+	checkResult, _ := execOnHost(client, fmt.Sprintf(
+		`[ -f "%s/claw/docker-compose.prod.yml" ] && echo CLAW_PROD || ([ -f "%s/docker-compose.prod.yml" ] && echo ROOT_PROD || echo DEV)`,
+		projectDir, projectDir))
+	checkResult = strings.TrimSpace(checkResult)
+	if strings.Contains(checkResult, "CLAW_PROD") {
+		projectDir = projectDir + "/claw"
+		composeFile = "docker-compose.prod.yml"
+	} else if strings.Contains(checkResult, "ROOT_PROD") {
+		composeFile = "docker-compose.prod.yml"
+	}
+	log.Printf("[molt] compose: %s/%s", projectDir, composeFile)
+
+	// Step 3: Update source code — fetch + reset --hard (not pull, which fails with dirty working tree from tar deploys)
+	// Monorepo layout: git may be in claw/ subdir (OSS repo maps claw/ → root)
+	// Standalone layout: git is at project root
+	pullResult, _ := execOnHost(client, fmt.Sprintf(
+		`cd "%s" && if [ -d .git ]; then git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; elif [ -d claw/.git ]; then cd claw && git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; else echo "NO_GIT"; fi`,
+		projectDir))
+	log.Printf("[molt] source update: %.500s", pullResult)
+
+	if strings.Contains(pullResult, "NO_GIT") {
+		log.Println("[molt] WARNING: no git repo on server, source code not updated. Build will use existing code.")
+		log.Println("[molt] TIP: for monorepo, run: cd /opt/starclaw/claw && git init && git remote add origin https://github.com/yinhe/starclaw.git && git fetch origin main && git reset --mixed origin/main")
 	}
 
-	restart := exec.Command("docker", "compose", "up", "-d", "--no-deps", "api")
-	restart.Stdout = os.Stdout
-	restart.Stderr = os.Stderr
-	if err := restart.Run(); err != nil {
-		log.Println("[molt] compose restart failed, sending SIGTERM...")
-		p, _ := os.FindProcess(os.Getpid())
-		p.Signal(os.Interrupt)
-		return nil
+	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)
+	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,
+		projectDir, composeFile, composeFile)
+	result, err := execOnHostTimeout(client, updateCmd, 900)
+	if err != nil {
+		log.Printf("[molt] update failed: %v", err)
+		return fmt.Errorf("更新失败: %v", err)
 	}
-
+	log.Printf("[molt] update result: %.500s", result)
 	return nil
 }

@@ -1,0 +1,74 @@
+name: Overlord CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'overlord/**'
+  pull_request:
+    paths:
+      - 'overlord/**'
+
+jobs:
+  build-manager:
+    name: Build Manager (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: overlord/manager/go.sum
+      - name: Build
+        run: cd overlord/manager && CGO_ENABLED=0 go build -o /dev/null ./cmd/server
+      - name: Vet
+        run: cd overlord/manager && go vet ./...
+
+  build-console:
+    name: Build Console (React)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install & Build
+        run: |
+          cd overlord/console
+          npm ci
+          npx vite build
+      - name: Report bundle size
+        run: |
+          echo "### Console Bundle" >> $GITHUB_STEP_SUMMARY
+          ls -lh overlord/console/dist/assets/*.js | awk '{print "- "$NF": "$5}' >> $GITHUB_STEP_SUMMARY
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [build-manager, build-console]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build manager image
+        run: docker build -t overlord-manager:ci ./overlord/manager
+      - name: Build console image
+        run: docker build -t overlord-console:ci ./overlord/console
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.OVERLORD_HOST }}
+          username: ${{ secrets.OVERLORD_USER }}
+          key: ${{ secrets.OVERLORD_SSH_KEY }}
+          script: |
+            cd /opt/starclaw/overlord
+            git pull origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            echo "Overlord deployed at $(date)"

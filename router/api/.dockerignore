@@ -1,0 +1,8 @@
+server.exe
+*.exe
+*.test
+.git
+.env
+.env.*
+tmp/
+data/

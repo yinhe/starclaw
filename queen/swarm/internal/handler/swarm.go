@@ -27,6 +27,7 @@ type RegisterRequest struct {
 	Version      string         `json:"version"`
 	Address      string         `json:"address" binding:"required"`
 	Region       string         `json:"region"`
+	ClawID       string         `json:"claw_id"`
 	OverlordID   string         `json:"overlord_id"`
 	Capabilities string         `json:"capabilities"`
 }
@@ -44,7 +45,34 @@ func (h *SwarmHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Generate registration token
+	// Check if this claw_id is already registered (upsert)
+	if req.ClawID != "" {
+		var existing model.Node
+		if h.db.Where("claw_id = ?", req.ClawID).First(&existing).Error == nil {
+			// Update existing registration
+			updates := map[string]interface{}{
+				"name":           req.Name,
+				"status":         model.StatusOnline,
+				"version":        req.Version,
+				"address":        req.Address,
+				"region":         req.Region,
+				"last_heartbeat": time.Now(),
+			}
+			if req.Capabilities != "" {
+				updates["capabilities"] = req.Capabilities
+			}
+			h.db.Model(&existing).Updates(updates)
+
+			c.JSON(http.StatusOK, gin.H{
+				"node_id": existing.ID,
+				"token":   existing.Token,
+				"message": "node re-registered (updated)",
+			})
+			return
+		}
+	}
+
+	// Generate registration token for new node
 	token := generateToken(32)
 
 	node := model.Node{
@@ -54,6 +82,7 @@ func (h *SwarmHandler) Register(c *gin.Context) {
 		Version:       req.Version,
 		Address:       req.Address,
 		Region:        req.Region,
+		ClawID:        req.ClawID,
 		OverlordID:    req.OverlordID,
 		Token:         token,
 		Capabilities:  req.Capabilities,
@@ -79,6 +108,8 @@ type HeartbeatRequest struct {
 	NodeID       string  `json:"node_id" binding:"required"`
 	Token        string  `json:"token" binding:"required"`
 	Version      string  `json:"version"`
+	ClawID       string  `json:"claw_id"`
+	Address      string  `json:"address"`
 	CPUPercent   float64 `json:"cpu_percent"`
 	MemPercent   float64 `json:"mem_percent"`
 	TasksRunning int     `json:"tasks_running"`
@@ -113,6 +144,12 @@ func (h *SwarmHandler) Heartbeat(c *gin.Context) {
 	if req.Version != "" {
 		updates["version"] = req.Version
 	}
+	if req.ClawID != "" {
+		updates["claw_id"] = req.ClawID
+	}
+	if req.Address != "" {
+		updates["address"] = req.Address
+	}
 
 	h.db.Model(&node).Updates(updates)
 
@@ -139,16 +176,25 @@ func (h *SwarmHandler) GetConfig(c *gin.Context) {
 		return
 	}
 
+	// Determine latest version from MoltRelease (or fallback)
+	latestVersion := "dev"
+	var latestRelease model.MoltRelease
+	if h.db.Where("status IN ?", []string{string(model.ReleaseRolling), string(model.ReleaseComplete)}).
+		Order("created_at DESC").First(&latestRelease).Error == nil {
+		latestVersion = latestRelease.Version
+	}
+
 	// Return swarm config
 	cfg := model.SwarmConfig{
-		Models:   []model.ModelInfo{},
+		Models: []model.ModelInfo{},
 		Policies: map[string]any{
 			"max_concurrent_tasks": 10,
 			"heartbeat_interval":   "30s",
 			"auto_update":          true,
 		},
-		Version:   "0.5.0",
-		UpdatedAt: time.Now(),
+		Version:    latestVersion,
+		VersionURL: latestRelease.VersionURL,
+		UpdatedAt:  time.Now(),
 	}
 
 	c.JSON(http.StatusOK, gin.H{"config": cfg})
@@ -221,10 +267,10 @@ func (h *SwarmHandler) NotifyUpdate(c *gin.Context) {
 	h.db.Model(&model.Node{}).Where("status = ?", model.StatusOnline).Count(&total)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "update notification queued",
-		"version":       req.Version,
-		"strategy":      req.Strategy,
-		"target_nodes":  total,
+		"message":      "update notification queued",
+		"version":      req.Version,
+		"strategy":     req.Strategy,
+		"target_nodes": total,
 	})
 }
 
@@ -263,15 +309,41 @@ func (h *SwarmHandler) Stats(c *gin.Context) {
 		Scan(&versions)
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_nodes":    totalNodes,
-		"online_nodes":   onlineNodes,
-		"claw_nodes":     clawNodes,
-		"overlord_nodes": overlordNodes,
-		"avg_cpu":        metrics.AvgCPU,
-		"avg_mem":        metrics.AvgMem,
-		"total_tasks_running": metrics.TotalTasks,
-		"total_tokens_30d":    metrics.TotalTokens,
+		"total_nodes":          totalNodes,
+		"online_nodes":         onlineNodes,
+		"claw_nodes":           clawNodes,
+		"overlord_nodes":       overlordNodes,
+		"avg_cpu":              metrics.AvgCPU,
+		"avg_mem":              metrics.AvgMem,
+		"total_tasks_running":  metrics.TotalTasks,
+		"total_tokens_30d":     metrics.TotalTokens,
 		"version_distribution": versions,
+	})
+}
+
+// ---------- GET /swarm/resolve — resolve claw: address to network address ----------
+
+func (h *SwarmHandler) Resolve(c *gin.Context) {
+	clawID := c.Query("claw_id")
+	if clawID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"found": false, "error": "claw_id required"})
+		return
+	}
+
+	var node model.Node
+	if err := h.db.Where("claw_id = ? AND status != ?", clawID, model.StatusOffline).First(&node).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"found": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"found":   true,
+		"address": node.Address,
+		"name":    node.Name,
+		"region":  node.Region,
+		"claw_id": node.ClawID,
+		"version": node.Version,
+		"status":  node.Status,
 	})
 }
 

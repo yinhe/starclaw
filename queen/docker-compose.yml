@@ -34,14 +34,10 @@ services:
       context: ./core
     container_name: starclaw-queen-core
     restart: unless-stopped
-    environment:
-      SWARM_URL: "http://swarm:8090"
-      CORE_PORT: "8091"
-      GIN_MODE: release
     ports:
-      - "8091:8091"
+      - "8091:80"
     depends_on:
-      - swarm
+      - queen-api
     networks:
       - starqueen
 
@@ -53,11 +49,14 @@ services:
     environment:
       BOUNTY_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
       BOUNTY_PORT: "8092"
+      QUEEN_API_URL: "http://queen-api:8085"
+      NODE_TOKEN: "${JWT_SECRET:-queen-jwt-secret-change-me}"
       GIN_MODE: release
     ports:
       - "8092:8092"
     depends_on:
       - mysql-queen
+      - queen-api
     networks:
       - starqueen
 
@@ -93,6 +92,44 @@ services:
     networks:
       - starqueen
 
+  queen-api:
+    build:
+      context: ./api
+    container_name: starclaw-queen-api
+    restart: unless-stopped
+    environment:
+      QUEEN_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      QUEEN_PORT: "8085"
+      JWT_SECRET: "queen-jwt-secret-change-me"
+      SWARM_URL: "http://swarm:8090"
+      BOUNTY_URL: "http://bounty:8092"
+      FORUM_URL: "http://forum:8093"
+      ARENA_URL: "http://arena:8094"
+      GIN_MODE: release
+    ports:
+      - "8085:8085"
+    depends_on:
+      - mysql-queen
+      - swarm
+    networks:
+      - starqueen
+
+  queen-web:
+    build:
+      context: ./web
+    container_name: starclaw-queen-web
+    restart: unless-stopped
+    ports:
+      - "8086:80"
+    depends_on:
+      - queen-api
+      - forum
+      - arena
+      - bounty
+    networks:
+      - starqueen
+
 networks:
   starqueen:
+    name: starqueen
     driver: bridge

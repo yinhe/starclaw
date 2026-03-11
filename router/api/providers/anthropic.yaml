@@ -1,0 +1,29 @@
+name: "Anthropic"
+type: "llm"
+enabled: true
+endpoint: "https://api.anthropic.com/v1"
+auth:
+  type: "x-api-key"
+  key_env: "ANTHROPIC_API_KEY"
+models:
+  - name: "anthropic/claude-sonnet-4"
+    type: "chat"
+    context_length: 200000
+    input_price: 3.00
+    output_price: 15.00
+  - name: "anthropic/claude-3.5-sonnet"
+    type: "chat"
+    context_length: 200000
+    input_price: 3.00
+    output_price: 15.00
+  - name: "anthropic/claude-3.5-haiku"
+    type: "chat"
+    context_length: 200000
+    input_price: 0.80
+    output_price: 4.00
+  - name: "anthropic/claude-3-opus"
+    type: "chat"
+    context_length: 200000
+    input_price: 15.00
+    output_price: 75.00
+regions: ["us", "eu"]

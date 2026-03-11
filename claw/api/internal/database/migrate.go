@@ -6,7 +6,7 @@ import (
 )
 
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&model.User{},
 		&model.Agent{},
 		&model.Conversation{},
@@ -33,5 +33,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.Transaction{},
 		&model.Invoice{},
 		&model.AgentTemplate{},
-	)
+		&model.AuthorizedDevice{},
+	); err != nil {
+		return err
+	}
+
+	return nil
 }

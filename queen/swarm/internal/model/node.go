@@ -26,16 +26,17 @@ const (
 
 // Node represents a registered Claw or Overlord in the swarm
 type Node struct {
-	ID          string     `json:"id" gorm:"type:varchar(36);primaryKey"`
-	Name        string     `json:"name" gorm:"type:varchar(200)"`
-	Role        NodeRole   `json:"role" gorm:"type:varchar(20);index;not null"`
-	Status      NodeStatus `json:"status" gorm:"type:varchar(20);default:online"`
-	Version     string     `json:"version" gorm:"type:varchar(20)"`
-	Address     string     `json:"address" gorm:"type:varchar(255)"` // host:port
-	Region      string     `json:"region" gorm:"type:varchar(50)"`
-	OverlordID  string     `json:"overlord_id" gorm:"type:varchar(36);index"` // parent Overlord (empty for Queen-direct)
-	Token       string     `json:"-" gorm:"type:varchar(128);uniqueIndex"`    // registration token for auth
-	Capabilities string   `json:"capabilities" gorm:"type:json"`              // JSON: models, tools, etc.
+	ID           string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	Name         string     `json:"name" gorm:"type:varchar(200)"`
+	Role         NodeRole   `json:"role" gorm:"type:varchar(20);index;not null"`
+	Status       NodeStatus `json:"status" gorm:"type:varchar(20);default:online"`
+	Version      string     `json:"version" gorm:"type:varchar(20)"`
+	Address      string     `json:"address" gorm:"type:varchar(255)"` // host:port
+	Region       string     `json:"region" gorm:"type:varchar(50)"`
+	ClawID       string     `json:"claw_id" gorm:"type:varchar(60);index"`     // claw:xxxx (Ed25519-derived)
+	OverlordID   string     `json:"overlord_id" gorm:"type:varchar(36);index"` // parent Overlord (empty for Queen-direct)
+	Token        string     `json:"-" gorm:"type:varchar(128);uniqueIndex"`    // registration token for auth
+	Capabilities string     `json:"capabilities" gorm:"type:json"`             // JSON: models, tools, etc.
 
 	// Metrics (from latest heartbeat)
 	CPUPercent    float64 `json:"cpu_percent" gorm:"default:0"`
@@ -45,9 +46,9 @@ type Node struct {
 	TokensUsed30d int64   `json:"tokens_used_30d" gorm:"default:0"`
 	ErrorRate     float64 `json:"error_rate" gorm:"default:0"`
 
-	LastHeartbeat time.Time  `json:"last_heartbeat"`
-	RegisteredAt  time.Time  `json:"registered_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	LastHeartbeat time.Time      `json:"last_heartbeat"`
+	RegisteredAt  time.Time      `json:"registered_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 

@@ -18,7 +18,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
     <path d="M13 19.5l0.5 2.5" />
   </svg>
 )
-import { authAPI } from '../lib/api'
+import { authAPI, setupAPI } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 
 interface OAuthProvider {
@@ -26,13 +26,34 @@ interface OAuthProvider {
   client_id: string
 }
 
+function getDeviceID(): string {
+  let id = localStorage.getItem('starclaw_device_id')
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem('starclaw_device_id', id)
+  }
+  return id
+}
+
+function getDeviceName(): string {
+  const ua = navigator.userAgent
+  if (ua.includes('Windows')) return 'Windows'
+  if (ua.includes('Mac')) return 'macOS'
+  if (ua.includes('Linux')) return 'Linux'
+  if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS'
+  if (ua.includes('Android')) return 'Android'
+  return 'Unknown'
+}
+
 export default function LoginPage() {
+  const [deployMode, setDeployMode] = useState<string | null>(null)
   const [isRegister, setIsRegister] = useState(false)
-  const [loginMode, setLoginMode] = useState<'email' | 'phone'>('email')
+  const [loginMode, setLoginMode] = useState<'email' | 'phone' | 'token' | 'owner'>('email')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [apiToken, setApiToken] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
@@ -42,12 +63,30 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
 
-  // Fetch available OAuth providers
+  // Detect deploy mode and set appropriate login mode
   useEffect(() => {
-    authAPI.oauthProviders().then(res => {
-      setOauthProviders(res.data.providers || [])
-    }).catch(() => {})
-  }, [])
+    setupAPI.status().then(res => {
+      const mode = res.data.deploy_mode || 'opensource'
+      setDeployMode(mode)
+      if (mode === 'opensource') {
+        // No owner yet → redirect to setup page
+        if (!res.data.setup_completed) {
+          navigate('/setup', { replace: true })
+          return
+        }
+        setLoginMode('owner')
+      }
+    }).catch(() => setDeployMode('opensource'))
+  }, [navigate])
+
+  // Fetch available OAuth providers (hosted mode only)
+  useEffect(() => {
+    if (deployMode === 'hosted') {
+      authAPI.oauthProviders().then(res => {
+        setOauthProviders(res.data.providers || [])
+      }).catch(() => {})
+    }
+  }, [deployMode])
 
   // Handle OAuth callback (code in URL params)
   const handleOAuthCode = useCallback(async (provider: string, code: string) => {
@@ -91,13 +130,21 @@ export default function LoginPage() {
 
     try {
       let res
-      if (loginMode === 'phone') {
+      if (loginMode === 'owner') {
+        // Owner password login (opensource mode) — returns owner_token
+        res = await setupAPI.ownerLogin({ password })
+        setAuth(res.data.owner_token, res.data.user)
+        navigate('/', { replace: true })
+        return
+      } else if (loginMode === 'token') {
+        res = await authAPI.tokenLogin({ token: apiToken, device_id: getDeviceID(), device_name: getDeviceName() })
+      } else if (loginMode === 'phone') {
         res = isRegister
           ? await authAPI.phoneRegister({ phone, password, username: username || undefined })
           : await authAPI.phoneLogin({ phone, password })
       } else {
         res = isRegister
-          ? await authAPI.register({ email, username, password })
+          ? await authAPI.register({ email, username: username || undefined, password })
           : await authAPI.login({ email, password })
       }
 
@@ -124,111 +171,241 @@ export default function LoginPage() {
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-2xl font-semibold mb-6">
-            {isRegister ? '创建账号' : '登录'}
+            {deployMode === 'opensource' ? '登录' : isRegister ? '创建账号' : '登录'}
           </h2>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-              {error}
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email / Phone mode toggle */}
-            <div className="flex rounded-lg bg-gray-100 p-1">
-              <button
-                type="button"
-                onClick={() => { setLoginMode('email'); setError('') }}
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                邮箱
-              </button>
-              <button
-                type="button"
-                onClick={() => { setLoginMode('phone'); setError('') }}
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                手机号
-              </button>
-            </div>
+            {/* Opensource mode: password or token login */}
+            {deployMode === 'opensource' ? (
+              <>
+                <div className="flex rounded-lg bg-gray-100 p-1 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('owner'); setError('') }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'owner' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    密码
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('token'); setError('') }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'token' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Auth Token
+                  </button>
+                </div>
 
-            {loginMode === 'email' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="your@email.com"
-                  required
-                />
-              </div>
+                {loginMode === 'owner' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                      <div className="relative">
+                        <input
+                          type={showPwd ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                          placeholder="输入你的密码"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPwd(!showPwd)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    {error && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                        {error}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {loading ? '验证中...' : '登录'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Auth Token</label>
+                      <input
+                        type="password"
+                        value={apiToken}
+                        onChange={(e) => setApiToken(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                        placeholder="粘贴你的 Auth Token"
+                        required
+                      />
+                      <p className="mt-1.5 text-xs text-gray-400">初始化时获取的 Token，或在设置页面复制</p>
+                    </div>
+                    {error && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                        {error}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {loading ? '验证中...' : '登录'}
+                    </button>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs text-blue-800">
+                        Token 丢失？用初始化时设置的密码找回。
+                        <br />
+                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">claw reset-token</code>
+                      </p>
+                    </div>
+                  </>
+                )}
+              </>
             ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="13800138000"
-                  required
-                />
+            <>
+            {/* Email / Phone / Token mode toggle */}
+            {!isRegister && (
+              <div className="flex rounded-lg bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('email'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  邮箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('phone'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  手机号
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('token'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'token' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Token
+                </button>
               </div>
             )}
 
             {isRegister && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  用户名{loginMode === 'phone' ? '（可选）' : ''}
-                </label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="your_username"
-                  required={loginMode === 'email'}
-                  minLength={3}
-                />
+              <div className="flex rounded-lg bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('email'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  邮箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('phone'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  手机号
+                </button>
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                密码
-              </label>
-              <div className="relative">
+            {loginMode === 'token' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Auth Token</label>
                 <input
-                  type={showPwd ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                  placeholder="••••••"
+                  type="password"
+                  value={apiToken}
+                  onChange={(e) => setApiToken(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                  placeholder="粘贴你的 Token"
                   required
-                  minLength={6}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                <p className="mt-1.5 text-xs text-gray-400">在设置页面获取你的 Auth Token</p>
               </div>
-            </div>
+            ) : (
+              <>
+                {loginMode === 'email' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="your@email.com"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="13800138000"
+                      required
+                    />
+                  </div>
+                )}
 
-            {!isRegister && (
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                记住我
-              </label>
+                {isRegister && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      用户名（可选）
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="留空自动生成 Claw#xxxx"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="••••••"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPwd(!showPwd)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {!isRegister && (
+                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    记住我
+                  </label>
+                )}
+              </>
             )}
 
             <button
@@ -238,9 +415,11 @@ export default function LoginPage() {
             >
               {loading ? '处理中...' : isRegister ? '注册' : '登录'}
             </button>
+            </>
+            )}
           </form>
 
-          {oauthProviders.length > 0 && (
+          {deployMode === 'hosted' && oauthProviders.length > 0 && (
             <div className="mt-6">
               <div className="relative mb-4">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
@@ -267,18 +446,20 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div className="mt-6 text-center text-sm text-gray-500">
-            {isRegister ? '已有账号？' : '没有账号？'}
-            <button
-              onClick={() => {
-                setIsRegister(!isRegister)
-                setError('')
-              }}
-              className="text-primary-600 hover:text-primary-700 font-medium ml-1"
-            >
-              {isRegister ? '去登录' : '注册'}
-            </button>
-          </div>
+          {deployMode === 'hosted' && loginMode !== 'token' && (
+            <div className="mt-6 text-center text-sm text-gray-500">
+              {isRegister ? '已有账号？' : '没有账号？'}
+              <button
+                onClick={() => {
+                  setIsRegister(!isRegister)
+                  setError('')
+                }}
+                className="text-primary-600 hover:text-primary-700 font-medium ml-1"
+              >
+                {isRegister ? '去登录' : '注册'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

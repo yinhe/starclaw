@@ -1,0 +1,42 @@
+server:
+  port: 8096
+  mode: debug  # debug or release
+
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: starclaw123
+  dbname: star_ai
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+proxy:
+  url: http://localhost:8000
+  secret_key: star-ai-internal-secret
+
+jwt:
+  secret: star-ai-jwt-change-me
+  expire_hours: 72
+
+alipay:
+  app_id: ""
+  private_key: "./certs/private_key.pem"
+  app_cert_path: "./certs/appCertPublicKey_2021004192620828.crt"
+  root_cert_path: "./certs/alipayRootCert.crt"
+  ali_cert_path: "./certs/alipayCertPublicKey_RSA2.crt"
+  notify_url: "https://api.star-ai.net/pay/callback/alipay"
+  return_url: "https://star-ai.net/pay/result"
+  is_production: false
+
+wechat:
+  app_id: ""
+  mch_id: ""
+  mch_serial_no: ""
+  private_key_path: "./certs/apiclient_key.pem"
+  apiv3_key: ""
+  notify_url: "https://api.star-ai.net/pay/callback/wechat"

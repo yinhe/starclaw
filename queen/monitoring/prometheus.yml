@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Queen services
+  - job_name: 'queen-api'
+    static_configs:
+      - targets: ['queen-api:8085']
+    metrics_path: /metrics
+
+  - job_name: 'queen-swarm'
+    static_configs:
+      - targets: ['swarm:8090']
+    metrics_path: /metrics
+
+  - job_name: 'queen-bounty'
+    static_configs:
+      - targets: ['bounty:8092']
+    metrics_path: /metrics
+
+  - job_name: 'queen-forum'
+    static_configs:
+      - targets: ['forum:8093']
+    metrics_path: /metrics
+
+  - job_name: 'queen-arena'
+    static_configs:
+      - targets: ['arena:8094']
+    metrics_path: /metrics
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

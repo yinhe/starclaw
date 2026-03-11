@@ -36,8 +36,8 @@ type ChatCompletionRequest struct {
 	AgentID          string           `json:"agent_id" binding:"required"`
 	ConversationID   string           `json:"conversation_id"`
 	Message          string           `json:"message" binding:"required"`
-	Images           []string         `json:"images,omitempty"`           // base64 data URLs for vision
-	Files            []FileAttachment `json:"files,omitempty"`            // uploaded file attachments
+	Images           []string         `json:"images,omitempty"`             // base64 data URLs for vision
+	Files            []FileAttachment `json:"files,omitempty"`              // uploaded file attachments
 	KnowledgeBaseIDs []string         `json:"knowledge_base_ids,omitempty"` // user-selected KBs for RAG
 	Stream           bool             `json:"stream"`
 }
@@ -61,28 +61,17 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 
+	// Handle /model command — switch or list models
+	if strings.HasPrefix(req.Message, "/model") {
+		h.handleModelCommand(c, userID, req)
+		return
+	}
+
 	// Get agent
 	var agent model.Agent
 	if err := h.db.Where("id = ? AND (user_id = ? OR is_public = ?)", req.AgentID, userID, true).First(&agent).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
 		return
-	}
-
-	// Get model config  system built-in agents have no model_id, fallback to user's or platform model
-	var modelCfg model.ModelConfig
-	if agent.ModelID != "" {
-		if err := h.db.Where("id = ?", agent.ModelID).First(&modelCfg).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "model not configured for this agent"})
-			return
-		}
-	} else {
-		// Fallback: try user's own model, then platform model
-		if err := h.db.Where("user_id = ? AND is_enabled = ?", userID, true).Order("created_at ASC").First(&modelCfg).Error; err != nil {
-			if err2 := h.db.Where("user_id = 'platform' AND is_enabled = ?", true).Order("created_at ASC").First(&modelCfg).Error; err2 != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "请先在「模型管理」中配置至少一个模型"})
-				return
-			}
-		}
 	}
 
 	// Get or create conversation
@@ -101,6 +90,10 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		h.db.Create(&conversation)
 	}
 
+	// Resolve model config: conversation override > agent setting > user default > platform
+	modelCfg, err := h.resolveModelConfig(userID, conversation.ModelID, agent.ModelID)
+
+	// Save user message first (even if no model)
 	// Save user message (with file attachments if any)
 	userMsg := model.Message{
 		ConversationID: conversation.ID,
@@ -112,6 +105,34 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		userMsg.Attachments = string(filesJSON)
 	}
 	h.db.Create(&userMsg)
+
+	// No model configured → friendly assistant prompt
+	if err != nil {
+		guide := "👋 你好！我还不能回答你的问题，因为还没有配置 AI 模型。\n\n" +
+			"**请按以下步骤操作：**\n" +
+			"1. 点击左侧菜单的「模型管理」\n" +
+			"2. 添加一个模型供应商（如 Qwen / OpenAI / DeepSeek / MiniMax）\n" +
+			"3. 填入对应的 API Key 并启用\n\n" +
+			"配置完成后回到这里，我就能为你服务了！\n\n" +
+			"💡 **提示：** 配置好后可以用 `/model` 命令查看和切换模型。"
+		assistantMsg := model.Message{
+			ConversationID: conversation.ID,
+			Role:           "assistant",
+			Content:        guide,
+		}
+		h.db.Create(&assistantMsg)
+		// Return as SSE so frontend displays it properly
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.WriteHeader(http.StatusOK)
+		sseData := fmt.Sprintf(`{"conversation_id":"%s","content":"%s"}`,
+			conversation.ID, strings.ReplaceAll(strings.ReplaceAll(guide, `"`, `\"`), "\n", `\n`))
+		fmt.Fprintf(c.Writer, "data: %s\n\n", sseData)
+		fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+		c.Writer.Flush()
+		return
+	}
 
 	// Build message history
 	var history []model.Message
@@ -183,6 +204,13 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	chatModel := modelCfg.ModelName
 	if agent.ModelName != "" {
 		chatModel = agent.ModelName
+	}
+	// If model_name is empty or "default", auto-select the provider's first model
+	if chatModel == "" || chatModel == "default" {
+		if models := p.Models(); len(models) > 0 {
+			chatModel = models[0]
+			log.Printf("[Chat] Auto-selected model %q for provider %s", chatModel, modelCfg.Provider)
+		}
 	}
 
 	maxTok := modelCfg.MaxTokens
@@ -706,4 +734,136 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+// resolveModelConfig picks the best model config by priority:
+// 1. conversationModelID (per-conversation override via /model command)
+// 2. agentModelID (agent setting)
+// 3. user's first enabled model
+// 4. platform model
+func (h *ChatHandler) resolveModelConfig(userID, conversationModelID, agentModelID string) (model.ModelConfig, error) {
+	var cfg model.ModelConfig
+	// 1. Conversation override
+	if conversationModelID != "" {
+		if err := h.db.Where("id = ?", conversationModelID).First(&cfg).Error; err == nil {
+			return cfg, nil
+		}
+	}
+	// 2. Agent setting
+	if agentModelID != "" {
+		if err := h.db.Where("id = ?", agentModelID).First(&cfg).Error; err == nil {
+			return cfg, nil
+		}
+	}
+	// 3. User's first enabled model
+	if err := h.db.Where("user_id = ? AND is_enabled = ?", userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
+		return cfg, nil
+	}
+	// 4. Platform model
+	if err := h.db.Where("user_id = 'platform' AND is_enabled = ?", true).Order("created_at ASC").First(&cfg).Error; err == nil {
+		return cfg, nil
+	}
+	return cfg, fmt.Errorf("请先在「模型管理」中配置至少一个模型")
+}
+
+// handleModelCommand processes /model commands:
+//   - /model         → list available models and current selection
+//   - /model <name>  → switch current conversation to that model provider
+func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req ChatCompletionRequest) {
+	arg := strings.TrimSpace(strings.TrimPrefix(req.Message, "/model"))
+
+	// List all user's model configs
+	var models []model.ModelConfig
+	h.db.Where("(user_id = ? OR user_id = 'platform') AND is_enabled = ?", userID, true).Order("created_at ASC").Find(&models)
+
+	if len(models) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "暂无可用模型，请先在「模型管理」中添加。",
+			"command": true,
+		})
+		return
+	}
+
+	// /model (no arg) → list models
+	if arg == "" {
+		// Get current conversation model if exists
+		currentProvider := ""
+		if req.ConversationID != "" {
+			var conv model.Conversation
+			if err := h.db.Where("id = ? AND user_id = ?", req.ConversationID, userID).First(&conv).Error; err == nil && conv.ModelID != "" {
+				var current model.ModelConfig
+				if h.db.Where("id = ?", conv.ModelID).First(&current).Error == nil {
+					currentProvider = current.Provider
+				}
+			}
+		}
+
+		var sb strings.Builder
+		sb.WriteString("**可用模型：**\n")
+		for _, m := range models {
+			marker := "  "
+			if m.Provider == currentProvider {
+				marker = "▶ "
+			}
+			name := m.DisplayName
+			if name == "" {
+				name = m.Provider + "/" + m.ModelName
+			}
+			sb.WriteString(fmt.Sprintf("%s`%s` — %s\n", marker, m.Provider, name))
+		}
+		sb.WriteString("\n切换命令：`/model <provider名>`，例如 `/model minimax`")
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": sb.String(),
+			"command": true,
+		})
+		return
+	}
+
+	// /model <name> → switch model
+	arg = strings.ToLower(arg)
+	var target *model.ModelConfig
+	for i := range models {
+		if strings.ToLower(models[i].Provider) == arg ||
+			strings.Contains(strings.ToLower(models[i].DisplayName), arg) ||
+			strings.Contains(strings.ToLower(models[i].ModelName), arg) {
+			target = &models[i]
+			break
+		}
+	}
+
+	if target == nil {
+		providers := make([]string, len(models))
+		for i, m := range models {
+			providers[i] = m.Provider
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("未找到模型「%s」。可用：%s", arg, strings.Join(providers, ", ")),
+			"command": true,
+		})
+		return
+	}
+
+	// Need a conversation to store the override
+	if req.ConversationID == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"message":  fmt.Sprintf("已选择 **%s** (%s)，发送消息后生效。", target.Provider, target.ModelName),
+			"command":  true,
+			"model_id": target.ID,
+		})
+		return
+	}
+
+	// Update conversation model override
+	h.db.Model(&model.Conversation{}).Where("id = ? AND user_id = ?", req.ConversationID, userID).Update("model_id", target.ID)
+
+	name := target.DisplayName
+	if name == "" {
+		name = target.Provider + "/" + target.ModelName
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message":  fmt.Sprintf("✅ 已切换到 **%s** (%s)", name, target.Provider),
+		"command":  true,
+		"model_id": target.ID,
+	})
 }

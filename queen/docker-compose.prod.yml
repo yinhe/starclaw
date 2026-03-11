@@ -38,14 +38,10 @@ services:
       context: ./core
     container_name: starclaw-queen-core
     restart: unless-stopped
-    environment:
-      SWARM_URL: "http://swarm:8090"
-      CORE_PORT: "8091"
-      GIN_MODE: release
     ports:
-      - "127.0.0.1:8091:8091"
+      - "127.0.0.1:8091:80"
     depends_on:
-      - swarm
+      - queen-api
     networks:
       - starqueen
 
@@ -57,12 +53,16 @@ services:
     environment:
       BOUNTY_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
       BOUNTY_PORT: "8092"
+      QUEEN_API_URL: "http://queen-api:8085"
+      NODE_TOKEN: "${JWT_SECRET:-queen-jwt-secret-change-me}"
       GIN_MODE: release
     ports:
       - "127.0.0.1:8092:8092"
     depends_on:
       mysql-queen:
         condition: service_healthy
+      queen-api:
+        condition: service_started
     networks:
       - starqueen
 
@@ -100,6 +100,84 @@ services:
     networks:
       - starqueen
 
+  queen-api:
+    build:
+      context: ./api
+    container_name: starclaw-queen-api
+    restart: unless-stopped
+    environment:
+      QUEEN_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      QUEEN_PORT: "8085"
+      JWT_SECRET: "${JWT_SECRET:-queen-jwt-secret-change-me}"
+      SWARM_URL: "http://swarm:8090"
+      BOUNTY_URL: "http://bounty:8092"
+      FORUM_URL: "http://forum:8093"
+      ARENA_URL: "http://arena:8094"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:8085:8085"
+    depends_on:
+      mysql-queen:
+        condition: service_healthy
+      swarm:
+        condition: service_started
+    networks:
+      - starqueen
+
+  queen-web:
+    build:
+      context: ./web
+    container_name: starclaw-queen-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8086:80"
+    depends_on:
+      - queen-api
+    networks:
+      - starqueen
+
+  # ===================== Monitoring =====================
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: starclaw-queen-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - starqueen
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: starclaw-queen-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-starclaw2026}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - starqueen
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
 networks:
   starqueen:
+    name: starqueen
     driver: bridge

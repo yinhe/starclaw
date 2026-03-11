@@ -1,0 +1,51 @@
+name: "Qwen (Alibaba)"
+type: "llm"
+enabled: true
+endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+auth:
+  type: "bearer"
+  key_env: "DASHSCOPE_API_KEY"
+models:
+  - name: "qwen/qwen-max"
+    type: "chat"
+    context_length: 32768
+    input_price_cny: 0.02     # per 千 tokens (CNY)
+    output_price_cny: 0.06
+  - name: "qwen/qwen-plus"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.0008
+    output_price_cny: 0.002
+  - name: "qwen/qwen-turbo"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.0003
+    output_price_cny: 0.0006
+  - name: "qwen/qwen3.5-plus"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.0008
+    output_price_cny: 0.002
+  - name: "qwen/qwen3.5-flash"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.0
+    output_price_cny: 0.0
+  - name: "qwen/qwen-vl-max"
+    type: "vision"
+    context_length: 32768
+    input_price_cny: 0.003
+    output_price_cny: 0.009
+  - name: "qwen/wan2.6-t2v-plus"
+    type: "video"
+    price_per_call_cny: 0.6
+  - name: "qwen/wan2.6-t2i"
+    type: "image"
+    price_per_call_cny: 0.04
+  - name: "qwen/cosyvoice-v1"
+    type: "tts"
+    price_per_char_cny: 0.00002
+  - name: "qwen/text-embedding-v3"
+    type: "embedding"
+    input_price_cny: 0.0007
+regions: ["cn-beijing", "cn-singapore", "us-virginia"]

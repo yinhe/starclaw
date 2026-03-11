@@ -7,8 +7,8 @@ class ApiService {
   factory ApiService() => _instance;
 
   late final Dio dio;
-  // Change this to your server URL
-  static const String baseUrl = 'https://api.starclaw.me/v1';
+  // Queen API base URL (change for production)
+  static const String baseUrl = 'https://queen.starclaw.me/api';
 
   ApiService._internal() {
     dio = Dio(
@@ -49,145 +49,167 @@ class ApiService {
   Future<Response> login(String email, String password) =>
       dio.post('/auth/login', data: {'email': email, 'password': password});
 
-  Future<Response> register(String email, String username, String password) =>
-      dio.post(
-        '/auth/register',
-        data: {'email': email, 'username': username, 'password': password},
-      );
+  Future<Response> loginPhone(String phone, String password) =>
+      dio.post('/auth/login', data: {'phone': phone, 'password': password});
 
-  Future<Response> phoneLogin(String phone, String password) => dio.post(
-    '/auth/phone/login',
-    data: {'phone': phone, 'password': password},
-  );
-
-  Future<Response> phoneRegister(
-    String phone,
-    String password, {
-    String? username,
-  }) => dio.post(
-    '/auth/phone/register',
-    data: {
-      'phone': phone,
-      'password': password,
-      if (username != null && username.isNotEmpty) 'username': username,
-    },
-  );
-
-  // ── Agents ──
-  Future<Response> listAgents() => dio.get('/agents');
-  Future<Response> ensureSuperAgent() => dio.post('/agents/super-agent');
-
-  // ── Conversations ──
-  Future<Response> listConversations() => dio.get('/conversations');
-  Future<Response> getMessages(String conversationId) =>
-      dio.get('/conversations/$conversationId/messages');
-  Future<Response> deleteConversation(String id) =>
-      dio.delete('/conversations/$id');
-  Future<Response> renameConversation(String id, String title) =>
-      dio.put('/conversations/$id', data: {'title': title});
-
-  // ── Chat (non-streaming) ──
-  Future<Response> sendChat({
-    required String agentId,
-    String? conversationId,
-    required String message,
-  }) => dio.post(
-    '/chat/completions',
-    data: {
-      'agent_id': agentId,
-      'conversation_id': conversationId ?? '',
-      'message': message,
-      'stream': false,
-    },
-  );
-
-  // ── Chat (streaming via SSE) ──
-  static String getChatStreamUrl() => '$baseUrl/chat/completions';
-
-  // ── Videos ──
-  Future<Response> listVideos() => dio.get('/videos');
-  Future<Response> deleteVideo(String id) => dio.delete('/videos/$id');
-  Future<Response> retryVideo(String id) => dio.post('/videos/$id/retry');
-  Future<Response> regenerateVideo(String id) =>
-      dio.post('/videos/$id/regenerate');
-  Future<Response> remergeVideo(String id) => dio.post('/videos/$id/remerge');
-  Future<Response> dubVideo(
-    String id,
-    String text,
-    String voice, {
-    String subtitleStyle = 'auto',
-  }) => dio.post(
-    '/videos/$id/dub',
-    data: {'text': text, 'voice': voice, 'subtitle_style': subtitleStyle},
-  );
-  Future<Response> addMusicToVideo(
-    String id,
-    String musicId, {
-    String? lyricsSrt,
-  }) => dio.post(
-    '/videos/$id/add-music',
-    data: {'music_id': musicId, 'lyrics_srt': lyricsSrt ?? ''},
-  );
-  Future<Response> listVoices() => dio.get('/videos/voices');
-
-  // ── Music ──
-  Future<Response> listMusic() => dio.get('/music');
-  Future<Response> deleteMusic(String id) => dio.delete('/music/$id');
-
-  // ── Images ──
-  Future<Response> listImages() => dio.get('/images');
-  Future<Response> deleteImage(String id) => dio.delete('/images/$id');
-
-  // ── Settings ──
-  Future<Response> getProfile() => dio.get('/settings/profile');
-  Future<Response> updateProfile({
-    String? username,
+  Future<Response> register({
     String? email,
     String? phone,
-  }) => dio.put(
-    '/settings/profile',
+    required String nickname,
+    required String password,
+  }) => dio.post(
+    '/auth/register',
     data: {
-      if (username != null && username.isNotEmpty) 'username': username,
-      if (email != null && email.isNotEmpty) 'email': email,
-      if (phone != null && phone.isNotEmpty) 'phone': phone,
+      if (email != null) 'email': email,
+      if (phone != null) 'phone': phone,
+      'nickname': nickname,
+      'password': password,
     },
   );
-  Future<Response> changePassword(String oldPassword, String newPassword) =>
-      dio.put(
-        '/settings/password',
-        data: {'old_password': oldPassword, 'new_password': newPassword},
-      );
 
-  // ── Dashboard ──
-  Future<Response> getStats() => dio.get('/dashboard/stats');
-
-  // ── Models ──
-  Future<Response> listModels() => dio.get('/models');
-
-  // ── Notifications ──
-  Future<Response> getUnreadCount() => dio.get('/notifications/unread-count');
-  Future<Response> listNotifications({bool unread = false}) => dio.get(
-    '/notifications',
-    queryParameters: unread ? {'unread': 'true'} : {},
+  // ── User Profile ──
+  Future<Response> getProfile() => dio.get('/user/profile');
+  Future<Response> updateProfile({String? nickname, String? bio}) => dio.put(
+    '/user/profile',
+    data: {
+      if (nickname != null) 'nickname': nickname,
+      if (bio != null) 'bio': bio,
+    },
   );
-  Future<Response> markNotificationsRead({List<String>? ids}) =>
-      dio.post('/notifications/read', data: {'ids': ids});
+  Future<Response> changePassword(String oldPwd, String newPwd) => dio.put(
+    '/user/password',
+    data: {'old_password': oldPwd, 'new_password': newPwd},
+  );
 
-  // ── Multimodal ──
-  Future<Response> uploadImage(String filePath) {
-    final formData = FormData.fromMap({
-      'file': MultipartFile.fromFileSync(filePath),
-    });
-    return dio.post(
-      '/multimodal/upload-image',
-      data: formData,
-      options: Options(headers: {'Content-Type': 'multipart/form-data'}),
-    );
-  }
+  // ── Billing ──
+  Future<Response> getBalance() => dio.get('/pay/balance');
+  Future<Response> getPackages() => dio.get('/pay/packages');
+  Future<Response> getPayMethods() => dio.get('/pay/methods');
+  Future<Response> getTransactions({int page = 1}) =>
+      dio.get('/pay/transactions', queryParameters: {'page': page});
+  Future<Response> getOrders({int page = 1}) =>
+      dio.get('/pay/orders', queryParameters: {'page': page});
+  Future<Response> createOrder(String packageId, String payMethod) => dio.post(
+    '/pay/create',
+    data: {'package_id': packageId, 'pay_method': payMethod},
+  );
+  Future<Response> queryOrderStatus(String orderNo) =>
+      dio.get('/pay/order/$orderNo/status');
 
-  // Helper: resolve full URL for media
+  // ── Bounty ──
+  Future<Response> listBounties({
+    String? category,
+    String? status,
+    int? page,
+  }) => dio.get(
+    '/bounty',
+    queryParameters: {
+      if (category != null) 'category': category,
+      if (status != null) 'status': status,
+      if (page != null) 'page': page,
+    },
+  );
+  Future<Response> getBounty(String id) => dio.get('/bounty/$id');
+  Future<Response> getBountyStats() => dio.get('/bounty/stats');
+  Future<Response> getBountyCategories() => dio.get('/bounty/categories');
+  Future<Response> claimBounty(String id, String userId, String userName) =>
+      dio.post(
+        '/bounty/$id/claim',
+        data: {'user_id': userId, 'user_name': userName},
+      );
+  Future<Response> deliverBounty(String id, String notes) =>
+      dio.post('/bounty/$id/deliver', data: {'delivery_notes': notes});
+  Future<Response> cancelBounty(String id) => dio.post('/bounty/$id/cancel');
+  Future<Response> disputeBounty(String id, String reason) =>
+      dio.post('/bounty/$id/dispute', data: {'reason': reason});
+
+  // ── Forum ──
+  Future<Response> listForumPosts({String? categoryId, int? page}) => dio.get(
+    '/forum/posts',
+    queryParameters: {
+      if (categoryId != null) 'category_id': categoryId,
+      if (page != null) 'page': page,
+    },
+  );
+  Future<Response> getForumPost(String id) => dio.get('/forum/posts/$id');
+  Future<Response> getForumCategories() => dio.get('/forum/categories');
+  Future<Response> createForumPost({
+    required String authorId,
+    required String authorName,
+    required String title,
+    required String content,
+    String? categoryId,
+    String? tags,
+  }) => dio.post(
+    '/forum/posts',
+    data: {
+      'author_id': authorId,
+      'author_name': authorName,
+      'title': title,
+      'content': content,
+      if (categoryId != null) 'category_id': categoryId,
+      if (tags != null) 'tags': tags,
+    },
+  );
+  Future<Response> createForumReply(
+    String postId, {
+    required String authorId,
+    required String authorName,
+    required String content,
+  }) => dio.post(
+    '/forum/posts/$postId/replies',
+    data: {
+      'author_id': authorId,
+      'author_name': authorName,
+      'content': content,
+    },
+  );
+  Future<Response> likeForumPost(String postId, String userId) =>
+      dio.post('/forum/posts/$postId/like', data: {'user_id': userId});
+
+  // ── Node Binding ──
+  Future<Response> listNodes() => dio.get('/user/nodes');
+  Future<Response> bindNode({
+    required String nodeId,
+    required String localUserId,
+    String? nodeName,
+    String? nodeAddr,
+  }) => dio.post(
+    '/user/nodes',
+    data: {
+      'node_id': nodeId,
+      'local_user_id': localUserId,
+      if (nodeName != null) 'node_name': nodeName,
+      if (nodeAddr != null) 'node_addr': nodeAddr,
+    },
+  );
+  Future<Response> unbindNode(String nodeId) =>
+      dio.delete('/user/nodes/$nodeId');
+
+  // ── Reports ──
+  Future<Response> getReportReasons() => dio.get('/reports/reasons');
+  Future<Response> submitReport({
+    required String targetType,
+    required String targetId,
+    required String reason,
+    String? targetTitle,
+    String? authorId,
+    String? detail,
+  }) => dio.post(
+    '/reports',
+    data: {
+      'target_type': targetType,
+      'target_id': targetId,
+      'reason': reason,
+      if (targetTitle != null) 'target_title': targetTitle,
+      if (authorId != null) 'author_id': authorId,
+      if (detail != null) 'detail': detail,
+    },
+  );
+
+  // Helper: resolve full URL
   String resolveUrl(String url) {
     if (url.startsWith('http')) return url;
-    return 'https://api.starclaw.me$url';
+    return 'https://queen.starclaw.me$url';
   }
 }

@@ -1,33 +1,44 @@
 package handler
 
 import (
+	"log"
+	"math"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw-queen/bounty/internal/billing"
 	"github.com/yinhe/starclaw-queen/bounty/internal/model"
 	"gorm.io/gorm"
 )
 
+const platformFeeRate = 0.05 // 5% platform service fee
+
 type BountyHandler struct {
-	db *gorm.DB
+	db      *gorm.DB
+	billing *billing.Client // nil = billing disabled (no fund escrow)
 }
 
-func NewBountyHandler(db *gorm.DB) *BountyHandler {
-	return &BountyHandler{db: db}
+func NewBountyHandler(db *gorm.DB, billingClient *billing.Client) *BountyHandler {
+	return &BountyHandler{db: db, billing: billingClient}
+}
+
+// rewardToCents converts CNY float to 分 int64
+func rewardToCents(reward float64) int64 {
+	return int64(math.Round(reward * 100))
 }
 
 // ---------- POST /bounties — Create (posted by Claw via BountyTool) ----------
 
 type CreateRequest struct {
-	NodeID       string  `json:"node_id" binding:"required"`
-	UserID       string  `json:"user_id" binding:"required"`
-	Title        string  `json:"title" binding:"required"`
-	Description  string  `json:"description"`
-	Category     string  `json:"category"`
-	Requirements string  `json:"requirements"`
-	Reward       float64 `json:"reward" binding:"required,gt=0"`
-	DeadlineHours int    `json:"deadline_hours"` // hours from now, 0 = no deadline
+	NodeID        string  `json:"node_id" binding:"required"`
+	UserID        string  `json:"user_id" binding:"required"`
+	Title         string  `json:"title" binding:"required"`
+	Description   string  `json:"description"`
+	Category      string  `json:"category"`
+	Requirements  string  `json:"requirements"`
+	Reward        float64 `json:"reward" binding:"required,gt=0"`
+	DeadlineHours int     `json:"deadline_hours"` // hours from now, 0 = no deadline
 }
 
 func (h *BountyHandler) Create(c *gin.Context) {
@@ -55,7 +66,21 @@ func (h *BountyHandler) Create(c *gin.Context) {
 		bounty.Category = model.CatOther
 	}
 
+	// Freeze reward from creator's balance (if billing enabled)
+	if h.billing != nil {
+		cents := rewardToCents(bounty.Reward)
+		if err := h.billing.Freeze(req.UserID, cents, bounty.ID); err != nil {
+			log.Printf("[bounty] Billing freeze failed: %v", err)
+			c.JSON(http.StatusPaymentRequired, gin.H{"error": "余额不足，无法冻结赏金: " + err.Error()})
+			return
+		}
+	}
+
 	if err := h.db.Create(&bounty).Error; err != nil {
+		// Rollback freeze if DB create fails
+		if h.billing != nil {
+			_ = h.billing.Unfreeze(req.UserID, rewardToCents(bounty.Reward), bounty.ID)
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create bounty"})
 		return
 	}
@@ -175,7 +200,7 @@ func (h *BountyHandler) Accept(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
 		NodeID   string `json:"node_id" binding:"required"`
-		Rating   int    `json:"rating"`   // 1-5
+		Rating   int    `json:"rating"` // 1-5
 		Feedback string `json:"feedback"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -197,6 +222,16 @@ func (h *BountyHandler) Accept(c *gin.Context) {
 	rating := req.Rating
 	if rating < 1 {
 		rating = 5
+	}
+
+	// Settle funds: frozen amount from creator → completer (minus platform fee)
+	if h.billing != nil && bounty.ClaimedBy != "" {
+		cents := rewardToCents(bounty.Reward)
+		if err := h.billing.Settle(bounty.UserID, bounty.ClaimedBy, cents, platformFeeRate, bounty.ID); err != nil {
+			log.Printf("[bounty] Billing settle failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "资金结算失败: " + err.Error()})
+			return
+		}
 	}
 
 	h.db.Model(&bounty).Updates(map[string]interface{}{
@@ -231,6 +266,15 @@ func (h *BountyHandler) Cancel(c *gin.Context) {
 	if bounty.Status == model.BountyCompleted {
 		c.JSON(http.StatusConflict, gin.H{"error": "cannot cancel a completed bounty"})
 		return
+	}
+
+	// Unfreeze funds back to creator
+	if h.billing != nil {
+		cents := rewardToCents(bounty.Reward)
+		if err := h.billing.Unfreeze(bounty.UserID, cents, bounty.ID); err != nil {
+			log.Printf("[bounty] Billing unfreeze on cancel failed: %v", err)
+			// Don't block cancellation — log and continue
+		}
 	}
 
 	h.db.Model(&bounty).Update("status", model.BountyCancelled)
@@ -275,11 +319,11 @@ func (h *BountyHandler) Stats(c *gin.Context) {
 		Select("COALESCE(SUM(reward), 0)").Scan(&totalReward)
 
 	c.JSON(http.StatusOK, gin.H{
-		"total":        total,
-		"open":         open,
-		"claimed":      claimed,
-		"completed":    completed,
-		"cancelled":    cancelled,
+		"total":             total,
+		"open":              open,
+		"claimed":           claimed,
+		"completed":         completed,
+		"cancelled":         cancelled,
 		"total_reward_paid": totalReward,
 	})
 }

@@ -31,6 +31,18 @@ services:
     networks:
       - overlord
 
+  console:
+    build:
+      context: ./console
+    container_name: starclaw-overlord-console
+    restart: unless-stopped
+    ports:
+      - "3095:80"
+    depends_on:
+      - manager
+    networks:
+      - overlord
+
 networks:
   overlord:
     driver: bridge

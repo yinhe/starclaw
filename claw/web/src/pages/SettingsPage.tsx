@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff } from 'lucide-react'
-import { settingsAPI, auditAPI, systemAPI } from '../lib/api'
+import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff, Network, Trash2, Radio, Copy, Pencil, X, Link, ChevronDown, ChevronRight, Share2, AlertTriangle } from 'lucide-react'
+import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI } from '../lib/api'
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState({ username: '', email: '', phone: '' })
@@ -27,20 +27,43 @@ export default function SettingsPage() {
   const [overlordForm, setOverlordForm] = useState({ overlord_url: '', node_name: '', region: '' })
   const [overlordMsg, setOverlordMsg] = useState('')
 
+  // Node & Peer state
+  const [nodeInfo, setNodeInfo] = useState<any>(null)
+  const [peers, setPeers] = useState<any[]>([])
+  const [nodeForm, setNodeForm] = useState({ address: '', name: '', region: '' })
+  const [peerAddr, setPeerAddr] = useState('')
+  const [addingPeer, setAddingPeer] = useState(false)
+  const [nodeMsg, setNodeMsg] = useState('')
+  const [savingNode, setSavingNode] = useState(false)
+  const [editingNode, setEditingNode] = useState(false)
+  const [showNodeDetails, setShowNodeDetails] = useState(false)
+
+  // API Token state
+  const [myToken, setMyToken] = useState('')
+  const [tokenNodeId, setTokenNodeId] = useState('')
+  const [showToken, setShowToken] = useState(false)
+  const [tokenCopied, setTokenCopied] = useState(false)
+  const [regeneratingToken, setRegeneratingToken] = useState(false)
+  const [devices, setDevices] = useState<{id: string; device_id: string; device_name: string; revoked: boolean; last_used_at: string | null; created_at: string}[]>([])
+
   useEffect(() => {
     loadProfile()
     loadAPIKeys()
     loadAuditLogs()
     loadSystemInfo()
+    loadMyToken()
+    loadDevices()
   }, [])
 
   const loadSystemInfo = async () => {
     try {
-      const [updateRes, swarmRes, bridgeRes, overlordRes] = await Promise.all([
+      const [updateRes, swarmRes, bridgeRes, overlordRes, nodeRes, peersRes] = await Promise.all([
         systemAPI.getUpdate(),
         systemAPI.getSwarm(),
         systemAPI.getBridge().catch(() => null),
         systemAPI.getOverlord().catch(() => null),
+        nodeAPI.getInfo().catch(() => null),
+        peerAPI.list().catch(() => null),
       ])
       setUpdateInfo(updateRes.data)
       setSwarmStatus(swarmRes.data)
@@ -54,7 +77,45 @@ export default function SettingsPage() {
       if (swarmRes.data.queen_url) {
         setSwarmForm(prev => ({ ...prev, queen_url: swarmRes.data.queen_url }))
       }
+      if (nodeRes) {
+        setNodeInfo(nodeRes.data)
+        setNodeForm({ address: nodeRes.data.address || '', name: nodeRes.data.name || '', region: nodeRes.data.region || '' })
+      }
+      if (peersRes) setPeers(peersRes.data || [])
     } catch { /* ignore */ }
+  }
+
+  // Connect to peer: supports both network address and claw: Node ID
+  const handleConnectPeer = async () => {
+    if (!peerAddr) return
+    setAddingPeer(true)
+    try {
+      let address = peerAddr.trim()
+      // Detect claw: address → resolve to network address first
+      if (address.startsWith('claw:')) {
+        setNodeMsg('正在解析节点地址...')
+        const res = await peerAPI.resolve(address)
+        if (!res.data?.found) {
+          const msg = res.data?.message || '无法解析该 Claw 地址 — 该节点不在已知网络中。'
+          alert(msg + '\n\n也可以直接使用对方的 IP/域名连接。')
+          setNodeMsg('')
+          setAddingPeer(false)
+          return
+        }
+        const sourceMap: Record<string, string> = { nydus: '本地', gossip: 'P2P网络', brood: '虫巢', swarm: '虫群' }
+        const src = sourceMap[res.data.source] || res.data.source || ''
+        address = res.data.address
+        setNodeMsg(`已通过${src}解析: ${address}`)
+      }
+      await peerAPI.add({ address })
+      setPeerAddr('')
+      setNodeMsg('')
+      loadSystemInfo()
+    } catch (e: any) {
+      alert(e.response?.data?.error || '链路建立失败')
+      setNodeMsg('')
+    }
+    setAddingPeer(false)
   }
 
   const handleForceCheck = async () => {
@@ -87,18 +148,18 @@ export default function SettingsPage() {
       const targetVersion = res.data.to
 
       if (targetVersion) {
-        // Simulate progress steps based on timing
-        setTimeout(() => setUpdateStep(2), 8000)   // ~8s: building
-        setTimeout(() => setUpdateStep(3), 60000)   // ~60s: restarting
-        setTimeout(() => setUpdateStep(4), 90000)   // ~90s: verifying
+        // Simulate progress steps based on timing (build can take 3-5 min)
+        setTimeout(() => setUpdateStep(2), 10000)   // ~10s: building
+        setTimeout(() => setUpdateStep(3), 180000)  // ~3min: restarting
+        setTimeout(() => setUpdateStep(4), 210000)  // ~3.5min: verifying
 
         let attempts = 0
         let apiWasDown = false
         const poll = setInterval(async () => {
           attempts++
-          if (attempts > 60) {
+          if (attempts > 180) { // 15 min timeout (build + restart can take a while)
             clearInterval(poll)
-            setUpdateMsg('更新超时，请手动检查服务器状态')
+            setUpdateMsg('更新超时，请手动检查服务器状态。构建可能仍在进行中，请稍后刷新页面。')
             setUpdateStep(0)
             setUpdating(false)
             return
@@ -125,8 +186,9 @@ export default function SettingsPage() {
         setUpdateStep(0)
         setUpdating(false)
       }
-    } catch {
-      setUpdateMsg('更新失败')
+    } catch (e: any) {
+      const errMsg = e.response?.data?.error || e.response?.data?.message || '更新失败'
+      setUpdateMsg(`❌ ${errMsg}`)
       setUpdateStep(0)
       setUpdating(false)
     }
@@ -171,6 +233,51 @@ export default function SettingsPage() {
     } catch { /* ignore */ }
   }
 
+  const loadMyToken = async () => {
+    try {
+      const res = await authAPI.getAPIToken()
+      setMyToken(res.data.api_token || '')
+      setTokenNodeId(res.data.node_id || '')
+    } catch { /* ignore */ }
+  }
+
+  const loadDevices = async () => {
+    try {
+      const res = await authAPI.listDevices()
+      setDevices(res.data.devices || [])
+    } catch { /* ignore */ }
+  }
+
+  const handleRegenerateToken = async () => {
+    if (!confirm('重新生成后，旧 Token 和所有已授权设备将被清除。确定？')) return
+    setRegeneratingToken(true)
+    try {
+      const res = await authAPI.regenerateToken()
+      const newToken = res.data.api_token
+      setMyToken(newToken)
+      setTokenNodeId(res.data.node_id || '')
+      setShowToken(true)
+      setDevices([])
+      // Update localStorage so subsequent API calls use the new token
+      localStorage.setItem('starclaw_token', newToken)
+    } catch { /* ignore */ }
+    setRegeneratingToken(false)
+  }
+
+  const handleRevokeDevice = async (deviceID: string) => {
+    if (!confirm('撤销后该设备将无法使用 Token 登录。确定？')) return
+    try {
+      await authAPI.revokeDevice(deviceID)
+      loadDevices()
+    } catch { /* ignore */ }
+  }
+
+  const copyToken = () => {
+    navigator.clipboard.writeText(myToken)
+    setTokenCopied(true)
+    setTimeout(() => setTokenCopied(false), 2000)
+  }
+
   const loadAPIKeys = async () => {
     try {
       const res = await settingsAPI.getAPIKeys()
@@ -185,8 +292,9 @@ export default function SettingsPage() {
       await settingsAPI.updateProfile(profile)
       setSaveMsg('保存成功')
       setTimeout(() => setSaveMsg(''), 2000)
-    } catch {
-      setSaveMsg('保存失败')
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } }
+      setSaveMsg(axiosErr.response?.data?.error || '保存失败')
     }
     setSaving(false)
   }
@@ -330,16 +438,18 @@ export default function SettingsPage() {
                 {bridgeStatus?.connected ? '已连接' : '未连接'}
               </p>
               {bridgeStatus?.connected && (
-                <p className="text-xs text-gray-400">{bridgeStatus.bridge_url} · 9 个宿主机工具已注册</p>
+                <p className="text-xs text-gray-400">{bridgeStatus.bridge_url} · {bridgeStatus.tool_count || '?'} 个宿主机工具已注册</p>
               )}
             </div>
           </div>
           {!bridgeStatus?.connected && bridgeStatus?.downloads && (() => {
-            const ua = navigator.userAgent.toLowerCase()
-            let platform = 'linux_amd64'
+            const hostOS = bridgeStatus.host_os || 'linux'
+            const hostArch = bridgeStatus.host_arch || 'amd64'
+            let platform = `${hostOS}_${hostArch}`
             let label = 'Linux'
-            if (ua.includes('win')) { platform = 'windows_amd64'; label = 'Windows' }
-            else if (ua.includes('mac')) { platform = ua.includes('arm') ? 'darwin_arm64' : 'darwin_amd64'; label = 'macOS' }
+            if (hostOS === 'windows') { platform = 'windows_amd64'; label = 'Windows' }
+            else if (hostOS === 'darwin') { label = 'macOS' }
+            if (!bridgeStatus.downloads[platform]) { platform = 'linux_amd64' }
             const url = bridgeStatus.downloads[platform]
             return (
               <div className="space-y-3">
@@ -361,6 +471,317 @@ export default function SettingsPage() {
           })()}
         </section>
 
+        {/* Nydus Link — P2P Node Interconnection */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-1">
+            <Network className="w-4 h-4" /> 虫洞链路 (Nydus)
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">通过虫洞与其他 Claw 建立加密链路，实现任务委派、Agent 迁移、资源共享。</p>
+
+          {/* Warning: address not set — show auto-detect buttons */}
+          {nodeInfo && !nodeInfo.address && !editingNode && (
+            <div className="p-4 mb-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                <p className="text-sm font-medium text-amber-800">选择一个地址，让其他 Claw 能连接到你</p>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {nodeInfo.public_ip && (
+                  <button
+                    onClick={async () => {
+                      setSavingNode(true)
+                      try {
+                        const res = await nodeAPI.autoSetup({ use_public_ip: true })
+                        setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                        setTimeout(() => setNodeMsg(''), 3000)
+                        loadSystemInfo()
+                      } catch { setNodeMsg('配置失败') }
+                      setSavingNode(false)
+                    }}
+                    disabled={savingNode}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {savingNode ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                    公网 IP: {nodeInfo.public_ip}
+                  </button>
+                )}
+                {(nodeInfo.private_ips || []).map((ip: string) => (
+                  <button
+                    key={ip}
+                    onClick={async () => {
+                      setSavingNode(true)
+                      try {
+                        const res = await nodeAPI.autoSetup({ use_public_ip: false })
+                        setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                        setTimeout(() => setNodeMsg(''), 3000)
+                        loadSystemInfo()
+                      } catch { setNodeMsg('配置失败') }
+                      setSavingNode(false)
+                    }}
+                    disabled={savingNode}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {savingNode ? <Loader2 className="w-4 h-4 animate-spin" /> : <Monitor className="w-4 h-4" />}
+                    内网 IP: {ip}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-amber-600">点击即可一键配置，地域将根据 IP 自动检测。<button onClick={() => { setEditingNode(true); setNodeForm({ address: '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }} className="text-violet-600 hover:underline ml-1">手动输入域名</button></p>
+              {nodeMsg && <p className="text-xs text-violet-600 mt-1">{nodeMsg}</p>}
+            </div>
+          )}
+
+          {/* Node Identity Card */}
+          {nodeInfo && (
+            <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-lg p-4 mb-4">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-violet-600" />
+                  <span className="text-sm font-semibold text-violet-800">本体 Claw</span>
+                  <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded flex items-center gap-1"><Shield className="w-3 h-3" /> 加密身份</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {nodeInfo.address && (
+                    <button
+                      onClick={() => {
+                        const text = `Claw 虫洞邀请\n地址: ${nodeInfo.address}\nNode ID: ${nodeInfo.node_id}\n指纹: ${nodeInfo.fingerprint}`
+                        navigator.clipboard.writeText(text)
+                        setNodeMsg('邀请信息已复制，发送给对方即可互联')
+                        setTimeout(() => setNodeMsg(''), 3000)
+                      }}
+                      className="p-1 text-gray-400 hover:text-violet-600" title="复制邀请信息"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button onClick={() => { setEditingNode(!editingNode); if (!editingNode) setNodeForm({ address: nodeInfo.address || '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }} className="p-1 text-gray-400 hover:text-violet-600" title="编辑配置">
+                    {editingNode ? <X className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {!editingNode ? (
+                <>
+                  {/* Main info — clean 2-row layout */}
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <div className="flex items-center gap-4">
+                      <span className="font-medium text-gray-700">{/^[0-9a-f]{10,}$/i.test(nodeInfo.name || '') ? '我的 Claw' : (nodeInfo.name || '我的 Claw')}</span>
+                      <span className="text-gray-400">v{nodeInfo.version}</span>
+                      {nodeInfo.region && <span className="text-gray-400">{nodeInfo.region}</span>}
+                      {nodeInfo.peer_count > 0 && <span className="text-violet-600 font-medium">{nodeInfo.online_peers}/{nodeInfo.peer_count} 在线</span>}
+                    </div>
+                    <button onClick={() => { navigator.clipboard.writeText(nodeInfo.node_id); setNodeMsg('Node ID 已复制'); setTimeout(() => setNodeMsg(''), 1500) }} className="font-mono text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded hover:bg-violet-200 cursor-pointer" title={nodeInfo.node_id}>{nodeInfo.node_id?.length > 20 ? nodeInfo.node_id.slice(0, 16) + '...' + nodeInfo.node_id.slice(-6) : nodeInfo.node_id}</button>
+                  </div>
+
+                  {/* Address line */}
+                  {nodeInfo.address && (
+                    <div className="flex items-center gap-2 text-xs mb-2">
+                      <span className="text-gray-500">Nydus 入口:</span>
+                      <span className="font-mono text-violet-700">{nodeInfo.address}</span>
+                      <button onClick={() => { navigator.clipboard.writeText(nodeInfo.address); setNodeMsg('已复制'); setTimeout(() => setNodeMsg(''), 1500) }} className="text-gray-400 hover:text-gray-600"><Copy className="w-3 h-3" /></button>
+                    </div>
+                  )}
+
+                  {nodeMsg && <p className="text-xs text-violet-600 mb-1">{nodeMsg}</p>}
+
+                  {/* Tech details — collapsed by default */}
+                  <button
+                    onClick={() => setShowNodeDetails(!showNodeDetails)}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mt-1"
+                  >
+                    {showNodeDetails ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    技术详情
+                  </button>
+                  {showNodeDetails && (
+                    <div className="mt-2 pt-2 border-t border-violet-100 space-y-1 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 w-16 shrink-0">基因指纹:</span>
+                        <span className="font-mono text-gray-500 truncate">{nodeInfo.fingerprint}</span>
+                        <button onClick={() => { navigator.clipboard.writeText(nodeInfo.fingerprint); setNodeMsg('已复制'); setTimeout(() => setNodeMsg(''), 1500) }} className="text-gray-400 hover:text-gray-600 shrink-0"><Copy className="w-3 h-3" /></button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 w-16 shrink-0">公钥算法:</span>
+                        <span className="text-gray-500">Ed25519 (椭圆曲线签名)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 w-16 shrink-0">主机名:</span>
+                        <span className="text-gray-500">{nodeInfo.hostname}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 w-16 shrink-0">系统:</span>
+                        <span className="text-gray-500">{nodeInfo.os}/{nodeInfo.arch} · {nodeInfo.go_version}</span>
+                      </div>
+                      <div className="mt-2 p-2.5 bg-white/60 rounded border border-violet-100">
+                        <p className="text-gray-500 font-medium mb-1">Ed25519 签名算法</p>
+                        <p className="text-gray-400 leading-relaxed">Ed25519 是基于 Curve25519 椭圆曲线的数字签名算法，由 Daniel J. Bernstein 设计。相比 RSA，它的密钥更短（32 字节）、签名更快、安全性更高。SSH、Signal、区块链（Solana）等广泛采用。每个 Claw 启动时自动生成一对密钥：私钥永不离开本地，公钥用于身份验证。Node ID = "claw:" + SHA-256(公钥) 前40位 (160-bit)，与比特币同级地址空间，支持 10²⁴ 个唯一节点。输入对方的 claw: 地址即可自动解析并建立链路。地域信息可根据 IP 自动检测，无需手动选择。</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-3 mt-1">
+                  <p className="text-xs text-gray-500">选择一个地址，地域将自动检测：</p>
+                  <div className="flex flex-wrap gap-2">
+                    {nodeInfo.public_ip && (
+                      <button
+                        onClick={async () => {
+                          setSavingNode(true)
+                          try {
+                            const res = await nodeAPI.autoSetup({ use_public_ip: true })
+                            setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                            setTimeout(() => setNodeMsg(''), 3000)
+                            setEditingNode(false)
+                            loadSystemInfo()
+                          } catch { setNodeMsg('配置失败') }
+                          setSavingNode(false)
+                        }}
+                        disabled={savingNode}
+                        className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {savingNode ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                        公网: {nodeInfo.public_ip}
+                      </button>
+                    )}
+                    {(nodeInfo.private_ips || []).map((ip: string) => (
+                      <button
+                        key={ip}
+                        onClick={async () => {
+                          setSavingNode(true)
+                          try {
+                            const res = await nodeAPI.autoSetup({ use_public_ip: false })
+                            setNodeMsg(`已配置: ${res.data.address}${res.data.region ? ` · ${res.data.region}` : ''}`)
+                            setTimeout(() => setNodeMsg(''), 3000)
+                            setEditingNode(false)
+                            loadSystemInfo()
+                          } catch { setNodeMsg('配置失败') }
+                          setSavingNode(false)
+                        }}
+                        disabled={savingNode}
+                        className="flex items-center gap-2 px-3 py-2 bg-white text-gray-700 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {savingNode ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Monitor className="w-3.5 h-3.5" />}
+                        内网: {ip}
+                      </button>
+                    ))}
+                    {!nodeInfo.public_ip && !(nodeInfo.private_ips || []).length && (
+                      <p className="text-xs text-amber-600">未检测到可用 IP，请手动输入</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">或手动输入:</span>
+                    <input value={nodeForm.address} onChange={(e) => setNodeForm({ ...nodeForm, address: e.target.value })} className="flex-1 px-2.5 py-1.5 border border-violet-200 rounded text-xs outline-none focus:ring-1 focus:ring-violet-400" placeholder="http://your-domain.com:8080" />
+                    <button
+                      onClick={async () => {
+                        if (!nodeForm.address) return
+                        setSavingNode(true)
+                        try {
+                          await nodeAPI.updateConfig({ address: nodeForm.address })
+                          setNodeMsg('已保存')
+                          setTimeout(() => setNodeMsg(''), 2000)
+                          setEditingNode(false)
+                          loadSystemInfo()
+                        } catch { setNodeMsg('保存失败') }
+                        setSavingNode(false)
+                      }}
+                      disabled={savingNode || !nodeForm.address}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs bg-violet-600 text-white rounded hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {savingNode ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} 保存
+                    </button>
+                    <button onClick={() => setEditingNode(false)} className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">取消</button>
+                  </div>
+                  {nodeMsg && <p className="text-xs text-violet-600">{nodeMsg}</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Add Peer + Peer List */}
+          {peers.length > 0 ? (
+            <>
+              <div className="flex gap-2 mb-3">
+                <input
+                  value={peerAddr}
+                  onChange={(e) => setPeerAddr(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link')?.click() } }}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
+                  placeholder="输入对方 claw: 地址，如 claw:b49edd9cebbc..."
+                />
+                <button
+                  id="btn-nydus-link"
+                  onClick={handleConnectPeer}
+                  disabled={addingPeer || !peerAddr}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {addingPeer ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
+                  建立链路
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {peers.map((peer: any) => (
+                  <div key={peer.id} className="flex items-center justify-between px-3 py-2.5 border rounded-lg hover:bg-gray-50 group">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${peer.status === 'online' ? 'bg-green-500' : peer.status === 'offline' ? 'bg-red-400' : 'bg-gray-300'}`} />
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{/^[0-9a-f]{10,}$/i.test(peer.name || '') ? '远程 Claw' : (peer.name || '远程 Claw')} <span className="text-xs font-mono text-gray-400" title={peer.node_id}>{peer.node_id?.startsWith('claw:') ? peer.node_id.slice(0, 11) + '...' : peer.node_id?.slice(0, 8)}</span></div>
+                        <div className="text-xs text-gray-400 truncate">{peer.address} · v{peer.version}{peer.region ? ` · ${peer.region}` : ''}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${peer.status === 'online' ? 'bg-green-100 text-green-700' : peer.status === 'offline' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                        {peer.status === 'online' ? '在线' : peer.status === 'offline' ? '离线' : '未知'}
+                      </span>
+                      <button onClick={async () => { await peerAPI.ping(peer.id); loadSystemInfo() }} className="p-1 text-gray-300 hover:text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" title="探测">
+                        <Wifi className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={async () => { if (confirm('断开与该 Claw 的虫洞链路？')) { await peerAPI.remove(peer.id); loadSystemInfo() } }} className="p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="断开链路">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="border border-dashed border-gray-200 rounded-lg p-5">
+              <p className="text-xs font-medium text-gray-600 mb-3">如何与其他 Claw 建立虫洞链路？</p>
+              <div className="space-y-2.5 mb-4">
+                <div className="flex items-start gap-2.5 text-xs">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">1</span>
+                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <><Check className="w-3 h-3 text-green-500 inline mr-1" />已配置: <span className="font-mono text-violet-600">{nodeInfo.address}</span></> : <>点击上方按钮<strong className="text-gray-700">一键配置地址</strong>（自动检测IP和地域）</>}</span>
+                </div>
+                <div className="flex items-start gap-2.5 text-xs">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">2</span>
+                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <>点击 <Share2 className="w-3 h-3 inline text-violet-500" /> 复制你的 <strong className="text-gray-700">claw: 地址</strong>发给对方</> : <>复制你的 claw: 地址发给对方</>}</span>
+                </div>
+                <div className="flex items-start gap-2.5 text-xs">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">3</span>
+                  <span className="text-gray-500 pt-0.5">输入对方的 <strong className="text-gray-700">claw: 地址</strong>，自动解析并建立加密链路</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={peerAddr}
+                  onChange={(e) => setPeerAddr(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && peerAddr) { (e.target as HTMLInputElement).blur(); document.getElementById('btn-nydus-link-empty')?.click() } }}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-400"
+                  placeholder="输入对方 claw: 地址，如 claw:b49edd9cebbc..."
+                />
+                <button
+                  id="btn-nydus-link-empty"
+                  onClick={handleConnectPeer}
+                  disabled={addingPeer || !peerAddr}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {addingPeer ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
+                  建立链路
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
         {/* Brood */}
         <section className="bg-white border rounded-xl p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
@@ -375,7 +796,7 @@ export default function SettingsPage() {
             )}
             <div>
               <p className="text-sm font-medium" style={{ color: overlordStatus?.connected ? '#166534' : '#6b7280' }}>
-                {overlordStatus?.connected ? `已加入虫巢 — 节点 ${overlordStatus.node_id?.slice(0, 8)}...` : '未加入'}
+                {overlordStatus?.connected ? `已加入虫巢 — ${overlordStatus.node_id?.startsWith('claw:') ? overlordStatus.node_id.slice(0, 16) + '...' : overlordStatus.node_id?.slice(0, 8) + '...'}` : '未加入'}
               </p>
               {overlordStatus?.overlord_url && overlordStatus.connected && (
                 <p className="text-xs text-gray-400">Overlord: {overlordStatus.overlord_url}</p>
@@ -404,13 +825,26 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选)</label>
-                  <input
+                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选，留空自动检测)</label>
+                  <select
                     value={overlordForm.region}
                     onChange={(e) => setOverlordForm({ ...overlordForm, region: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="cn-east"
-                  />
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  >
+                    <option value="">自动检测...</option>
+                    <option value="local">local (局域网)</option>
+                    <option value="cn-east">cn-east (华东)</option>
+                    <option value="cn-south">cn-south (华南)</option>
+                    <option value="cn-north">cn-north (华北)</option>
+                    <option value="cn-central">cn-central (华中)</option>
+                    <option value="cn-southwest">cn-southwest (西南)</option>
+                    <option value="hk">香港</option>
+                    <option value="us-west">us-west (美西)</option>
+                    <option value="us-east">us-east (美东)</option>
+                    <option value="eu-west">eu-west (西欧)</option>
+                    <option value="ap-southeast">ap-southeast (东南亚)</option>
+                    <option value="jp">日本</option>
+                  </select>
                 </div>
               </div>
               <button
@@ -472,7 +906,7 @@ export default function SettingsPage() {
             )}
             <div>
               <p className="text-sm font-medium" style={{ color: swarmStatus?.connected ? '#166534' : '#6b7280' }}>
-                {swarmStatus?.connected ? `已连接 — 节点 ${swarmStatus.node_id?.slice(0, 8)}...` : '未连接'}
+                {swarmStatus?.connected ? `已连接 — ${swarmStatus.node_id?.startsWith('claw:') ? swarmStatus.node_id.slice(0, 16) + '...' : swarmStatus.node_id?.slice(0, 8) + '...'}` : '未连接'}
               </p>
               {swarmStatus?.queen_url && swarmStatus.connected && (
                 <p className="text-xs text-gray-400">Queen: {swarmStatus.queen_url}</p>
@@ -501,13 +935,26 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选)</label>
-                  <input
+                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选，留空自动检测)</label>
+                  <select
                     value={swarmForm.region}
                     onChange={(e) => setSwarmForm({ ...swarmForm, region: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="cn-east, us-west..."
-                  />
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  >
+                    <option value="">自动检测...</option>
+                    <option value="local">local (局域网)</option>
+                    <option value="cn-east">cn-east (华东)</option>
+                    <option value="cn-south">cn-south (华南)</option>
+                    <option value="cn-north">cn-north (华北)</option>
+                    <option value="cn-central">cn-central (华中)</option>
+                    <option value="cn-southwest">cn-southwest (西南)</option>
+                    <option value="hk">香港</option>
+                    <option value="us-west">us-west (美西)</option>
+                    <option value="us-east">us-east (美东)</option>
+                    <option value="eu-west">eu-west (西欧)</option>
+                    <option value="ap-southeast">ap-southeast (东南亚)</option>
+                    <option value="jp">日本</option>
+                  </select>
                 </div>
               </div>
               <button
@@ -561,7 +1008,7 @@ export default function SettingsPage() {
               { name: '领主监控', desc: '资源配额与可观测性', url: 'https://overlord.starclaw.me', color: 'violet', port: null },
               { name: '赏金网络', desc: 'Agent 任务发布与协作', url: 'https://bounty.starclaw.me', color: 'amber', port: 8092 },
               { name: '社区论坛', desc: '用户交流与经验分享', url: 'https://forum.starclaw.me', color: 'emerald', port: 8093 },
-              { name: '机器人社区', desc: 'Agent 自主交流与协作', url: 'https://arena.starclaw.me', color: 'pink', port: 8094 },
+              { name: '龙虾社区', desc: 'Agent 自主交流与协作', url: 'https://arena.starclaw.me', color: 'pink', port: 8094 },
               { name: '官方文档', desc: '部署指南与 API 参考', url: 'https://starclaw.me/docs', color: 'cyan', port: null },
             ].map((svc) => (
               <a
@@ -691,6 +1138,58 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
+        </section>
+
+        {/* Auth Token */}
+        <section className="bg-white border rounded-xl p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
+            <Shield className="w-4 h-4" /> Auth Token
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">
+            绑定当前服务器身份，多台电脑可使用同一 Token 登录。复制后在登录页 Token 标签粘贴即可。
+          </p>
+          {tokenNodeId && (
+            <p className="text-xs text-gray-400 mb-4 flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-400"></span>
+              绑定服务器: <code className="text-gray-500">{tokenNodeId.length > 20 ? tokenNodeId.slice(0, 12) + '...' + tokenNodeId.slice(-6) : tokenNodeId}</code>
+            </p>
+          )}
+          {myToken && (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 bg-gray-50 rounded-lg text-sm font-mono text-gray-700 truncate">
+                {showToken ? myToken : myToken.slice(0, 6) + '••••••••••••••••'}
+              </code>
+              <button onClick={() => setShowToken(!showToken)} className="p-2 text-gray-400 hover:text-gray-600" title={showToken ? '隐藏' : '显示'}>
+                {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+              <button onClick={copyToken} className="p-2 text-gray-400 hover:text-gray-600" title="复制">
+                {tokenCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              </button>
+              <button onClick={handleRegenerateToken} disabled={regeneratingToken} className="p-2 text-gray-400 hover:text-red-500" title="重新生成（旧 Token 失效）">
+                <RefreshCw className={`w-4 h-4 ${regeneratingToken ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          )}
+          {devices.filter(d => !d.revoked).length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-xs font-medium text-gray-500 mb-2">已授权设备 ({devices.filter(d => !d.revoked).length})</h3>
+              <div className="space-y-2">
+                {devices.filter(d => !d.revoked).map(d => (
+                  <div key={d.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
+                    <div className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-gray-400" />
+                      <span className="text-gray-700">{d.device_name || '未知设备'}</span>
+                      <span className="text-xs text-gray-400">{d.device_id.slice(0, 8)}...</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {d.last_used_at && <span className="text-xs text-gray-400">{new Date(d.last_used_at).toLocaleDateString()}</span>}
+                      <button onClick={() => handleRevokeDevice(d.device_id)} className="text-xs text-red-400 hover:text-red-600">撤销</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* API Keys */}

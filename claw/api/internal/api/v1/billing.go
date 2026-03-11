@@ -2,13 +2,24 @@ package v1
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/swarm"
 	"gorm.io/gorm"
 )
+
+// queenBilling is the centralized billing client for hosted mode.
+// When set, checkQuota and recordUsage will also call Queen API.
+var queenBilling *swarm.BillingClient
+
+// SetQueenBilling sets the centralized billing client (called from router setup)
+func SetQueenBilling(bc *swarm.BillingClient) {
+	queenBilling = bc
+}
 
 // Resource pricing (兀per unit)
 var resourcePrice = map[string]float64{
@@ -382,7 +393,17 @@ func (h *BillingHandler) UpdateMemberRole(c *gin.Context) {
 // recordUsage records usage and optionally deducts cost from tenant balance.
 // When platformKey is true (using platform shared key), cost is calculated and balance deducted.
 // When platformKey is false (BYOK), usage is recorded for stats only, no cost or deduction.
+// If Queen billing client is enabled, consumption is also reported to Queen centrally.
 func recordUsage(db *gorm.DB, userID, resourceType string, quantity int64, platformKey bool) {
+	// Report to Queen billing if available (centralized billing)
+	if platformKey && queenBilling != nil && queenBilling.IsEnabled() {
+		remark := fmt.Sprintf("%s x%d", resourceType, quantity)
+		if _, err := queenBilling.Consume(userID, resourceType, quantity, remark); err != nil {
+			log.Printf("[billing] Queen consume failed: %v (falling back to local)", err)
+		}
+	}
+
+	// Always record locally for stats
 	var user model.User
 	if err := db.First(&user, "id = ?", userID).Error; err != nil || user.TenantID == "" {
 		return
@@ -419,7 +440,7 @@ func recordUsage(db *gorm.DB, userID, resourceType string, quantity int64, platf
 		})
 	}
 
-	// Deduct from balance only when using platform key
+	// Deduct from local balance only when using platform key
 	if platformKey && cost > 0 {
 		db.Model(&model.Tenant{}).Where("id = ?", user.TenantID).
 			Update("balance", gorm.Expr("GREATEST(balance - ?, 0)", cost))
@@ -428,11 +449,25 @@ func recordUsage(db *gorm.DB, userID, resourceType string, quantity int64, platf
 
 // checkQuota checks if tenant has positive balance.
 // Only enforced when using platform key (platformKey=true). BYOK users always pass.
+// If Queen billing client is enabled, checks Queen balance first (authoritative source).
 func checkQuota(db *gorm.DB, userID, resourceType string, platformKey bool) error {
 	if !platformKey {
 		return nil // BYOK = no quota enforcement
 	}
 
+	// Check Queen balance if available (centralized billing is authoritative)
+	if queenBilling != nil && queenBilling.IsEnabled() {
+		hasQuota, _, err := queenBilling.CheckBalance(userID)
+		if err != nil {
+			log.Printf("[billing] Queen check balance failed: %v (falling back to local)", err)
+		} else if !hasQuota {
+			return fmt.Errorf("余额不足，请充值后继续使用")
+		} else {
+			return nil // Queen says OK
+		}
+	}
+
+	// Fallback to local check
 	var user model.User
 	if err := db.First(&user, "id = ?", userID).Error; err != nil || user.TenantID == "" {
 		return nil // no tenant = no enforcement

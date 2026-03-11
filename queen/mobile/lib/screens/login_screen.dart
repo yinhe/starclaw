@@ -66,7 +66,11 @@ class _LoginScreenState extends State<LoginScreen>
           });
           return;
         }
-        await ApiService().register(email, username, password);
+        await ApiService().register(
+          email: email,
+          nickname: username,
+          password: password,
+        );
       }
       final res = await ApiService().login(email, password);
       final data = res.data;
@@ -96,9 +100,13 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       if (_isRegister) {
         final username = _usernameCtrl.text.trim();
-        await ApiService().phoneRegister(phone, password, username: username);
+        await ApiService().register(
+          phone: phone,
+          nickname: username.isEmpty ? phone : username,
+          password: password,
+        );
       }
-      final res = await ApiService().phoneLogin(phone, password);
+      final res = await ApiService().loginPhone(phone, password);
       final data = res.data;
       await AuthService().saveLogin(
         token: data['token'],

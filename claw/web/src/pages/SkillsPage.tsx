@@ -29,6 +29,7 @@ const SKILL_ICONS: Record<string, string> = {
   http_request: '🌐',
   browser: '🖥️',
   video_generation: '🎬',
+  document: '📄',
 }
 
 export default function SkillsPage() {

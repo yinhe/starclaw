@@ -9,11 +9,17 @@ import (
 	"time"
 )
 
+// Version is set at build time via:
+//
+//	go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=2026.0310.1214"
+//
+// Format: YYYY.MMDD.HHmm (UTC)
+var Version = "dev"
+
 const (
-	Version    = "0.5.2"
 	owner      = "yinhe"
 	repo       = "starclaw"
-	checkEvery = 6 * time.Hour
+	checkEvery = 1 * time.Hour
 )
 
 type ReleaseInfo struct {
@@ -70,7 +76,7 @@ func check() {
 	mu.Unlock()
 
 	latest := trimV(info.TagName)
-	if latest != Version {
+	if latest > Version {
 		log.Printf("[molt] new version available: %s → %s (%s)", Version, latest, info.HTMLURL)
 	}
 }
@@ -92,7 +98,7 @@ func GetVersionInfo() VersionInfo {
 		vi.Latest = latest
 		vi.LatestURL = latestInfo.HTMLURL
 		vi.ReleaseNotes = latestInfo.Body
-		vi.UpdateAvail = latest != Version
+		vi.UpdateAvail = latest > Version
 	}
 
 	return vi

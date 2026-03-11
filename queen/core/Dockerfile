@@ -1,16 +1,12 @@
-FROM golang:1.24-alpine AS builder
-
-WORKDIR /build
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o core-server ./cmd/server
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates tzdata
+FROM node:20-alpine AS builder
 WORKDIR /app
-COPY --from=builder /build/core-server .
+COPY package.json package-lock.json* ./
+RUN npm install
+COPY . .
+RUN npm run build
 
-EXPOSE 8091
-CMD ["./core-server"]
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

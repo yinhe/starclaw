@@ -17,8 +17,12 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('starclaw_token')
-      window.location.href = '/login'
+      const path = window.location.pathname
+      // Don't redirect if already on setup or login page
+      if (path !== '/setup' && path !== '/login') {
+        localStorage.removeItem('starclaw_token')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(err)
   }
@@ -26,7 +30,7 @@ api.interceptors.response.use(
 
 // Auth
 export const authAPI = {
-  register: (data: { email: string; username: string; password: string }) =>
+  register: (data: { email: string; username?: string; password: string }) =>
     api.post('/auth/register', data),
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
@@ -34,6 +38,12 @@ export const authAPI = {
     api.post('/auth/phone/register', data),
   phoneLogin: (data: { phone: string; password: string }) =>
     api.post('/auth/phone/login', data),
+  tokenLogin: (data: { token: string; device_id: string; device_name?: string }) =>
+    api.post('/auth/token/login', data),
+  getAPIToken: () => api.get('/auth/token'),
+  regenerateToken: () => api.post('/auth/token/regenerate'),
+  listDevices: () => api.get('/auth/devices'),
+  revokeDevice: (deviceID: string) => api.post(`/auth/devices/${deviceID}/revoke`),
   oauthProviders: () => api.get('/auth/oauth/providers'),
   oauthGitHub: (code: string) => api.post('/auth/oauth/github', { code }),
   oauthGoogle: (code: string) => api.post('/auth/oauth/google', { code }),
@@ -57,6 +67,21 @@ export const systemAPI = {
   getOverlord: () => api.get('/system/overlord'),
   joinOverlord: (data: { overlord_url: string; node_name?: string; region?: string }) => api.post('/system/overlord/join', data),
   leaveOverlord: () => api.post('/system/overlord/leave'),
+}
+
+// Node Identity & Peer Networking
+export const nodeAPI = {
+  getInfo: () => api.get('/node/info'),
+  updateConfig: (data: { address?: string; name?: string; region?: string }) => api.put('/node/config', data),
+  autoSetup: (data: { use_public_ip: boolean; port?: string; name?: string }) => api.post('/node/auto-setup', data),
+}
+
+export const peerAPI = {
+  list: () => api.get('/peers'),
+  add: (data: { address: string }) => api.post('/peers', data),
+  remove: (id: string) => api.delete(`/peers/${id}`),
+  ping: (id: string) => api.post(`/peers/${id}/ping`),
+  resolve: (nodeId: string) => api.get(`/peers/resolve?node_id=${encodeURIComponent(nodeId)}`),
 }
 
 // Agents
@@ -126,6 +151,15 @@ export const musicAPI = {
 // Config (public, no auth)
 export const configAPI = {
   get: () => axios.get('/v1/config'),
+}
+
+// Setup (single-user Owner mode, public endpoints)
+export const setupAPI = {
+  status: () => axios.get('/v1/setup/status'),
+  setup: (data?: { password?: string; username?: string }) =>
+    axios.post('/v1/setup', data || {}),
+  ownerLogin: (data: { password: string }) =>
+    axios.post('/v1/auth/owner-login', data),
 }
 
 // Billing & Tenant
