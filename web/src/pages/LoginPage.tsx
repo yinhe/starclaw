@@ -175,8 +175,12 @@ export default function LoginPage() {
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Opensource mode: password or token login */}
-            {deployMode === 'opensource' ? (
+            {/* Loading state */}
+            {deployMode === null ? (
+              <div className="flex justify-center py-8">
+                <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : deployMode === 'opensource' ? (
               <>
                 <div className="flex rounded-lg bg-gray-100 p-1 mb-2">
                   <button
