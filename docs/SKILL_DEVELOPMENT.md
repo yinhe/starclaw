@@ -174,6 +174,33 @@ return toJSON(map[string]interface{}{
 | `dubbing` | `dubbing_tool.go` | TTS dubbing |
 | `comic` | `comic_tool.go` | Comic/manga composition |
 | `mv` | `mv_tool.go` | Music video composition |
+| `deploy_web` | `lifecycle_deploy_tool.go` | Trigger deploy/status/rollback for web release |
+| `verify_online` | `lifecycle_verify_tool.go` | Post-deploy URL health + keyword verification |
+
+### Lifecycle MVP Example
+
+Use these two tools together to complete the final release stage:
+
+1. Trigger deployment:
+```json
+{
+  "action": "deploy",
+  "provider": "vercel",
+  "deploy_hook_url": "https://api.vercel.com/v1/integrations/deploy/xxxx",
+  "target_env": "production",
+  "note": "Release from chat orchestrator"
+}
+```
+
+2. Verify website is online:
+```json
+{
+  "url": "https://your-domain.com",
+  "expected_keywords": "StarClaw,AI Agent",
+  "retry": "3",
+  "interval_sec": "5"
+}
+```
 
 ---
 
