@@ -605,9 +605,9 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 
 	log.Printf("[VideoMerge] %d clips normalized to %dx%d, applying crossfade transitions", len(normalizedPaths), targetRes.w, targetRes.h)
 
-	// Step 2: Merge with xfade crossfade transitions
-	// xfade needs pairwise chaining: merge clip0+clip1 → result01, merge result01+clip2 → result012, etc.
-	const xfadeDuration = 0.5 // 0.5 second crossfade between scenes
+	// Step 2: Merge with xfade crossfade transitions using a SINGLE filter_complex
+	// This is much faster than pairwise chaining (one ffmpeg process vs N-1).
+	const xfadeDuration = 0.5
 
 	// Probe durations for calculating xfade offsets
 	durations := make([]float64, len(normalizedPaths))
@@ -618,74 +618,102 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 		}
 	}
 
-	// Chain xfade: for N clips, we do N-1 xfade passes
-	currentPath := normalizedPaths[0]
-	currentDuration := durations[0]
+	// Build all -i inputs
+	var ffmpegArgs []string
+	ffmpegArgs = append(ffmpegArgs, "-y")
+	for _, p := range normalizedPaths {
+		ffmpegArgs = append(ffmpegArgs, "-i", p)
+	}
 
-	for i := 1; i < len(normalizedPaths); i++ {
-		nextPath := normalizedPaths[i]
-		outPath := filepath.Join(tmpDir, fmt.Sprintf("xfade_%03d.mp4", i))
+	// Build single filter_complex with chained xfade
+	// Video: [0:v][1:v]xfade=...[v01]; [v01][2:v]xfade=...[v012]; ...
+	// Audio: [0:a][1:a]acrossfade=...[a01]; [a01][2:a]acrossfade=...[a012]; ...
+	n := len(normalizedPaths)
+	transitions := []string{"fade", "dissolve", "smoothleft", "fadeblack"}
 
-		// xfade offset = current accumulated duration - xfade overlap
-		offset := currentDuration - xfadeDuration
+	var filterParts []string
+	accumulatedDuration := durations[0]
+
+	// Video xfade chain
+	prevVideoLabel := "[0:v]"
+	for i := 1; i < n; i++ {
+		offset := accumulatedDuration - xfadeDuration
 		if offset < 0.1 {
 			offset = 0.1
 		}
-
-		// Choose transition type: alternate between dissolve and fadeblack for variety
-		transition := "fade"
-		switch i % 4 {
-		case 0:
-			transition = "fade"
-		case 1:
-			transition = "dissolve"
-		case 2:
-			transition = "smoothleft"
-		case 3:
-			transition = "fadeblack"
+		transition := transitions[i%len(transitions)]
+		outLabel := fmt.Sprintf("[v%d]", i)
+		if i == n-1 {
+			outLabel = "[outv]"
 		}
-
-		// Build xfade filter for video + acrossfade for audio
-		vFilter := fmt.Sprintf("[0:v][1:v]xfade=transition=%s:duration=%.2f:offset=%.2f[outv]",
-			transition, xfadeDuration, offset)
-		aFilter := fmt.Sprintf("[0:a][1:a]acrossfade=d=%.2f:c1=tri:c2=tri[outa]", xfadeDuration)
-
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
-			"-i", currentPath, "-i", nextPath,
-			"-filter_complex", vFilter+";"+aFilter,
-			"-map", "[outv]", "-map", "[outa]",
-			"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
-			"-c:a", "aac", "-b:a", "192k", outPath)
-
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			// Fallback: try without audio crossfade (some clips may lack audio)
-			log.Printf("[VideoMerge] xfade with audio failed for clip %d: %s, trying video-only xfade", i, string(out))
-			vOnly := fmt.Sprintf("[0:v][1:v]xfade=transition=%s:duration=%.2f:offset=%.2f[outv]",
-				transition, xfadeDuration, offset)
-			cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y",
-				"-i", currentPath, "-i", nextPath,
-				"-filter_complex", vOnly,
-				"-map", "[outv]",
-				"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
-				"-an", outPath)
-			out2, err2 := cmd2.CombinedOutput()
-			if err2 != nil {
-				// Final fallback: simple concat without transition
-				log.Printf("[VideoMerge] xfade failed for clip %d: %s, falling back to concat", i, string(out2))
-				return ffmpegSimpleConcat(ctx, normalizedPaths, outputPath)
-			}
-		}
-
-		currentPath = outPath
-		// New duration = accumulated - overlap + next clip duration - overlap (from next xfade)
-		currentDuration = currentDuration + durations[i] - xfadeDuration
+		filterParts = append(filterParts,
+			fmt.Sprintf("%s[%d:v]xfade=transition=%s:duration=%.2f:offset=%.2f%s",
+				prevVideoLabel, i, transition, xfadeDuration, offset, outLabel))
+		prevVideoLabel = outLabel
+		accumulatedDuration = accumulatedDuration + durations[i] - xfadeDuration
 	}
 
-	// Copy final result to output
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", currentPath, "-c", "copy", outputPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffmpeg final copy failed: %v\n%s", err, string(out))
+	// Audio acrossfade chain
+	prevAudioLabel := "[0:a]"
+	for i := 1; i < n; i++ {
+		outLabel := fmt.Sprintf("[a%d]", i)
+		if i == n-1 {
+			outLabel = "[outa]"
+		}
+		filterParts = append(filterParts,
+			fmt.Sprintf("%s[%d:a]acrossfade=d=%.2f:c1=tri:c2=tri%s",
+				prevAudioLabel, i, xfadeDuration, outLabel))
+		prevAudioLabel = outLabel
+	}
+
+	filterComplex := strings.Join(filterParts, ";")
+	ffmpegArgs = append(ffmpegArgs,
+		"-filter_complex", filterComplex,
+		"-map", "[outv]", "-map", "[outa]",
+		"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-b:a", "192k", outputPath)
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Fallback 1: video-only xfade (no audio crossfade)
+		log.Printf("[VideoMerge] xfade with audio failed: %s, trying video-only", string(out))
+		var vOnlyParts []string
+		prevVideoLabel = "[0:v]"
+		accumulatedDuration = durations[0]
+		for i := 1; i < n; i++ {
+			offset := accumulatedDuration - xfadeDuration
+			if offset < 0.1 {
+				offset = 0.1
+			}
+			transition := transitions[i%len(transitions)]
+			outLabel := fmt.Sprintf("[v%d]", i)
+			if i == n-1 {
+				outLabel = "[outv]"
+			}
+			vOnlyParts = append(vOnlyParts,
+				fmt.Sprintf("%s[%d:v]xfade=transition=%s:duration=%.2f:offset=%.2f%s",
+					prevVideoLabel, i, transition, xfadeDuration, offset, outLabel))
+			prevVideoLabel = outLabel
+			accumulatedDuration = accumulatedDuration + durations[i] - xfadeDuration
+		}
+		var args2 []string
+		args2 = append(args2, "-y")
+		for _, p := range normalizedPaths {
+			args2 = append(args2, "-i", p)
+		}
+		args2 = append(args2,
+			"-filter_complex", strings.Join(vOnlyParts, ";"),
+			"-map", "[outv]",
+			"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+			"-an", outputPath)
+		cmd2 := exec.CommandContext(ctx, "ffmpeg", args2...)
+		out2, err2 := cmd2.CombinedOutput()
+		if err2 != nil {
+			// Fallback 2: simple concat
+			log.Printf("[VideoMerge] video-only xfade also failed: %s, falling back to concat", string(out2))
+			return ffmpegSimpleConcat(ctx, normalizedPaths, outputPath)
+		}
 	}
 
 	log.Printf("[VideoMerge] Crossfade merge complete: %d clips → %s", len(clipPaths), outputPath)
