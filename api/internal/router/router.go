@@ -87,6 +87,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewDeployWebTool())
 	toolRegistry.Register(tool.NewBindDomainTool())
 	toolRegistry.Register(tool.NewVerifyOnlineTool())
+	toolRegistry.Register(tool.NewFeishuTool(db))
 
 	// Generate thumbnails for existing videos on startup
 	go videoTool.GenerateMissingThumbnails()
@@ -637,6 +638,14 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/mcp/servers", mcpHandler.AddServer)
 			protected.DELETE("/mcp/servers/:id", mcpHandler.DeleteServer)
 			protected.POST("/mcp/servers/:id/test", mcpHandler.TestServer)
+
+			// Integrations (messaging platforms: Feishu, DingTalk, Slack, etc.)
+			integrationHandler := v1.NewIntegrationHandler(db)
+			protected.GET("/integrations", integrationHandler.List)
+			protected.POST("/integrations", integrationHandler.Create)
+			protected.PUT("/integrations/:id", integrationHandler.Update)
+			protected.DELETE("/integrations/:id", integrationHandler.Delete)
+			protected.POST("/integrations/:id/test", integrationHandler.Test)
 
 			// Multi-Agent
 			multiAgentHandler := v1.NewMultiAgentHandler(db, providerRegistry, toolRegistry)

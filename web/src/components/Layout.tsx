@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText, Link2 } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -57,6 +57,7 @@ function getNavGroups(isHosted: boolean): NavGroup[] {
         { to: '/models', icon: Cpu, label: '模型' },
         { to: '/knowledge', icon: BookOpen, label: '知识库' },
         { to: '/mcp', icon: Plug, label: 'MCP 工具' },
+        { to: '/integrations', icon: Link2, label: '通讯集成' },
       ],
     },
     {

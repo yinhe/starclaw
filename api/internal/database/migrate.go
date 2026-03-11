@@ -34,6 +34,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.Invoice{},
 		&model.AgentTemplate{},
 		&model.AuthorizedDevice{},
+		&model.Integration{},
 	); err != nil {
 		return err
 	}

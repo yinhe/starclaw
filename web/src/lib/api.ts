@@ -237,6 +237,17 @@ export const settingsAPI = {
   getAPIKeys: () => api.get('/settings/api-keys'),
 }
 
+// Integrations (messaging platforms: Feishu, DingTalk, Slack, etc.)
+export const integrationAPI = {
+  list: (type?: string) => api.get('/integrations', { params: type ? { type } : {} }),
+  create: (data: { type: string; name: string; config: Record<string, string> }) =>
+    api.post('/integrations', data),
+  update: (id: string, data: { name?: string; config?: Record<string, string>; enabled?: boolean }) =>
+    api.put(`/integrations/${id}`, data),
+  delete: (id: string) => api.delete(`/integrations/${id}`),
+  test: (id: string) => api.post(`/integrations/${id}/test`),
+}
+
 // MCP Servers
 export const mcpAPI = {
   listServers: () => api.get('/mcp/servers'),
