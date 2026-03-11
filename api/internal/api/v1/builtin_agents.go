@@ -27,7 +27,7 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	}
 
 	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
-	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation"]`
+	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","feishu"]`
 
 	// Temporarily disable FK checks for seeding (model_id is NULL for system agents)
 	db.Exec("SET FOREIGN_KEY_CHECKS = 0")
