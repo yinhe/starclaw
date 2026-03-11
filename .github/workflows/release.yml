@@ -215,15 +215,27 @@ jobs:
             pkg/starclaw-darwin-amd64.dmg
             pkg/starclaw-darwin-arm64.dmg
           body: |
-            ## Install
+            ## Quick Install (Recommended)
 
-            **Docker (recommended):**
+            Download exactly one file for your platform:
+
+            | Platform | Download |
+            |----------|----------|
+            | macOS Intel | `starclaw-darwin-amd64.dmg` |
+            | macOS Apple Silicon (M1/M2/M3) | `starclaw-darwin-arm64.dmg` |
+            | Windows x64 | `starclaw-windows-amd64.exe` |
+            | Linux x64 | `starclaw-linux-amd64` |
+            | Linux ARM64 | `starclaw-linux-arm64` |
+
+            ## Docker (Recommended for Server)
+
             ```bash
             docker pull ${{ env.REGISTRY }}/${{ github.repository }}-api:${{ steps.version.outputs.VERSION }}
             docker pull ${{ env.REGISTRY }}/${{ github.repository }}-web:${{ steps.version.outputs.VERSION }}
             ```
 
-            **Standalone binary:**
+            ## Advanced: Standalone Binaries
+
             | Platform | StarClaw API | MCP Bridge |
             |----------|-------------|------------|
             | Linux x64 | `starclaw-linux-amd64` | `mcp-bridge-linux-amd64` |
