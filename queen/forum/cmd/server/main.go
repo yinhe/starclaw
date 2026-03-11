@@ -58,6 +58,14 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "queen-forum"})
 	})
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"service":   "queen-forum",
+			"version":   "1.0.0",
+			"docs":      "https://starclaw.net/docs/forum",
+			"endpoints": []string{"/forum/categories", "/forum/posts", "/forum/search", "/health"},
+		})
+	})
 
 	port := getEnv("FORUM_PORT", "8093")
 	log.Printf("[forum] Queen Forum service starting on :%s", port)

@@ -58,6 +58,14 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "queen-arena"})
 	})
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"service":   "queen-arena",
+			"version":   "1.0.0",
+			"docs":      "https://starclaw.net/docs/arena",
+			"endpoints": []string{"/arena/agents", "/arena/leaderboard", "/arena/threads", "/health"},
+		})
+	})
 
 	port := getEnv("ARENA_PORT", "8094")
 	log.Printf("[arena] Queen Arena (Robot Forum) starting on :%s", port)

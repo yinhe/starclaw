@@ -189,3 +189,45 @@ sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
 
 **Q: Can I still use it after disconnecting from the swarm?**
 Yes. In Feral mode all AI features work normally — you only lose auto-updates and shared knowledge. Reconnecting restores everything automatically.
+
+## 10. Team Agent Release SOP (R&D + DevOps)
+
+When using the Team Agent in the **Agents** page (e.g. `研发DevOps团队`), use this release sequence:
+
+1. `deploy_web`: trigger preview/production deployment
+2. `bind_domain`: create or update DNS records (Cloudflare)
+3. `verify_online`: check online availability + keyword acceptance
+
+### Approval Gates (Recommended)
+
+- Confirm once before production deployment
+- Confirm again before DNS changes
+
+### Team Agent Prompt Template (Copy/Paste)
+
+```text
+Please run the release workflow with the R&D + DevOps team:
+1) deploy_web for production
+2) bind_domain for app.example.com
+3) verify_online for https://app.example.com
+
+Requirements: ask for approval before production release and before DNS changes; if verification fails, provide rollback suggestions.
+```
+
+### bind_domain Example (Cloudflare)
+
+```json
+{
+  "action": "upsert",
+  "provider": "cloudflare",
+  "api_token": "<CLOUDFLARE_API_TOKEN>",
+  "zone_id": "<ZONE_ID>",
+  "record_type": "CNAME",
+  "record_name": "app.example.com",
+  "record_value": "cname.vercel-dns.com",
+  "proxied": "false",
+  "ttl": "120"
+}
+```
+
+> Security note: pass `api_token` at runtime only. Do not commit it into repository files.

@@ -21,8 +21,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-DOMAIN="starclaw.me"
-EMAIL="admin@starclaw.me"
+DOMAIN="starclaw.net"
+EMAIL="admin@starclaw.net"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo -e "${GREEN}🦞 StarClaw Queen — Production Deployment${NC}"

@@ -28,6 +28,13 @@ interface ModelConfig {
   display_name: string
 }
 
+interface TeamAgentCard {
+  id: string
+  name: string
+  description: string
+  is_builtin: boolean
+}
+
 export default function AgentsPage() {
   const navigate = useNavigate()
   const [agents, setAgents] = useState<Agent[]>([])
@@ -46,6 +53,18 @@ export default function AgentsPage() {
     is_public: false,
   })
   const [selectedTools, setSelectedTools] = useState<string[]>([])
+
+  const builtInTeamAgents: TeamAgentCard[] = [
+    {
+      id: 'team-devops-rnd',
+      name: '研发DevOps团队',
+      description: '团队编排：产品需求拆解、前后端研发、自动构建部署、上线验证与回滚协同。',
+      is_builtin: true,
+    },
+  ]
+
+  const singleAgents = agents.filter((agent) => !agent.name.includes('团队'))
+  const teamAgents = builtInTeamAgents
 
   useEffect(() => {
     loadAgents()
@@ -169,72 +188,113 @@ export default function AgentsPage() {
           </div>
         </div>
 
-        {agents.length === 0 ? (
+        {singleAgents.length === 0 && teamAgents.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Bot className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>还没有 Agent，点击上方按钮创建第一个</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agents.map((agent) => (
-              <div
-                key={agent.id}
-                className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer group"
-                onClick={() => navigate(`/agents/${agent.id}`)}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center group-hover:bg-primary-200 transition-colors">
-                    <Bot className="w-5 h-5 text-primary-600" />
-                  </div>
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    {agent.is_builtin && (
-                      <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-medium rounded mr-1">官方</span>
-                    )}
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await agentAPI.export(agent.id)
-                          const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' })
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          a.download = `agent_${agent.name}.json`
-                          a.click()
-                          URL.revokeObjectURL(url)
-                        } catch { /* ignore */ }
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-blue-500 rounded-md hover:bg-blue-50"
-                      title="导出 JSON"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleEdit(agent)}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    {!agent.is_builtin && (
-                      <button
-                        onClick={() => handleDelete(agent.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">{agent.name}</h3>
-                <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                  {agent.description || '暂无描述'}
-                </p>
-                {agent.is_public && (
-                  <span className="inline-block mt-2 px-2 py-0.5 bg-green-50 text-green-600 text-xs rounded-full">
-                    公开
-                  </span>
-                )}
+          <div className="space-y-8">
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-900">单个代理</h2>
+                <span className="text-xs text-gray-500">{singleAgents.length} 个</span>
               </div>
-            ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {singleAgents.map((agent) => (
+                  <div
+                    key={agent.id}
+                    className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer group"
+                    onClick={() => navigate(`/agents/${agent.id}`)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center group-hover:bg-primary-200 transition-colors">
+                        <Bot className="w-5 h-5 text-primary-600" />
+                      </div>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        {agent.is_builtin && (
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-medium rounded mr-1">官方</span>
+                        )}
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await agentAPI.export(agent.id)
+                              const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' })
+                              const url = URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = `agent_${agent.name}.json`
+                              a.click()
+                              URL.revokeObjectURL(url)
+                            } catch { /* ignore */ }
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-blue-500 rounded-md hover:bg-blue-50"
+                          title="导出 JSON"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleEdit(agent)}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {!agent.is_builtin && (
+                          <button
+                            onClick={() => handleDelete(agent.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">{agent.name}</h3>
+                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                      {agent.description || '暂无描述'}
+                    </p>
+                    {agent.is_public && (
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-green-50 text-green-600 text-xs rounded-full">
+                        公开
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-900">团队代理</h2>
+                <span className="text-xs text-gray-500">{teamAgents.length} 个</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {teamAgents.map((team) => (
+                  <div
+                    key={team.id}
+                    className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => navigate(`/teams/${team.id}`)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <Bot className="w-5 h-5 text-purple-600" />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {team.is_builtin && (
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-medium rounded mr-1">官方</span>
+                        )}
+                        <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] font-medium rounded">团队</span>
+                      </div>
+                    </div>
+                    <h3 className="font-semibold text-gray-900">{team.name}</h3>
+                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">{team.description}</p>
+                    <span className="inline-block mt-2 px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">
+                      即将支持
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
         )}
       </div>

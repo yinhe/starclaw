@@ -252,6 +252,11 @@ export const multiAgentAPI = {
     api.post('/multi-agent/run', data),
 }
 
+// Teams
+export const teamAPI = {
+  getOrchestrator: (teamId: string) => api.get(`/teams/${teamId}/orchestrator`),
+}
+
 // Workflows
 export const workflowAPI = {
   list: () => api.get('/workflows'),

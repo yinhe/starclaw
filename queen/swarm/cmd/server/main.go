@@ -78,6 +78,16 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok", "service": "queen-swarm"})
 	})
 
+	// Root
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"service":   "queen-swarm",
+			"version":   "1.0.0",
+			"docs":      "https://starclaw.net/docs/swarm",
+			"endpoints": []string{"/swarm/register", "/swarm/heartbeat", "/swarm/nodes", "/swarm/molt/check", "/health"},
+		})
+	})
+
 	port := getEnv("SWARM_PORT", "8090")
 	log.Printf("[swarm] Queen Swarm service starting on :%s", port)
 	if err := r.Run(fmt.Sprintf(":%s", port)); err != nil {

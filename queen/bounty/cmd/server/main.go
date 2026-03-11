@@ -73,6 +73,14 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "queen-bounty"})
 	})
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"service":   "queen-bounty",
+			"version":   "1.0.0",
+			"docs":      "https://starclaw.net/docs/bounty",
+			"endpoints": []string{"/bounties", "/bounties/:id", "/bounties/:id/claim", "/health"},
+		})
+	})
 
 	port := getEnv("BOUNTY_PORT", "8092")
 	log.Printf("[bounty] Queen Bounty service starting on :%s", port)
