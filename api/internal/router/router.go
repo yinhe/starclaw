@@ -641,6 +641,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			multiAgentHandler := v1.NewMultiAgentHandler(db, providerRegistry, toolRegistry)
 			protected.POST("/multi-agent/run", multiAgentHandler.Run)
 
+			// Teams (lightweight orchestrator mapping)
+			teamHandler := v1.NewTeamHandler(db)
+			protected.GET("/teams/:id/orchestrator", teamHandler.GetOrchestrator)
+
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)

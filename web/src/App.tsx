@@ -11,6 +11,7 @@ import SetupPage from './pages/SetupPage'
 import ChatPage from './pages/ChatPage'
 import AgentsPage from './pages/AgentsPage'
 import AgentDetailPage from './pages/AgentDetailPage'
+import TeamDetailPage from './pages/TeamDetailPage'
 import ModelsPage from './pages/ModelsPage'
 import WorkflowPage from './pages/WorkflowPage'
 import WorkflowListPage from './pages/WorkflowListPage'
@@ -89,6 +90,7 @@ export default function App() {
         <Route path="chat/:conversationId?" element={<ChatPage />} />
         <Route path="agents" element={<AgentsPage />} />
         <Route path="agents/:id" element={<AgentDetailPage />} />
+        <Route path="teams/:id" element={<TeamDetailPage />} />
         <Route path="marketplace" element={<MarketplacePage />} />
         <Route path="models" element={<ModelsPage />} />
         <Route path="knowledge" element={<KnowledgeBasePage />} />
