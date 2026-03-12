@@ -11,4 +11,9 @@ if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
     exit 1
 fi
 
+# No arguments → show help instead of starting server
+if [ $# -eq 0 ]; then
+    exec docker exec "$CONTAINER" ./starclaw help
+fi
+
 exec docker exec "$CONTAINER" ./starclaw "$@"
