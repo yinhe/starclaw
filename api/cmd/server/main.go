@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -53,6 +51,9 @@ func main() {
 			return
 		case "import-key":
 			cmdImportKey()
+			return
+		case "wallet-info":
+			cmdWalletInfo()
 			return
 		case "version":
 			fmt.Printf("StarClaw v%s\n", molt.Version)
@@ -159,8 +160,9 @@ func printUsage() {
 	fmt.Println("  devices          List all authorized devices")
 	fmt.Println("  approve <id>     Approve a pending device (supports ID prefix)")
 	fmt.Println("  reject <id>      Reject/revoke a device (supports ID prefix)")
-	fmt.Println("  export-key       Export node identity key (for backup)")
-	fmt.Println("  import-key <hex> Import node identity key (restore from backup)")
+	fmt.Println("  export-key       Export 24-word mnemonic (BIP-39 backup)")
+	fmt.Println("  import-key       Restore identity from mnemonic or seed hex")
+	fmt.Println("  wallet-info      Show HD wallet addresses and derivation paths")
 	fmt.Println("  version          Print version and exit")
 	fmt.Println("  help             Show this help")
 	fmt.Println("")
@@ -171,7 +173,8 @@ func printUsage() {
 	fmt.Println("  starclaw devices")
 	fmt.Println("  starclaw approve a1b2c3d4")
 	fmt.Println("  starclaw export-key")
-	fmt.Println("  starclaw import-key <seed-hex>")
+	fmt.Println("  starclaw import-key <24 words or seed-hex>")
+	fmt.Println("  starclaw wallet-info")
 }
 
 func openCLIDB() (*config.Config, error) {
@@ -357,63 +360,88 @@ func cmdRejectDevice() {
 	fmt.Printf("✓ Device rejected: %s (%s)\n", device.ID[:8], device.DeviceName)
 }
 
-// cmdExportKey exports the node identity seed for backup.
+// cmdExportKey exports the node identity as a 24-word BIP-39 mnemonic.
 func cmdExportKey() {
 	id := node.LoadOrCreateIdentity()
-
-	// Ed25519 private key = seed(32) + public(32). Export just the seed.
 	seed := id.PrivateKey.Seed()
-	seedHex := hex.EncodeToString(seed)
 
-	fmt.Println("========================================")
-	fmt.Println("  StarClaw Node Identity Backup")
-	fmt.Println("========================================")
-	fmt.Printf("  Node ID:     %s\n", id.NodeID)
-	fmt.Printf("  Fingerprint: %s\n", id.Fingerprint())
-	fmt.Printf("  Seed (hex):  %s\n", seedHex)
-	fmt.Println("========================================")
+	mnemonic, err := node.SeedToMnemonic(seed)
+	if err != nil {
+		log.Fatalf("Failed to encode mnemonic: %v", err)
+	}
+
+	// Build HD wallet to show derived addresses
+	w := node.WalletFromSeed(seed, mnemonic)
+
+	fmt.Println("╔══════════════════════════════════════════════════╗")
+	fmt.Println("║       StarClaw Node Identity Backup              ║")
+	fmt.Println("╠══════════════════════════════════════════════════╣")
+	fmt.Printf("║  Node ID (cold): %s\n", w.NodeID)
+	fmt.Printf("║  Hot address:    %s\n", w.HotNodeID)
+	fmt.Printf("║  Fingerprint:    %s\n", id.Fingerprint())
+	fmt.Println("╠══════════════════════════════════════════════════╣")
+	fmt.Println("║  24-Word Mnemonic (BIP-39):")
+	words := strings.Split(mnemonic, " ")
+	for i := 0; i < len(words); i += 4 {
+		end := i + 4
+		if end > len(words) {
+			end = len(words)
+		}
+		nums := ""
+		for j := i; j < end; j++ {
+			nums += fmt.Sprintf("  %2d.%-12s", j+1, words[j])
+		}
+		fmt.Printf("║%s\n", nums)
+	}
+	fmt.Println("╠══════════════════════════════════════════════════╣")
+	fmt.Printf("║  Seed (hex): %s\n", hex.EncodeToString(seed))
+	fmt.Println("╚══════════════════════════════════════════════════╝")
 	fmt.Println("")
-	fmt.Println("Save the seed above in a safe place.")
-	fmt.Println("To restore: starclaw import-key " + seedHex)
+	fmt.Println("Write down the 24 words above and store in a SAFE place.")
+	fmt.Println("To restore: starclaw import-key <24 words>")
 	fmt.Println("")
-	fmt.Println("WARNING: Anyone with this seed can impersonate your node.")
+	fmt.Println("WARNING: Anyone with these words can control your node and wallet.")
 }
 
-// cmdImportKey restores node identity from a seed hex string.
+// cmdImportKey restores node identity from mnemonic (24 words) or seed hex.
 func cmdImportKey() {
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: starclaw import-key <seed-hex>")
-		fmt.Println("  seed-hex: 64-character hex string from 'starclaw export-key'")
+		fmt.Println("Usage:")
+		fmt.Println("  starclaw import-key word1 word2 word3 ... word24")
+		fmt.Println("  starclaw import-key <64-char-hex-seed>")
 		os.Exit(1)
 	}
-	seedHex := os.Args[2]
 
-	seedBytes, err := hex.DecodeString(seedHex)
-	if err != nil || len(seedBytes) != ed25519.SeedSize {
-		log.Fatalf("Invalid seed: must be %d hex characters (got %d)", ed25519.SeedSize*2, len(seedHex))
+	var seed []byte
+	var err error
+
+	// Detect mode: hex (single arg, 64 chars) or mnemonic (multiple words)
+	if len(os.Args) == 3 && len(os.Args[2]) == 64 {
+		// Hex seed mode
+		seed, err = hex.DecodeString(os.Args[2])
+		if err != nil || len(seed) != 32 {
+			log.Fatalf("Invalid hex seed: must be 64 hex characters")
+		}
+		fmt.Println("Importing from hex seed...")
+	} else {
+		// Mnemonic mode: collect all remaining args as words
+		words := os.Args[2:]
+		mnemonic := strings.Join(words, " ")
+		seed, err = node.MnemonicToSeed(mnemonic)
+		if err != nil {
+			log.Fatalf("Invalid mnemonic: %v", err)
+		}
+		fmt.Printf("Importing from %d-word mnemonic...\n", len(words))
 	}
 
-	// Derive full keypair from seed
-	privateKey := ed25519.NewKeyFromSeed(seedBytes)
-	publicKey := privateKey.Public().(ed25519.PublicKey)
-
-	// Derive node ID to show the user
-	nodeID := node.DeriveNodeIDFromSeed(seedBytes)
+	// Build wallet to show info
+	w := node.WalletFromSeed(seed, "")
 
 	// Write key file
 	keyFile := os.Getenv("NODE_KEY_PATH")
 	if keyFile == "" {
 		keyFile = ".node_key"
 	}
-
-	stored := struct {
-		PrivateKey []byte `json:"private_key"`
-		PublicKey  []byte `json:"public_key"`
-	}{
-		PrivateKey: privateKey,
-		PublicKey:  publicKey,
-	}
-	data, _ := json.Marshal(stored)
 
 	// Check if key file already exists
 	if _, err := os.Stat(keyFile); err == nil {
@@ -428,21 +456,50 @@ func cmdImportKey() {
 		}
 	}
 
-	// Ensure directory exists
-	dir := keyFile
-	if idx := strings.LastIndex(dir, "/"); idx >= 0 {
-		os.MkdirAll(dir[:idx], 0700)
-	}
-
-	if err := os.WriteFile(keyFile, data, 0600); err != nil {
+	if err := node.SaveWalletKey(w, keyFile); err != nil {
 		log.Fatalf("Failed to write key file: %v", err)
 	}
 
 	fmt.Println("========================================")
-	fmt.Printf("  Node identity restored!\n")
-	fmt.Printf("  Node ID: %s\n", nodeID)
+	fmt.Println("  Node identity restored!")
+	fmt.Printf("  Cold address: %s\n", w.NodeID)
+	fmt.Printf("  Hot address:  %s\n", w.HotNodeID)
 	fmt.Println("========================================")
 	fmt.Println("Restart the server for the new identity to take effect.")
+}
+
+// cmdWalletInfo shows HD wallet addresses and derivation paths.
+func cmdWalletInfo() {
+	id := node.LoadOrCreateIdentity()
+	seed := id.PrivateKey.Seed()
+	w := node.WalletFromSeed(seed, "")
+
+	fmt.Println("╔══════════════════════════════════════════════════╗")
+	fmt.Println("║            StarClaw HD Wallet                     ║")
+	fmt.Println("╠══════════════════════════════════════════════════╣")
+	fmt.Printf("  Master (cold):  %s\n", w.NodeID)
+	fmt.Printf("  Path: m (master key)\n")
+	fmt.Println("")
+
+	// Show first 5 derived addresses
+	fmt.Println("  Derived addresses (BIP-44 / SLIP-0010):")
+	fmt.Println("  ─────────────────────────────────────────")
+	for i := uint32(0); i < 5; i++ {
+		key := w.DeriveAddress(0, 0, i)
+		marker := "  "
+		if i == 0 {
+			marker = "→ " // current hot wallet
+		}
+		fmt.Printf("  %s[%d] %s  (%s)\n", marker, i, key.NodeID(), key.Path)
+	}
+
+	fmt.Println("")
+	fmt.Printf("  Hot wallet:     %s\n", w.HotNodeID)
+	fmt.Printf("  Path: m/44'/9001'/0'/0'/0'\n")
+	fmt.Println("╚══════════════════════════════════════════════════╝")
+	fmt.Println("")
+	fmt.Println("Cold address = master wallet (high-value ops, backup with mnemonic)")
+	fmt.Println("Hot address  = everyday wallet (transfers, heartbeats)")
 }
 
 // cmdResetPassword resets the owner password.

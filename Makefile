@@ -246,9 +246,13 @@ export-key: ## Export node identity key (for backup)
 	docker exec starclaw-api ./starclaw export-key
 
 .PHONY: import-key
-import-key: ## Import node identity key (usage: make import-key SEED=<hex>)
-	@test -n "$(SEED)" || (echo "Usage: make import-key SEED=<64-char-hex>" && exit 1)
+import-key: ## Import node identity key (usage: make import-key SEED=<hex-or-mnemonic>)
+	@test -n "$(SEED)" || (echo "Usage: make import-key SEED='<24 words or hex>'" && exit 1)
 	docker exec -it starclaw-api ./starclaw import-key $(SEED)
+
+.PHONY: wallet-info
+wallet-info: ## Show HD wallet addresses and derivation paths
+	docker exec starclaw-api ./starclaw wallet-info
 
 .PHONY: api-version
 api-version: ## Show API binary version inside container
