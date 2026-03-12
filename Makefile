@@ -84,16 +84,36 @@ write-version: ## Write .version file for Docker build
 	@echo "✓ api/.version = $(VERSION)"
 
 .PHONY: update
-update: ## Pull latest code and rebuild
-	git pull
-	@echo $(VERSION) > api/.version
-	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
+update: ## Pull latest code, rebuild API+Web only (data safe)
+	git pull origin main
+	@echo "Building API..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE) build api
+	@echo "Building Web..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE) build web
+	@echo "Restarting API+Web..."
+	$(COMPOSE) up -d --no-deps api web
+	@sleep 3
+	@$(MAKE) verify
 
 .PHONY: update-cn
-update-cn: ## Pull latest code and rebuild (China mirror)
-	git pull
-	@echo $(VERSION) > api/.version
-	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
+update-cn: ## Pull latest code, rebuild API+Web only (China mirror)
+	git pull origin main
+	@echo "Building API..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) build api
+	@echo "Building Web..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) build web
+	@echo "Restarting API+Web..."
+	$(COMPOSE_CN) up -d --no-deps api web
+	@sleep 3
+	@$(MAKE) verify
+
+.PHONY: verify
+verify: ## Verify API and Web are healthy after update
+	@echo "Checking API..."
+	@curl -sf http://localhost:8080/v1/setup/status > /dev/null && echo "  API: OK" || echo "  API: FAILED"
+	@echo "Checking Web..."
+	@curl -sf http://localhost:$${WEB_PORT:-3080}/ > /dev/null && echo "  Web: OK" || echo "  Web: FAILED"
+	@$(COMPOSE) ps --format 'table {{.Name}}\t{{.Status}}'
 
 # ======================== Rebuild Single Service ========================
 
@@ -110,14 +130,14 @@ rebuild-web: ## Rebuild and restart only the Web service
 .PHONY: backup
 backup: ## Backup MySQL + data directory
 	@mkdir -p backups
-	docker exec starclaw-mysql mysqldump -uroot -pstarclaw starclaw > backups/db_$(shell date +%Y%m%d_%H%M%S).sql
+	docker exec starclaw-mysql mysqldump -uroot -p"$${DB_PASSWORD:-starclaw}" starclaw > backups/db_$(shell date +%Y%m%d_%H%M%S).sql
 	tar -czf backups/data_$(shell date +%Y%m%d_%H%M%S).tar.gz data/
 	@echo "✓ Backup saved to backups/"
 
 .PHONY: restore-db
 restore-db: ## Restore MySQL from latest backup (usage: make restore-db FILE=backups/db_xxx.sql)
 	@test -n "$(FILE)" || (echo "Usage: make restore-db FILE=backups/db_xxx.sql" && exit 1)
-	docker exec -i starclaw-mysql mysql -uroot -pstarclaw starclaw < $(FILE)
+	docker exec -i starclaw-mysql mysql -uroot -p"$${DB_PASSWORD:-starclaw}" starclaw < $(FILE)
 	@echo "✓ Database restored from $(FILE)"
 
 # ======================== Shell Access ========================
@@ -128,7 +148,7 @@ shell-api: ## Open shell in API container
 
 .PHONY: shell-mysql
 shell-mysql: ## Open MySQL CLI
-	docker exec -it starclaw-mysql mysql -uroot -pstarclaw starclaw
+	docker exec -it starclaw-mysql mysql -uroot -p"$${DB_PASSWORD:-starclaw}" starclaw
 
 .PHONY: shell-redis
 shell-redis: ## Open Redis CLI
