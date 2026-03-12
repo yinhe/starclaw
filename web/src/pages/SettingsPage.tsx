@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff, Network, Trash2, Radio, Copy, Pencil, X, Link, ChevronDown, ChevronRight, Share2, AlertTriangle, Crown, LogOut, Mail, Phone } from 'lucide-react'
-import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI, queenAPI } from '../lib/api'
+import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI, queenAPI, deviceAPI } from '../lib/api'
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState({ username: '', email: '', phone: '' })
@@ -52,7 +52,7 @@ export default function SettingsPage() {
   const [showToken, setShowToken] = useState(false)
   const [tokenCopied, setTokenCopied] = useState(false)
   const [regeneratingToken, setRegeneratingToken] = useState(false)
-  const [devices, setDevices] = useState<{id: string; device_id: string; device_name: string; revoked: boolean; last_used_at: string | null; created_at: string}[]>([])
+  const [devices, setDevices] = useState<{id: string; device_id: string; device_name: string; revoked: boolean; approved: boolean; last_used_at: string | null; created_at: string}[]>([])
 
   useEffect(() => {
     loadProfile()
@@ -293,8 +293,23 @@ export default function SettingsPage() {
 
   const loadDevices = async () => {
     try {
-      const res = await authAPI.listDevices()
+      const res = await deviceAPI.list()
       setDevices(res.data.devices || [])
+    } catch { /* ignore */ }
+  }
+
+  const handleApproveDevice = async (id: string) => {
+    try {
+      await deviceAPI.approve(id)
+      loadDevices()
+    } catch { /* ignore */ }
+  }
+
+  const handleRejectDevice = async (id: string) => {
+    if (!confirm('拒绝后该设备将无法使用 Token 登录。确定？')) return
+    try {
+      await deviceAPI.reject(id)
+      loadDevices()
     } catch { /* ignore */ }
   }
 
@@ -1364,16 +1379,39 @@ export default function SettingsPage() {
               </button>
             </div>
           )}
-          {devices.filter(d => !d.revoked).length > 0 && (
+          {devices.filter(d => !d.revoked && !d.approved).length > 0 && (
             <div className="mt-4">
-              <h3 className="text-xs font-medium text-gray-500 mb-2">已授权设备 ({devices.filter(d => !d.revoked).length})</h3>
+              <h3 className="text-xs font-medium text-amber-600 mb-2 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> 待审批设备 ({devices.filter(d => !d.revoked && !d.approved).length})
+              </h3>
               <div className="space-y-2">
-                {devices.filter(d => !d.revoked).map(d => (
+                {devices.filter(d => !d.revoked && !d.approved).map(d => (
+                  <div key={d.id} className="flex items-center justify-between px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                    <div className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-amber-500" />
+                      <span className="text-gray-700">{d.device_name || '未知设备'}</span>
+                      <span className="text-xs text-gray-400">{d.id.slice(0, 8)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{new Date(d.created_at).toLocaleDateString()}</span>
+                      <button onClick={() => handleApproveDevice(d.id)} className="text-xs text-green-600 hover:text-green-700 font-medium">通过</button>
+                      <button onClick={() => handleRejectDevice(d.id)} className="text-xs text-red-400 hover:text-red-600">拒绝</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {devices.filter(d => !d.revoked && d.approved).length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-xs font-medium text-gray-500 mb-2">已授权设备 ({devices.filter(d => !d.revoked && d.approved).length})</h3>
+              <div className="space-y-2">
+                {devices.filter(d => !d.revoked && d.approved).map(d => (
                   <div key={d.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
                     <div className="flex items-center gap-2">
-                      <Monitor className="w-4 h-4 text-gray-400" />
+                      <Monitor className="w-4 h-4 text-green-500" />
                       <span className="text-gray-700">{d.device_name || '未知设备'}</span>
-                      <span className="text-xs text-gray-400">{d.device_id.slice(0, 8)}...</span>
+                      <span className="text-xs text-gray-400">{d.id.slice(0, 8)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {d.last_used_at && <span className="text-xs text-gray-400">{new Date(d.last_used_at).toLocaleDateString()}</span>}

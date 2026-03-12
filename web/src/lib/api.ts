@@ -158,8 +158,16 @@ export const setupAPI = {
   status: () => axios.get('/v1/setup/status'),
   setup: (data?: { password?: string; username?: string }) =>
     axios.post('/v1/setup', data || {}),
-  ownerLogin: (data: { password: string }) =>
+  ownerLogin: (data: { password: string; device_id?: string; device_name?: string }) =>
     axios.post('/v1/auth/owner-login', data),
+}
+
+// Device Management
+export const deviceAPI = {
+  list: () => api.get('/devices'),
+  approve: (id: string) => api.post(`/devices/${id}/approve`),
+  reject: (id: string) => api.post(`/devices/${id}/reject`),
+  revoke: (id: string) => api.post(`/devices/${id}/revoke`),
 }
 
 // Queen Account Linking

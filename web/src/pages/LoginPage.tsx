@@ -58,6 +58,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
+  const [pendingApproval, setPendingApproval] = useState(false)
+  const [pendingMessage, setPendingMessage] = useState('')
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([])
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -123,6 +125,25 @@ export default function LoginPage() {
     }
   }
 
+  // Poll for device approval when pending
+  useEffect(() => {
+    if (!pendingApproval || !apiToken) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await authAPI.tokenLogin({ token: apiToken, device_id: getDeviceID(), device_name: getDeviceName() })
+        if (res.status === 200 && res.data?.token) {
+          clearInterval(interval)
+          setPendingApproval(false)
+          setAuth(res.data.token, res.data.user)
+          navigate('/chat')
+        }
+      } catch {
+        // Still pending or error — keep polling
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [pendingApproval, apiToken, setAuth, navigate])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -131,13 +152,20 @@ export default function LoginPage() {
     try {
       let res
       if (loginMode === 'owner') {
-        // Owner password login (opensource mode) — returns owner_token
-        res = await setupAPI.ownerLogin({ password })
+        // Owner password login (opensource mode) — returns owner_token + auto-approves device
+        res = await setupAPI.ownerLogin({ password, device_id: getDeviceID(), device_name: getDeviceName() })
         setAuth(res.data.owner_token, res.data.user)
         navigate('/', { replace: true })
         return
       } else if (loginMode === 'token') {
         res = await authAPI.tokenLogin({ token: apiToken, device_id: getDeviceID(), device_name: getDeviceName() })
+        // Handle pending approval (HTTP 202)
+        if (res.status === 202 && res.data?.status === 'pending_approval') {
+          setPendingApproval(true)
+          setPendingMessage(res.data.message || '新设备等待审批中...')
+          setLoading(false)
+          return
+        }
       } else if (loginMode === 'phone') {
         res = isRegister
           ? await authAPI.phoneRegister({ phone, password, username: username || undefined })
@@ -170,6 +198,26 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
+          {pendingApproval ? (
+            <div className="text-center py-8">
+              <div className="w-12 h-12 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">等待设备审批</h2>
+              <p className="text-gray-500 text-sm mb-4">{pendingMessage}</p>
+              <div className="bg-gray-50 rounded-lg p-3 text-left text-xs text-gray-600 space-y-1">
+                <p className="font-medium text-gray-700">审批方式：</p>
+                <p>1. 在已登录设备的 <b>设置 → 设备管理</b> 中审批</p>
+                <p>2. 在服务器上执行 <code className="bg-gray-200 px-1 rounded">starclaw devices</code> 查看并 <code className="bg-gray-200 px-1 rounded">starclaw approve &lt;id&gt;</code></p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPendingApproval(false); setPendingMessage(''); setError('') }}
+                className="mt-4 text-sm text-gray-500 hover:text-gray-700 underline"
+              >
+                返回登录
+              </button>
+            </div>
+          ) : (
+          <>
           <h2 className="text-2xl font-semibold mb-6">
             {deployMode === 'opensource' ? '登录' : isRegister ? '创建账号' : '登录'}
           </h2>
@@ -463,6 +511,8 @@ export default function LoginPage() {
                 {isRegister ? '去登录' : '注册'}
               </button>
             </div>
+          )}
+          </>
           )}
         </div>
       </div>

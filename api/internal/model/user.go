@@ -41,6 +41,7 @@ type AuthorizedDevice struct {
 	DeviceID   string     `json:"device_id" gorm:"type:varchar(36);not null"`
 	DeviceName string     `json:"device_name" gorm:"type:varchar(100)"`
 	Revoked    bool       `json:"revoked" gorm:"default:false"`
+	Approved   bool       `json:"approved" gorm:"default:false"`
 	LastUsedAt *time.Time `json:"last_used_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 }

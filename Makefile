@@ -207,6 +207,20 @@ reset-password: ## Reset Owner password (usage: make reset-password PASS=newpass
 	@test -n "$(PASS)" || (echo "Usage: make reset-password PASS=<new-password>" && exit 1)
 	docker exec starclaw-api ./starclaw reset-password --password $(PASS)
 
+.PHONY: devices
+devices: ## List all authorized devices
+	docker exec starclaw-api ./starclaw devices
+
+.PHONY: approve
+approve: ## Approve a pending device (usage: make approve ID=a1b2c3d4)
+	@test -n "$(ID)" || (echo "Usage: make approve ID=<device-id-prefix>" && exit 1)
+	docker exec starclaw-api ./starclaw approve $(ID)
+
+.PHONY: reject
+reject: ## Reject/revoke a device (usage: make reject ID=a1b2c3d4)
+	@test -n "$(ID)" || (echo "Usage: make reject ID=<device-id-prefix>" && exit 1)
+	docker exec starclaw-api ./starclaw reject $(ID)
+
 .PHONY: api-version
 api-version: ## Show API binary version inside container
 	docker exec starclaw-api ./starclaw version

@@ -36,6 +36,15 @@ func main() {
 		case "reset-password":
 			cmdResetPassword()
 			return
+		case "devices":
+			cmdDevices()
+			return
+		case "approve":
+			cmdApproveDevice()
+			return
+		case "reject":
+			cmdRejectDevice()
+			return
 		case "version":
 			fmt.Printf("StarClaw v%s\n", molt.Version)
 			return
@@ -138,6 +147,9 @@ func printUsage() {
 	fmt.Println("  get-token        Show current Owner Token (read-only)")
 	fmt.Println("  reset-token      Generate a new Owner Token (prints to stdout)")
 	fmt.Println("  reset-password   Reset the Owner password (reads from --password flag)")
+	fmt.Println("  devices          List all authorized devices")
+	fmt.Println("  approve <id>     Approve a pending device (supports ID prefix)")
+	fmt.Println("  reject <id>      Reject/revoke a device (supports ID prefix)")
 	fmt.Println("  version          Print version and exit")
 	fmt.Println("  help             Show this help")
 	fmt.Println("")
@@ -145,6 +157,8 @@ func printUsage() {
 	fmt.Println("  starclaw get-token")
 	fmt.Println("  starclaw reset-token")
 	fmt.Println("  starclaw reset-password --password newpass123")
+	fmt.Println("  starclaw devices")
+	fmt.Println("  starclaw approve a1b2c3d4")
 }
 
 func openCLIDB() (*config.Config, error) {
@@ -208,6 +222,126 @@ func cmdResetToken() {
 	fmt.Printf("New Owner Token: %s\n", newToken)
 	fmt.Println("========================================")
 	fmt.Println("Use this token to log in via the Auth Token tab.")
+}
+
+// cmdDevices lists all authorized devices.
+func cmdDevices() {
+	cfg, err := openCLIDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := database.InitMySQL(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	var devices []model.AuthorizedDevice
+	db.Order("created_at DESC").Find(&devices)
+
+	if len(devices) == 0 {
+		fmt.Println("No authorized devices found.")
+		return
+	}
+
+	fmt.Printf("%-10s %-20s %-10s %-10s %s\n", "ID", "NAME", "APPROVED", "REVOKED", "LAST USED")
+	fmt.Println("----------------------------------------------------------------------")
+	for _, d := range devices {
+		lastUsed := "never"
+		if d.LastUsedAt != nil {
+			lastUsed = d.LastUsedAt.Format("2006-01-02 15:04")
+		}
+		status := "pending"
+		if d.Revoked {
+			status = "revoked"
+		} else if d.Approved {
+			status = "approved"
+		}
+		fmt.Printf("%-10s %-20s %-10s %-10s %s\n", d.ID[:8], truncate(d.DeviceName, 20), status, "", lastUsed)
+	}
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-3] + "..."
+}
+
+// cmdApproveDevice approves a pending device by ID prefix.
+func cmdApproveDevice() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: starclaw approve <device-id-prefix>")
+		os.Exit(1)
+	}
+	prefix := os.Args[2]
+
+	cfg, err := openCLIDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := database.InitMySQL(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	var devices []model.AuthorizedDevice
+	db.Where("id LIKE ?", prefix+"%").Find(&devices)
+
+	if len(devices) == 0 {
+		log.Fatalf("No device found matching prefix: %s", prefix)
+	}
+	if len(devices) > 1 {
+		fmt.Printf("Multiple devices match prefix '%s':\n", prefix)
+		for _, d := range devices {
+			fmt.Printf("  %s  %s\n", d.ID[:8], d.DeviceName)
+		}
+		log.Fatalf("Please provide a more specific prefix.")
+	}
+
+	device := devices[0]
+	if device.Approved && !device.Revoked {
+		fmt.Printf("Device %s (%s) is already approved.\n", device.ID[:8], device.DeviceName)
+		return
+	}
+
+	db.Model(&device).Updates(map[string]interface{}{"approved": true, "revoked": false})
+	fmt.Printf("✓ Device approved: %s (%s)\n", device.ID[:8], device.DeviceName)
+}
+
+// cmdRejectDevice rejects/revokes a device by ID prefix.
+func cmdRejectDevice() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: starclaw reject <device-id-prefix>")
+		os.Exit(1)
+	}
+	prefix := os.Args[2]
+
+	cfg, err := openCLIDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := database.InitMySQL(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	var devices []model.AuthorizedDevice
+	db.Where("id LIKE ?", prefix+"%").Find(&devices)
+
+	if len(devices) == 0 {
+		log.Fatalf("No device found matching prefix: %s", prefix)
+	}
+	if len(devices) > 1 {
+		fmt.Printf("Multiple devices match prefix '%s':\n", prefix)
+		for _, d := range devices {
+			fmt.Printf("  %s  %s\n", d.ID[:8], d.DeviceName)
+		}
+		log.Fatalf("Please provide a more specific prefix.")
+	}
+
+	device := devices[0]
+	db.Model(&device).Updates(map[string]interface{}{"approved": false, "revoked": true})
+	fmt.Printf("✓ Device rejected: %s (%s)\n", device.ID[:8], device.DeviceName)
 }
 
 // cmdResetPassword resets the owner password.
