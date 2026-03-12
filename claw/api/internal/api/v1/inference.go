@@ -15,16 +15,37 @@ import (
 
 // InferenceHandler exposes the inference router API.
 type InferenceHandler struct {
-	router     *inference.InferenceRouter
-	providers  *provider.Registry
-	settlement *inference.SettlementClient
+	router      *inference.InferenceRouter
+	providers   *provider.Registry
+	settlement  *inference.SettlementClient
+	spotChecker *inference.SpotChecker
+}
+
+// InferenceHandlerOption configures optional dependencies for InferenceHandler.
+type InferenceHandlerOption func(*InferenceHandler)
+
+// WithSettlement sets the settlement client for star credit reporting.
+func WithSettlement(s *inference.SettlementClient) InferenceHandlerOption {
+	return func(h *InferenceHandler) { h.settlement = s }
+}
+
+// WithSpotChecker sets the spot-checker for contributor trust verification.
+func WithSpotChecker(sc *inference.SpotChecker) InferenceHandlerOption {
+	return func(h *InferenceHandler) { h.spotChecker = sc }
 }
 
 // NewInferenceHandler creates a new handler wrapping the inference router.
-func NewInferenceHandler(router *inference.InferenceRouter, providers *provider.Registry, settlement ...*inference.SettlementClient) *InferenceHandler {
+func NewInferenceHandler(router *inference.InferenceRouter, providers *provider.Registry, opts ...interface{}) *InferenceHandler {
 	h := &InferenceHandler{router: router, providers: providers}
-	if len(settlement) > 0 {
-		h.settlement = settlement[0]
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case *inference.SettlementClient:
+			h.settlement = v
+		case *inference.SpotChecker:
+			h.spotChecker = v
+		case InferenceHandlerOption:
+			v(h)
+		}
 	}
 	return h
 }
@@ -160,9 +181,13 @@ func (h *InferenceHandler) Infer(c *gin.Context) {
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 	}
 
-	// Update contributor: decrement active jobs
+	// Update contributor: decrement active jobs + record trust event
 	if contributor != nil {
 		h.router.Registry.Heartbeat(contributor.NodeID, max(0, contributor.ActiveJobs-1), 0)
+		// Record success in trust score (failure is recorded if Route returned error above)
+		if contributor.Trust != nil {
+			contributor.Trust.RecordSuccess(0) // latency already tracked in Heartbeat
+		}
 	}
 
 	// Report usage for star credit settlement (async, non-blocking)
@@ -176,6 +201,15 @@ func (h *InferenceHandler) Infer(c *gin.Context) {
 			ContributorClaw: contributor.NodeID,
 			Model:           req.Model,
 		})
+	}
+
+	// Spot-check: randomly verify contributor response quality (async, non-blocking)
+	if h.spotChecker != nil && contributor != nil && !req.Stream && h.spotChecker.ShouldCheck() {
+		// For non-streaming responses, we can capture the body for verification
+		// (streaming spot-checks are more complex, deferred to future)
+		if bodyBytes := c.GetString("_response_body"); bodyBytes != "" {
+			h.spotChecker.VerifyAsync(&req, contributor.NodeID, bodyBytes)
+		}
 	}
 }
 
