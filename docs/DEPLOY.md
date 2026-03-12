@@ -41,48 +41,48 @@ sudo systemctl daemon-reload && sudo systemctl restart docker
 
 ## 三、部署
 
-### 1. 获取代码
+### 快速开始（3 条命令）
 
 ```bash
 git clone https://github.com/yinhe/starclaw.git
 cd starclaw
+make up        # 首次约 5-10 分钟
 ```
 
-### 2. 配置环境变量
+> **国内服务器**请用 `make up-cn` 代替 `make up`（使用镜像加速）。
+
+`make up` 会自动完成：
+- 从 `.env.example` 创建 `.env`（如果不存在）
+- 创建所有 `data/` 子目录
+- 构建并启动全部 Docker 服务
+
+浏览器访问 `http://你的服务器IP:3080` 即可使用。
+
+### 验证
 
 ```bash
-cp .env.example .env
+docker compose ps                        # 所有服务应显示 Up
+curl http://localhost:8080/v1/health     # 应返回 OK
+```
+
+### 生产环境配置（推荐）
+
+本地体验可跳过此步。**公网部署**请修改密码：
+
+```bash
 nano .env
 ```
 
-**必须修改：**
 ```bash
 DB_PASSWORD=<强密码>          # MySQL root 密码
 JWT_SECRET=<随机字符串>       # openssl rand -hex 32
 WEB_PORT=3080                 # 前端端口（nginx 代理到此端口）
 ```
 
-### 3. 启动
-
+修改后重启生效：
 ```bash
-# 创建数据目录
-mkdir -p data/{merged_videos,thumbnails,music,images,workspaces,identity}
-
-# 构建 & 启动（首次约 5-10 分钟）
-make up
-
-# ⚠️ 国内服务器请使用加速配置：
-make up-cn
+make down && make up
 ```
-
-### 4. 验证
-
-```bash
-docker compose ps                        # 所有服务应显示 Up
-curl http://localhost/v1/health           # 应返回 OK
-```
-
-浏览器访问 `http://你的服务器IP` 即可使用。
 
 ## 四、更新到最新版本
 

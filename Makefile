@@ -9,14 +9,24 @@ VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || 
 LDFLAGS_API = -X github.com/yinhe/starclaw/internal/molt.Version=$(VERSION)
 LDFLAGS_BRIDGE = -X main.version=$(VERSION)
 
+# ======================== Init (auto-run on first `make up`) ========================
+
+.PHONY: init-env
+init-env: ## Auto-create .env and data directories if missing
+	@if [ ! -f .env ]; then \
+		cp .env.example .env 2>/dev/null || true; \
+		echo "[init] Created .env from .env.example (edit passwords before production use)"; \
+	fi
+	@mkdir -p data/{mysql,redis,identity,merged_videos,thumbnails,music,images,workspaces,sandbox}
+
 # ======================== Build & Start ========================
 
 .PHONY: up
-up: ## Build and start all services (version stamped)
+up: init-env ## Build and start all services (version stamped)
 	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
 
 .PHONY: up-cn
-up-cn: ## Build and start (China mirror acceleration)
+up-cn: init-env ## Build and start (China mirror acceleration)
 	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
 
 .PHONY: start
