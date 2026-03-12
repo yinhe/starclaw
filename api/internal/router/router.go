@@ -88,6 +88,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewBindDomainTool())
 	toolRegistry.Register(tool.NewVerifyOnlineTool())
 	toolRegistry.Register(tool.NewFeishuTool(db))
+	toolRegistry.Register(tool.NewDingtalkTool(db))
+	toolRegistry.Register(tool.NewWeComTool(db))
+	toolRegistry.Register(tool.NewSlackTool(db))
+	toolRegistry.Register(tool.NewDiscordTool(db))
+	toolRegistry.Register(tool.NewTelegramTool(db))
 
 	// Generate thumbnails for existing videos on startup
 	go videoTool.GenerateMissingThumbnails()
