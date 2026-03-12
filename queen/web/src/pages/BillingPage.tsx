@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { billingAPI, type RechargePackage, type BalanceInfo, type BalanceTransaction, type RechargeOrder } from '../lib/api';
@@ -25,6 +25,8 @@ type Tab = 'recharge' | 'transactions' | 'orders';
 
 export function BillingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const clawId = searchParams.get('claw_id') || '';
   const [tab, setTab] = useState<Tab>('recharge');
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
   const [packages, setPackages] = useState<RechargePackage[]>([]);
@@ -60,7 +62,7 @@ export function BillingPage() {
     if (!selectedPkg) return;
     setCreating(true);
     try {
-      const r = await billingAPI.createOrder({ package_id: selectedPkg, pay_method: payMethod });
+      const r = await billingAPI.createOrder({ package_id: selectedPkg, pay_method: payMethod, ...(clawId ? { claw_id: clawId } : {}) });
       if (r.pay_url) {
         setPayUrl(r.pay_url);
         window.open(r.pay_url, '_blank');
@@ -97,7 +99,7 @@ export function BillingPage() {
         {/* Balance Card */}
         {balance && (
           <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 mb-8 text-white">
-            <p className="text-sm opacity-80 mb-1">当前余额</p>
+            <p className="text-sm opacity-80 mb-1">当前余额{clawId && <span className="ml-2 px-2 py-0.5 rounded bg-white/20 text-xs font-mono">{clawId.slice(0, 20)}...</span>}</p>
             <p className="text-4xl font-bold">{formatAmount(balance.balance)}</p>
             <div className="flex flex-wrap gap-6 mt-4 text-sm opacity-80">
               {balance.frozen > 0 && (

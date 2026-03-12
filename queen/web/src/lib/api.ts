@@ -308,7 +308,7 @@ export const billingAPI = {
   balance: () => request<BalanceInfo>('/pay/balance'),
   transactions: (page?: number) => request<{ transactions: BalanceTransaction[]; total: number }>(`/pay/transactions${page ? `?page=${page}` : ''}`),
   orders: (page?: number) => request<{ orders: RechargeOrder[]; total: number }>(`/pay/orders${page ? `?page=${page}` : ''}`),
-  createOrder: (body: { package_id: string; pay_method: string }) =>
+  createOrder: (body: { package_id: string; pay_method: string; claw_id?: string }) =>
     request<{ order_no: string; pay_url: string }>('/pay/create', { method: 'POST', body: JSON.stringify(body) }),
   queryOrder: (orderNo: string) => request<{ status: string; paid: boolean }>(`/pay/order/${orderNo}/status`),
 };

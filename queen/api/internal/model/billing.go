@@ -16,21 +16,23 @@ type UserBalance struct {
 
 // RechargeOrder represents a payment order
 type RechargeOrder struct {
-	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	OrderNo     string     `json:"order_no" gorm:"type:varchar(64);uniqueIndex"` // 商户订单号
-	UserID      string     `json:"user_id" gorm:"type:varchar(36);index"`
-	Amount      int64      `json:"amount" gorm:"not null"`                         // 支付金额，单位：分
-	BonusAmount int64      `json:"bonus_amount" gorm:"default:0"`                  // 赠送金额，单位：分
-	PayMethod   string     `json:"pay_method" gorm:"type:varchar(20)"`             // alipay / wechatpay
-	PayForm     string     `json:"pay_form" gorm:"type:varchar(20);default:h5"`    // pc / h5 / native / app
-	Status      string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / paid / failed / closed / refunded
-	TradeNo     string     `json:"trade_no" gorm:"type:varchar(128)"`              // 第三方交易号
-	Subject     string     `json:"subject" gorm:"type:varchar(200)"`               // 订单标题
-	PaidAt      *time.Time `json:"paid_at"`
-	ExpireAt    *time.Time `json:"expire_at"`          // 订单过期时间
-	CallbackRaw string     `json:"-" gorm:"type:text"` // 回调原始数据
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID           string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	OrderNo      string     `json:"order_no" gorm:"type:varchar(64);uniqueIndex"` // 商户订单号
+	UserID       string     `json:"user_id" gorm:"type:varchar(36);index"`
+	ClawID       string     `json:"claw_id" gorm:"type:varchar(50);index"`          // claw:xxxx — target node for Star Credits
+	Amount       int64      `json:"amount" gorm:"not null"`                         // 支付金额，单位：分
+	BonusAmount  int64      `json:"bonus_amount" gorm:"default:0"`                  // 赠送金额，单位：分
+	StarsGranted int64      `json:"stars_granted" gorm:"default:0"`                 // Star Credits granted (internal units)
+	PayMethod    string     `json:"pay_method" gorm:"type:varchar(20)"`             // alipay / wechatpay
+	PayForm      string     `json:"pay_form" gorm:"type:varchar(20);default:h5"`    // pc / h5 / native / app
+	Status       string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / paid / failed / closed / refunded
+	TradeNo      string     `json:"trade_no" gorm:"type:varchar(128)"`              // 第三方交易号
+	Subject      string     `json:"subject" gorm:"type:varchar(200)"`               // 订单标题
+	PaidAt       *time.Time `json:"paid_at"`
+	ExpireAt     *time.Time `json:"expire_at"`          // 订单过期时间
+	CallbackRaw  string     `json:"-" gorm:"type:text"` // 回调原始数据
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // BalanceTransaction records every balance change

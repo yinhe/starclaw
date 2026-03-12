@@ -172,6 +172,7 @@ func (h *BillingHandler) CreateOrder(c *gin.Context) {
 		PackageID string `json:"package_id" binding:"required"`
 		PayMethod string `json:"pay_method" binding:"required"` // alipay / wechatpay
 		PayForm   string `json:"pay_form"`                      // pc / h5 / native
+		ClawID    string `json:"claw_id"`                       // optional: target claw for Star Credits
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
@@ -188,6 +189,16 @@ func (h *BillingHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
+	// Auto-resolve claw_id from user's bound nodes if not provided
+	clawID := req.ClawID
+	if clawID == "" {
+		var binding model.NodeBinding
+		if err := database.DB.Where("queen_user_id = ? AND status = ?", userID, "active").
+			Order("last_seen DESC").First(&binding).Error; err == nil {
+			clawID = binding.NodeID
+		}
+	}
+
 	// Create order
 	orderNo := fmt.Sprintf("SC%s%04d", time.Now().Format("20060102150405"), time.Now().Nanosecond()/1000000)
 	expire := time.Now().Add(30 * time.Minute)
@@ -195,6 +206,7 @@ func (h *BillingHandler) CreateOrder(c *gin.Context) {
 		ID:          uuid.New().String(),
 		OrderNo:     orderNo,
 		UserID:      userID,
+		ClawID:      clawID,
 		Amount:      pkg.Amount,
 		BonusAmount: pkg.BonusAmount,
 		PayMethod:   req.PayMethod,
@@ -557,8 +569,17 @@ func (h *BillingHandler) completeOrder(orderNo, tradeNo, callbackRaw string) {
 			})
 		}
 
-		log.Printf("[billing] Order %s completed: amount=%d, bonus=%d, user=%s, new_balance=%d",
-			orderNo, order.Amount, order.BonusAmount, order.UserID, bal.Balance)
+		// ── Grant Star Credits to bound claw_id ──
+		if order.ClawID != "" {
+			stars := cnyToStars(order.Amount + order.BonusAmount)
+			grantStarCredits(tx, order.ClawID, stars, fmt.Sprintf("recharge order %s", order.OrderNo))
+			order.StarsGranted = stars
+			tx.Model(&order).Update("stars_granted", stars)
+			log.Printf("[billing] Granted %d star units to %s (order %s)", stars, order.ClawID, orderNo)
+		}
+
+		log.Printf("[billing] Order %s completed: amount=%d, bonus=%d, user=%s, claw=%s, balance=%d",
+			orderNo, order.Amount, order.BonusAmount, order.UserID, order.ClawID, bal.Balance)
 
 		return nil
 	})
@@ -580,6 +601,52 @@ func (h *BillingHandler) PayMethods(c *gin.Context) {
 		methods = append(methods, gin.H{"id": "wechatpay", "name": "微信支付", "forms": []string{"native", "h5"}})
 	}
 	c.JSON(http.StatusOK, gin.H{"methods": methods})
+}
+
+// ---------- Star Credits Integration ----------
+
+const (
+	// Early promo rate: ¥0.01 = 1 Star = 10000 internal units
+	// So ¥1 (100分) = 100 Stars = 1,000,000 units
+	// Therefore: 1分 = 1 Star = 10000 units
+	CnyFenToStarUnits = 10000
+)
+
+// cnyToStars converts CNY amount (分) to Star Credit internal units
+func cnyToStars(amountFen int64) int64 {
+	return amountFen * CnyFenToStarUnits
+}
+
+// grantStarCredits adds Star Credits to a claw account within an existing DB transaction
+func grantStarCredits(tx *gorm.DB, clawID string, amount int64, remark string) {
+	if clawID == "" || amount <= 0 {
+		return
+	}
+
+	var acct model.CreditAccount
+	if err := tx.Where("claw_id = ?", clawID).First(&acct).Error; err != nil {
+		acct = model.CreditAccount{
+			ID:     uuid.New().String(),
+			ClawID: clawID,
+			Status: "active",
+		}
+		tx.Create(&acct)
+	}
+
+	tx.Model(&acct).Updates(map[string]interface{}{
+		"balance":  gorm.Expr("balance + ?", amount),
+		"total_in": gorm.Expr("total_in + ?", amount),
+	})
+
+	tx.Create(&model.CreditTransaction{
+		ID:       uuid.New().String(),
+		FromClaw: "system",
+		ToClaw:   clawID,
+		Amount:   amount,
+		Type:     "recharge",
+		Remark:   remark,
+		Status:   "confirmed",
+	})
 }
 
 // ---------- Helpers ----------
