@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Star, Snowflake, WifiOff } from 'lucide-react'
 import { systemAPI } from '../lib/api'
 
@@ -33,12 +34,12 @@ export default function HPBar() {
 
   if (!data || !data.connected) {
     return (
-      <div className="px-3 py-2">
+      <Link to="/wallet" className="block px-3 py-2 hover:bg-gray-800 transition-colors rounded-lg cursor-pointer" title="星力钱包">
         <div className="flex items-center gap-1.5 text-xs text-gray-500">
           <WifiOff className="w-3 h-3" />
           <span>离线</span>
         </div>
-      </div>
+      </Link>
     )
   }
 
@@ -50,7 +51,7 @@ export default function HPBar() {
   const pct = Math.min(100, (stars / 2000) * 100)
 
   return (
-    <div className="px-3 py-2 space-y-1.5">
+    <Link to="/wallet" className="block px-3 py-2 space-y-1.5 hover:bg-gray-800 transition-colors rounded-lg cursor-pointer" title="星力钱包 — 点击查看详情">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Star className={`w-3.5 h-3.5 ${cfg.color}`} fill="currentColor" />
@@ -74,6 +75,6 @@ export default function HPBar() {
           <span>冻结 {data.frozen_stars.toFixed(1)} ⭐</span>
         </div>
       )}
-    </div>
+    </Link>
   )
 }
