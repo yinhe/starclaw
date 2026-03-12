@@ -5,6 +5,33 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.0313.1806] - 2026-03-13
+
+### Added
+- **Ed25519 signature authentication middleware** — `NodeSignatureAuth()` Gin middleware verifies inter-node requests via `X-Node-ID`, `X-Node-PubKey`, `X-Node-Signature`, `X-Node-Timestamp` headers. Protocol: `sign(METHOD\nPATH\nTIMESTAMP\nBODY_SHA256)` with 300-second anti-replay window. Includes `SignRequest()` client helper.
+- **Inference router** — New `MinerRegistry` tracks miner nodes, supported models, GPU capacity, and load. `SelectMiner` routes requests by model match, load ratio, and latency. Background reaper marks miners offline after 120s. `InferenceRouter` forwards requests to best miner with Ed25519 signed headers and supports SSE stream proxying.
+- **Inference API endpoints** — `POST /v1/inference/register`, `/heartbeat`, `/unregister` (miner-side, signature-protected); `POST /v1/inference/completions`, `GET /v1/inference/miners` (user-side, JWT-protected); `GET /v1/inference/status` (public); `POST /v1/inference/execute` (miner execution endpoint, signature-protected).
+- **Gossip v2 protocol** — Header-based Ed25519 signed gossip at `POST /v1/peer/v2/gossip` and `POST /v1/peer/v2/relay`. Falls back to v1 body-signed protocol for backwards compatibility with older nodes.
+- **Agent step progress in chat** — Team agent conversations now stream `agent_step` SSE events showing real-time progress (thinking, summarizing) instead of a blank spinner. Frontend displays step name, detail text, and step counter.
+- **HD wallet system** — BIP-39 24-word mnemonic, SLIP-0010 HD key derivation for Ed25519 (`m/44'/9001'/account'/change'/index'`). Cold/hot wallet separation. Multi-signature primitives (m-of-n approval).
+- **Wallet page** — Frontend wallet management with HP (health points) visualization bar showing Star Credits balance status.
+- **HP bar in sidebar** — Clickable HP status indicator in navigation sidebar.
+- **Star Credits balance monitoring** — Swarm heartbeat integration for real-time balance updates.
+- **Device approval system** — New devices require owner approval via CLI or Web before accessing the instance.
+- **CLI subcommands** — `export-key`, `import-key` (identity backup/restore), `get-token`, `reset-token`, `reset-password`, `version`. Host CLI wrapper (`starclaw`/`claw`) with Makefile targets.
+- **Messaging integrations** — DingTalk, WeCom, Slack, Discord, and Telegram tool support for agent-driven messaging.
+
+### Changed
+- **3-command quick start** — `make up` now auto-creates `.env` from `.env.example` and all `data/` subdirectories. Deployment simplified to `git clone` → `cd starclaw` → `make up`.
+- **Gossip engine** — Tries v2 header-signed endpoint first, falls back to v1 body-signed for backwards compatibility.
+
+### Fixed
+- **Docker port conflict** — MySQL and Redis no longer expose ports to host by default, preventing conflicts with existing services on port 3306/6379.
+- **Deploy stability** — Identity persistence via volume mount, correct nginx port proxy, proper `.env` variable names, safe `make update` target.
+- **CLI help** — `starclaw`/`claw` called without args now shows help instead of crashing.
+
+---
+
 ## [2026.0310.1838] - 2026-03-11
 
 ### Added

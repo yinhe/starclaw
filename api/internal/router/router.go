@@ -23,6 +23,7 @@ import (
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/inference"
 	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
@@ -218,6 +219,26 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.GET("/peer/resolve", peerPublicHandler.HandleResolve)
 		apiV1.POST("/peer/gossip", peerPublicHandler.HandleGossip)
 		apiV1.POST("/peer/relay", peerPublicHandler.HandleRelayTask)
+
+		// Inference Router (public status + signed miner endpoints)
+		inferenceRouter := inference.NewInferenceRouter(identity)
+		inferenceHandler := v1.NewInferenceHandler(inferenceRouter)
+		apiV1.GET("/inference/status", inferenceHandler.RouterStatus)
+
+		// Node-signed endpoints (protected by Ed25519 signature middleware)
+		signedRoutes := apiV1.Group("")
+		signedRoutes.Use(middleware.NodeSignatureAuth())
+		{
+			// Inference miner endpoints
+			signedRoutes.POST("/inference/register", inferenceHandler.RegisterMiner)
+			signedRoutes.POST("/inference/heartbeat", inferenceHandler.Heartbeat)
+			signedRoutes.POST("/inference/unregister", inferenceHandler.UnregisterMiner)
+			signedRoutes.POST("/inference/execute", inferenceHandler.Execute)
+
+			// Peer v2 endpoints (middleware-verified, cleaner protocol)
+			signedRoutes.POST("/peer/v2/gossip", peerPublicHandler.HandleGossipSigned)
+			signedRoutes.POST("/peer/v2/relay", peerPublicHandler.HandleRelayTaskSigned)
+		}
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)
 		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
@@ -502,6 +523,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/templates", tplHandler.Publish)
 			protected.POST("/templates/:id/install", tplHandler.Install)
 			protected.POST("/templates/:id/rate", tplHandler.Rate)
+
+			// Inference (user-facing: route to miners)
+			protected.POST("/inference/completions", inferenceHandler.Infer)
+			protected.GET("/inference/miners", inferenceHandler.ListMiners)
 
 			// Chat
 			chatHandler := v1.NewChatHandler(db, providerRegistry, toolRegistry, embedder)

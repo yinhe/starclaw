@@ -438,6 +438,77 @@ func (h *PeerHandler) HandleRelayTask(c *gin.Context) {
 	})
 }
 
+// --- Middleware-aware endpoints (use NodeSignatureAuth middleware) ---
+
+// HandleGossipSigned receives gossip from a peer (identity verified by middleware).
+// The middleware sets "node_id" and "node_pubkey" in the Gin context.
+func (h *PeerHandler) HandleGossipSigned(c *gin.Context) {
+	nodeID := c.GetString("node_id")
+	pubKey := c.GetString("node_pubkey")
+	if nodeID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing node identity"})
+		return
+	}
+
+	var req struct {
+		Peers []node.PeerInfo `json:"peers"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify node_id matches public key (double-check)
+	derivedID, err := node.DeriveNodeIDFromPubKey(pubKey)
+	if err != nil || derivedID != nodeID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "node_id does not match public key"})
+		return
+	}
+
+	// Merge remote peers
+	changed := false
+	for _, p := range req.Peers {
+		if p.NodeID == h.identity.NodeID {
+			continue
+		}
+		if h.gossip.AddPeer(p) {
+			changed = true
+		}
+	}
+	if changed {
+		h.syncGossipToDB(h.gossip.GetPeers())
+	}
+
+	c.JSON(http.StatusOK, gin.H{"peers": h.gossip.GetPeers()})
+}
+
+// HandleRelayTaskSigned receives a task delegation (identity verified by middleware).
+func (h *PeerHandler) HandleRelayTaskSigned(c *gin.Context) {
+	nodeID := c.GetString("node_id")
+	if nodeID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing node identity"})
+		return
+	}
+
+	var req struct {
+		TaskType string `json:"task_type"`
+		Payload  string `json:"payload"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("[peer] signed relay task from %s: type=%s", nodeID[:16], req.TaskType)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "task received",
+		"node_id":   h.identity.NodeID,
+		"task_type": req.TaskType,
+		"status":    "queued",
+	})
+}
+
 // ResolveNode resolves a claw: node_id to a network address (protected, for frontend)
 // Resolution chain: Local DB → Gossip P2P → Overlord (Brood) → Queen (Swarm)
 func (h *PeerHandler) ResolveNode(c *gin.Context) {
