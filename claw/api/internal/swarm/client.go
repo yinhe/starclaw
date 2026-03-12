@@ -25,6 +25,21 @@ const (
 // FeralThreshold: after this many consecutive heartbeat failures, enter feral mode
 const FeralThreshold = 3
 
+// CreditBalance holds cached star credit balance from Queen
+type CreditBalance struct {
+	Balance      int64     `json:"balance"`
+	BalanceStars float64   `json:"balance_stars"`
+	Frozen       int64     `json:"frozen"`
+	FrozenStars  float64   `json:"frozen_stars"`
+	TotalIn      int64     `json:"total_in"`
+	TotalOut     int64     `json:"total_out"`
+	Nonce        int64     `json:"nonce"`
+	Status       string    `json:"status"`
+	HPStatus     string    `json:"hp_status"`
+	TrustLevel   string    `json:"trust_level"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 // Client handles swarm registration and heartbeat with Queen/Overlord
 type Client struct {
 	cfg              config.SwarmConfig
@@ -38,6 +53,7 @@ type Client struct {
 	consecutiveFails int
 	lastHeartbeat    time.Time
 	feralSince       time.Time // zero if not in feral mode
+	credits          *CreditBalance
 }
 
 // NewClient creates a swarm client from config
@@ -321,8 +337,59 @@ func (c *Client) heartbeat() error {
 		"error_rate":    0,
 	}
 
-	_, err := c.post("/swarm/heartbeat", body)
-	return err
+	resp, err := c.post("/swarm/heartbeat", body)
+	if err != nil {
+		return err
+	}
+
+	// Parse credit balance from heartbeat response
+	if creditsRaw, ok := resp["credits"]; ok && creditsRaw != nil {
+		if creditsMap, ok := creditsRaw.(map[string]interface{}); ok {
+			cb := &CreditBalance{UpdatedAt: time.Now()}
+			if v, ok := creditsMap["balance"].(float64); ok {
+				cb.Balance = int64(v)
+			}
+			if v, ok := creditsMap["balance_stars"].(float64); ok {
+				cb.BalanceStars = v
+			}
+			if v, ok := creditsMap["frozen"].(float64); ok {
+				cb.Frozen = int64(v)
+			}
+			if v, ok := creditsMap["frozen_stars"].(float64); ok {
+				cb.FrozenStars = v
+			}
+			if v, ok := creditsMap["total_in"].(float64); ok {
+				cb.TotalIn = int64(v)
+			}
+			if v, ok := creditsMap["total_out"].(float64); ok {
+				cb.TotalOut = int64(v)
+			}
+			if v, ok := creditsMap["nonce"].(float64); ok {
+				cb.Nonce = int64(v)
+			}
+			if v, ok := creditsMap["status"].(string); ok {
+				cb.Status = v
+			}
+			if v, ok := creditsMap["hp_status"].(string); ok {
+				cb.HPStatus = v
+			}
+			if v, ok := creditsMap["trust_level"].(string); ok {
+				cb.TrustLevel = v
+			}
+			c.mu.Lock()
+			c.credits = cb
+			c.mu.Unlock()
+		}
+	}
+
+	return nil
+}
+
+// Credits returns the cached star credit balance (updated each heartbeat)
+func (c *Client) Credits() *CreditBalance {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.credits
 }
 
 func (c *Client) post(path string, body map[string]interface{}) (map[string]interface{}, error) {

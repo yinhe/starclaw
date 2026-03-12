@@ -23,6 +23,36 @@ func NewSwarmHandler(db *gorm.DB) *SwarmHandler {
 	return &SwarmHandler{db: db}
 }
 
+// fetchCreditBalance queries Queen API for a claw's star credit balance
+func fetchCreditBalance(clawID string) map[string]interface{} {
+	queenAPI := os.Getenv("QUEEN_API_URL")
+	if queenAPI == "" {
+		queenAPI = "http://queen-api:8085"
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(queenAPI + "/v1/credits/balance?claw_id=" + clawID)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil
+	}
+
+	var result map[string]interface{}
+	if json.NewDecoder(resp.Body).Decode(&result) != nil {
+		return nil
+	}
+
+	// Extract data from APIResponse envelope
+	if data, ok := result["data"].(map[string]interface{}); ok {
+		return data
+	}
+	return nil
+}
+
 // grantWelcomeBonus calls Queen API to grant 100 ⭐ to a new claw node
 func grantWelcomeBonus(clawID string) {
 	queenAPI := os.Getenv("QUEEN_API_URL")
@@ -203,10 +233,22 @@ func (h *SwarmHandler) Heartbeat(c *gin.Context) {
 
 	h.db.Model(&node).Updates(updates)
 
-	c.JSON(http.StatusOK, gin.H{
+	// Fetch credit balance from Queen API and include in response
+	resp := gin.H{
 		"status":  "ok",
 		"message": "heartbeat received",
-	})
+	}
+	clawID := req.ClawID
+	if clawID == "" {
+		clawID = node.ClawID
+	}
+	if clawID != "" {
+		if credits := fetchCreditBalance(clawID); credits != nil {
+			resp["credits"] = credits
+		}
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // ---------- GET /swarm/config ----------

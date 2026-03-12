@@ -131,6 +131,44 @@ func (h *SystemHandler) LeaveSwarm(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已退出虫群"})
 }
 
+// --- Credits (星力) ---
+
+// GetCredits returns cached star credit balance from Queen (updated via heartbeat)
+func (h *SystemHandler) GetCredits(c *gin.Context) {
+	if h.swarmClient == nil || !h.swarmClient.Connected() {
+		c.JSON(http.StatusOK, gin.H{
+			"connected": false,
+			"message":   "未连接虫群，无法获取星力余额",
+		})
+		return
+	}
+
+	credits := h.swarmClient.Credits()
+	if credits == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"connected": true,
+			"credits":   nil,
+			"message":   "等待心跳同步余额...",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"connected":     true,
+		"balance":       credits.Balance,
+		"balance_stars": credits.BalanceStars,
+		"frozen":        credits.Frozen,
+		"frozen_stars":  credits.FrozenStars,
+		"total_in":      credits.TotalIn,
+		"total_out":     credits.TotalOut,
+		"nonce":         credits.Nonce,
+		"status":        credits.Status,
+		"hp_status":     credits.HPStatus,
+		"trust_level":   credits.TrustLevel,
+		"updated_at":    credits.UpdatedAt,
+	})
+}
+
 // --- Bounty ---
 
 // GetBountyStatus returns bounty network connection state
