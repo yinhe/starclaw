@@ -24,6 +24,8 @@ services:
     environment:
       SWARM_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
       SWARM_PORT: "8090"
+      QUEEN_API_URL: "http://queen-api:8085"
+      QUEEN_JWT_SECRET: "${JWT_SECRET:-queen-jwt-secret-change-me}"
       GIN_MODE: release
     ports:
       - "127.0.0.1:8090:8090"
