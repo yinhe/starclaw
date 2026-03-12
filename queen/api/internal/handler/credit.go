@@ -27,8 +27,8 @@ type CreditHandler struct{}
 // ─── Constants ───
 
 const (
-	StarUnit         = 10000 // 1 Star = 10000 internal units (4 decimal precision)
-	NewClawBonus     = 100 * StarUnit // 100 ⭐ welcome bonus
+	StarUnit         = 10000                // 1 Star = 10000 internal units (4 decimal precision)
+	NewClawBonus     = 100 * StarUnit       // 100 ⭐ welcome bonus
 	MaxTransferNoFee = int64(math.MaxInt64) // no fee on transfers currently
 )
 
@@ -106,17 +106,17 @@ func (h *CreditHandler) GetBalance(c *gin.Context) {
 	}
 
 	middleware.OK(c, gin.H{
-		"claw_id":     acct.ClawID,
-		"balance":     acct.Balance,
+		"claw_id":       acct.ClawID,
+		"balance":       acct.Balance,
 		"balance_stars": float64(acct.Balance) / float64(StarUnit),
-		"frozen":      acct.Frozen,
-		"frozen_stars": float64(acct.Frozen) / float64(StarUnit),
-		"total_in":    acct.TotalIn,
-		"total_out":   acct.TotalOut,
-		"nonce":       acct.Nonce,
-		"status":      acct.Status,
-		"hp_status":   hpStatus,
-		"trust_level": acct.TrustLevel,
+		"frozen":        acct.Frozen,
+		"frozen_stars":  float64(acct.Frozen) / float64(StarUnit),
+		"total_in":      acct.TotalIn,
+		"total_out":     acct.TotalOut,
+		"nonce":         acct.Nonce,
+		"status":        acct.Status,
+		"hp_status":     hpStatus,
+		"trust_level":   acct.TrustLevel,
 	})
 }
 
@@ -126,7 +126,7 @@ func (h *CreditHandler) Transfer(c *gin.Context) {
 	var req struct {
 		FromClaw  string `json:"from_claw" binding:"required"`
 		ToClaw    string `json:"to_claw" binding:"required"`
-		Amount    int64  `json:"amount" binding:"required"`  // in internal units
+		Amount    int64  `json:"amount" binding:"required"` // in internal units
 		Nonce     int64  `json:"nonce" binding:"required"`
 		PublicKey string `json:"public_key" binding:"required"` // hex
 		Signature string `json:"signature" binding:"required"`  // hex
@@ -229,12 +229,12 @@ func (h *CreditHandler) Transfer(c *gin.Context) {
 	}
 
 	middleware.OK(c, gin.H{
-		"txn_id":        txnID,
-		"from":          req.FromClaw,
-		"to":            req.ToClaw,
-		"amount":        req.Amount,
-		"amount_stars":  float64(req.Amount) / float64(StarUnit),
-		"new_balance":   newBalance,
+		"txn_id":       txnID,
+		"from":         req.FromClaw,
+		"to":           req.ToClaw,
+		"amount":       req.Amount,
+		"amount_stars": float64(req.Amount) / float64(StarUnit),
+		"new_balance":  newBalance,
 	})
 }
 
@@ -281,13 +281,13 @@ func (h *CreditHandler) ListTransactions(c *gin.Context) {
 }
 
 // ─── Internal API: POST /internal/credits/grant ───
-// Queen grants credits to a claw (welcome bonus, mining rewards, etc.)
+// Queen grants credits to a claw (welcome bonus, contribution rewards, etc.)
 
 func (h *CreditHandler) InternalGrant(c *gin.Context) {
 	var req struct {
 		ClawID    string `json:"claw_id" binding:"required"`
 		Amount    int64  `json:"amount" binding:"required"`
-		Type      string `json:"type" binding:"required"` // grant / mining_reward / bounty / referral
+		Type      string `json:"type" binding:"required"` // grant / contribution_reward / bounty / referral
 		Remark    string `json:"remark"`
 		PublicKey string `json:"public_key"` // optional, store if provided
 	}
@@ -361,7 +361,7 @@ func (h *CreditHandler) InternalConsume(c *gin.Context) {
 		ClawID       string `json:"claw_id" binding:"required"`
 		Amount       int64  `json:"amount" binding:"required"`
 		ResourceType string `json:"resource_type"` // tokens / image / video / sandbox
-		Quantity     int64  `json:"quantity"`       // e.g. token count
+		Quantity     int64  `json:"quantity"`      // e.g. token count
 		Remark       string `json:"remark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -562,8 +562,8 @@ func (h *CreditHandler) InternalUnfreeze(c *gin.Context) {
 
 func (h *CreditHandler) InternalSettle(c *gin.Context) {
 	var req struct {
-		FreezeID string `json:"freeze_id" binding:"required"`
-		ToClaw   string `json:"to_claw" binding:"required"`
+		FreezeID string  `json:"freeze_id" binding:"required"`
+		ToClaw   string  `json:"to_claw" binding:"required"`
 		FeeRate  float64 `json:"fee_rate"` // 0.05 = 5% platform fee
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -24,9 +24,9 @@ type InferenceRequest struct {
 	Stream      bool                     `json:"stream"`
 }
 
-// InferenceRouter routes inference requests to miner nodes with signature auth.
+// InferenceRouter routes inference requests to contributor nodes with signature auth.
 type InferenceRouter struct {
-	Registry *MinerRegistry
+	Registry *ContributorRegistry
 	Identity *node.Identity
 	httpC    *http.Client
 }
@@ -34,7 +34,7 @@ type InferenceRouter struct {
 // NewInferenceRouter creates a new router.
 func NewInferenceRouter(identity *node.Identity) *InferenceRouter {
 	return &InferenceRouter{
-		Registry: NewMinerRegistry(),
+		Registry: NewContributorRegistry(),
 		Identity: identity,
 		httpC: &http.Client{
 			Timeout: 5 * time.Minute, // long timeout for inference
@@ -42,22 +42,22 @@ func NewInferenceRouter(identity *node.Identity) *InferenceRouter {
 	}
 }
 
-// Route selects a miner and forwards the request, returning a streaming reader.
+// Route selects a contributor and forwards the request, returning a streaming reader.
 // The caller is responsible for closing the returned response body.
-func (r *InferenceRouter) Route(ctx context.Context, req *InferenceRequest) (*http.Response, *MinerInfo, error) {
-	miner := r.Registry.SelectMiner(req.Model)
-	if miner == nil {
-		return nil, nil, fmt.Errorf("no available miner for model %q", req.Model)
+func (r *InferenceRouter) Route(ctx context.Context, req *InferenceRequest) (*http.Response, *ContributorInfo, error) {
+	contributor := r.Registry.SelectContributor(req.Model)
+	if contributor == nil {
+		return nil, nil, fmt.Errorf("no available contributor for model %q", req.Model)
 	}
 
-	// Build the request to forward to the miner
+	// Build the request to forward to the contributor
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	minerURL := miner.Address + "/v1/inference/execute"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", minerURL, bytes.NewReader(body))
+	contributorURL := contributor.Address + "/v1/inference/execute"
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", contributorURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -71,24 +71,24 @@ func (r *InferenceRouter) Route(ctx context.Context, req *InferenceRequest) (*ht
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
-		// Mark miner as potentially offline
-		r.Registry.Heartbeat(miner.NodeID, miner.ActiveJobs, 0)
-		return nil, miner, fmt.Errorf("miner %s unreachable: %w", miner.NodeID[:16], err)
+		// Mark contributor as potentially offline
+		r.Registry.Heartbeat(contributor.NodeID, contributor.ActiveJobs, 0)
+		return nil, contributor, fmt.Errorf("contributor %s unreachable: %w", contributor.NodeID[:16], err)
 	}
 
-	// Update miner latency
-	r.Registry.Heartbeat(miner.NodeID, miner.ActiveJobs+1, latency)
+	// Update contributor latency
+	r.Registry.Heartbeat(contributor.NodeID, contributor.ActiveJobs+1, latency)
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, miner, fmt.Errorf("miner %s returned HTTP %d: %s", miner.NodeID[:16], resp.StatusCode, string(respBody))
+		return nil, contributor, fmt.Errorf("contributor %s returned HTTP %d: %s", contributor.NodeID[:16], resp.StatusCode, string(respBody))
 	}
 
-	log.Printf("[inference/router] routed %s to miner %s (%s) latency=%dms",
-		req.Model, miner.NodeID[:16], miner.Address, latency)
+	log.Printf("[inference/router] routed %s to contributor %s (%s) latency=%dms",
+		req.Model, contributor.NodeID[:16], contributor.Address, latency)
 
-	return resp, miner, nil
+	return resp, contributor, nil
 }
 
 // signRequest signs an outgoing HTTP request with the node's Ed25519 key.
