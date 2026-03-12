@@ -162,6 +162,13 @@ export const setupAPI = {
     axios.post('/v1/auth/owner-login', data),
 }
 
+// Queen Account Linking
+export const queenAPI = {
+  getStatus: () => api.get('/queen/status'),
+  link: (data: { email?: string; phone?: string; password: string }) => api.post('/queen/link', data),
+  unlink: () => api.post('/queen/unlink'),
+}
+
 // Billing & Tenant
 export const billingAPI = {
   listPlans: () => api.get('/billing/plans'),

@@ -37,20 +37,36 @@ func NewSystemHandler(cfg *config.Config, sc *swarm.Client, oc ...*overlord.Clie
 
 // --- Swarm ---
 
-// GetSwarmStatus returns current swarm connection state
+// GetSwarmStatus returns current swarm connection state including feral mode
 func (h *SystemHandler) GetSwarmStatus(c *gin.Context) {
 	nodeID := ""
+	state := "disconnected"
+	var consecutiveFails int
+	var lastHeartbeat, feralSince *time.Time
+
 	if h.swarmClient != nil {
 		nodeID = h.swarmClient.NodeID()
+		state = h.swarmClient.State()
+		consecutiveFails = h.swarmClient.ConsecutiveFails()
+		if lh := h.swarmClient.LastHeartbeat(); !lh.IsZero() {
+			lastHeartbeat = &lh
+		}
+		if fs := h.swarmClient.FeralSince(); !fs.IsZero() {
+			feralSince = &fs
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"enabled":   h.cfg.Swarm.Enabled,
-		"queen_url": h.cfg.Swarm.QueenURL,
-		"node_name": h.cfg.Swarm.NodeName,
-		"region":    h.cfg.Swarm.Region,
-		"node_id":   nodeID,
-		"connected": nodeID != "",
+		"enabled":           h.cfg.Swarm.Enabled,
+		"queen_url":         h.cfg.Swarm.QueenURL,
+		"node_name":         h.cfg.Swarm.NodeName,
+		"region":            h.cfg.Swarm.Region,
+		"node_id":           nodeID,
+		"connected":         state == "connected",
+		"state":             state,
+		"consecutive_fails": consecutiveFails,
+		"last_heartbeat":    lastHeartbeat,
+		"feral_since":       feralSince,
 	})
 }
 

@@ -15,16 +15,29 @@ import (
 	"github.com/yinhe/starclaw/internal/molt"
 )
 
+// Connection state constants
+const (
+	StateDisconnected = "disconnected" // never connected or disabled
+	StateConnected    = "connected"    // heartbeat OK
+	StateFeral        = "feral"        // heartbeat failing, running autonomously
+)
+
+// FeralThreshold: after this many consecutive heartbeat failures, enter feral mode
+const FeralThreshold = 3
+
 // Client handles swarm registration and heartbeat with Queen/Overlord
 type Client struct {
-	cfg         config.SwarmConfig
-	nodeID      string
-	token       string
-	clawID      string
-	nodeAddress string
-	mu          sync.RWMutex
-	stopCh      chan struct{}
-	httpC       *http.Client
+	cfg              config.SwarmConfig
+	nodeID           string
+	token            string
+	clawID           string
+	nodeAddress      string
+	mu               sync.RWMutex
+	stopCh           chan struct{}
+	httpC            *http.Client
+	consecutiveFails int
+	lastHeartbeat    time.Time
+	feralSince       time.Time // zero if not in feral mode
 }
 
 // NewClient creates a swarm client from config
@@ -95,14 +108,30 @@ func (c *Client) heartbeatLoop(baseInterval time.Duration) {
 		// Send heartbeat
 		if err := c.heartbeat(); err != nil {
 			consecutiveFails++
+			c.mu.Lock()
+			c.consecutiveFails = consecutiveFails
+			if consecutiveFails == FeralThreshold {
+				c.feralSince = time.Now()
+				log.Printf("[swarm] entering FERAL mode after %d failures — running autonomously", consecutiveFails)
+			}
+			c.mu.Unlock()
 			backoff = calcBackoff(consecutiveFails, maxBackoff)
 			log.Printf("[swarm] heartbeat failed (retry in %s): %v", backoff, err)
 		} else {
+			wasFeral := consecutiveFails >= FeralThreshold
 			if consecutiveFails > 0 {
 				log.Printf("[swarm] heartbeat recovered after %d failures", consecutiveFails)
 			}
+			if wasFeral {
+				log.Println("[swarm] exiting FERAL mode — reconnected to Queen")
+			}
 			consecutiveFails = 0
 			backoff = 0
+			c.mu.Lock()
+			c.consecutiveFails = 0
+			c.lastHeartbeat = time.Now()
+			c.feralSince = time.Time{}
+			c.mu.Unlock()
 		}
 	}
 }
@@ -159,6 +188,40 @@ func (c *Client) Connected() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.nodeID != "" && c.cfg.Enabled
+}
+
+// State returns the current connection state: connected, feral, or disconnected
+func (c *Client) State() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.cfg.Enabled || c.nodeID == "" {
+		return StateDisconnected
+	}
+	if c.consecutiveFails >= FeralThreshold {
+		return StateFeral
+	}
+	return StateConnected
+}
+
+// ConsecutiveFails returns the number of consecutive heartbeat failures
+func (c *Client) ConsecutiveFails() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.consecutiveFails
+}
+
+// LastHeartbeat returns the last successful heartbeat time
+func (c *Client) LastHeartbeat() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastHeartbeat
+}
+
+// FeralSince returns when feral mode started (zero if not feral)
+func (c *Client) FeralSince() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.feralSince
 }
 
 // Resolve queries Queen's swarm registry for a claw: address

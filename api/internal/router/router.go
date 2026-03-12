@@ -688,6 +688,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/swarm/leave", systemHandler.LeaveSwarm)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
 
+			// Queen Account Linking
+			queenHandler := v1.NewQueenAccountHandler(cfg, sc, identity)
+			protected.GET("/queen/status", queenHandler.GetStatus)
+			protected.POST("/queen/link", queenHandler.Link)
+			protected.POST("/queen/unlink", queenHandler.Unlink)
+
 			// Node Identity & Peer Networking
 			var scOpt []interface{}
 			if len(swarmClient) > 0 && swarmClient[0] != nil {
