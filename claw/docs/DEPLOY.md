@@ -378,6 +378,13 @@ sudo fallocate -l 4G /swapfile
 sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
 ```
 
+**Q: 端口冲突（3306/6379 被占用）？**
+如果你的机器已有 MySQL 或 Redis 在运行，StarClaw 不会冲突——它的数据库和缓存仅在 Docker 内部网络通信，不暴露端口到宿主机。如果你需要从宿主机直接访问 StarClaw 的 MySQL（如调试），可以在 `docker-compose.yml` 中取消注释 ports 行，并修改宿主机端口：
+```yaml
+ports:
+  - "13306:3306"  # 宿主机用 13306 避免冲突
+```
+
 **Q: 断开虫群后还能用吗？**
 可以。进入 Feral（失控）模式后所有 AI 功能正常，只是失去自动更新和共享知识。重连后自动恢复。
 
