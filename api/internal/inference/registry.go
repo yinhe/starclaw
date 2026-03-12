@@ -9,19 +9,20 @@ import (
 
 // ContributorInfo represents a registered compute contributor node and its capabilities.
 type ContributorInfo struct {
-	NodeID      string   `json:"node_id"`
-	PublicKey   string   `json:"public_key"`
-	Address     string   `json:"address"`    // base URL e.g. "http://10.0.0.5:8080"
-	Models      []string `json:"models"`     // supported model names
-	MaxTokens   int      `json:"max_tokens"` // max tokens per request
-	GPUMemoryMB int      `json:"gpu_memory_mb"`
-	ActiveJobs  int      `json:"active_jobs"` // current concurrent requests
-	MaxJobs     int      `json:"max_jobs"`    // max concurrent requests
-	Region      string   `json:"region"`
-	Status      string   `json:"status"`       // "online", "busy", "offline"
-	LastSeen    int64    `json:"last_seen"`    // Unix timestamp
-	Latency     int64    `json:"latency_ms"`   // avg response latency in ms
-	TotalServed int64    `json:"total_served"` // lifetime requests served
+	NodeID      string      `json:"node_id"`
+	PublicKey   string      `json:"public_key"`
+	Address     string      `json:"address"`    // base URL e.g. "http://10.0.0.5:8080"
+	Models      []string    `json:"models"`     // supported model names
+	MaxTokens   int         `json:"max_tokens"` // max tokens per request
+	GPUMemoryMB int         `json:"gpu_memory_mb"`
+	ActiveJobs  int         `json:"active_jobs"` // current concurrent requests
+	MaxJobs     int         `json:"max_jobs"`    // max concurrent requests
+	Region      string      `json:"region"`
+	Status      string      `json:"status"`       // "online", "busy", "offline"
+	LastSeen    int64       `json:"last_seen"`    // Unix timestamp
+	Latency     int64       `json:"latency_ms"`   // avg response latency in ms
+	TotalServed int64       `json:"total_served"` // lifetime requests served
+	Trust       *TrustScore `json:"trust"`        // reputation score
 }
 
 // ContributorRegistry tracks all known compute contributor nodes.
@@ -52,6 +53,13 @@ func (r *ContributorRegistry) Register(info *ContributorInfo) {
 	if info.MaxJobs <= 0 {
 		info.MaxJobs = 1
 	}
+	// Preserve existing trust score on re-registration
+	if existing, ok := r.contributors[info.NodeID]; ok && existing.Trust != nil {
+		info.Trust = existing.Trust
+	}
+	if info.Trust == nil {
+		info.Trust = DefaultTrustScore()
+	}
 	r.contributors[info.NodeID] = info
 	log.Printf("[inference/registry] registered contributor %s (%s) models=%v jobs=%d/%d",
 		info.NodeID[:16], info.Address, info.Models, info.ActiveJobs, info.MaxJobs)
@@ -73,6 +81,9 @@ func (r *ContributorRegistry) Heartbeat(nodeID string, activeJobs int, latencyMs
 		// Exponential moving average
 		m.Latency = (m.Latency*7 + latencyMs*3) / 10
 	}
+	if m.Trust != nil {
+		m.Trust.RecordHeartbeat()
+	}
 	return true
 }
 
@@ -85,8 +96,14 @@ func (r *ContributorRegistry) Unregister(nodeID string) {
 }
 
 // SelectContributor picks the best available contributor for a given model.
-// Strategy: filter by model → filter online + has capacity → sort by (load ratio, latency).
+// Strategy: filter by model → filter online + has capacity → trust-weighted sort.
 func (r *ContributorRegistry) SelectContributor(model string) *ContributorInfo {
+	return r.SelectContributorWithTrust(model, TrustAny)
+}
+
+// SelectContributorWithTrust picks the best contributor that meets the minimum trust level.
+// Scoring formula: score = (1 - loadRatio)*0.3 + (1 - latencyNorm)*0.2 + trustComposite*0.5
+func (r *ContributorRegistry) SelectContributorWithTrust(model string, minTrust TrustLevel) *ContributorInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -97,6 +114,10 @@ func (r *ContributorRegistry) SelectContributor(model string) *ContributorInfo {
 		}
 		if m.ActiveJobs >= m.MaxJobs {
 			continue // at capacity
+		}
+		// Check trust level
+		if m.Trust != nil && !m.Trust.MeetsLevel(minTrust) {
+			continue
 		}
 		// Check model support
 		for _, supported := range m.Models {
@@ -111,17 +132,39 @@ func (r *ContributorRegistry) SelectContributor(model string) *ContributorInfo {
 		return nil
 	}
 
-	// Sort by load ratio (ascending), then latency (ascending)
+	// Trust-weighted scoring: lower score = better
 	sort.Slice(candidates, func(i, j int) bool {
-		loadI := float64(candidates[i].ActiveJobs) / float64(candidates[i].MaxJobs)
-		loadJ := float64(candidates[j].ActiveJobs) / float64(candidates[j].MaxJobs)
-		if loadI != loadJ {
-			return loadI < loadJ
-		}
-		return candidates[i].Latency < candidates[j].Latency
+		return contributorScore(candidates[i]) > contributorScore(candidates[j])
 	})
 
 	return candidates[0]
+}
+
+// contributorScore computes a composite selection score (higher = better).
+func contributorScore(c *ContributorInfo) float64 {
+	// Load component: less loaded = higher score
+	loadScore := 1.0 - float64(c.ActiveJobs)/float64(c.MaxJobs)
+
+	// Latency component: lower latency = higher score (normalize to 0-1, cap at 10s)
+	latencyScore := 1.0
+	if c.Latency > 0 {
+		latencyScore = 1.0 - float64(min64(c.Latency, 10000))/10000.0
+	}
+
+	// Trust component
+	trustScore := 0.5 // default for new contributors
+	if c.Trust != nil {
+		trustScore = c.Trust.Composite
+	}
+
+	return loadScore*0.30 + latencyScore*0.20 + trustScore*0.50
+}
+
+func min64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // ListContributors returns all registered contributors.

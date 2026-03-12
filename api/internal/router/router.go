@@ -222,7 +222,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 		// Inference Router (public status + signed contributor endpoints)
 		inferenceRouter := inference.NewInferenceRouter(identity)
-		inferenceHandler := v1.NewInferenceHandler(inferenceRouter, providerRegistry)
+		spotChecker := inference.NewSpotChecker(inferenceRouter.Registry, inferenceRouter, 0.01) // 1% spot-check rate
+		inferenceHandler := v1.NewInferenceHandler(inferenceRouter, providerRegistry, spotChecker)
 		apiV1.GET("/inference/status", inferenceHandler.RouterStatus)
 
 		// Node-signed endpoints (protected by Ed25519 signature middleware)
