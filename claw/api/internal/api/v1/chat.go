@@ -358,6 +358,20 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				return
 			}
 
+			if chunk.AgentStep != "" {
+				data, _ := json.Marshal(gin.H{
+					"agent_step":        chunk.AgentStep,
+					"agent_step_detail": chunk.AgentStepDetail,
+					"agent_step_index":  chunk.AgentStepIndex,
+					"conversation_id":   convID,
+				})
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				if flusher != nil {
+					flusher.Flush()
+				}
+				continue
+			}
+
 			if chunk.ToolCall != "" {
 				toolRecords = append(toolRecords, toolRecord{ToolCall: chunk.ToolCall, Reasoning: chunk.Reasoning})
 				sseFields := gin.H{"tool_call": chunk.ToolCall, "conversation_id": convID}
