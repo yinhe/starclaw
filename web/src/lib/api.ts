@@ -62,6 +62,7 @@ export const systemAPI = {
   getSwarm: () => api.get('/system/swarm'),
   joinSwarm: (data: { queen_url: string; node_name?: string; region?: string }) => api.post('/system/swarm/join', data),
   leaveSwarm: () => api.post('/system/swarm/leave'),
+  getCredits: () => api.get('/system/credits'),
   getBounty: () => api.get('/system/bounty'),
   getBridge: () => api.get('/system/bridge'),
   getOverlord: () => api.get('/system/overlord'),

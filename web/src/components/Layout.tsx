@@ -20,6 +20,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
     <path d="M13 19.5l0.5 2.5" />
   </svg>
 )
+import HPBar from './HPBar'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { useConfigStore } from '../stores/configStore'
@@ -213,6 +214,9 @@ export default function Layout() {
           ))}
         </nav>
 
+        <div className="border-t border-gray-700">
+          <HPBar />
+        </div>
         <div className="p-3 border-t border-gray-700 space-y-2">
           <a
             href="https://starclaw.me/docs"
