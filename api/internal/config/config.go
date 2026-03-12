@@ -17,6 +17,7 @@ type Config struct {
 	Swarm       SwarmConfig       `mapstructure:"swarm"`
 	Overlord    OverlordConfig    `mapstructure:"overlord"`
 	Contributor ContributorConfig `mapstructure:"contributor"`
+	Nydus       NydusConfig       `mapstructure:"nydus"`
 }
 
 type NodeConfig struct {
@@ -46,6 +47,13 @@ type ContributorConfig struct {
 	OllamaURL    string `mapstructure:"ollama_url"`    // e.g. http://localhost:11434
 	MaxJobs      int    `mapstructure:"max_jobs"`      // max concurrent inference jobs (default 2)
 	ExternalAddr string `mapstructure:"external_addr"` // address other nodes can reach this node at
+}
+
+type NydusConfig struct {
+	Enabled     bool     `mapstructure:"enabled"`      // enable NAT traversal (default: auto when contributor.enabled)
+	STUNServers []string `mapstructure:"stun_servers"` // custom STUN servers (default: Google + Cloudflare)
+	RelayURLs   []string `mapstructure:"relay_urls"`   // relay fallback URLs (default: peer addresses)
+	EnableRelay bool     `mapstructure:"enable_relay"` // serve as relay for other nodes (default: true if public IP)
 }
 
 type OAuthConfig struct {

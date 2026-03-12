@@ -17,10 +17,11 @@ import (
 
 // ContributorConfig controls compute contribution behavior.
 type ContributorConfig struct {
-	Enabled     bool   `json:"enabled" mapstructure:"enabled"`           // opt-in to contribute compute
-	OllamaURL  string `json:"ollama_url" mapstructure:"ollama_url"`     // e.g. http://localhost:11434
-	MaxJobs    int    `json:"max_jobs" mapstructure:"max_jobs"`         // max concurrent inference jobs
+	Enabled      bool   `json:"enabled" mapstructure:"enabled"`             // opt-in to contribute compute
+	OllamaURL    string `json:"ollama_url" mapstructure:"ollama_url"`       // e.g. http://localhost:11434
+	MaxJobs      int    `json:"max_jobs" mapstructure:"max_jobs"`           // max concurrent inference jobs
 	ExternalAddr string `json:"external_addr" mapstructure:"external_addr"` // address other nodes reach us at
+	NydusEnabled bool   `json:"nydus_enabled" mapstructure:"nydus_enabled"` // enable NAT traversal
 }
 
 // ContributorService auto-detects local models and registers with swarm router nodes.
@@ -28,7 +29,8 @@ type ContributorService struct {
 	cfg       ContributorConfig
 	identity  *node.Identity
 	providers *provider.Registry
-	peers     func() []string // returns addresses of known peers (potential routers)
+	peers     func() []string    // returns addresses of known peers (potential routers)
+	nydus     *node.NydusManager // NAT traversal (nil if disabled)
 
 	mu         sync.RWMutex
 	models     []string
@@ -38,12 +40,13 @@ type ContributorService struct {
 }
 
 // NewContributorService creates a new compute contribution service.
-func NewContributorService(cfg ContributorConfig, identity *node.Identity, providers *provider.Registry, peersFn func() []string) *ContributorService {
+func NewContributorService(cfg ContributorConfig, identity *node.Identity, providers *provider.Registry, peersFn func() []string, nydus *node.NydusManager) *ContributorService {
 	return &ContributorService{
 		cfg:        cfg,
 		identity:   identity,
 		providers:  providers,
 		peers:      peersFn,
+		nydus:      nydus,
 		registered: make(map[string]bool),
 		stopCh:     make(chan struct{}),
 		httpC:      &http.Client{Timeout: 10 * time.Second},
@@ -69,6 +72,26 @@ func (s *ContributorService) Start() {
 	s.mu.Unlock()
 
 	log.Printf("[contributor] detected %d local models: %v", len(models), models)
+
+	// Start Nydus NAT traversal if enabled and no external address configured
+	if s.nydus != nil && s.cfg.ExternalAddr == "" {
+		log.Println("[contributor] no external_addr set, starting Nydus NAT traversal")
+		s.nydus.OnNATDiscovered(func(result *node.STUNResult) {
+			endpoint := fmt.Sprintf("http://%s:%d", result.PublicIP, 8080) // default API port
+			log.Printf("[contributor] Nydus discovered public endpoint: %s (NAT: %s)", endpoint, result.NATType)
+			if result.NATType == node.NATNone || result.NATType == node.NATFullCone {
+				// Directly reachable — use as external address
+				s.mu.Lock()
+				s.cfg.ExternalAddr = endpoint
+				s.mu.Unlock()
+				log.Printf("[contributor] auto-set external_addr=%s", endpoint)
+			}
+		})
+		if err := s.nydus.Start(); err != nil {
+			log.Printf("[contributor] Nydus start failed: %v (continuing without NAT traversal)", err)
+		}
+	}
+
 	log.Printf("[contributor] starting compute contribution (max_jobs=%d)", s.cfg.MaxJobs)
 
 	go s.registrationLoop()
@@ -79,7 +102,15 @@ func (s *ContributorService) Stop() {
 	if s.cfg.Enabled {
 		s.unregisterAll()
 	}
+	if s.nydus != nil {
+		s.nydus.Stop()
+	}
 	close(s.stopCh)
+}
+
+// Nydus returns the NAT traversal manager (may be nil).
+func (s *ContributorService) Nydus() *node.NydusManager {
+	return s.nydus
 }
 
 // detectModels queries the local Ollama instance for available models.
@@ -155,10 +186,20 @@ func (s *ContributorService) registerWithPeers() {
 
 // registerWith sends a registration request to a specific router node.
 func (s *ContributorService) registerWith(routerAddr string, models []string) {
+	s.mu.RLock()
+	externalAddr := s.cfg.ExternalAddr
+	s.mu.RUnlock()
+
+	natType := "unknown"
+	if s.nydus != nil {
+		natType = string(s.nydus.GetNATType())
+	}
+
 	payload := map[string]interface{}{
-		"address":  s.cfg.ExternalAddr,
+		"address":  externalAddr,
 		"models":   models,
 		"max_jobs": s.cfg.MaxJobs,
+		"nat_type": natType,
 	}
 	data, _ := json.Marshal(payload)
 
