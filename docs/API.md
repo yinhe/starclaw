@@ -158,6 +158,134 @@ Authorization: Bearer <token>
 | `starclaw wallet-info` | `make wallet-info` | 查看 HD 钱包地址和派生路径 |
 | `starclaw version` | `make api-version` | 查看版本号 |
 
+## 算力贡献（Compute Contribution）
+
+StarClaw 允许有 GPU 的节点贡献算力给网络中的其他节点使用。Claw A（有 GPU）可以为 Claw B（无 GPU）提供推理服务，整个过程对用户完全透明。
+
+### 工作原理
+
+```
+用户在 Claw B 提问
+   │
+   ├─① B 收到推理请求（如 "用 qwen2.5 回答xxx"）
+   │
+   ├─② B 本地没有该模型 → 查询 ContributorRegistry（已注册的算力节点列表）
+   │
+   ├─③ 信任加权选择最优贡献者 A（信任分*0.5 + 负载*0.3 + 延迟*0.2）
+   │
+   ├─④ B 向 A 发送 Ed25519 签名请求：POST /v1/inference/execute
+   │
+   ├─⑤ A 调用本地 Ollama 执行推理 → 返回结果给 B
+   │
+   └─⑥ B 将结果返回用户，异步上报用量结算（90% 给 A，10% 平台）
+```
+
+### 节点发现方式（3 种，逐级 fallback）
+
+| 方式 | 原理 | 配置 |
+|------|------|------|
+| **Gossip P2P** | A 的 ContributorService 每 30s 向已知 peer 注册 | 互为 peer 节点 |
+| **Swarm** | A 和 B 都注册到虫群，虫群广播算力节点列表 | `swarm.enabled: true` |
+| **手动添加** | B 的管理界面手动添加 A 为 peer | Web UI → 节点管理 |
+
+### 配置（算力贡献者）
+
+在 `config.yaml` 中或通过环境变量 `STARCLAW_CONTRIBUTOR_*` 配置：
+
+```yaml
+contributor:
+  enabled: true                          # 启用算力贡献（默认 false）
+  ollama_url: "http://localhost:11434"   # 本地 Ollama 地址
+  max_jobs: 2                            # 最大并发推理数
+  external_addr: "https://a.example.com" # 其他节点访问本机的公网地址
+```
+
+> **注意：** 贡献者必须有公网可达地址（公网 IP 或端口映射）。NAT 穿透（Nydus）尚在规划中。
+
+### 推理路由 API（公开）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/v1/inference/status` | 查看路由器状态和已注册贡献者数量 |
+
+### 推理路由 API（Ed25519 节点签名保护）
+
+以下接口需要 `X-Node-ID` + `X-Node-PubKey` + `X-Node-Signature` + `X-Node-Timestamp` 签名头：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/v1/inference/register` | 贡献者注册（上报模型列表、地址、GPU 信息） |
+| POST | `/v1/inference/heartbeat` | 贡献者心跳（上报当前负载、延迟） |
+| POST | `/v1/inference/unregister` | 贡献者注销 |
+| POST | `/v1/inference/execute` | 执行推理（路由器转发请求到贡献者） |
+
+#### POST /v1/inference/register
+
+```json
+{
+  "address": "https://a.example.com",
+  "models": ["qwen2.5:7b", "llama3:8b"],
+  "max_jobs": 4,
+  "gpu_memory_mb": 24000,
+  "region": "cn-east"
+}
+```
+
+#### POST /v1/inference/execute
+
+```json
+{
+  "model": "qwen2.5:7b",
+  "messages": [{"role": "user", "content": "你好"}],
+  "temperature": 0.7,
+  "max_tokens": 2048,
+  "stream": true
+}
+```
+
+响应：与标准 OpenAI Chat Completion 格式一致（流式为 SSE，非流式为 JSON）。
+
+### 信任体系
+
+每个贡献者有 0.0–1.0 的综合信任分，由 5 个维度加权计算：
+
+| 维度 | 权重 | 说明 |
+|------|------|------|
+| 在线率 | 20% | 心跳一致性（收到 / 预期） |
+| 成功率 | 30% | 成功任务 / 总任务 |
+| 延迟稳定性 | 15% | 低延迟且稳定 = 高分 |
+| 抽检通过率 | 25% | 1% 请求会发给第二个节点验证 |
+| 服务时长 | 10% | 长期稳定服务的加分（对数增长，~90 天封顶） |
+
+#### 信任等级
+
+| 等级 | 综合分要求 | 用途 |
+|------|-----------|------|
+| **any** | 默认 | 任意贡献者，最便宜 |
+| **brood** | ≥0.70 且 ≥10 任务 | 企业内部节点 |
+| **verified** | ≥0.85 且 ≥100 任务 | 认证贡献者，适合隐私数据 |
+| **self** | — | 仅路由到自己的节点 |
+
+- **自动晋升**：达到综合分和任务数阈值后自动升级
+- **自动降级**：抽检通过率 <50% 立即降为 `any`
+
+### 结算
+
+每次推理完成后，路由节点异步上报用量到虫群账本：
+
+- 按 token 计费：输入 0.5⭐/千 token，输出 1⭐/千 token
+- **90%** 归算力贡献者，**10%** 归平台
+- 余额为 0 的节点进入休眠模式（本地功能正常，无法使用网络算力）
+
+### 安全保障
+
+| 层级 | 机制 |
+|------|------|
+| **身份验证** | Ed25519 签名 — 每个请求都携带签名，防伪造 |
+| **信任过滤** | 请求时可指定最低信任等级，只路由到满足要求的贡献者 |
+| **抽检验证** | 1% 请求随机发给第二个贡献者，Jaccard 相似度 ≥0.5 才通过 |
+| **经济约束** | 作弊导致信任分下降 → 接单减少 → 收入降低 |
+
 ## SSE 流式响应格式
 
 对话和工作流接口使用 Server-Sent Events 流式返回：
