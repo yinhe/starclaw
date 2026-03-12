@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,13 +15,33 @@ import (
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
+	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/router"
 	"github.com/yinhe/starclaw/internal/swarm"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
+	// Handle CLI subcommands before starting the full server
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "reset-token":
+			cmdResetToken()
+			return
+		case "reset-password":
+			cmdResetPassword()
+			return
+		case "version":
+			fmt.Printf("StarClaw v%s\n", molt.Version)
+			return
+		case "help", "--help", "-h":
+			printUsage()
+			return
+		}
+	}
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -103,4 +125,106 @@ func main() {
 	}
 
 	log.Println("Server exited gracefully")
+}
+
+func printUsage() {
+	fmt.Println("Usage: starclaw [command]")
+	fmt.Println("")
+	fmt.Println("Commands:")
+	fmt.Println("  (none)           Start the API server")
+	fmt.Println("  reset-token      Generate a new Owner Token (prints to stdout)")
+	fmt.Println("  reset-password   Reset the Owner password (reads from --password flag)")
+	fmt.Println("  version          Print version and exit")
+	fmt.Println("  help             Show this help")
+	fmt.Println("")
+	fmt.Println("Examples:")
+	fmt.Println("  starclaw reset-token")
+	fmt.Println("  starclaw reset-password --password newpass123")
+}
+
+func openCLIDB() (*config.Config, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+	return cfg, nil
+}
+
+// cmdResetToken regenerates the owner token and prints it.
+func cmdResetToken() {
+	cfg, err := openCLIDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := database.InitMySQL(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	var user model.User
+	if err := db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
+		log.Fatalf("No owner user found. Run initial setup first.")
+	}
+
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		log.Fatalf("Failed to generate token: %v", err)
+	}
+	newToken := hex.EncodeToString(tokenBytes)
+
+	if err := db.Model(&user).Update("owner_token", newToken).Error; err != nil {
+		log.Fatalf("Failed to update token: %v", err)
+	}
+
+	fmt.Println("========================================")
+	fmt.Printf("Owner: %s (id: %s)\n", user.Username, user.ID)
+	fmt.Printf("New Owner Token: %s\n", newToken)
+	fmt.Println("========================================")
+	fmt.Println("Use this token to log in via the Auth Token tab.")
+}
+
+// cmdResetPassword resets the owner password.
+func cmdResetPassword() {
+	password := ""
+	for i, arg := range os.Args {
+		if arg == "--password" && i+1 < len(os.Args) {
+			password = os.Args[i+1]
+		}
+	}
+	if password == "" {
+		fmt.Println("Usage: starclaw reset-password --password <new-password>")
+		os.Exit(1)
+	}
+	if len(password) < 6 {
+		fmt.Println("Error: password must be at least 6 characters")
+		os.Exit(1)
+	}
+
+	cfg, err := openCLIDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := database.InitMySQL(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	var user model.User
+	if err := db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
+		log.Fatalf("No owner user found. Run initial setup first.")
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatalf("Failed to hash password: %v", err)
+	}
+
+	if err := db.Model(&user).Update("password", string(hashed)).Error; err != nil {
+		log.Fatalf("Failed to update password: %v", err)
+	}
+
+	fmt.Println("========================================")
+	fmt.Printf("Owner: %s (id: %s)\n", user.Username, user.ID)
+	fmt.Println("Password has been reset successfully.")
+	fmt.Println("========================================")
 }
