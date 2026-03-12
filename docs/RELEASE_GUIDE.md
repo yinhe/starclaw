@@ -1,65 +1,21 @@
 # StarClaw Release Guide
 
-This document defines the versioning rules and release process for the StarClaw open-source project.
+This document describes the versioning scheme, release assets, and installation methods for StarClaw.
 
 ---
 
 ## 0. Repository Structure
 
-StarClaw uses a **dual-repo** setup:
-
-| Repo | Path | Remote | Visibility |
-|------|------|--------|------------|
-| Private monorepo | `E:\starclaw` | none (local only) | Private — contains ALL code |
-| OSS repo | `E:\starclaw-oss` | `github.com:yinhe/starclaw` | Public — Claw only |
-
-**Private monorepo** (`E:\starclaw`):
 ```
-E:\starclaw/
-  claw/          ← open-source Claw (API, Web, MCP Bridge)
-  queen/         ← closed-source central control
-  overlord/      ← closed-source enterprise management
-```
-
-**OSS repo** (`E:\starclaw-oss`):
-```
-E:\starclaw-oss/         ← git root, pushed to GitHub
+starclaw/
   .github/workflows/    ← CI/CD (ci.yml, release.yml)
-  api/                  ← Claw API (Go)
-  web/                  ← Claw Web (React)
+  api/                  ← StarClaw API Server (Go)
+  web/                  ← StarClaw Web Frontend (React)
   docs/                 ← Documentation
-  deploy/               ← Deployment configs
+  deploy/               ← Deployment configs (Docker Compose, nginx)
   scripts/              ← Helper scripts
   Makefile, README.md, LICENSE, etc.
 ```
-
-The OSS repo contains the **contents** of `claw/` at its root level (not `claw/` as a subdirectory).
-
-### 0.1 Sync Workflow
-
-To publish changes from monorepo to GitHub:
-
-```powershell
-# Windows (robocopy)
-robocopy "E:\starclaw\claw" "E:\starclaw-oss" /MIR /XD node_modules .git data build /XF sync-oss.sh *.tar.gz
-
-# Linux/macOS (rsync)
-bash claw/scripts/sync-oss.sh "commit message"
-```
-
-Then commit and push from the OSS repo:
-```bash
-cd E:\starclaw-oss
-git add -A
-git commit -m "description of changes"
-git push origin main
-```
-
-### 0.2 What NEVER goes to GitHub
-
-- `queen/` — closed-source central control (API, Swarm, Bounty, Forum, Arena, Core, Web, Mobile)
-- `overlord/` — closed-source enterprise management (Manager, Console)
-- Any mention of Queen/Overlord in code, docs, release notes, or commit messages
 
 ---
 
@@ -138,22 +94,16 @@ StarClaw v2026.MMDD.HHmm
 - **All English** — no Chinese in release notes
 - Keep descriptions concise and factual
 
-### 4.3 Content Scope — Claw Only
+### 4.3 Content Scope
 
-This is the **open-source Claw** repository. Release notes must **NEVER** mention:
+Release notes should cover:
 
-- ❌ **Queen** (central control, admin dashboard, billing, swarm management)
-- ❌ **Overlord** (enterprise management, console, teams, RBAC)
-- ❌ Any closed-source service names or internal architecture
-
-Only include changes related to:
-
-- ✅ Claw API (agents, tools, providers, chat, workflows)
-- ✅ Claw Web (frontend UI)
-- ✅ MCP Bridge
-- ✅ P2P / Gossip protocol
-- ✅ Molt self-update (client-side only)
-- ✅ Docker / deployment improvements
+- StarClaw API (agents, tools, providers, chat, workflows)
+- StarClaw Web (frontend UI)
+- MCP Bridge
+- P2P / Gossip protocol
+- Molt self-update
+- Docker / deployment improvements
 
 ### 4.4 Two Distribution Channels
 
@@ -228,7 +178,7 @@ Existing servers with Molt auto-update will receive this version automatically.
 | Windows x64 | starclaw-windows-amd64.exe | mcp-bridge-windows-amd64.exe |
 
 ## Changes
-- Change 1 (English only, Claw-scope only)
+- Change 1
 - Change 2
 ```
 
@@ -237,7 +187,7 @@ Existing servers with Molt auto-update will receive this version automatically.
 ## 5. CHANGELOG.md Rules
 
 - Written in **English**
-- Only **Claw-related** changes
+- Only **StarClaw-related** changes
 - Group by: `Added`, `Changed`, `Fixed`, `Removed`
 - Reference the timestamp version, not SemVer
 
@@ -246,9 +196,9 @@ Existing servers with Molt auto-update will receive this version automatically.
 ## 6. Checklist Before Release
 
 - [ ] All changes committed and pushed
-- [ ] `go build ./...` passes in `claw/api`
-- [ ] `npm run build` passes in `claw/web`
-- [ ] CHANGELOG.md updated (English, Claw-scope only)
+- [ ] `go build ./...` passes in `api/`
+- [ ] `npm run build` passes in `web/`
+- [ ] CHANGELOG.md updated (English)
 - [ ] `make tag` → `git push origin v...`
 - [ ] Verify GitHub Release: title, notes, 18 assets
 - [ ] Verify macOS assets: 2 tar.gz (API) + 2 tar.gz (MCP) + 2 DMG (MCP)
