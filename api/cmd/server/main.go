@@ -27,6 +27,9 @@ func main() {
 	// Handle CLI subcommands before starting the full server
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "get-token":
+			cmdGetToken()
+			return
 		case "reset-token":
 			cmdResetToken()
 			return
@@ -132,12 +135,14 @@ func printUsage() {
 	fmt.Println("")
 	fmt.Println("Commands:")
 	fmt.Println("  (none)           Start the API server")
+	fmt.Println("  get-token        Show current Owner Token (read-only)")
 	fmt.Println("  reset-token      Generate a new Owner Token (prints to stdout)")
 	fmt.Println("  reset-password   Reset the Owner password (reads from --password flag)")
 	fmt.Println("  version          Print version and exit")
 	fmt.Println("  help             Show this help")
 	fmt.Println("")
 	fmt.Println("Examples:")
+	fmt.Println("  starclaw get-token")
 	fmt.Println("  starclaw reset-token")
 	fmt.Println("  starclaw reset-password --password newpass123")
 }
@@ -148,6 +153,28 @@ func openCLIDB() (*config.Config, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 	return cfg, nil
+}
+
+// cmdGetToken prints the current owner token without modifying it.
+func cmdGetToken() {
+	cfg, err := openCLIDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	db, err := database.InitMySQL(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	var user model.User
+	if err := db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
+		log.Fatalf("No owner user found. Run initial setup first.")
+	}
+
+	fmt.Println("========================================")
+	fmt.Printf("Owner: %s (id: %s)\n", user.Username, user.ID)
+	fmt.Printf("Owner Token: %s\n", *user.OwnerToken)
+	fmt.Println("========================================")
 }
 
 // cmdResetToken regenerates the owner token and prints it.

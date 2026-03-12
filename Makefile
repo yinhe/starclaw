@@ -194,6 +194,10 @@ bridge-install: bridge-linux ## Deploy MCP Bridge to server as systemd service
 
 # ======================== CLI Commands (run inside API container) ========================
 
+.PHONY: get-token
+get-token: ## Show current Owner Token (read-only)
+	docker exec starclaw-api ./starclaw get-token
+
 .PHONY: reset-token
 reset-token: ## Reset Owner Token (prints new token)
 	docker exec starclaw-api ./starclaw reset-token
