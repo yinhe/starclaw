@@ -241,6 +241,15 @@ reject: ## Reject/revoke a device (usage: make reject ID=a1b2c3d4)
 	@test -n "$(ID)" || (echo "Usage: make reject ID=<device-id-prefix>" && exit 1)
 	docker exec starclaw-api ./starclaw reject $(ID)
 
+.PHONY: export-key
+export-key: ## Export node identity key (for backup)
+	docker exec starclaw-api ./starclaw export-key
+
+.PHONY: import-key
+import-key: ## Import node identity key (usage: make import-key SEED=<hex>)
+	@test -n "$(SEED)" || (echo "Usage: make import-key SEED=<64-char-hex>" && exit 1)
+	docker exec -it starclaw-api ./starclaw import-key $(SEED)
+
 .PHONY: api-version
 api-version: ## Show API binary version inside container
 	docker exec starclaw-api ./starclaw version

@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,6 +47,12 @@ func main() {
 			return
 		case "reject":
 			cmdRejectDevice()
+			return
+		case "export-key":
+			cmdExportKey()
+			return
+		case "import-key":
+			cmdImportKey()
 			return
 		case "version":
 			fmt.Printf("StarClaw v%s\n", molt.Version)
@@ -150,6 +159,8 @@ func printUsage() {
 	fmt.Println("  devices          List all authorized devices")
 	fmt.Println("  approve <id>     Approve a pending device (supports ID prefix)")
 	fmt.Println("  reject <id>      Reject/revoke a device (supports ID prefix)")
+	fmt.Println("  export-key       Export node identity key (for backup)")
+	fmt.Println("  import-key <hex> Import node identity key (restore from backup)")
 	fmt.Println("  version          Print version and exit")
 	fmt.Println("  help             Show this help")
 	fmt.Println("")
@@ -159,6 +170,8 @@ func printUsage() {
 	fmt.Println("  starclaw reset-password --password newpass123")
 	fmt.Println("  starclaw devices")
 	fmt.Println("  starclaw approve a1b2c3d4")
+	fmt.Println("  starclaw export-key")
+	fmt.Println("  starclaw import-key <seed-hex>")
 }
 
 func openCLIDB() (*config.Config, error) {
@@ -342,6 +355,94 @@ func cmdRejectDevice() {
 	device := devices[0]
 	db.Model(&device).Updates(map[string]interface{}{"approved": false, "revoked": true})
 	fmt.Printf("✓ Device rejected: %s (%s)\n", device.ID[:8], device.DeviceName)
+}
+
+// cmdExportKey exports the node identity seed for backup.
+func cmdExportKey() {
+	id := node.LoadOrCreateIdentity()
+
+	// Ed25519 private key = seed(32) + public(32). Export just the seed.
+	seed := id.PrivateKey.Seed()
+	seedHex := hex.EncodeToString(seed)
+
+	fmt.Println("========================================")
+	fmt.Println("  StarClaw Node Identity Backup")
+	fmt.Println("========================================")
+	fmt.Printf("  Node ID:     %s\n", id.NodeID)
+	fmt.Printf("  Fingerprint: %s\n", id.Fingerprint())
+	fmt.Printf("  Seed (hex):  %s\n", seedHex)
+	fmt.Println("========================================")
+	fmt.Println("")
+	fmt.Println("Save the seed above in a safe place.")
+	fmt.Println("To restore: starclaw import-key " + seedHex)
+	fmt.Println("")
+	fmt.Println("WARNING: Anyone with this seed can impersonate your node.")
+}
+
+// cmdImportKey restores node identity from a seed hex string.
+func cmdImportKey() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: starclaw import-key <seed-hex>")
+		fmt.Println("  seed-hex: 64-character hex string from 'starclaw export-key'")
+		os.Exit(1)
+	}
+	seedHex := os.Args[2]
+
+	seedBytes, err := hex.DecodeString(seedHex)
+	if err != nil || len(seedBytes) != ed25519.SeedSize {
+		log.Fatalf("Invalid seed: must be %d hex characters (got %d)", ed25519.SeedSize*2, len(seedHex))
+	}
+
+	// Derive full keypair from seed
+	privateKey := ed25519.NewKeyFromSeed(seedBytes)
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+
+	// Derive node ID to show the user
+	nodeID := node.DeriveNodeIDFromSeed(seedBytes)
+
+	// Write key file
+	keyFile := os.Getenv("NODE_KEY_PATH")
+	if keyFile == "" {
+		keyFile = ".node_key"
+	}
+
+	stored := struct {
+		PrivateKey []byte `json:"private_key"`
+		PublicKey  []byte `json:"public_key"`
+	}{
+		PrivateKey: privateKey,
+		PublicKey:  publicKey,
+	}
+	data, _ := json.Marshal(stored)
+
+	// Check if key file already exists
+	if _, err := os.Stat(keyFile); err == nil {
+		fmt.Printf("WARNING: Key file already exists at %s\n", keyFile)
+		fmt.Printf("This will OVERWRITE the current node identity.\n")
+		fmt.Printf("Type 'yes' to confirm: ")
+		var confirm string
+		fmt.Scanln(&confirm)
+		if confirm != "yes" {
+			fmt.Println("Aborted.")
+			return
+		}
+	}
+
+	// Ensure directory exists
+	dir := keyFile
+	if idx := strings.LastIndex(dir, "/"); idx >= 0 {
+		os.MkdirAll(dir[:idx], 0700)
+	}
+
+	if err := os.WriteFile(keyFile, data, 0600); err != nil {
+		log.Fatalf("Failed to write key file: %v", err)
+	}
+
+	fmt.Println("========================================")
+	fmt.Printf("  Node identity restored!\n")
+	fmt.Printf("  Node ID: %s\n", nodeID)
+	fmt.Println("========================================")
+	fmt.Println("Restart the server for the new identity to take effect.")
 }
 
 // cmdResetPassword resets the owner password.
