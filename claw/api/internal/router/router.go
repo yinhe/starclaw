@@ -87,6 +87,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewDeployWebTool())
 	toolRegistry.Register(tool.NewBindDomainTool())
 	toolRegistry.Register(tool.NewVerifyOnlineTool())
+	toolRegistry.Register(tool.NewFeishuTool(db))
+	toolRegistry.Register(tool.NewDingtalkTool(db))
+	toolRegistry.Register(tool.NewWeComTool(db))
+	toolRegistry.Register(tool.NewSlackTool(db))
+	toolRegistry.Register(tool.NewDiscordTool(db))
+	toolRegistry.Register(tool.NewTelegramTool(db))
 
 	// Generate thumbnails for existing videos on startup
 	go videoTool.GenerateMissingThumbnails()
@@ -638,6 +644,14 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.DELETE("/mcp/servers/:id", mcpHandler.DeleteServer)
 			protected.POST("/mcp/servers/:id/test", mcpHandler.TestServer)
 
+			// Integrations (messaging platforms: Feishu, DingTalk, Slack, etc.)
+			integrationHandler := v1.NewIntegrationHandler(db)
+			protected.GET("/integrations", integrationHandler.List)
+			protected.POST("/integrations", integrationHandler.Create)
+			protected.PUT("/integrations/:id", integrationHandler.Update)
+			protected.DELETE("/integrations/:id", integrationHandler.Delete)
+			protected.POST("/integrations/:id/test", integrationHandler.Test)
+
 			// Multi-Agent
 			multiAgentHandler := v1.NewMultiAgentHandler(db, providerRegistry, toolRegistry)
 			protected.POST("/multi-agent/run", multiAgentHandler.Run)
@@ -678,6 +692,19 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/swarm/join", systemHandler.JoinSwarm)
 			protected.POST("/system/swarm/leave", systemHandler.LeaveSwarm)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
+
+			// Device Management
+			deviceHandler := v1.NewDeviceHandler(db)
+			protected.GET("/devices", deviceHandler.ListDevices)
+			protected.POST("/devices/:id/approve", deviceHandler.ApproveDevice)
+			protected.POST("/devices/:id/reject", deviceHandler.RejectDevice)
+			protected.POST("/devices/:id/revoke", deviceHandler.RevokeDevice)
+
+			// Queen Account Linking
+			queenHandler := v1.NewQueenAccountHandler(cfg, sc, identity)
+			protected.GET("/queen/status", queenHandler.GetStatus)
+			protected.POST("/queen/link", queenHandler.Link)
+			protected.POST("/queen/unlink", queenHandler.Unlink)
 
 			// Node Identity & Peer Networking
 			var scOpt []interface{}

@@ -33,7 +33,7 @@ const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完�
 ### 用户自助创建Agent
 当用户说"帮我创建一个xxx Agent"时：
 1. 用 create_agent 创建，填写 name、description、system_prompt、tools
-2. tools 从可用工具中选择：code, web_search, browser, http_request, music_generation, video_generation, dubbing, mv_production, comic_production, image_generation
+2. tools 从可用工具中选择：code, web_search, browser, http_request, music_generation, video_generation, dubbing, mv_production, comic_production, image_generation, feishu
 3. 创建后告知用户Agent已就绪
 
 ## 你的工具
@@ -495,7 +495,7 @@ func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 	const systemUID = "system"
 
 	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
-	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation"]`
+	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","feishu"]`
 
 	// Ensure SuperAgent (system-level)
 	var superAgent model.Agent

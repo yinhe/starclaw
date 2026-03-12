@@ -84,16 +84,36 @@ write-version: ## Write .version file for Docker build
 	@echo "✓ api/.version = $(VERSION)"
 
 .PHONY: update
-update: ## Pull latest code and rebuild
-	git pull
-	@echo $(VERSION) > api/.version
-	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
+update: ## Pull latest code, rebuild API+Web only (data safe)
+	git pull origin main
+	@echo "Building API..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE) build api
+	@echo "Building Web..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE) build web
+	@echo "Restarting API+Web..."
+	$(COMPOSE) up -d --no-deps api web
+	@sleep 3
+	@$(MAKE) verify
 
 .PHONY: update-cn
-update-cn: ## Pull latest code and rebuild (China mirror)
-	git pull
-	@echo $(VERSION) > api/.version
-	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
+update-cn: ## Pull latest code, rebuild API+Web only (China mirror)
+	git pull origin main
+	@echo "Building API..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) build api
+	@echo "Building Web..."
+	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) build web
+	@echo "Restarting API+Web..."
+	$(COMPOSE_CN) up -d --no-deps api web
+	@sleep 3
+	@$(MAKE) verify
+
+.PHONY: verify
+verify: ## Verify API and Web are healthy after update
+	@echo "Checking API..."
+	@curl -sf http://localhost:8080/v1/setup/status > /dev/null && echo "  API: OK" || echo "  API: FAILED"
+	@echo "Checking Web..."
+	@curl -sf http://localhost:$${WEB_PORT:-3080}/ > /dev/null && echo "  Web: OK" || echo "  Web: FAILED"
+	@$(COMPOSE) ps --format 'table {{.Name}}\t{{.Status}}'
 
 # ======================== Rebuild Single Service ========================
 
@@ -110,14 +130,14 @@ rebuild-web: ## Rebuild and restart only the Web service
 .PHONY: backup
 backup: ## Backup MySQL + data directory
 	@mkdir -p backups
-	docker exec starclaw-mysql mysqldump -uroot -pstarclaw starclaw > backups/db_$(shell date +%Y%m%d_%H%M%S).sql
+	docker exec starclaw-mysql mysqldump -uroot -p"$${DB_PASSWORD:-starclaw}" starclaw > backups/db_$(shell date +%Y%m%d_%H%M%S).sql
 	tar -czf backups/data_$(shell date +%Y%m%d_%H%M%S).tar.gz data/
 	@echo "✓ Backup saved to backups/"
 
 .PHONY: restore-db
 restore-db: ## Restore MySQL from latest backup (usage: make restore-db FILE=backups/db_xxx.sql)
 	@test -n "$(FILE)" || (echo "Usage: make restore-db FILE=backups/db_xxx.sql" && exit 1)
-	docker exec -i starclaw-mysql mysql -uroot -pstarclaw starclaw < $(FILE)
+	docker exec -i starclaw-mysql mysql -uroot -p"$${DB_PASSWORD:-starclaw}" starclaw < $(FILE)
 	@echo "✓ Database restored from $(FILE)"
 
 # ======================== Shell Access ========================
@@ -128,7 +148,7 @@ shell-api: ## Open shell in API container
 
 .PHONY: shell-mysql
 shell-mysql: ## Open MySQL CLI
-	docker exec -it starclaw-mysql mysql -uroot -pstarclaw starclaw
+	docker exec -it starclaw-mysql mysql -uroot -p"$${DB_PASSWORD:-starclaw}" starclaw
 
 .PHONY: shell-redis
 shell-redis: ## Open Redis CLI
@@ -191,6 +211,59 @@ bridge-install: bridge-linux ## Deploy MCP Bridge to server as systemd service
 	scp deploy/mcp-bridge.service root@starclaw.me:/etc/systemd/system/
 	ssh root@starclaw.me "chmod +x /usr/local/bin/mcp-bridge && systemctl daemon-reload && systemctl enable --now mcp-bridge"
 	@echo "✓ MCP Bridge installed and running on server"
+
+# ======================== CLI Commands (run inside API container) ========================
+
+.PHONY: get-token
+get-token: ## Show current Owner Token (read-only)
+	docker exec starclaw-api ./starclaw get-token
+
+.PHONY: reset-token
+reset-token: ## Reset Owner Token (prints new token)
+	docker exec starclaw-api ./starclaw reset-token
+
+.PHONY: reset-password
+reset-password: ## Reset Owner password (usage: make reset-password PASS=newpass123)
+	@test -n "$(PASS)" || (echo "Usage: make reset-password PASS=<new-password>" && exit 1)
+	docker exec starclaw-api ./starclaw reset-password --password $(PASS)
+
+.PHONY: devices
+devices: ## List all authorized devices
+	docker exec starclaw-api ./starclaw devices
+
+.PHONY: approve
+approve: ## Approve a pending device (usage: make approve ID=a1b2c3d4)
+	@test -n "$(ID)" || (echo "Usage: make approve ID=<device-id-prefix>" && exit 1)
+	docker exec starclaw-api ./starclaw approve $(ID)
+
+.PHONY: reject
+reject: ## Reject/revoke a device (usage: make reject ID=a1b2c3d4)
+	@test -n "$(ID)" || (echo "Usage: make reject ID=<device-id-prefix>" && exit 1)
+	docker exec starclaw-api ./starclaw reject $(ID)
+
+.PHONY: export-key
+export-key: ## Export node identity key (for backup)
+	docker exec starclaw-api ./starclaw export-key
+
+.PHONY: import-key
+import-key: ## Import node identity key (usage: make import-key SEED=<hex-or-mnemonic>)
+	@test -n "$(SEED)" || (echo "Usage: make import-key SEED='<24 words or hex>'" && exit 1)
+	docker exec -it starclaw-api ./starclaw import-key $(SEED)
+
+.PHONY: wallet-info
+wallet-info: ## Show HD wallet addresses and derivation paths
+	docker exec starclaw-api ./starclaw wallet-info
+
+.PHONY: api-version
+api-version: ## Show API binary version inside container
+	docker exec starclaw-api ./starclaw version
+
+.PHONY: install-cli
+install-cli: ## Install starclaw & claw commands to /usr/local/bin
+	cp scripts/starclaw-cli.sh /usr/local/bin/starclaw
+	chmod +x /usr/local/bin/starclaw
+	ln -sf /usr/local/bin/starclaw /usr/local/bin/claw
+	@echo "✓ Installed: starclaw & claw → /usr/local/bin/"
 
 # ======================== Help ========================
 

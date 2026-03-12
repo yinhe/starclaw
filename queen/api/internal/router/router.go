@@ -24,7 +24,7 @@ func Setup() *gin.Engine {
 	// CORS
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowOrigins = config.C.CORS.Origins
-	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, "Authorization")
+	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, "Authorization", "X-Claw-ID", "X-Claw-Timestamp", "X-Claw-Signature", "X-Claw-PublicKey")
 	corsConfig.AllowCredentials = true
 	r.Use(cors.New(corsConfig))
 
@@ -166,6 +166,12 @@ func Setup() *gin.Engine {
 		admin.GET("/arena/leaderboard", proxy.ArenaLeaderboard)
 	}
 
+	// ---- Star Credits (星力) — public API for claw wallets ----
+	credit := &handler.CreditHandler{}
+	v1.GET("/credits/balance", credit.GetBalance)
+	v1.GET("/credits/transactions", credit.ListTransactions)
+	v1.POST("/credits/transfer", writeRL.Middleware(), credit.Transfer)
+
 	// ---- Internal API (for Claw nodes, authenticated via X-Node-Token header) ----
 	internal := r.Group("/internal")
 	internal.Use(nodeTokenAuth())
@@ -176,6 +182,14 @@ func Setup() *gin.Engine {
 		internal.POST("/billing/freeze", billing.InternalFreeze)
 		internal.POST("/billing/unfreeze", billing.InternalUnfreeze)
 		internal.POST("/billing/settle", billing.InternalSettle)
+
+		// Star Credits (internal — for Router/Swarm services)
+		internal.POST("/credits/grant", credit.InternalGrant)
+		internal.POST("/credits/consume", credit.InternalConsume)
+		internal.GET("/credits/balance/:claw_id", credit.InternalGetBalance)
+		internal.POST("/credits/freeze", credit.InternalFreeze)
+		internal.POST("/credits/unfreeze", credit.InternalUnfreeze)
+		internal.POST("/credits/settle", credit.InternalSettle)
 
 		// Node binding (internal)
 		nbInternal := &handler.NodeBindingHandler{}

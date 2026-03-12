@@ -333,17 +333,45 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 		return
 	}
 
-	// Auto-register new device
 	now := time.Now()
 	if err != nil {
+		// New device — check if any approved device exists
+		var approvedCount int64
+		h.db.Model(&model.AuthorizedDevice{}).Where("user_id = ? AND approved = ? AND revoked = ?", user.ID, true, false).Count(&approvedCount)
+
+		autoApprove := approvedCount == 0 // First device → auto-approve
+
 		device = model.AuthorizedDevice{
 			UserID:     user.ID,
 			DeviceID:   req.DeviceID,
 			DeviceName: req.DeviceName,
+			Approved:   autoApprove,
 			LastUsedAt: &now,
 		}
 		h.db.Create(&device)
+
+		if !autoApprove {
+			clearTokenFailure(ip)
+			c.JSON(http.StatusAccepted, gin.H{
+				"status":      "pending_approval",
+				"device_id":   device.DeviceID,
+				"device_name": req.DeviceName,
+				"message":     "新设备需要审批，请在已登录设备或服务器上执行: starclaw approve " + device.ID[:8],
+			})
+			return
+		}
+	} else if !device.Approved {
+		// Existing device still pending
+		clearTokenFailure(ip)
+		c.JSON(http.StatusAccepted, gin.H{
+			"status":      "pending_approval",
+			"device_id":   device.DeviceID,
+			"device_name": device.DeviceName,
+			"message":     "设备等待审批中，请在已登录设备或服务器上执行: starclaw approve " + device.ID[:8],
+		})
+		return
 	} else {
+		// Approved device — update last used
 		h.db.Model(&device).Updates(map[string]interface{}{
 			"last_used_at": now,
 			"device_name":  req.DeviceName,

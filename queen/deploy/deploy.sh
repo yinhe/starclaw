@@ -54,7 +54,7 @@ if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
     echo "  certbot certonly --manual --preferred-challenges dns -d '$DOMAIN' -d '*.$DOMAIN' --email $EMAIL --agree-tos"
     echo ""
     echo "Option 2 — Individual certs (automatic with nginx):"
-    echo "  certbot --nginx -d $DOMAIN -d www.$DOMAIN -d swarm.$DOMAIN -d core.$DOMAIN -d bounty.$DOMAIN -d forum.$DOMAIN -d arena.$DOMAIN --email $EMAIL --agree-tos"
+    echo "  certbot --nginx -d $DOMAIN -d www.$DOMAIN -d api.$DOMAIN -d swarm.$DOMAIN -d core.$DOMAIN -d bounty.$DOMAIN -d forum.$DOMAIN -d arena.$DOMAIN --email $EMAIL --agree-tos"
     echo ""
     
     read -p "Run certbot now? [w]ildcard / [i]ndividual / [s]kip: " cert_choice
@@ -66,7 +66,7 @@ if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
             ;;
         i|I)
             certbot --nginx \
-                -d "$DOMAIN" -d "www.$DOMAIN" \
+                -d "$DOMAIN" -d "www.$DOMAIN" -d "api.$DOMAIN" \
                 -d "swarm.$DOMAIN" -d "core.$DOMAIN" -d "bounty.$DOMAIN" \
                 -d "forum.$DOMAIN" -d "arena.$DOMAIN" \
                 --email "$EMAIL" --agree-tos
@@ -142,7 +142,7 @@ fi
 echo ""
 echo -e "${GREEN}Service URLs:${NC}"
 echo "  Website: https://$DOMAIN"
-echo "  API:     https://$DOMAIN/api/"
+echo "  API:     https://api.$DOMAIN"
 echo "  Swarm:   https://swarm.$DOMAIN"
 echo "  Core:    https://core.$DOMAIN"
 echo "  Bounty:  https://bounty.$DOMAIN"

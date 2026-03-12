@@ -6,12 +6,12 @@
 
 ```
 starclaw.net             → Queen Web Dashboard (:8086)
+api.starclaw.net         → Queen API (:8085)
 swarm.starclaw.net       → Swarm 节点管理 (:8090)
 core.starclaw.net        → Core API (:8091)
 bounty.starclaw.net      → 赏金市场 (:8092)
 forum.starclaw.net       → 社区 (:8093)
 arena.starclaw.net       → 竞技场 (:8094)
-:8085 (内网)              → Queen API
 :9090 (内网)              → Prometheus
 :3000 (内网)              → Grafana
 ```
@@ -105,6 +105,7 @@ curl http://127.0.0.1:3000/api/health
 在域名商处添加 A 记录，全部指向 Queen 服务器 IP：
 ```
 starclaw.net          → <IP>
+api.starclaw.net      → <IP>
 swarm.starclaw.net    → <IP>
 core.starclaw.net     → <IP>
 bounty.starclaw.net   → <IP>
@@ -122,6 +123,7 @@ sudo certbot certonly --manual --preferred-challenges dns \
 # 或逐个申请
 sudo certbot certonly --nginx \
   -d starclaw.net \
+  -d api.starclaw.net \
   -d swarm.starclaw.net \
   -d core.starclaw.net \
   -d bounty.starclaw.net \

@@ -15,6 +15,34 @@ import (
 	"gorm.io/gorm"
 )
 
+// findVideoRecord flexibly looks up a video record by id, task_id, or video_url.
+func findVideoRecord(db *gorm.DB, videoID, userID string) (*model.VideoRecord, error) {
+	var rec model.VideoRecord
+	// 1) By primary ID
+	if err := db.Where("id = ? AND user_id = ?", videoID, userID).First(&rec).Error; err == nil {
+		return &rec, nil
+	}
+	// 2) By task_id
+	if err := db.Where("task_id = ? AND user_id = ?", videoID, userID).First(&rec).Error; err == nil {
+		return &rec, nil
+	}
+	// 3) By video_url variants
+	urlVariants := []string{videoID}
+	if !strings.HasPrefix(videoID, "/") {
+		urlVariants = append(urlVariants, "/v1/videos/merged/"+videoID+".mp4", "/v1/videos/merged/"+videoID)
+	}
+	for _, u := range urlVariants {
+		if err := db.Where("video_url = ? AND user_id = ?", u, userID).First(&rec).Error; err == nil {
+			return &rec, nil
+		}
+	}
+	// 4) Fallback: without user_id filter (for merged videos created by system)
+	if err := db.Where("id = ? OR task_id = ?", videoID, videoID).First(&rec).Error; err == nil {
+		return &rec, nil
+	}
+	return nil, fmt.Errorf("video not found: %s", videoID)
+}
+
 // DubbingTool adds voiceover (TTS) and subtitles to videos.
 // Supports multiple voices from Alibaba Cloud CosyVoice.
 type DubbingTool struct {
@@ -129,10 +157,11 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 		userID = uid
 	}
 
-	var videoRec model.VideoRecord
-	if err := t.db.Where("id = ? AND user_id = ?", args.VideoID, userID).First(&videoRec).Error; err != nil {
-		return "", fmt.Errorf("video not found: %v", err)
+	videoRecPtr, err := findVideoRecord(t.db, args.VideoID, userID)
+	if err != nil {
+		return "", err
 	}
+	videoRec := *videoRecPtr
 	if videoRec.VideoURL == "" {
 		return "", fmt.Errorf("video has no URL (not yet completed?)")
 	}
@@ -296,10 +325,11 @@ func (t *DubbingTool) addSubtitles(ctx context.Context, args dubbingArgs) (strin
 		userID = uid
 	}
 
-	var videoRec model.VideoRecord
-	if err := t.db.Where("id = ? AND user_id = ?", args.VideoID, userID).First(&videoRec).Error; err != nil {
-		return "", fmt.Errorf("video not found: %v", err)
+	videoRecPtr, err := findVideoRecord(t.db, args.VideoID, userID)
+	if err != nil {
+		return "", err
 	}
+	videoRec := *videoRecPtr
 
 	tmpDir, err := os.MkdirTemp("", "subtitles-*")
 	if err != nil {

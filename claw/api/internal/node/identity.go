@@ -133,6 +133,13 @@ func VerifySignature(publicKeyHex string, message []byte, signatureHex string) b
 	return ed25519.Verify(pubKey, message, sig)
 }
 
+// DeriveNodeIDFromSeed derives node ID from a raw Ed25519 seed (32 bytes).
+func DeriveNodeIDFromSeed(seed []byte) string {
+	privateKey := ed25519.NewKeyFromSeed(seed)
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	return deriveNodeID(publicKey)
+}
+
 // DeriveNodeIDFromPubKey derives node ID from a hex-encoded public key
 func DeriveNodeIDFromPubKey(publicKeyHex string) (string, error) {
 	pubKey, err := hex.DecodeString(publicKeyHex)

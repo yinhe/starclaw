@@ -56,23 +56,23 @@ nano .env
 ```
 
 **必须修改：**
-```
-JWT_SECRET=<openssl rand -hex 32>
-DB_ROOT_PASSWORD=<强密码>
-REDIS_PASSWORD=<强密码>
+```bash
+DB_PASSWORD=<强密码>          # MySQL root 密码
+JWT_SECRET=<随机字符串>       # openssl rand -hex 32
+WEB_PORT=3080                 # 前端端口（nginx 代理到此端口）
 ```
 
 ### 3. 启动
 
 ```bash
 # 创建数据目录
-mkdir -p data/{merged_videos,thumbnails,music,images,workspaces}
+mkdir -p data/{merged_videos,thumbnails,music,images,workspaces,identity}
 
 # 构建 & 启动（首次约 5-10 分钟）
-docker compose up -d --build
+make up
 
 # ⚠️ 国内服务器请使用加速配置：
-# docker compose -f docker-compose.yml -f docker-compose.cn.yml up -d --build
+make up-cn
 ```
 
 ### 4. 验证
@@ -86,33 +86,82 @@ curl http://localhost/v1/health           # 应返回 OK
 
 ## 四、更新到最新版本
 
-服务器代码直接从 GitHub 拉取，更新流程：
+### 方式一：开发模式（git pull）
+
+服务器直接从 GitHub 拉取最新代码并重建，**只重建 API 和 Web，不碰数据库**：
 
 ```bash
 cd /opt/starclaw
+make update         # git pull → build api → build web → restart → verify
 
-# 拉取最新代码
-git pull origin main
-
-# 重新构建并重启（仅 API 和 Web，不影响数据库）
-docker compose -f docker-compose.prod.yml build api web
-docker compose -f docker-compose.prod.yml up -d api web
-
-# ⚠️ 国内服务器请使用加速配置：
-# docker compose -f docker-compose.prod.yml -f docker-compose.cn.yml build api web
-# docker compose -f docker-compose.prod.yml -f docker-compose.cn.yml up -d api web
+# 国内服务器：
+make update-cn
 ```
 
-或使用 CLI 快捷命令：
+`make update` 会自动执行：
+1. `git pull origin main`
+2. 构建 API 镜像（增量构建，有缓存很快）
+3. 构建 Web 镜像
+4. 仅重启 API 和 Web 容器（`--no-deps`，不碰 MySQL/Redis）
+5. 等 3 秒后自动验证 API 和 Web 是否正常
+
+也可以只重建单个服务：
 ```bash
-claw update            # git pull + 重新构建全部
-claw rebuild-api       # 仅重建 API 服务
-claw rebuild-web       # 仅重建 Web 前端
+make rebuild-api    # 仅重建 API
+make rebuild-web    # 仅重建 Web
+make verify         # 检查服务状态
 ```
 
-> **注意：** MySQL 和 Redis 数据不受影响，`data/` 目录通过 volume 挂载持久化。
+### 方式二：Release 更新（一键更新）
 
-## 五、配置 AI 模型
+在 Web 界面 **设置 → 系统 → 检查更新**，或通过 Molt 蜕皮自动更新。
+
+> **数据安全保证：**
+> - MySQL 数据持久化在 `data/mysql/`
+> - Redis 数据持久化在 `data/redis/`
+> - Node 身份持久化在 `data/identity/`
+> - 所有用户文件在 `data/` 子目录中
+> - `make update` **绝不触碰** MySQL 和 Redis 容器
+
+## 五、钱包与身份管理
+
+每个 Claw 节点在首次启动时自动生成 Ed25519 密钥对，派生唯一的 `claw:` 地址。
+此地址同时也是算力钱包地址。
+
+### 备份身份（强烈建议首次部署后执行）
+
+```bash
+make export-key
+```
+
+输出 24 个英文助记词（BIP-39 标准），**抄写在纸上安全保管**。
+只要有这 24 个词，即使服务器销毁也能完整恢复身份。
+
+### 恢复身份
+
+```bash
+# 从助记词恢复
+make import-key SEED='word1 word2 word3 ... word24'
+
+# 从 hex 种子恢复
+make import-key SEED=d606fedf965f...
+```
+
+### 查看钱包信息
+
+```bash
+make wallet-info    # 显示冷钱包地址、热钱包地址、派生路径
+```
+
+### 设备管理
+
+```bash
+make devices            # 列出所有授权设备
+make approve ID=xxxx    # 审批待审设备
+make reject ID=xxxx     # 拒绝/撤销设备
+```
+
+## 六、配置 AI 模型
 
 进入 Web 界面 → 设置 → 模型管理 → 添加你的 API Key：
 
@@ -123,7 +172,7 @@ claw rebuild-web       # 仅重建 Web 前端
 | DeepSeek | https://platform.deepseek.com |
 | Ollama（本地） | 无需 Key，填写 Ollama 地址即可 |
 
-## 六、加入虫群（可选）
+## 七、加入虫群（可选）
 
 默认情况下你的小龙虾独立运行。如果想加入虫群网络：
 
@@ -140,7 +189,23 @@ server:
 - 📦 共享 Agent/Workflow 模板（Creep 菌毯）
 - 💰 赏金任务发布能力（Bounty）
 
-## 七、升级为领主 Overlord（可选）
+### 关联 Queen 账号
+
+加入虫群后，可在 **设置 → Queen 账号关联** 中使用 Queen 平台账号登录，
+将本 Claw 节点绑定到你的 Queen 用户。关联后可使用：
+- 赏金结算（Bounty 冻结/释放/结算）
+- 社区互动（论坛、竞技场）
+- Agent 市场
+- 跨 Claw 身份统一
+
+### Feral 模式（失控模式）
+
+当 Claw 连续 3 次心跳失败时，自动进入 **Feral 模式**：
+- 所有本地 AI 功能照常运行
+- 设置页面显示琥珀色失控警告
+- 恢复连接后自动退出 Feral 模式并记录日志
+
+## 八、升级为领主 Overlord（可选）
 
 如果你需要管理多个 Claw 节点：
 
@@ -154,7 +219,7 @@ Overlord 节点可以：
 - 企业内部负载均衡
 - 通过 Nydus 隧道实现 Claw 间直连
 
-## 八、域名 + HTTPS
+## 九、域名 + HTTPS
 
 ```bash
 # 安装 certbot
@@ -206,7 +271,7 @@ sudo ln -s /etc/nginx/sites-available/starclaw /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 九、日常运维
+## 十、日常运维
 
 ### 安装 CLI 别名（推荐）
 
@@ -302,7 +367,7 @@ claw prune             # 清理未使用的 Docker 镜像（别名: claw clean�
 
 > **提示:** 所有命令仍然兼容 `make` 方式调用，如 `make up`、`make logs` 等。
 
-## 十、常见问题
+## 十一、常见问题
 
 **Q: 构建太慢？**
 国内服务器配置 Docker 镜像加速，后续构建使用缓存会很快。
@@ -316,7 +381,7 @@ sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
 **Q: 断开虫群后还能用吗？**
 可以。进入 Feral（失控）模式后所有 AI 功能正常，只是失去自动更新和共享知识。重连后自动恢复。
 
-## 十一、团队代理上线流程（研发 + DevOps）
+## 十二、团队代理上线流程（研发 + DevOps）
 
 当你在「Agents」页面使用“团队代理（研发DevOps团队）”时，推荐按以下 SOP 执行上线：
 

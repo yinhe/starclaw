@@ -62,6 +62,10 @@ func main() {
 		&model.RechargePackage{},
 		&model.NodeBinding{},
 		&model.ContentReport{},
+		// Star Credits (星力)
+		&model.CreditAccount{},
+		&model.CreditTransaction{},
+		&model.CreditFreeze{},
 	)
 
 	seedAdmin()

@@ -158,8 +158,23 @@ export const setupAPI = {
   status: () => axios.get('/v1/setup/status'),
   setup: (data?: { password?: string; username?: string }) =>
     axios.post('/v1/setup', data || {}),
-  ownerLogin: (data: { password: string }) =>
+  ownerLogin: (data: { password: string; device_id?: string; device_name?: string }) =>
     axios.post('/v1/auth/owner-login', data),
+}
+
+// Device Management
+export const deviceAPI = {
+  list: () => api.get('/devices'),
+  approve: (id: string) => api.post(`/devices/${id}/approve`),
+  reject: (id: string) => api.post(`/devices/${id}/reject`),
+  revoke: (id: string) => api.post(`/devices/${id}/revoke`),
+}
+
+// Queen Account Linking
+export const queenAPI = {
+  getStatus: () => api.get('/queen/status'),
+  link: (data: { email?: string; phone?: string; password: string }) => api.post('/queen/link', data),
+  unlink: () => api.post('/queen/unlink'),
 }
 
 // Billing & Tenant
@@ -235,6 +250,17 @@ export const settingsAPI = {
   updateProfile: (data: { username?: string; email?: string; phone?: string }) => api.put('/settings/profile', data),
   changePassword: (data: { old_password: string; new_password: string }) => api.put('/settings/password', data),
   getAPIKeys: () => api.get('/settings/api-keys'),
+}
+
+// Integrations (messaging platforms: Feishu, DingTalk, Slack, etc.)
+export const integrationAPI = {
+  list: (type?: string) => api.get('/integrations', { params: type ? { type } : {} }),
+  create: (data: { type: string; name: string; config: Record<string, string> }) =>
+    api.post('/integrations', data),
+  update: (id: string, data: { name?: string; config?: Record<string, string>; enabled?: boolean }) =>
+    api.put(`/integrations/${id}`, data),
+  delete: (id: string) => api.delete(`/integrations/${id}`),
+  test: (id: string) => api.post(`/integrations/${id}/test`),
 }
 
 // MCP Servers

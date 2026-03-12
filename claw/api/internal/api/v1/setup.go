@@ -158,7 +158,9 @@ func (h *SetupHandler) Setup(c *gin.Context) {
 // Only works in opensource mode when the owner has set a password.
 func (h *SetupHandler) PasswordLogin(c *gin.Context) {
 	var req struct {
-		Password string `json:"password" binding:"required"`
+		Password   string `json:"password" binding:"required"`
+		DeviceID   string `json:"device_id"`
+		DeviceName string `json:"device_name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入密码"})
@@ -180,6 +182,28 @@ func (h *SetupHandler) PasswordLogin(c *gin.Context) {
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误"})
 		return
+	}
+
+	// Auto-approve device on password login (password proves identity)
+	if req.DeviceID != "" {
+		now := time.Now()
+		var device model.AuthorizedDevice
+		if err := h.db.Where("user_id = ? AND device_id = ?", user.ID, req.DeviceID).First(&device).Error; err != nil {
+			device = model.AuthorizedDevice{
+				UserID:     user.ID,
+				DeviceID:   req.DeviceID,
+				DeviceName: req.DeviceName,
+				Approved:   true,
+				LastUsedAt: &now,
+			}
+			h.db.Create(&device)
+		} else if !device.Approved || device.Revoked {
+			h.db.Model(&device).Updates(map[string]interface{}{
+				"approved":     true,
+				"revoked":      false,
+				"last_used_at": now,
+			})
+		}
 	}
 
 	jwtToken, err := h.generateJWT(&user)

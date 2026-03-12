@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +21,47 @@ type SwarmHandler struct {
 
 func NewSwarmHandler(db *gorm.DB) *SwarmHandler {
 	return &SwarmHandler{db: db}
+}
+
+// grantWelcomeBonus calls Queen API to grant 100 ⭐ to a new claw node
+func grantWelcomeBonus(clawID string) {
+	queenAPI := os.Getenv("QUEEN_API_URL")
+	if queenAPI == "" {
+		queenAPI = "http://queen-api:8080"
+	}
+	secret := os.Getenv("QUEEN_JWT_SECRET")
+	if secret == "" {
+		return // can't auth, skip
+	}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"claw_id": clawID,
+		"amount":  100 * 10000, // 100 Stars × 10000 units/Star
+		"type":    "grant",
+		"remark":  "新手礼包 100 ⭐ Welcome bonus",
+	})
+
+	req, err := http.NewRequest("POST", queenAPI+"/internal/credits/grant", bytes.NewReader(body))
+	if err != nil {
+		log.Printf("[swarm] grant bonus request error: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Node-Token", secret)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[swarm] grant bonus to %s failed: %v", clawID, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 200 {
+		log.Printf("[swarm] granted 100 ⭐ welcome bonus to %s", clawID)
+	} else {
+		log.Printf("[swarm] grant bonus to %s returned status %d", clawID, resp.StatusCode)
+	}
 }
 
 // ---------- POST /swarm/register ----------
@@ -93,6 +138,11 @@ func (h *SwarmHandler) Register(c *gin.Context) {
 	if err := h.db.Create(&node).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register node"})
 		return
+	}
+
+	// Grant 100 ⭐ welcome bonus for new claw nodes
+	if req.ClawID != "" {
+		go grantWelcomeBonus(req.ClawID)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

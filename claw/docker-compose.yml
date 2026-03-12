@@ -62,7 +62,13 @@ services:
       STARCLAW_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       STARCLAW_BRIDGE_PORT: ${BRIDGE_PORT:-9101}
+      STARCLAW_SWARM_ENABLED: ${SWARM_ENABLED:-false}
+      STARCLAW_SWARM_QUEEN_URL: ${SWARM_QUEEN_URL:-}
+      STARCLAW_SWARM_NODE_NAME: ${SWARM_NODE_NAME:-}
+      STARCLAW_SWARM_REGION: ${SWARM_REGION:-}
+      NODE_KEY_PATH: /app/data/identity/.node_key
     volumes:
+      - ./data/identity:/app/data/identity
       - ./data/sandbox:/tmp/starclaw-sandbox
       - ./data/merged_videos:/app/merged_videos
       - ./data/thumbnails:/app/thumbnails
@@ -84,7 +90,7 @@ services:
     container_name: starclaw-web
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-80}:80"
+      - "${WEB_PORT:-3080}:80"
     depends_on:
       - api
     networks:
