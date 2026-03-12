@@ -56,23 +56,23 @@ nano .env
 ```
 
 **必须修改：**
-```
-JWT_SECRET=<openssl rand -hex 32>
-DB_ROOT_PASSWORD=<强密码>
-REDIS_PASSWORD=<强密码>
+```bash
+DB_PASSWORD=<强密码>          # MySQL root 密码
+JWT_SECRET=<随机字符串>       # openssl rand -hex 32
+WEB_PORT=3080                 # 前端端口（nginx 代理到此端口）
 ```
 
 ### 3. 启动
 
 ```bash
 # 创建数据目录
-mkdir -p data/{merged_videos,thumbnails,music,images,workspaces}
+mkdir -p data/{merged_videos,thumbnails,music,images,workspaces,identity}
 
 # 构建 & 启动（首次约 5-10 分钟）
-docker compose up -d --build
+make up
 
 # ⚠️ 国内服务器请使用加速配置：
-# docker compose -f docker-compose.yml -f docker-compose.cn.yml up -d --build
+make up-cn
 ```
 
 ### 4. 验证
@@ -86,31 +86,42 @@ curl http://localhost/v1/health           # 应返回 OK
 
 ## 四、更新到最新版本
 
-服务器代码直接从 GitHub 拉取，更新流程：
+### 方式一：开发模式（git pull）
+
+服务器直接从 GitHub 拉取最新代码并重建，**只重建 API 和 Web，不碰数据库**：
 
 ```bash
 cd /opt/starclaw
+make update         # git pull → build api → build web → restart → verify
 
-# 拉取最新代码
-git pull origin main
-
-# 重新构建并重启（仅 API 和 Web，不影响数据库）
-docker compose -f docker-compose.prod.yml build api web
-docker compose -f docker-compose.prod.yml up -d api web
-
-# ⚠️ 国内服务器请使用加速配置：
-# docker compose -f docker-compose.prod.yml -f docker-compose.cn.yml build api web
-# docker compose -f docker-compose.prod.yml -f docker-compose.cn.yml up -d api web
+# 国内服务器：
+make update-cn
 ```
 
-或使用 CLI 快捷命令：
+`make update` 会自动执行：
+1. `git pull origin main`
+2. 构建 API 镜像（增量构建，有缓存很快）
+3. 构建 Web 镜像
+4. 仅重启 API 和 Web 容器（`--no-deps`，不碰 MySQL/Redis）
+5. 等 3 秒后自动验证 API 和 Web 是否正常
+
+也可以只重建单个服务：
 ```bash
-claw update            # git pull + 重新构建全部
-claw rebuild-api       # 仅重建 API 服务
-claw rebuild-web       # 仅重建 Web 前端
+make rebuild-api    # 仅重建 API
+make rebuild-web    # 仅重建 Web
+make verify         # 检查服务状态
 ```
 
-> **注意：** MySQL 和 Redis 数据不受影响，`data/` 目录通过 volume 挂载持久化。
+### 方式二：Release 更新（一键更新）
+
+在 Web 界面 **设置 → 系统 → 检查更新**，或通过 Molt 蜕皮自动更新。
+
+> **数据安全保证：**
+> - MySQL 数据持久化在 `data/mysql/`
+> - Redis 数据持久化在 `data/redis/`
+> - Node 身份持久化在 `data/identity/`
+> - 所有用户文件在 `data/` 子目录中
+> - `make update` **绝不触碰** MySQL 和 Redis 容器
 
 ## 五、配置 AI 模型
 
