@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Star, Snowflake, Shield, Copy, Check, ArrowDownRight, ArrowUpRight, Wallet, RefreshCw, WifiOff, Loader2 } from 'lucide-react'
+import { Star, Snowflake, Shield, Copy, Check, ArrowDownRight, ArrowUpRight, Wallet, RefreshCw, WifiOff, Loader2, ExternalLink } from 'lucide-react'
 import { systemAPI, nodeAPI } from '../lib/api'
 
 interface CreditData {
@@ -174,15 +174,27 @@ export default function WalletPage() {
               <p className="text-xs text-gray-500 mt-1.5">{cfg.desc}</p>
             </div>
 
-            {/* Trust + Status badges */}
-            <div className="flex items-center gap-2">
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${trust.color}`}>
-                {trust.icon} {trust.label}
-              </span>
-              {credits?.status && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-300">
-                  <Shield className="w-3 h-3" /> {credits.status}
+            {/* Trust + Status badges + Top Up */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${trust.color}`}>
+                  {trust.icon} {trust.label}
                 </span>
+                {credits?.status && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-300">
+                    <Shield className="w-3 h-3" /> {credits.status}
+                  </span>
+                )}
+              </div>
+              {nodeInfo?.node_id && (
+                <a
+                  href={`https://star-ai.net/billing?claw_id=${encodeURIComponent(nodeInfo.node_id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-semibold hover:from-amber-500 hover:to-orange-600 transition-all shadow-lg shadow-orange-500/25"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> 充值星力
+                </a>
               )}
             </div>
           </div>
@@ -292,7 +304,8 @@ export default function WalletPage() {
             </p>
             <p>
               每个新注册的 Claw 节点加入虫群时自动获得 <strong className="text-gray-700">100 ⭐ 欢迎奖励</strong>。
-              星力可用于支付 API 调用费用、发布赏金任务、以及未来的推理挖矿结算。
+              星力可用于支付 API 调用费用、发布赏金任务、以及推理挖矿结算。
+              你也可以在 <a href="https://star-ai.net/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-medium">star-ai.net</a> 直接充值星力。
             </p>
             <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
               <p className="text-amber-800 font-medium">HP 状态等级</p>
