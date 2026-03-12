@@ -190,6 +190,7 @@ func Setup() *gin.Engine {
 		internal.POST("/credits/freeze", credit.InternalFreeze)
 		internal.POST("/credits/unfreeze", credit.InternalUnfreeze)
 		internal.POST("/credits/settle", credit.InternalSettle)
+		internal.POST("/inference/settle", credit.InternalInferenceSettle)
 
 		// Node binding (internal)
 		nbInternal := &handler.NodeBindingHandler{}

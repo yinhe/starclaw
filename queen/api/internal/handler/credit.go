@@ -658,6 +658,130 @@ func (h *CreditHandler) InternalGetBalance(c *gin.Context) {
 	})
 }
 
+// ─── Internal API: POST /internal/inference/settle ───
+// Atomic inference settlement: deduct from requester, credit 90% to contributor, 10% to platform.
+
+func (h *CreditHandler) InternalInferenceSettle(c *gin.Context) {
+	var req struct {
+		RequesterClaw    string `json:"requester_claw" binding:"required"`
+		ContributorClaw  string `json:"contributor_claw" binding:"required"`
+		Model            string `json:"model"`
+		PromptTokens     int64  `json:"prompt_tokens"`
+		CompletionTokens int64  `json:"completion_tokens"`
+		TotalCost        int64  `json:"total_cost"` // if 0, auto-calculate from tokens
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
+		return
+	}
+
+	// Calculate cost if not provided
+	totalCost := req.TotalCost
+	if totalCost == 0 {
+		totalCost = calculateStarCost("input_tokens", req.PromptTokens) +
+			calculateStarCost("output_tokens", req.CompletionTokens)
+	}
+	if totalCost <= 0 {
+		c.JSON(http.StatusOK, gin.H{"settled": 0, "message": "zero cost, nothing to settle"})
+		return
+	}
+
+	// 90/10 split
+	contributorShare := totalCost * 90 / 100
+	platformFee := totalCost - contributorShare
+
+	db := database.DB
+	var requesterBalance, contributorBalance int64
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		// 1. Deduct from requester
+		var reqAcct model.CreditAccount
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("claw_id = ?", req.RequesterClaw).First(&reqAcct).Error; err != nil {
+			return fmt.Errorf("requester account not found: %s", req.RequesterClaw)
+		}
+		if reqAcct.Balance < totalCost {
+			return fmt.Errorf("insufficient balance: need %d, have %d", totalCost, reqAcct.Balance)
+		}
+
+		tx.Model(&reqAcct).Updates(map[string]interface{}{
+			"balance":   gorm.Expr("balance - ?", totalCost),
+			"total_out": gorm.Expr("total_out + ?", totalCost),
+		})
+		requesterBalance = reqAcct.Balance - totalCost
+
+		// Update HP status
+		if requesterBalance <= 0 {
+			tx.Model(&reqAcct).Update("status", "hibernated")
+		}
+
+		// 2. Credit contributor (90%)
+		var contAcct model.CreditAccount
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("claw_id = ?", req.ContributorClaw).First(&contAcct).Error; err != nil {
+			contAcct = model.CreditAccount{
+				ID:     uuid.New().String(),
+				ClawID: req.ContributorClaw,
+				Status: "active",
+			}
+			tx.Create(&contAcct)
+		}
+		tx.Model(&contAcct).Updates(map[string]interface{}{
+			"balance":  gorm.Expr("balance + ?", contributorShare),
+			"total_in": gorm.Expr("total_in + ?", contributorShare),
+		})
+		contributorBalance = contAcct.Balance + contributorShare
+
+		// 3. Record transactions
+		remark := fmt.Sprintf("inference %s: %d in + %d out tokens",
+			req.Model, req.PromptTokens, req.CompletionTokens)
+
+		// Requester → Contributor
+		tx.Create(&model.CreditTransaction{
+			ID:       uuid.New().String(),
+			FromClaw: req.RequesterClaw,
+			ToClaw:   req.ContributorClaw,
+			Amount:   contributorShare,
+			Fee:      platformFee,
+			Type:     "inference",
+			Remark:   remark,
+			Status:   "confirmed",
+		})
+
+		// Platform fee (if > 0)
+		if platformFee > 0 {
+			tx.Create(&model.CreditTransaction{
+				ID:       uuid.New().String(),
+				FromClaw: req.RequesterClaw,
+				ToClaw:   "platform",
+				Amount:   platformFee,
+				Type:     "platform_fee",
+				Remark:   fmt.Sprintf("inference fee: %s", req.Model),
+				Status:   "confirmed",
+			})
+		}
+
+		log.Printf("[credit] inference settled: %s → %s (%d cost, %d to contributor, %d fee)",
+			req.RequesterClaw, req.ContributorClaw, totalCost, contributorShare, platformFee)
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[credit] inference settle failed: %v", err)
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_cost":          totalCost,
+		"contributor_share":   contributorShare,
+		"platform_fee":        platformFee,
+		"requester_balance":   requesterBalance,
+		"contributor_balance": contributorBalance,
+	})
+}
+
 // ─── Pricing: calculate star cost by resource type ───
 
 func calculateStarCost(resourceType string, quantity int64) int64 {

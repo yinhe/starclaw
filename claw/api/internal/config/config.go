@@ -7,15 +7,16 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	OpenAI   OpenAIConfig   `mapstructure:"openai"`
-	OAuth    OAuthConfig    `mapstructure:"oauth"`
-	Node     NodeConfig     `mapstructure:"node"`
-	Swarm    SwarmConfig    `mapstructure:"swarm"`
-	Overlord OverlordConfig `mapstructure:"overlord"`
+	Server      ServerConfig      `mapstructure:"server"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	Redis       RedisConfig       `mapstructure:"redis"`
+	JWT         JWTConfig         `mapstructure:"jwt"`
+	OpenAI      OpenAIConfig      `mapstructure:"openai"`
+	OAuth       OAuthConfig       `mapstructure:"oauth"`
+	Node        NodeConfig        `mapstructure:"node"`
+	Swarm       SwarmConfig       `mapstructure:"swarm"`
+	Overlord    OverlordConfig    `mapstructure:"overlord"`
+	Contributor ContributorConfig `mapstructure:"contributor"`
 }
 
 type NodeConfig struct {
@@ -38,6 +39,13 @@ type OverlordConfig struct {
 	NodeName          string `mapstructure:"node_name"`          // display name for this Claw
 	Region            string `mapstructure:"region"`             // e.g. cn-east
 	HeartbeatInterval int    `mapstructure:"heartbeat_interval"` // seconds, default 30
+}
+
+type ContributorConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`       // opt-in to contribute compute to the swarm
+	OllamaURL    string `mapstructure:"ollama_url"`    // e.g. http://localhost:11434
+	MaxJobs      int    `mapstructure:"max_jobs"`      // max concurrent inference jobs (default 2)
+	ExternalAddr string `mapstructure:"external_addr"` // address other nodes can reach this node at
 }
 
 type OAuthConfig struct {
@@ -123,6 +131,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("node.name", "")
 	viper.SetDefault("node.region", "")
 	viper.SetDefault("overlord.heartbeat_interval", 30)
+	viper.SetDefault("contributor.enabled", false)
+	viper.SetDefault("contributor.ollama_url", "http://localhost:11434")
+	viper.SetDefault("contributor.max_jobs", 2)
+	viper.SetDefault("contributor.external_addr", "")
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

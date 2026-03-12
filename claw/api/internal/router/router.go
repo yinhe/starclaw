@@ -222,7 +222,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 		// Inference Router (public status + signed contributor endpoints)
 		inferenceRouter := inference.NewInferenceRouter(identity)
-		inferenceHandler := v1.NewInferenceHandler(inferenceRouter)
+		inferenceHandler := v1.NewInferenceHandler(inferenceRouter, providerRegistry)
 		apiV1.GET("/inference/status", inferenceHandler.RouterStatus)
 
 		// Node-signed endpoints (protected by Ed25519 signature middleware)
@@ -239,6 +239,19 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			signedRoutes.POST("/peer/v2/gossip", peerPublicHandler.HandleGossipSigned)
 			signedRoutes.POST("/peer/v2/relay", peerPublicHandler.HandleRelayTaskSigned)
 		}
+
+		// Start compute contribution service (auto-detects local Ollama and registers with peers)
+		contributorCfg := inference.ContributorConfig{
+			Enabled:      cfg.Contributor.Enabled,
+			OllamaURL:    cfg.Contributor.OllamaURL,
+			MaxJobs:      cfg.Contributor.MaxJobs,
+			ExternalAddr: cfg.Contributor.ExternalAddr,
+		}
+		if contributorCfg.ExternalAddr == "" && cfg.Node.Address != "" {
+			contributorCfg.ExternalAddr = cfg.Node.Address
+		}
+		contributorSvc := inference.NewContributorService(contributorCfg, identity, providerRegistry, peerPublicHandler.PeerAddresses)
+		contributorSvc.Start()
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)
 		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
