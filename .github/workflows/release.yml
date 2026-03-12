@@ -53,6 +53,67 @@ jobs:
 
           ls -lh ../dist/
 
+      - name: Package tar.gz archives
+        env:
+          V: ${{ steps.version.outputs.VERSION }}
+        run: |
+          cd dist
+
+          # macOS tar.gz (StarClaw API)
+          for arch in amd64 arm64; do
+            dir="starclaw-darwin-${arch}-v${V}"
+            mkdir -p "$dir"
+            cp starclaw-darwin-${arch} "$dir/starclaw"
+            chmod +x "$dir/starclaw"
+            cat > "$dir/README.txt" << 'RDME'
+          StarClaw — AI Agent Server
+
+          Quick Start:
+            chmod +x starclaw
+            ./starclaw
+
+          Config: create configs/config.yaml (see docs)
+          Docs:   https://github.com/yinhe/starclaw
+          RDME
+            tar czf "starclaw-darwin-${arch}.tar.gz" "$dir"
+            rm -rf "$dir"
+          done
+
+          # macOS tar.gz (MCP Bridge)
+          for arch in amd64 arm64; do
+            dir="mcp-bridge-darwin-${arch}-v${V}"
+            mkdir -p "$dir"
+            cp mcp-bridge-darwin-${arch} "$dir/mcp-bridge"
+            chmod +x "$dir/mcp-bridge"
+            cat > "$dir/install.sh" << 'INST'
+          #!/bin/bash
+          set -e
+          DEST="/usr/local/bin/mcp-bridge"
+          cp "$(dirname "$0")/mcp-bridge" "$DEST"
+          chmod +x "$DEST"
+          xattr -d com.apple.quarantine "$DEST" 2>/dev/null || true
+          echo "Installed to $DEST"
+          INST
+            chmod +x "$dir/install.sh"
+            cat > "$dir/README.txt" << 'RDME'
+          StarClaw MCP Bridge — Connect your IDE to StarClaw
+
+          Install (recommended):
+            chmod +x install.sh && sudo ./install.sh
+
+          Or manual:
+            chmod +x mcp-bridge
+            sudo cp mcp-bridge /usr/local/bin/
+
+          Usage:  mcp-bridge --server https://your-starclaw:8080
+          Docs:   https://github.com/yinhe/starclaw
+          RDME
+            tar czf "mcp-bridge-darwin-${arch}.tar.gz" "$dir"
+            rm -rf "$dir"
+          done
+
+          ls -lh *.tar.gz
+
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -108,11 +169,85 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Step 3: Create GitHub Release with all assets ──
+  # — Step 3: Build macOS DMG installers —
+  build-dmg:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    needs: [build-binaries]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create DMG for MCP Bridge (Apple Silicon)
+        run: |
+          mkdir -p dmg-arm64
+          cp dist/mcp-bridge-darwin-arm64 dmg-arm64/mcp-bridge
+          chmod +x dmg-arm64/mcp-bridge
+          cat > dmg-arm64/install.command << 'INST'
+          #!/bin/bash
+          set -e
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          DEST="/usr/local/bin/mcp-bridge"
+          sudo cp "$DIR/mcp-bridge" "$DEST"
+          sudo chmod +x "$DEST"
+          sudo xattr -d com.apple.quarantine "$DEST" 2>/dev/null || true
+          echo ""
+          echo "\033[32m✓ MCP Bridge installed to $DEST\033[0m"
+          echo "  Run: mcp-bridge --server https://your-starclaw:8080"
+          echo ""
+          read -p "Press Enter to close..."
+          INST
+          chmod +x dmg-arm64/install.command
+          hdiutil create -volname "StarClaw MCP Bridge" -srcfolder dmg-arm64 \
+            -ov -format UDZO "dist/mcp-bridge-darwin-arm64.dmg"
+
+      - name: Create DMG for MCP Bridge (Intel)
+        run: |
+          mkdir -p dmg-amd64
+          cp dist/mcp-bridge-darwin-amd64 dmg-amd64/mcp-bridge
+          chmod +x dmg-amd64/mcp-bridge
+          cat > dmg-amd64/install.command << 'INST'
+          #!/bin/bash
+          set -e
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          DEST="/usr/local/bin/mcp-bridge"
+          sudo cp "$DIR/mcp-bridge" "$DEST"
+          sudo chmod +x "$DEST"
+          sudo xattr -d com.apple.quarantine "$DEST" 2>/dev/null || true
+          echo ""
+          echo "\033[32m✓ MCP Bridge installed to $DEST\033[0m"
+          echo "  Run: mcp-bridge --server https://your-starclaw:8080"
+          echo ""
+          read -p "Press Enter to close..."
+          INST
+          chmod +x dmg-amd64/install.command
+          hdiutil create -volname "StarClaw MCP Bridge" -srcfolder dmg-amd64 \
+            -ov -format UDZO "dist/mcp-bridge-darwin-amd64.dmg"
+
+      - name: Upload DMG artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: |
+            dist/mcp-bridge-darwin-arm64.dmg
+            dist/mcp-bridge-darwin-amd64.dmg
+          retention-days: 1
+
+  # — Step 4: Create GitHub Release with all assets —
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-binaries, build-docker]
+    needs: [build-binaries, build-docker, build-dmg]
     permissions:
       contents: write
 
@@ -129,6 +264,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: binaries
+          path: dist/
+
+      - name: Download DMG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dmg
           path: dist/
 
       - name: Generate changelog
@@ -154,28 +295,44 @@ jobs:
             dist/starclaw-linux-arm64
             dist/starclaw-darwin-amd64
             dist/starclaw-darwin-arm64
+            dist/starclaw-darwin-amd64.tar.gz
+            dist/starclaw-darwin-arm64.tar.gz
             dist/starclaw-windows-amd64.exe
             dist/mcp-bridge-linux-amd64
             dist/mcp-bridge-linux-arm64
             dist/mcp-bridge-darwin-amd64
             dist/mcp-bridge-darwin-arm64
+            dist/mcp-bridge-darwin-amd64.tar.gz
+            dist/mcp-bridge-darwin-arm64.tar.gz
+            dist/mcp-bridge-darwin-amd64.dmg
+            dist/mcp-bridge-darwin-arm64.dmg
             dist/mcp-bridge-windows-amd64.exe
           body: |
             ## Install
 
-            **Docker (recommended):**
+            ### 🐳 Docker (server deployment — recommended)
             ```bash
             docker pull ${{ env.REGISTRY }}/${{ github.repository }}-api:${{ steps.version.outputs.VERSION }}
             docker pull ${{ env.REGISTRY }}/${{ github.repository }}-web:${{ steps.version.outputs.VERSION }}
             ```
+            Existing servers with Molt auto-update will receive this version automatically.
 
-            **Standalone binary:**
+            ### 💻 Manual Install (local development / MCP Bridge)
+
+            **macOS (recommended: tar.gz or DMG):**
+            | Chip | StarClaw API | MCP Bridge | MCP Bridge DMG |
+            |------|-------------|------------|----------------|
+            | Apple Silicon | `starclaw-darwin-arm64.tar.gz` | `mcp-bridge-darwin-arm64.tar.gz` | `mcp-bridge-darwin-arm64.dmg` |
+            | Intel | `starclaw-darwin-amd64.tar.gz` | `mcp-bridge-darwin-amd64.tar.gz` | `mcp-bridge-darwin-amd64.dmg` |
+
+            > DMG: open and double-click `install.command` to install to `/usr/local/bin`.
+            > tar.gz: extract and run `sudo ./install.sh` or copy binary manually.
+
+            **Linux / Windows (raw binary):**
             | Platform | StarClaw API | MCP Bridge |
             |----------|-------------|------------|
             | Linux x64 | `starclaw-linux-amd64` | `mcp-bridge-linux-amd64` |
             | Linux ARM64 | `starclaw-linux-arm64` | `mcp-bridge-linux-arm64` |
-            | macOS Intel | `starclaw-darwin-amd64` | `mcp-bridge-darwin-amd64` |
-            | macOS Apple Silicon | `starclaw-darwin-arm64` | `mcp-bridge-darwin-arm64` |
             | Windows x64 | `starclaw-windows-amd64.exe` | `mcp-bridge-windows-amd64.exe` |
 
             ## Changes
