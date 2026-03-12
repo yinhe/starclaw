@@ -151,6 +151,7 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 		}
 
 		var totalUsage provider.TokenUsage
+		stepIndex := 0
 
 		for i := 0; i < maxToolIterations; i++ {
 			chatReq := &provider.ChatRequest{
@@ -170,6 +171,14 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 				log.Printf("[Agent/Stream] Model=%s, Tools=%v, Messages=%d", req.Model, toolNames, len(messages))
 			}
 
+			// Emit step event: thinking
+			stepIndex++
+			if i == 0 {
+				ch <- &StreamChunk{AgentStep: "thinking", AgentStepDetail: "正在分析任务...", AgentStepIndex: stepIndex}
+			} else {
+				ch <- &StreamChunk{AgentStep: "thinking", AgentStepDetail: "正在整合结果，规划下一步...", AgentStepIndex: stepIndex}
+			}
+
 			// First, try a sync call to check for tool calls
 			result, err := r.modelProvider.ChatSync(ctx, chatReq)
 			if err != nil {
@@ -184,8 +193,12 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 				totalUsage.TotalTokens += result.Usage.TotalTokens
 			}
 
-			// No tool call  now stream the final response
+			// No tool call → stream the final response
 			if result.Tool == nil {
+				stepIndex++
+				if i > 0 {
+					ch <- &StreamChunk{AgentStep: "summarizing", AgentStepDetail: "正在生成最终回复...", AgentStepIndex: stepIndex}
+				}
 				// Re-do with streaming for the final response
 				chatReq.Stream = true
 				streamCh, err := r.modelProvider.Chat(ctx, chatReq)
@@ -208,7 +221,7 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 				return
 			}
 
-			// Has tool call  notify client and execute
+			// Has tool call → notify client and execute
 			log.Printf("[Agent/Stream] Tool call: %s(%s)", result.Tool.Function.Name, result.Tool.Function.Arguments)
 
 			// Sanitize arguments and normalize tool call fields
@@ -350,12 +363,15 @@ func stripLargeData(result string) string {
 
 // StreamChunk represents a chunk of the streaming agent response
 type StreamChunk struct {
-	Content    string               `json:"content,omitempty"`
-	ToolCall   string               `json:"tool_call,omitempty"`
-	ToolResult string               `json:"tool_result,omitempty"`
-	ToolName   string               `json:"tool_name,omitempty"`
-	Reasoning  string               `json:"reasoning,omitempty"`
-	Done       bool                 `json:"done,omitempty"`
-	Usage      *provider.TokenUsage `json:"usage,omitempty"`
-	Error      string               `json:"error,omitempty"`
+	Content         string               `json:"content,omitempty"`
+	ToolCall        string               `json:"tool_call,omitempty"`
+	ToolResult      string               `json:"tool_result,omitempty"`
+	ToolName        string               `json:"tool_name,omitempty"`
+	Reasoning       string               `json:"reasoning,omitempty"`
+	Done            bool                 `json:"done,omitempty"`
+	Usage           *provider.TokenUsage `json:"usage,omitempty"`
+	Error           string               `json:"error,omitempty"`
+	AgentStep       string               `json:"agent_step,omitempty"`        // e.g. "thinking", "tool_calling", "summarizing"
+	AgentStepDetail string               `json:"agent_step_detail,omitempty"` // human-readable description
+	AgentStepIndex  int                  `json:"agent_step_index,omitempty"`  // 1-based step counter
 }

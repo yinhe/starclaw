@@ -79,6 +79,7 @@ export default function ChatPage() {
   const [mentionedAgent, setMentionedAgent] = useState<Agent | null>(null)
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
+  const [agentStep, setAgentStep] = useState<{ step: string; detail: string; index: number } | null>(null)
   const [runningFileId, setRunningFileId] = useState<string | null>(null)
   const [fileRunResults, setFileRunResults] = useState<Record<string, { stdout: string; stderr: string; exit_code: number; duration: string } | null>>({})
 
@@ -662,6 +663,7 @@ export default function ChatPage() {
     // We need to trigger send after state update, so we do it inline
     const userMessage = editingText.trim()
     setToolInteractions([])
+    setAgentStep(null)
     setLoading(true)
     setStreamingContent('')
 
@@ -724,6 +726,7 @@ export default function ChatPage() {
               }
 
               if (data.done) {
+                setAgentStep(null)
                 addMessage({
                   id: Date.now().toString(),
                   role: 'assistant',
@@ -732,7 +735,10 @@ export default function ChatPage() {
                 })
                 setStreamingContent('')
                 loadConversations()
+              } else if (data.agent_step) {
+                setAgentStep({ step: data.agent_step, detail: data.agent_step_detail || '', index: data.agent_step_index || 0 })
               } else if (data.tool_call) {
+                setAgentStep(null)
                 try {
                   const tc = JSON.parse(data.tool_call)
                   const fnName = tc.Function?.Name || tc.function?.name || 'tool'
@@ -841,6 +847,7 @@ export default function ChatPage() {
     setAttachedFiles([])
     setBrowserScreenshots([])
     setToolInteractions([])
+    setAgentStep(null)
     setMentionedAgent(null)
     setShowMentionPopup(false)
     setLoading(true)
@@ -939,6 +946,7 @@ export default function ChatPage() {
               }
 
               if (data.done) {
+                setAgentStep(null)
                 addMessage({
                   id: Date.now().toString(),
                   role: 'assistant',
@@ -949,7 +957,10 @@ export default function ChatPage() {
                 loadConversations()
                 // Refresh context panel after tools may have created workflows/tasks/videos
                 if (activeConvId) loadContext(activeConvId)
+              } else if (data.agent_step) {
+                setAgentStep({ step: data.agent_step, detail: data.agent_step_detail || '', index: data.agent_step_index || 0 })
               } else if (data.tool_call) {
+                setAgentStep(null)
                 try {
                   const tc = JSON.parse(data.tool_call)
                   const fnName = tc.Function?.Name || tc.function?.name || 'tool'
@@ -1655,7 +1666,33 @@ export default function ChatPage() {
           {isLoading && !streamingContent && toolInteractions.every(t => t.status !== 'calling') && (
             <div className="flex justify-start">
               <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100">
-                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                {agentStep ? (
+                  <div className="flex items-center gap-2.5">
+                    <div className="relative">
+                      <Loader2 className="w-4 h-4 text-primary-500 animate-spin" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-medium text-gray-700">
+                          {agentStep.step === 'thinking' && '🧠 思考中'}
+                          {agentStep.step === 'summarizing' && '📝 生成回复'}
+                          {agentStep.step === 'delegating' && '👥 委派任务'}
+                          {!['thinking', 'summarizing', 'delegating'].includes(agentStep.step) && `⚡ ${agentStep.step}`}
+                        </span>
+                        {agentStep.index > 1 && (
+                          <span className="text-[10px] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded-full">
+                            第 {agentStep.index} 步
+                          </span>
+                        )}
+                      </div>
+                      {agentStep.detail && (
+                        <p className="text-[11px] text-gray-500 mt-0.5">{agentStep.detail}</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                )}
               </div>
             </div>
           )}
