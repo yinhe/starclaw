@@ -41,3 +41,6 @@ Thumbs.db
 
 # Temp files
 tmp_*
+
+# Node identity keys (generated at runtime)
+.node_key

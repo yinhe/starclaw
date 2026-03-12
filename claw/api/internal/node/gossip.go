@@ -2,6 +2,8 @@ package node
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -143,48 +145,91 @@ func (g *GossipEngine) gossipRound() {
 		return
 	}
 
-	// Sign the gossip payload
+	// V2 payload (header-signed, body only contains peers)
+	v2Payload, _ := json.Marshal(map[string]interface{}{"peers": myPeers})
+
+	// V1 payload (body-signed, for backwards compatibility)
 	challenge, signature := g.identity.SignChallenge()
-	payload := map[string]interface{}{
+	v1Payload, _ := json.Marshal(map[string]interface{}{
 		"from_node_id": g.identity.NodeID,
 		"public_key":   g.identity.PublicKeyHex(),
 		"challenge":    challenge,
 		"signature":    signature,
 		"peers":        myPeers,
-	}
-	data, _ := json.Marshal(payload)
+	})
 
 	for _, addr := range targets {
-		go g.sendGossip(addr, data)
+		go g.sendGossip(addr, v2Payload, v1Payload)
 	}
 }
 
-// sendGossip sends gossip to a single peer
-func (g *GossipEngine) sendGossip(address string, data []byte) {
-	url := address + "/v1/peer/gossip"
-	resp, err := g.httpC.Post(url, "application/json", bytes.NewReader(data))
+// sendGossip sends gossip to a single peer.
+// Tries v2 (header-signed) first, falls back to v1 (body-signed).
+func (g *GossipEngine) sendGossip(address string, v2Data, v1Data []byte) {
+	// Try v2 first (header-signed)
+	if resp := g.sendGossipV2(address, v2Data); resp != nil {
+		g.processGossipResponse(resp)
+		return
+	}
+	// Fallback to v1 (body-signed)
+	resp, err := g.httpC.Post(address+"/v1/peer/gossip", "application/json", bytes.NewReader(v1Data))
 	if err != nil {
-		return // silently fail, peer might be offline
+		return
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode == 200 {
-		var result struct {
-			Peers []PeerInfo `json:"peers"`
+		g.processGossipResponse(resp)
+	}
+}
+
+// sendGossipV2 sends a header-signed gossip request to the v2 endpoint.
+func (g *GossipEngine) sendGossipV2(address string, body []byte) *http.Response {
+	path := "/v1/peer/v2/gossip"
+	req, err := http.NewRequest("POST", address+path, bytes.NewReader(body))
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Sign with Ed25519 headers
+	ts := fmt.Sprintf("%d", time.Now().Unix())
+	bodyHash := sha256.Sum256(body)
+	message := fmt.Sprintf("%s\n%s\n%s\n%s", "POST", path, ts, hex.EncodeToString(bodyHash[:]))
+	sig := g.identity.Sign([]byte(message))
+
+	req.Header.Set("X-Node-ID", g.identity.NodeID)
+	req.Header.Set("X-Node-PubKey", g.identity.PublicKeyHex())
+	req.Header.Set("X-Node-Signature", hex.EncodeToString(sig))
+	req.Header.Set("X-Node-Timestamp", ts)
+
+	resp, err := g.httpC.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		if resp != nil {
+			resp.Body.Close()
 		}
-		if json.NewDecoder(resp.Body).Decode(&result) == nil {
-			changed := false
-			for _, p := range result.Peers {
-				if p.NodeID == g.identity.NodeID {
-					continue // skip self
-				}
-				if g.AddPeer(p) {
-					changed = true
-				}
+		return nil
+	}
+	return resp
+}
+
+// processGossipResponse merges received peer list from a gossip response.
+func (g *GossipEngine) processGossipResponse(resp *http.Response) {
+	defer resp.Body.Close()
+	var result struct {
+		Peers []PeerInfo `json:"peers"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&result) == nil {
+		changed := false
+		for _, p := range result.Peers {
+			if p.NodeID == g.identity.NodeID {
+				continue
 			}
-			if changed && g.onChange != nil {
-				g.onChange(g.GetPeers())
+			if g.AddPeer(p) {
+				changed = true
 			}
+		}
+		if changed && g.onChange != nil {
+			g.onChange(g.GetPeers())
 		}
 	}
 }
