@@ -39,6 +39,23 @@ type swarmAddressSetter interface {
 	SetAddress(addr string)
 }
 
+// PeerAddresses returns all known peer addresses (for contributor registration).
+func (h *PeerHandler) PeerAddresses() []string {
+	peers := h.gossip.GetPeers()
+	addrs := make([]string, 0, len(peers))
+	for _, p := range peers {
+		if p.Address != "" && p.NodeID != h.identity.NodeID {
+			addrs = append(addrs, p.Address)
+		}
+	}
+	return addrs
+}
+
+// Identity returns the node identity.
+func (h *PeerHandler) Identity() *node.Identity {
+	return h.identity
+}
+
 func NewPeerHandler(db *gorm.DB, cfg *config.Config, opts ...interface{}) *PeerHandler {
 	identity := node.LoadOrCreateIdentity()
 

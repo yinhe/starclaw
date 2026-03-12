@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -8,16 +10,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/inference"
+	"github.com/yinhe/starclaw/internal/provider"
 )
 
 // InferenceHandler exposes the inference router API.
 type InferenceHandler struct {
-	router *inference.InferenceRouter
+	router     *inference.InferenceRouter
+	providers  *provider.Registry
+	settlement *inference.SettlementClient
 }
 
 // NewInferenceHandler creates a new handler wrapping the inference router.
-func NewInferenceHandler(router *inference.InferenceRouter) *InferenceHandler {
-	return &InferenceHandler{router: router}
+func NewInferenceHandler(router *inference.InferenceRouter, providers *provider.Registry, settlement ...*inference.SettlementClient) *InferenceHandler {
+	h := &InferenceHandler{router: router, providers: providers}
+	if len(settlement) > 0 {
+		h.settlement = settlement[0]
+	}
+	return h
 }
 
 // RegisterContributor handles contributor registration (POST /v1/inference/register).
@@ -155,6 +164,19 @@ func (h *InferenceHandler) Infer(c *gin.Context) {
 	if contributor != nil {
 		h.router.Registry.Heartbeat(contributor.NodeID, max(0, contributor.ActiveJobs-1), 0)
 	}
+
+	// Report usage for star credit settlement (async, non-blocking)
+	if h.settlement != nil && contributor != nil {
+		requesterClaw := c.GetString("claw_id") // set by auth middleware if available
+		if requesterClaw == "" {
+			requesterClaw = h.router.Identity.NodeID // fallback: this router pays
+		}
+		h.settlement.ReportAsync(inference.SettlementReport{
+			RequesterClaw:   requesterClaw,
+			ContributorClaw: contributor.NodeID,
+			Model:           req.Model,
+		})
+	}
 }
 
 // proxySSEStream forwards an SSE stream from the contributor to the client.
@@ -187,14 +209,144 @@ func (h *InferenceHandler) proxySSEStream(c *gin.Context, resp *http.Response, c
 // This is the contributor-side endpoint called by the router.
 // Protected by NodeSignatureAuth — only trusted routers can invoke this.
 func (h *InferenceHandler) Execute(c *gin.Context) {
-	// This endpoint will be implemented by the contributor (Phase 6: 算力贡献).
-	// For now, return a placeholder acknowledging the signed request.
 	routerNodeID := c.GetString("node_id")
+
+	var req inference.InferenceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find a local provider that supports this model
+	p := h.findProviderForModel(req.Model)
+	if p == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "no local provider for model " + req.Model,
+			"node_id": h.router.Identity.NodeID,
+		})
+		return
+	}
+
+	// Convert inference request to provider ChatRequest
+	chatReq := &provider.ChatRequest{
+		Model:       req.Model,
+		Messages:    toProviderMessages(req.Messages),
+		Temperature: req.Temperature,
+		MaxTokens:   req.MaxTokens,
+		Stream:      req.Stream,
+	}
+
+	start := time.Now()
+
+	if req.Stream {
+		h.executeStream(c, p, chatReq, routerNodeID, start)
+	} else {
+		h.executeSync(c, p, chatReq, routerNodeID, start)
+	}
+}
+
+func (h *InferenceHandler) executeSync(c *gin.Context, p provider.ModelProvider, req *provider.ChatRequest, routerNodeID string, start time.Time) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	chunk, err := p.ChatSync(ctx, req)
+	if err != nil {
+		log.Printf("[inference/execute] sync error for %s from router %s: %v", req.Model, routerNodeID[:16], err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	latency := time.Since(start).Milliseconds()
+	log.Printf("[inference/execute] served %s (sync) for router %s latency=%dms tokens=%d",
+		req.Model, routerNodeID[:16], latency, usageTotal(chunk.Usage))
+
 	c.JSON(http.StatusOK, gin.H{
-		"message":        "inference execution endpoint (contributor-side, Phase 6),",
-		"router_node_id": routerNodeID,
-		"status":         "not_implemented",
+		"content":    chunk.Content,
+		"role":       chunk.Role,
+		"usage":      chunk.Usage,
+		"node_id":    h.router.Identity.NodeID,
+		"latency_ms": latency,
 	})
+}
+
+func (h *InferenceHandler) executeStream(c *gin.Context, p provider.ModelProvider, req *provider.ChatRequest, routerNodeID string, start time.Time) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	ch, err := p.Chat(ctx, req)
+	if err != nil {
+		log.Printf("[inference/execute] stream error for %s from router %s: %v", req.Model, routerNodeID[:16], err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	flusher, _ := c.Writer.(http.Flusher)
+
+	var totalTokens int
+	for chunk := range ch {
+		data, _ := json.Marshal(gin.H{
+			"content": chunk.Content,
+			"done":    chunk.Done,
+			"usage":   chunk.Usage,
+		})
+		c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+		if chunk.Usage != nil {
+			totalTokens = chunk.Usage.TotalTokens
+		}
+	}
+
+	latency := time.Since(start).Milliseconds()
+	log.Printf("[inference/execute] served %s (stream) for router %s latency=%dms tokens=%d",
+		req.Model, routerNodeID[:16], latency, totalTokens)
+}
+
+// findProviderForModel finds a local provider that supports the given model.
+func (h *InferenceHandler) findProviderForModel(model string) provider.ModelProvider {
+	if h.providers == nil {
+		return nil
+	}
+	// Try ollama first (most common local provider)
+	if p, ok := h.providers.Get("ollama"); ok {
+		for _, m := range p.Models() {
+			if m == model {
+				return p
+			}
+		}
+	}
+	// Fallback: check all providers
+	for _, name := range h.providers.List() {
+		p, _ := h.providers.Get(name)
+		for _, m := range p.Models() {
+			if m == model {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
+// toProviderMessages converts inference request messages to provider ChatMessages.
+func toProviderMessages(msgs []map[string]interface{}) []provider.ChatMessage {
+	out := make([]provider.ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		role, _ := m["role"].(string)
+		content, _ := m["content"].(string)
+		out = append(out, provider.ChatMessage{Role: role, Content: content})
+	}
+	return out
+}
+
+func usageTotal(u *provider.TokenUsage) int {
+	if u == nil {
+		return 0
+	}
+	return u.TotalTokens
 }
 
 // RouterStatus returns the router's status and identity (GET /v1/inference/status).
