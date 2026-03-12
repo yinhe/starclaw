@@ -123,7 +123,45 @@ make verify         # 检查服务状态
 > - 所有用户文件在 `data/` 子目录中
 > - `make update` **绝不触碰** MySQL 和 Redis 容器
 
-## 五、配置 AI 模型
+## 五、钱包与身份管理
+
+每个 Claw 节点在首次启动时自动生成 Ed25519 密钥对，派生唯一的 `claw:` 地址。
+此地址同时也是算力钱包地址。
+
+### 备份身份（强烈建议首次部署后执行）
+
+```bash
+make export-key
+```
+
+输出 24 个英文助记词（BIP-39 标准），**抄写在纸上安全保管**。
+只要有这 24 个词，即使服务器销毁也能完整恢复身份。
+
+### 恢复身份
+
+```bash
+# 从助记词恢复
+make import-key SEED='word1 word2 word3 ... word24'
+
+# 从 hex 种子恢复
+make import-key SEED=d606fedf965f...
+```
+
+### 查看钱包信息
+
+```bash
+make wallet-info    # 显示冷钱包地址、热钱包地址、派生路径
+```
+
+### 设备管理
+
+```bash
+make devices            # 列出所有授权设备
+make approve ID=xxxx    # 审批待审设备
+make reject ID=xxxx     # 拒绝/撤销设备
+```
+
+## 六、配置 AI 模型
 
 进入 Web 界面 → 设置 → 模型管理 → 添加你的 API Key：
 
@@ -134,7 +172,7 @@ make verify         # 检查服务状态
 | DeepSeek | https://platform.deepseek.com |
 | Ollama（本地） | 无需 Key，填写 Ollama 地址即可 |
 
-## 六、加入虫群（可选）
+## 七、加入虫群（可选）
 
 默认情况下你的小龙虾独立运行。如果想加入虫群网络：
 
@@ -167,7 +205,7 @@ server:
 - 设置页面显示琥珀色失控警告
 - 恢复连接后自动退出 Feral 模式并记录日志
 
-## 七、升级为领主 Overlord（可选）
+## 八、升级为领主 Overlord（可选）
 
 如果你需要管理多个 Claw 节点：
 
@@ -181,7 +219,7 @@ Overlord 节点可以：
 - 企业内部负载均衡
 - 通过 Nydus 隧道实现 Claw 间直连
 
-## 八、域名 + HTTPS
+## 九、域名 + HTTPS
 
 ```bash
 # 安装 certbot
@@ -233,7 +271,7 @@ sudo ln -s /etc/nginx/sites-available/starclaw /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 九、日常运维
+## 十、日常运维
 
 ### 安装 CLI 别名（推荐）
 
@@ -329,7 +367,7 @@ claw prune             # 清理未使用的 Docker 镜像（别名: claw clean�
 
 > **提示:** 所有命令仍然兼容 `make` 方式调用，如 `make up`、`make logs` 等。
 
-## 十、常见问题
+## 十一、常见问题
 
 **Q: 构建太慢？**
 国内服务器配置 Docker 镜像加速，后续构建使用缓存会很快。
@@ -343,7 +381,7 @@ sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
 **Q: 断开虫群后还能用吗？**
 可以。进入 Feral（失控）模式后所有 AI 功能正常，只是失去自动更新和共享知识。重连后自动恢复。
 
-## 十一、团队代理上线流程（研发 + DevOps）
+## 十二、团队代理上线流程（研发 + DevOps）
 
 当你在「Agents」页面使用“团队代理（研发DevOps团队）”时，推荐按以下 SOP 执行上线：
 

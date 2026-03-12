@@ -114,6 +114,17 @@ Authorization: Bearer <token>
 | PUT | `/v1/user/profile` | 更新用户信息 |
 | PUT | `/v1/user/password` | 修改密码 |
 
+## 设备管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/v1/devices` | 获取所有授权设备列表 |
+| POST | `/v1/devices/:id/approve` | 审批通过待审设备 |
+| POST | `/v1/devices/:id/reject` | 拒绝/删除设备 |
+| POST | `/v1/devices/:id/revoke` | 撤销已授权设备 |
+
+新设备通过 Token 登录时需要 Owner 审批（首台设备自动通过，密码登录自动通过）。
+
 ## 虫群（加入虫群后可用）
 
 | 方法 | 路径 | 说明 |
@@ -122,6 +133,30 @@ Authorization: Bearer <token>
 | POST | `/v1/swarm/heartbeat` | 心跳上报 |
 | GET | `/v1/swarm/config` | 拉取虫群配置 |
 | GET | `/v1/swarm/update/check` | 检查版本更新 |
+
+## CLI 命令（starclaw / claw）
+
+服务器上可直接使用 `starclaw` 或 `claw` 命令，也可通过 `make` 调用：
+
+### 用户管理
+
+| 命令 | Make | 说明 |
+|------|------|------|
+| `starclaw get-token` | `make get-token` | 查看当前 Owner Token |
+| `starclaw reset-token` | `make reset-token` | 重新生成 Owner Token |
+| `starclaw reset-password --password xxx` | `make reset-password PASS=xxx` | 重置 Owner 密码 |
+| `starclaw devices` | `make devices` | 列出所有授权设备 |
+| `starclaw approve <id>` | `make approve ID=xxx` | 审批待审设备 |
+| `starclaw reject <id>` | `make reject ID=xxx` | 拒绝/撤销设备 |
+
+### 钱包与身份
+
+| 命令 | Make | 说明 |
+|------|------|------|
+| `starclaw export-key` | `make export-key` | 导出 24 词助记词（BIP-39 备份） |
+| `starclaw import-key <words>` | `make import-key SEED='...'` | 从助记词或 hex 恢复身份 |
+| `starclaw wallet-info` | `make wallet-info` | 查看 HD 钱包地址和派生路径 |
+| `starclaw version` | `make api-version` | 查看版本号 |
 
 ## SSE 流式响应格式
 
