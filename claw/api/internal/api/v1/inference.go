@@ -165,7 +165,7 @@ func (h *InferenceHandler) Infer(c *gin.Context) {
 		h.router.Registry.Heartbeat(contributor.NodeID, max(0, contributor.ActiveJobs-1), 0)
 	}
 
-	// Report usage to Queen for settlement (async, non-blocking)
+	// Report usage for star credit settlement (async, non-blocking)
 	if h.settlement != nil && contributor != nil {
 		requesterClaw := c.GetString("claw_id") // set by auth middleware if available
 		if requesterClaw == "" {

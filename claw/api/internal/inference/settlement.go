@@ -8,18 +8,18 @@ import (
 	"time"
 )
 
-// SettlementClient reports inference usage to Queen for star credit settlement.
+// SettlementClient reports inference usage to the swarm ledger for star credit settlement.
 type SettlementClient struct {
-	queenURL   string // e.g. https://api.starclaw.net
-	nodeToken  string // internal API auth token
-	httpC      *http.Client
+	ledgerURL string // swarm ledger endpoint, e.g. https://api.starclaw.net
+	nodeToken string // internal API auth token
+	httpC     *http.Client
 }
 
 // NewSettlementClient creates a settlement reporter.
-// If queenURL is empty, settlement is disabled (standalone mode).
-func NewSettlementClient(queenURL, nodeToken string) *SettlementClient {
+// If ledgerURL is empty, settlement is disabled (standalone mode).
+func NewSettlementClient(ledgerURL, nodeToken string) *SettlementClient {
 	return &SettlementClient{
-		queenURL:  queenURL,
+		ledgerURL: ledgerURL,
 		nodeToken: nodeToken,
 		httpC:     &http.Client{Timeout: 10 * time.Second},
 	}
@@ -27,7 +27,7 @@ func NewSettlementClient(queenURL, nodeToken string) *SettlementClient {
 
 // Enabled returns true if settlement reporting is configured.
 func (s *SettlementClient) Enabled() bool {
-	return s.queenURL != "" && s.nodeToken != ""
+	return s.ledgerURL != "" && s.nodeToken != ""
 }
 
 // SettlementReport contains the data needed for inference settlement.
@@ -39,7 +39,7 @@ type SettlementReport struct {
 	CompletionTokens int64  `json:"completion_tokens"`
 }
 
-// ReportAsync sends a settlement report to Queen in a background goroutine.
+// ReportAsync sends a settlement report to the swarm ledger in a background goroutine.
 // Failures are logged but do not block the caller.
 func (s *SettlementClient) ReportAsync(report SettlementReport) {
 	if !s.Enabled() {
@@ -47,7 +47,7 @@ func (s *SettlementClient) ReportAsync(report SettlementReport) {
 	}
 	go func() {
 		data, _ := json.Marshal(report)
-		req, err := http.NewRequest("POST", s.queenURL+"/internal/inference/settle", bytes.NewReader(data))
+		req, err := http.NewRequest("POST", s.ledgerURL+"/internal/inference/settle", bytes.NewReader(data))
 		if err != nil {
 			log.Printf("[inference/settle] failed to create request: %v", err)
 			return
@@ -63,7 +63,7 @@ func (s *SettlementClient) ReportAsync(report SettlementReport) {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("[inference/settle] Queen returned %d for %s→%s (%s)",
+			log.Printf("[inference/settle] ledger returned %d for %s\u2192%s (%s)",
 				resp.StatusCode, report.RequesterClaw, report.ContributorClaw, report.Model)
 			return
 		}
