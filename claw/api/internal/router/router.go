@@ -247,11 +247,23 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			OllamaURL:    cfg.Contributor.OllamaURL,
 			MaxJobs:      cfg.Contributor.MaxJobs,
 			ExternalAddr: cfg.Contributor.ExternalAddr,
+			NydusEnabled: cfg.Nydus.Enabled || cfg.Contributor.Enabled, // auto-enable with contributor
 		}
 		if contributorCfg.ExternalAddr == "" && cfg.Node.Address != "" {
 			contributorCfg.ExternalAddr = cfg.Node.Address
 		}
-		contributorSvc := inference.NewContributorService(contributorCfg, identity, providerRegistry, peerPublicHandler.PeerAddresses)
+
+		// Create Nydus NAT traversal manager (if contributor enabled and no static external address)
+		var nydusManager *node.NydusManager
+		if contributorCfg.NydusEnabled {
+			nydusCfg := node.NydusConfig{
+				STUNServers: cfg.Nydus.STUNServers,
+				RelayURLs:   cfg.Nydus.RelayURLs,
+			}
+			nydusManager = node.NewNydusManager(identity, nydusCfg)
+		}
+
+		contributorSvc := inference.NewContributorService(contributorCfg, identity, providerRegistry, peerPublicHandler.PeerAddresses, nydusManager)
 		contributorSvc.Start()
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)
