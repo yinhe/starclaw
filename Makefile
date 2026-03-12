@@ -192,6 +192,28 @@ bridge-install: bridge-linux ## Deploy MCP Bridge to server as systemd service
 	ssh root@starclaw.me "chmod +x /usr/local/bin/mcp-bridge && systemctl daemon-reload && systemctl enable --now mcp-bridge"
 	@echo "✓ MCP Bridge installed and running on server"
 
+# ======================== CLI Commands (run inside API container) ========================
+
+.PHONY: reset-token
+reset-token: ## Reset Owner Token (prints new token)
+	docker exec starclaw-api ./starclaw reset-token
+
+.PHONY: reset-password
+reset-password: ## Reset Owner password (usage: make reset-password PASS=newpass123)
+	@test -n "$(PASS)" || (echo "Usage: make reset-password PASS=<new-password>" && exit 1)
+	docker exec starclaw-api ./starclaw reset-password --password $(PASS)
+
+.PHONY: api-version
+api-version: ## Show API binary version inside container
+	docker exec starclaw-api ./starclaw version
+
+.PHONY: install-cli
+install-cli: ## Install starclaw & claw commands to /usr/local/bin
+	cp scripts/starclaw-cli.sh /usr/local/bin/starclaw
+	chmod +x /usr/local/bin/starclaw
+	ln -sf /usr/local/bin/starclaw /usr/local/bin/claw
+	@echo "✓ Installed: starclaw & claw → /usr/local/bin/"
+
 # ======================== Help ========================
 
 .PHONY: help
