@@ -220,7 +220,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/peer/gossip", peerPublicHandler.HandleGossip)
 		apiV1.POST("/peer/relay", peerPublicHandler.HandleRelayTask)
 
-		// Inference Router (public status + signed miner endpoints)
+		// Inference Router (public status + signed contributor endpoints)
 		inferenceRouter := inference.NewInferenceRouter(identity)
 		inferenceHandler := v1.NewInferenceHandler(inferenceRouter)
 		apiV1.GET("/inference/status", inferenceHandler.RouterStatus)
@@ -229,10 +229,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		signedRoutes := apiV1.Group("")
 		signedRoutes.Use(middleware.NodeSignatureAuth())
 		{
-			// Inference miner endpoints
-			signedRoutes.POST("/inference/register", inferenceHandler.RegisterMiner)
+			// Inference contributor endpoints
+			signedRoutes.POST("/inference/register", inferenceHandler.RegisterContributor)
 			signedRoutes.POST("/inference/heartbeat", inferenceHandler.Heartbeat)
-			signedRoutes.POST("/inference/unregister", inferenceHandler.UnregisterMiner)
+			signedRoutes.POST("/inference/unregister", inferenceHandler.UnregisterContributor)
 			signedRoutes.POST("/inference/execute", inferenceHandler.Execute)
 
 			// Peer v2 endpoints (middleware-verified, cleaner protocol)
@@ -524,9 +524,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/templates/:id/install", tplHandler.Install)
 			protected.POST("/templates/:id/rate", tplHandler.Rate)
 
-			// Inference (user-facing: route to miners)
+			// Inference (user-facing: route to contributors)
 			protected.POST("/inference/completions", inferenceHandler.Infer)
-			protected.GET("/inference/miners", inferenceHandler.ListMiners)
+			protected.GET("/inference/contributors", inferenceHandler.ListContributors)
 
 			// Chat
 			chatHandler := v1.NewChatHandler(db, providerRegistry, toolRegistry, embedder)

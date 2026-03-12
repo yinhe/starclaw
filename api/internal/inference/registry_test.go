@@ -4,16 +4,16 @@ import (
 	"testing"
 )
 
-func TestMinerRegistry_RegisterAndSelect(t *testing.T) {
-	r := NewMinerRegistry()
+func TestContributorRegistry_RegisterAndSelect(t *testing.T) {
+	r := NewContributorRegistry()
 
 	// No miners → nil
-	if m := r.SelectMiner("gpt-4"); m != nil {
-		t.Error("expected nil when no miners")
+	if m := r.SelectContributor("gpt-4"); m != nil {
+		t.Error("expected nil when no contributors")
 	}
 
-	// Register a miner
-	r.Register(&MinerInfo{
+	// Register a contributor
+	r.Register(&ContributorInfo{
 		NodeID:  "claw:aaaa000000000000000000000000000000000000",
 		Address: "http://10.0.0.1:8080",
 		Models:  []string{"gpt-4", "gpt-3.5"},
@@ -21,31 +21,31 @@ func TestMinerRegistry_RegisterAndSelect(t *testing.T) {
 	})
 
 	// Should find it for gpt-4
-	m := r.SelectMiner("gpt-4")
+	m := r.SelectContributor("gpt-4")
 	if m == nil {
-		t.Fatal("expected to find miner for gpt-4")
+		t.Fatal("expected to find contributor for gpt-4")
 	}
 	if m.NodeID != "claw:aaaa000000000000000000000000000000000000" {
 		t.Errorf("unexpected node_id: %s", m.NodeID)
 	}
 
 	// Should not find for unknown model
-	if r.SelectMiner("llama-99") != nil {
+	if r.SelectContributor("llama-99") != nil {
 		t.Error("expected nil for unknown model")
 	}
 }
 
-func TestMinerRegistry_SelectByLoad(t *testing.T) {
-	r := NewMinerRegistry()
+func TestContributorRegistry_SelectByLoad(t *testing.T) {
+	r := NewContributorRegistry()
 
-	r.Register(&MinerInfo{
+	r.Register(&ContributorInfo{
 		NodeID:     "claw:aaaa000000000000000000000000000000000000",
 		Address:    "http://10.0.0.1:8080",
 		Models:     []string{"gpt-4"},
 		MaxJobs:    4,
 		ActiveJobs: 3, // 75% load
 	})
-	r.Register(&MinerInfo{
+	r.Register(&ContributorInfo{
 		NodeID:     "claw:bbbb000000000000000000000000000000000000",
 		Address:    "http://10.0.0.2:8080",
 		Models:     []string{"gpt-4"},
@@ -53,20 +53,20 @@ func TestMinerRegistry_SelectByLoad(t *testing.T) {
 		ActiveJobs: 1, // 25% load
 	})
 
-	m := r.SelectMiner("gpt-4")
+	m := r.SelectContributor("gpt-4")
 	if m == nil {
-		t.Fatal("expected a miner")
+		t.Fatal("expected a contributor")
 	}
 	// Should pick the less loaded one
 	if m.NodeID != "claw:bbbb000000000000000000000000000000000000" {
-		t.Errorf("expected less-loaded miner, got %s", m.NodeID)
+		t.Errorf("expected less-loaded contributor, got %s", m.NodeID)
 	}
 }
 
-func TestMinerRegistry_AtCapacity(t *testing.T) {
-	r := NewMinerRegistry()
+func TestContributorRegistry_AtCapacity(t *testing.T) {
+	r := NewContributorRegistry()
 
-	r.Register(&MinerInfo{
+	r.Register(&ContributorInfo{
 		NodeID:     "claw:aaaa000000000000000000000000000000000000",
 		Address:    "http://10.0.0.1:8080",
 		Models:     []string{"gpt-4"},
@@ -75,20 +75,20 @@ func TestMinerRegistry_AtCapacity(t *testing.T) {
 	})
 
 	// At capacity → nil
-	if r.SelectMiner("gpt-4") != nil {
-		t.Error("expected nil when miner at capacity")
+	if r.SelectContributor("gpt-4") != nil {
+		t.Error("expected nil when contributor at capacity")
 	}
 }
 
-func TestMinerRegistry_Heartbeat(t *testing.T) {
-	r := NewMinerRegistry()
+func TestContributorRegistry_Heartbeat(t *testing.T) {
+	r := NewContributorRegistry()
 
-	// Heartbeat for unregistered miner
+	// Heartbeat for unregistered contributor
 	if r.Heartbeat("claw:unknown", 0, 100) {
-		t.Error("expected false for unknown miner")
+		t.Error("expected false for unknown contributor")
 	}
 
-	r.Register(&MinerInfo{
+	r.Register(&ContributorInfo{
 		NodeID:  "claw:aaaa000000000000000000000000000000000000",
 		Address: "http://10.0.0.1:8080",
 		Models:  []string{"gpt-4"},
@@ -96,29 +96,29 @@ func TestMinerRegistry_Heartbeat(t *testing.T) {
 	})
 
 	if !r.Heartbeat("claw:aaaa000000000000000000000000000000000000", 2, 50) {
-		t.Error("expected true for known miner")
+		t.Error("expected true for known contributor")
 	}
 }
 
-func TestMinerRegistry_WildcardModel(t *testing.T) {
-	r := NewMinerRegistry()
+func TestContributorRegistry_WildcardModel(t *testing.T) {
+	r := NewContributorRegistry()
 
-	r.Register(&MinerInfo{
+	r.Register(&ContributorInfo{
 		NodeID:  "claw:aaaa000000000000000000000000000000000000",
 		Address: "http://10.0.0.1:8080",
 		Models:  []string{"*"}, // accepts any model
 		MaxJobs: 4,
 	})
 
-	if r.SelectMiner("any-model-name") == nil {
-		t.Error("expected wildcard miner to match any model")
+	if r.SelectContributor("any-model-name") == nil {
+		t.Error("expected wildcard contributor to match any model")
 	}
 }
 
-func TestMinerRegistry_Stats(t *testing.T) {
-	r := NewMinerRegistry()
+func TestContributorRegistry_Stats(t *testing.T) {
+	r := NewContributorRegistry()
 
-	r.Register(&MinerInfo{
+	r.Register(&ContributorInfo{
 		NodeID:     "claw:aaaa000000000000000000000000000000000000",
 		Address:    "http://10.0.0.1:8080",
 		Models:     []string{"gpt-4"},
@@ -127,18 +127,18 @@ func TestMinerRegistry_Stats(t *testing.T) {
 	})
 
 	stats := r.Stats()
-	if stats["total_miners"].(int) != 1 {
-		t.Errorf("expected 1 miner, got %v", stats["total_miners"])
+	if stats["total_contributors"].(int) != 1 {
+		t.Errorf("expected 1 contributor, got %v", stats["total_contributors"])
 	}
 	if stats["online"].(int) != 1 {
 		t.Errorf("expected 1 online, got %v", stats["online"])
 	}
 }
 
-func TestMinerRegistry_Unregister(t *testing.T) {
-	r := NewMinerRegistry()
+func TestContributorRegistry_Unregister(t *testing.T) {
+	r := NewContributorRegistry()
 
-	r.Register(&MinerInfo{
+	r.Register(&ContributorInfo{
 		NodeID:  "claw:aaaa000000000000000000000000000000000000",
 		Address: "http://10.0.0.1:8080",
 		Models:  []string{"gpt-4"},
@@ -147,7 +147,7 @@ func TestMinerRegistry_Unregister(t *testing.T) {
 
 	r.Unregister("claw:aaaa000000000000000000000000000000000000")
 
-	if r.SelectMiner("gpt-4") != nil {
+	if r.SelectContributor("gpt-4") != nil {
 		t.Error("expected nil after unregister")
 	}
 }

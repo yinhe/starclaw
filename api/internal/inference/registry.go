@@ -7,16 +7,16 @@ import (
 	"time"
 )
 
-// MinerInfo represents a registered miner node and its capabilities.
-type MinerInfo struct {
+// ContributorInfo represents a registered compute contributor node and its capabilities.
+type ContributorInfo struct {
 	NodeID      string   `json:"node_id"`
 	PublicKey   string   `json:"public_key"`
-	Address     string   `json:"address"`      // base URL e.g. "http://10.0.0.5:8080"
-	Models      []string `json:"models"`       // supported model names
-	MaxTokens   int      `json:"max_tokens"`   // max tokens per request
+	Address     string   `json:"address"`    // base URL e.g. "http://10.0.0.5:8080"
+	Models      []string `json:"models"`     // supported model names
+	MaxTokens   int      `json:"max_tokens"` // max tokens per request
 	GPUMemoryMB int      `json:"gpu_memory_mb"`
-	ActiveJobs  int      `json:"active_jobs"`  // current concurrent requests
-	MaxJobs     int      `json:"max_jobs"`     // max concurrent requests
+	ActiveJobs  int      `json:"active_jobs"` // current concurrent requests
+	MaxJobs     int      `json:"max_jobs"`    // max concurrent requests
 	Region      string   `json:"region"`
 	Status      string   `json:"status"`       // "online", "busy", "offline"
 	LastSeen    int64    `json:"last_seen"`    // Unix timestamp
@@ -24,24 +24,24 @@ type MinerInfo struct {
 	TotalServed int64    `json:"total_served"` // lifetime requests served
 }
 
-// MinerRegistry tracks all known miner nodes.
-type MinerRegistry struct {
-	miners map[string]*MinerInfo // node_id -> info
-	mu     sync.RWMutex
+// ContributorRegistry tracks all known compute contributor nodes.
+type ContributorRegistry struct {
+	contributors map[string]*ContributorInfo // node_id -> info
+	mu           sync.RWMutex
 }
 
-// NewMinerRegistry creates an empty registry.
-func NewMinerRegistry() *MinerRegistry {
-	r := &MinerRegistry{
-		miners: make(map[string]*MinerInfo),
+// NewContributorRegistry creates an empty registry.
+func NewContributorRegistry() *ContributorRegistry {
+	r := &ContributorRegistry{
+		contributors: make(map[string]*ContributorInfo),
 	}
-	// Start background reaper for stale miners
+	// Start background reaper for stale contributors
 	go r.reapLoop()
 	return r
 }
 
-// Register adds or updates a miner in the registry.
-func (r *MinerRegistry) Register(info *MinerInfo) {
+// Register adds or updates a contributor in the registry.
+func (r *ContributorRegistry) Register(info *ContributorInfo) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -52,17 +52,17 @@ func (r *MinerRegistry) Register(info *MinerInfo) {
 	if info.MaxJobs <= 0 {
 		info.MaxJobs = 1
 	}
-	r.miners[info.NodeID] = info
-	log.Printf("[inference/registry] registered miner %s (%s) models=%v jobs=%d/%d",
+	r.contributors[info.NodeID] = info
+	log.Printf("[inference/registry] registered contributor %s (%s) models=%v jobs=%d/%d",
 		info.NodeID[:16], info.Address, info.Models, info.ActiveJobs, info.MaxJobs)
 }
 
-// Heartbeat updates a miner's status and active job count.
-func (r *MinerRegistry) Heartbeat(nodeID string, activeJobs int, latencyMs int64) bool {
+// Heartbeat updates a contributor's status and active job count.
+func (r *ContributorRegistry) Heartbeat(nodeID string, activeJobs int, latencyMs int64) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	m, ok := r.miners[nodeID]
+	m, ok := r.contributors[nodeID]
 	if !ok {
 		return false
 	}
@@ -76,22 +76,22 @@ func (r *MinerRegistry) Heartbeat(nodeID string, activeJobs int, latencyMs int64
 	return true
 }
 
-// Unregister removes a miner from the registry.
-func (r *MinerRegistry) Unregister(nodeID string) {
+// Unregister removes a contributor from the registry.
+func (r *ContributorRegistry) Unregister(nodeID string) {
 	r.mu.Lock()
-	delete(r.miners, nodeID)
+	delete(r.contributors, nodeID)
 	r.mu.Unlock()
-	log.Printf("[inference/registry] unregistered miner %s", nodeID[:min(16, len(nodeID))])
+	log.Printf("[inference/registry] unregistered contributor %s", nodeID[:min(16, len(nodeID))])
 }
 
-// SelectMiner picks the best available miner for a given model.
+// SelectContributor picks the best available contributor for a given model.
 // Strategy: filter by model → filter online + has capacity → sort by (load ratio, latency).
-func (r *MinerRegistry) SelectMiner(model string) *MinerInfo {
+func (r *ContributorRegistry) SelectContributor(model string) *ContributorInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var candidates []*MinerInfo
-	for _, m := range r.miners {
+	var candidates []*ContributorInfo
+	for _, m := range r.contributors {
 		if m.Status == "offline" {
 			continue
 		}
@@ -124,13 +124,13 @@ func (r *MinerRegistry) SelectMiner(model string) *MinerInfo {
 	return candidates[0]
 }
 
-// ListMiners returns all registered miners.
-func (r *MinerRegistry) ListMiners() []*MinerInfo {
+// ListContributors returns all registered contributors.
+func (r *ContributorRegistry) ListContributors() []*ContributorInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*MinerInfo, 0, len(r.miners))
-	for _, m := range r.miners {
+	result := make([]*ContributorInfo, 0, len(r.contributors))
+	for _, m := range r.contributors {
 		copy := *m
 		result = append(result, &copy)
 	}
@@ -138,7 +138,7 @@ func (r *MinerRegistry) ListMiners() []*MinerInfo {
 }
 
 // Stats returns aggregate registry statistics.
-func (r *MinerRegistry) Stats() map[string]interface{} {
+func (r *ContributorRegistry) Stats() map[string]interface{} {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -146,7 +146,7 @@ func (r *MinerRegistry) Stats() map[string]interface{} {
 	totalJobs, totalCapacity := 0, 0
 	modelSet := make(map[string]int)
 
-	for _, m := range r.miners {
+	for _, m := range r.contributors {
 		switch m.Status {
 		case "online":
 			online++
@@ -163,32 +163,32 @@ func (r *MinerRegistry) Stats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_miners":  len(r.miners),
-		"online":        online,
-		"busy":          busy,
-		"offline":       offline,
-		"active_jobs":   totalJobs,
-		"total_capacity": totalCapacity,
-		"models":        modelSet,
+		"total_contributors": len(r.contributors),
+		"online":             online,
+		"busy":               busy,
+		"offline":            offline,
+		"active_jobs":        totalJobs,
+		"total_capacity":     totalCapacity,
+		"models":             modelSet,
 	}
 }
 
-// reapLoop marks miners as offline if they haven't sent a heartbeat recently.
-func (r *MinerRegistry) reapLoop() {
+// reapLoop marks contributors as offline if they haven't sent a heartbeat recently.
+func (r *ContributorRegistry) reapLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
 		r.mu.Lock()
 		now := time.Now().Unix()
-		for id, m := range r.miners {
+		for id, m := range r.contributors {
 			if now-m.LastSeen > 120 && m.Status != "offline" {
 				m.Status = "offline"
-				log.Printf("[inference/registry] miner %s marked offline (no heartbeat for %ds)", id[:min(16, len(id))], now-m.LastSeen)
+				log.Printf("[inference/registry] contributor %s marked offline (no heartbeat for %ds)", id[:min(16, len(id))], now-m.LastSeen)
 			}
-			// Remove miners offline for > 1 hour
+			// Remove contributors offline for > 1 hour
 			if now-m.LastSeen > 3600 {
-				delete(r.miners, id)
-				log.Printf("[inference/registry] reaped stale miner %s", id[:min(16, len(id))])
+				delete(r.contributors, id)
+				log.Printf("[inference/registry] reaped stale contributor %s", id[:min(16, len(id))])
 			}
 		}
 		r.mu.Unlock()

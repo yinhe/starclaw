@@ -20,9 +20,9 @@ func NewInferenceHandler(router *inference.InferenceRouter) *InferenceHandler {
 	return &InferenceHandler{router: router}
 }
 
-// RegisterMiner handles miner registration (POST /v1/inference/register).
-// Called by miner nodes (protected by NodeSignatureAuth middleware).
-func (h *InferenceHandler) RegisterMiner(c *gin.Context) {
+// RegisterContributor handles contributor registration (POST /v1/inference/register).
+// Called by compute contributor nodes (protected by NodeSignatureAuth middleware).
+func (h *InferenceHandler) RegisterContributor(c *gin.Context) {
 	var req struct {
 		Address     string   `json:"address" binding:"required"`
 		Models      []string `json:"models" binding:"required"`
@@ -44,7 +44,7 @@ func (h *InferenceHandler) RegisterMiner(c *gin.Context) {
 		return
 	}
 
-	h.router.Registry.Register(&inference.MinerInfo{
+	h.router.Registry.Register(&inference.ContributorInfo{
 		NodeID:      nodeID,
 		PublicKey:   pubKey,
 		Address:     req.Address,
@@ -56,15 +56,15 @@ func (h *InferenceHandler) RegisterMiner(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":  "miner registered",
+		"message":  "contributor registered",
 		"node_id":  nodeID,
 		"models":   req.Models,
 		"max_jobs": req.MaxJobs,
 	})
 }
 
-// Heartbeat handles miner heartbeat (POST /v1/inference/heartbeat).
-// Called periodically by miner nodes (protected by NodeSignatureAuth middleware).
+// Heartbeat handles contributor heartbeat (POST /v1/inference/heartbeat).
+// Called periodically by contributor nodes (protected by NodeSignatureAuth middleware).
 func (h *InferenceHandler) Heartbeat(c *gin.Context) {
 	var req struct {
 		ActiveJobs int   `json:"active_jobs"`
@@ -82,35 +82,35 @@ func (h *InferenceHandler) Heartbeat(c *gin.Context) {
 	}
 
 	if !h.router.Registry.Heartbeat(nodeID, req.ActiveJobs, req.LatencyMs) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "miner not registered"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "contributor not registered"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
-// UnregisterMiner handles miner deregistration (POST /v1/inference/unregister).
-func (h *InferenceHandler) UnregisterMiner(c *gin.Context) {
+// UnregisterContributor handles contributor deregistration (POST /v1/inference/unregister).
+func (h *InferenceHandler) UnregisterContributor(c *gin.Context) {
 	nodeID := c.GetString("node_id")
 	if nodeID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing node identity"})
 		return
 	}
 	h.router.Registry.Unregister(nodeID)
-	c.JSON(http.StatusOK, gin.H{"message": "miner unregistered"})
+	c.JSON(http.StatusOK, gin.H{"message": "contributor unregistered"})
 }
 
-// ListMiners returns all registered miners (GET /v1/inference/miners).
-func (h *InferenceHandler) ListMiners(c *gin.Context) {
-	miners := h.router.Registry.ListMiners()
+// ListContributors returns all registered contributors (GET /v1/inference/contributors).
+func (h *InferenceHandler) ListContributors(c *gin.Context) {
+	contributors := h.router.Registry.ListContributors()
 	stats := h.router.Registry.Stats()
 	c.JSON(http.StatusOK, gin.H{
-		"miners": miners,
-		"stats":  stats,
+		"contributors": contributors,
+		"stats":        stats,
 	})
 }
 
-// Infer routes an inference request to the best miner (POST /v1/inference/completions).
+// Infer routes an inference request to the best contributor (POST /v1/inference/completions).
 // Supports both streaming (SSE) and non-streaming responses.
 func (h *InferenceHandler) Infer(c *gin.Context) {
 	var req inference.InferenceRequest
@@ -119,46 +119,46 @@ func (h *InferenceHandler) Infer(c *gin.Context) {
 		return
 	}
 
-	resp, miner, err := h.router.Route(c.Request.Context(), &req)
+	resp, contributor, err := h.router.Route(c.Request.Context(), &req)
 	if err != nil {
 		status := http.StatusServiceUnavailable
 		c.JSON(status, gin.H{
 			"error":   err.Error(),
-			"details": "no miner available or miner unreachable",
+			"details": "no contributor available or contributor unreachable",
 		})
 		return
 	}
 	defer resp.Body.Close()
 
 	// Add routing metadata headers
-	minerID := ""
-	if miner != nil {
-		minerID = miner.NodeID
+	contributorID := ""
+	if contributor != nil {
+		contributorID = contributor.NodeID
 	}
-	c.Header("X-Routed-To", minerID)
+	c.Header("X-Routed-To", contributorID)
 	c.Header("X-Router-ID", h.router.Identity.NodeID)
 
 	if req.Stream {
-		// SSE streaming proxy: forward miner's SSE stream to client
-		h.proxySSEStream(c, resp, minerID)
+		// SSE streaming proxy: forward contributor's SSE stream to client
+		h.proxySSEStream(c, resp, contributorID)
 	} else {
 		// Non-streaming: read full response and forward
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read miner response"})
+			c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read contributor response"})
 			return
 		}
 		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 	}
 
-	// Update miner: decrement active jobs
-	if miner != nil {
-		h.router.Registry.Heartbeat(miner.NodeID, max(0, miner.ActiveJobs-1), 0)
+	// Update contributor: decrement active jobs
+	if contributor != nil {
+		h.router.Registry.Heartbeat(contributor.NodeID, max(0, contributor.ActiveJobs-1), 0)
 	}
 }
 
-// proxySSEStream forwards an SSE stream from the miner to the client.
-func (h *InferenceHandler) proxySSEStream(c *gin.Context, resp *http.Response, minerID string) {
+// proxySSEStream forwards an SSE stream from the contributor to the client.
+func (h *InferenceHandler) proxySSEStream(c *gin.Context, resp *http.Response, contributorID string) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -176,7 +176,7 @@ func (h *InferenceHandler) proxySSEStream(c *gin.Context, resp *http.Response, m
 		}
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("[inference/router] SSE proxy error from miner %s: %v", minerID, err)
+				log.Printf("[inference/router] SSE proxy error from contributor %s: %v", contributorID, err)
 			}
 			return
 		}
@@ -184,14 +184,14 @@ func (h *InferenceHandler) proxySSEStream(c *gin.Context, resp *http.Response, m
 }
 
 // Execute handles inference execution on this node (POST /v1/inference/execute).
-// This is the miner-side endpoint called by the router.
+// This is the contributor-side endpoint called by the router.
 // Protected by NodeSignatureAuth — only trusted routers can invoke this.
 func (h *InferenceHandler) Execute(c *gin.Context) {
-	// This endpoint will be implemented by the miner (Phase 6: 推理挖矿).
+	// This endpoint will be implemented by the contributor (Phase 6: 算力贡献).
 	// For now, return a placeholder acknowledging the signed request.
 	routerNodeID := c.GetString("node_id")
 	c.JSON(http.StatusOK, gin.H{
-		"message":        "inference execution endpoint (miner-side, Phase 6)",
+		"message":        "inference execution endpoint (contributor-side, Phase 6),",
 		"router_node_id": routerNodeID,
 		"status":         "not_implemented",
 	})

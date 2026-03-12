@@ -304,7 +304,7 @@ export default function WalletPage() {
             </p>
             <p>
               每个新注册的 Claw 节点加入虫群时自动获得 <strong className="text-gray-700">100 ⭐ 欢迎奖励</strong>。
-              星力可用于支付 API 调用费用、发布赏金任务、以及推理挖矿结算。
+              星力可用于支付 API 调用费用、发布赏金任务、以及算力贡献结算。
               你也可以在 <a href="https://star-ai.net/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-medium">star-ai.net</a> 直接充值星力。
             </p>
             <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
