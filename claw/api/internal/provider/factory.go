@@ -59,6 +59,11 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
 		})
+	case "star-ai", "starai":
+		return NewStarAIProvider(StarAIConfig{
+			APIKey:  cfg.APIKey,
+			BaseURL: cfg.BaseURL,
+		})
 	default:
 		// OpenAI-compatible fallback
 		return NewOpenAIProvider(OpenAIConfig{

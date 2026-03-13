@@ -13,6 +13,7 @@ import (
 
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/node"
 )
 
 // Connection state constants
@@ -54,6 +55,7 @@ type Client struct {
 	lastHeartbeat    time.Time
 	feralSince       time.Time // zero if not in feral mode
 	credits          *CreditBalance
+	creditClient     *CreditClient // star credit operations client
 }
 
 // NewClient creates a swarm client from config
@@ -185,6 +187,23 @@ func (c *Client) SetClawID(id string) {
 	c.mu.Lock()
 	c.clawID = id
 	c.mu.Unlock()
+}
+
+// SetIdentity sets the node identity and initializes the CreditClient.
+func (c *Client) SetIdentity(identity *node.Identity) {
+	c.mu.Lock()
+	c.clawID = identity.NodeID
+	if c.cfg.QueenURL != "" {
+		c.creditClient = NewCreditClient(c.cfg.QueenURL, identity)
+	}
+	c.mu.Unlock()
+}
+
+// CreditClient returns the star credit operations client (may be nil if not connected to Queen).
+func (c *Client) CreditClient() *CreditClient {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.creditClient
 }
 
 // SetAddress sets the node's public-facing address for swarm registration
@@ -378,7 +397,13 @@ func (c *Client) heartbeat() error {
 			}
 			c.mu.Lock()
 			c.credits = cb
+			cc := c.creditClient
 			c.mu.Unlock()
+
+			// Forward to CreditClient for HP monitoring
+			if cc != nil {
+				cc.UpdateFromHeartbeat(cb)
+			}
 		}
 	}
 

@@ -166,6 +166,19 @@ func Setup() *gin.Engine {
 		admin.GET("/arena/leaderboard", proxy.ArenaLeaderboard)
 	}
 
+	// ---- API Gateway (star-ai.net) ----
+	gw := handler.NewGatewayHandler()
+
+	// API key management (authenticated)
+	authed.POST("/api-keys", writeRL.UserRateLimit(), gw.CreateKey)
+	authed.GET("/api-keys", gw.ListKeys)
+	authed.DELETE("/api-keys/:id", writeRL.UserRateLimit(), gw.DeleteKey)
+	authed.GET("/api-keys/usage", gw.Usage)
+
+	// OpenAI-compatible gateway (API key auth, not JWT)
+	v1.POST("/chat/completions", gw.ChatCompletions)
+	v1.GET("/models", gw.ListModels)
+
 	// ---- Star Credits (星力) — public API for claw wallets ----
 	credit := &handler.CreditHandler{}
 	v1.GET("/credits/balance", credit.GetBalance)

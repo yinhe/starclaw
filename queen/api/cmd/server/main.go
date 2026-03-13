@@ -66,6 +66,8 @@ func main() {
 		&model.CreditAccount{},
 		&model.CreditTransaction{},
 		&model.CreditFreeze{},
+		// Gateway (star-ai.net)
+		&model.GatewayUsageLog{},
 	)
 
 	seedAdmin()

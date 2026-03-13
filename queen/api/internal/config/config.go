@@ -13,6 +13,17 @@ type Config struct {
 	CORS     CORSConfig     `mapstructure:"cors"`
 	OAuth    OAuthConfig    `mapstructure:"oauth"`
 	Pay      PayConfig
+	Gateway  GatewayConfig `mapstructure:"gateway"`
+}
+
+// GatewayConfig holds upstream provider API keys for the star-ai.net gateway
+type GatewayConfig struct {
+	Providers map[string]GatewayProviderConfig `mapstructure:"providers"`
+}
+
+type GatewayProviderConfig struct {
+	APIKey  string `mapstructure:"api_key"`
+	BaseURL string `mapstructure:"base_url"`
 }
 
 type OAuthConfig struct {

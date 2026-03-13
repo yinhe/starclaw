@@ -17,19 +17,26 @@ func NewMemoryHandler(db *gorm.DB) *MemoryHandler {
 	return &MemoryHandler{db: db}
 }
 
-// List returns memories for a specific agent
+// List returns memories for a specific agent, with optional category filter
 func (h *MemoryHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
 	agentID := c.Query("agent_id")
+	category := c.Query("category")
 
 	q := h.db.Where("user_id = ?", userID)
 	if agentID != "" {
 		q = q.Where("agent_id = ?", agentID)
 	}
+	if category != "" {
+		q = q.Where("category = ?", category)
+	}
+
+	var total int64
+	q.Model(&model.Memory{}).Count(&total)
 
 	var memories []model.Memory
-	q.Order("importance DESC, updated_at DESC").Limit(50).Find(&memories)
-	c.JSON(http.StatusOK, gin.H{"memories": memories})
+	q.Order("importance DESC, updated_at DESC").Limit(100).Find(&memories)
+	c.JSON(http.StatusOK, gin.H{"memories": memories, "total": total})
 }
 
 // Create adds a new memory entry
@@ -61,6 +68,7 @@ func (h *MemoryHandler) Create(c *gin.Context) {
 		Key:        req.Key,
 		Content:    req.Content,
 		Category:   req.Category,
+		Source:     "user_explicit",
 		Importance: req.Importance,
 	}
 	if err := h.db.Create(&mem).Error; err != nil {
@@ -115,6 +123,46 @@ func (h *MemoryHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
+// Clear removes all memories for a user+agent
+func (h *MemoryHandler) Clear(c *gin.Context) {
+	userID := c.GetString("user_id")
+	agentID := c.Query("agent_id")
+
+	q := h.db.Where("user_id = ?", userID)
+	if agentID != "" {
+		q = q.Where("agent_id = ?", agentID)
+	}
+	result := q.Delete(&model.Memory{})
+	c.JSON(http.StatusOK, gin.H{"deleted": result.RowsAffected})
+}
+
+// Stats returns memory statistics for the user
+func (h *MemoryHandler) Stats(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var total int64
+	h.db.Model(&model.Memory{}).Where("user_id = ?", userID).Count(&total)
+
+	// Count by category
+	type catCount struct {
+		Category string
+		Count    int64
+	}
+	var counts []catCount
+	h.db.Model(&model.Memory{}).Where("user_id = ?", userID).
+		Select("category, count(*) as count").Group("category").Find(&counts)
+
+	catMap := map[string]int64{}
+	for _, cc := range counts {
+		catMap[cc.Category] = cc.Count
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total":      total,
+		"categories": catMap,
+	})
+}
+
 // Recall retrieves relevant memories for an agent (used by agent runtime)
 func (h *MemoryHandler) Recall(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -134,7 +182,7 @@ func (h *MemoryHandler) Recall(c *gin.Context) {
 	if len(ids) > 0 {
 		h.db.Model(&model.Memory{}).Where("id IN ?", ids).
 			Updates(map[string]interface{}{
-				"access_count":  gorm.Expr("access_count + 1"),
+				"access_count":   gorm.Expr("access_count + 1"),
 				"last_access_at": time.Now(),
 			})
 	}

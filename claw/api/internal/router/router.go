@@ -132,7 +132,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	mcp.AutoRegisterBridge(toolRegistry)
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{})
 
 	// Seed built-in agent templates (Creep marketplace)
 	v1.SeedBuiltinTemplates(db)
@@ -743,6 +743,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/swarm/join", systemHandler.JoinSwarm)
 			protected.POST("/system/swarm/leave", systemHandler.LeaveSwarm)
 			protected.GET("/system/credits", systemHandler.GetCredits)
+			protected.POST("/system/credits/transfer", systemHandler.TransferCredits)
+			protected.GET("/system/credits/transactions", systemHandler.ListCreditTransactions)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
 
 			// Device Management
@@ -805,6 +807,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/memories", memoryHandler.Create)
 			protected.PUT("/memories/:id", memoryHandler.Update)
 			protected.DELETE("/memories/:id", memoryHandler.Delete)
+			protected.DELETE("/memories", memoryHandler.Clear)
+			protected.GET("/memories/stats", memoryHandler.Stats)
 			protected.GET("/memories/recall/:agent_id", memoryHandler.Recall)
 
 			// Multimodal (image upload, STT, TTS)

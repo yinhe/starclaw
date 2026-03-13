@@ -286,6 +286,211 @@ contributor:
 | **抽检验证** | 1% 请求随机发给第二个贡献者，Jaccard 相似度 ≥0.5 才通过 |
 | **经济约束** | 作弊导致信任分下降 → 接单减少 → 收入降低 |
 
+## 脑虫记忆（Cerebrate Memory）
+
+跨会话记忆系统，自动从对话中提取用户偏好、事实信息和技能经验，并在后续对话中注入相关记忆到 system prompt。
+
+### 工作原理
+
+```
+用户发消息 → Cerebrate.Retrieve() 检索相关记忆 → 注入 system prompt
+                                                    ↓
+助手回复后 → async ExtractAndStore() → LLM 提取结构化记忆 → upsert 存储
+```
+
+### 记忆分类
+
+| 分类 | category | 说明 | 示例 |
+|------|----------|------|------|
+| 用户指令 | `instruct` | 用户明确要求遵守的指令（每次对话必注入） | "以后都用中文回答" |
+| 用户偏好 | `preference` | 偏好和习惯 | "喜欢简洁的代码风格" |
+| 用户事实 | `fact` | 事实信息 | "用户是后端工程师，用 Go" |
+| 技能经验 | `skill` | 成功解决问题的方法 | "FFmpeg xfade 实现视频转场" |
+| 近期上下文 | `context` | 正在做的事情、近期目标 | "正在开发 StarClaw 项目" |
+
+### API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/v1/memories?agent_id=X&category=Y` | 获取记忆列表（可按 agent 和分类过滤） |
+| POST | `/v1/memories` | 手动创建记忆 |
+| PUT | `/v1/memories/:id` | 更新记忆内容或重要度 |
+| DELETE | `/v1/memories/:id` | 删除单条记忆 |
+| DELETE | `/v1/memories?agent_id=X` | 清空指定 Agent 的所有记忆 |
+| GET | `/v1/memories/stats` | 记忆统计（总数 + 各分类数量） |
+| GET | `/v1/memories/recall/:agent_id` | 召回指定 Agent 的记忆（内部使用） |
+
+#### POST /v1/memories
+
+```json
+{
+  "agent_id": "uuid",
+  "key": "preferred_language",
+  "content": "用户偏好中文回答",
+  "category": "preference",
+  "importance": 0.8
+}
+```
+
+#### GET /v1/memories/stats 响应
+
+```json
+{
+  "total": 12,
+  "categories": {
+    "instruct": 2,
+    "preference": 4,
+    "fact": 3,
+    "skill": 2,
+    "context": 1
+  }
+}
+```
+
+## 星力经济（Star Credits）
+
+节点间的价值交换体系。每个 Claw 节点有唯一的 `claw:` 地址（Ed25519 公钥派生），可查询余额、签名转账、查看交易记录。
+
+### 血量系统（HP）
+
+| HP 状态 | 余额范围 | 说明 |
+|---------|---------|------|
+| `full` | >1000⭐ | 满血 |
+| `healthy` | 100–1000⭐ | 健康 |
+| `low` | 10–100⭐ | 低血量 |
+| `critical` | 1–10⭐ | 危急 |
+| `hibernated` | 0⭐ | 休眠（本地正常，无法使用网络算力） |
+
+### API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/v1/system/credits` | 查询星力余额（缓存值，加 `?refresh=true` 直接查 Queen） |
+| POST | `/v1/system/credits/transfer` | Ed25519 签名转账 |
+| GET | `/v1/system/credits/transactions` | 交易记录（`?page=1&page_size=20&type=transfer`） |
+
+#### POST /v1/system/credits/transfer
+
+```json
+{
+  "to_claw": "claw:abc123...",
+  "amount": 100.5,
+  "remark": "感谢算力贡献"
+}
+```
+
+### CLI 命令
+
+| 命令 | 说明 |
+|------|------|
+| `starclaw balance` | 查询星力余额和 HP 状态 |
+| `starclaw transfer <claw:地址> <金额> [备注]` | 签名转账 |
+| `starclaw transactions [--type transfer] [--page 1]` | 查看交易记录 |
+
+## star-ai.net API Gateway
+
+统一 AI API 网关。用一个 API Key 调用所有主流模型，OpenAI 兼容接口，按量计费从余额扣除。
+
+### 使用方式
+
+```bash
+# 与 OpenAI SDK 完全兼容
+curl https://star-ai.net/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+### 支持的模型
+
+| Provider | 模型 | 定价（分/1M tokens） |
+|----------|------|---------------------|
+| OpenAI | gpt-4o, gpt-4.1, o3 | 入 150–200 / 出 600–800 |
+| OpenAI | gpt-4o-mini, gpt-4.1-mini, gpt-4.1-nano, o3-mini, o4-mini | 入 15 / 出 60 |
+| Anthropic | claude-sonnet-4-20250514 | 入 200 / 出 800 |
+| Anthropic | claude-3-5-haiku-20241022 | 入 50 / 出 200 |
+| DeepSeek | deepseek-chat, deepseek-reasoner | 入 10 / 出 20 |
+| Qwen | qwen-plus, qwen-turbo, qwen-max | 入 10 / 出 20 |
+| Google | gemini-2.5-pro-preview-06-05 | 入 100 / 出 400 |
+| Google | gemini-2.0-flash | 入 5 / 出 15 |
+
+### Gateway API
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/v1/chat/completions` | API Key | OpenAI 兼容聊天接口（支持 stream） |
+| GET | `/v1/models` | API Key | 列出可用模型 |
+
+### API Key 管理（需 JWT 登录）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/v1/api-keys` | 创建 API Key（每用户最多 5 个） |
+| GET | `/v1/api-keys` | 列出我的 API Keys |
+| DELETE | `/v1/api-keys/:id` | 删除 API Key |
+| GET | `/v1/api-keys/usage` | 使用量统计 + 近期调用日志 |
+
+#### POST /v1/api-keys
+
+```json
+// 请求
+{"name": "我的项目"}
+
+// 响应（Key 仅在创建时返回一次）
+{"id": "uuid", "name": "我的项目", "key": "sk-xxxx...", "key_prefix": "sk-xxxx..."}
+```
+
+### Claw 集成
+
+在 Claw 设置中添加 star-ai provider：
+
+```yaml
+models:
+  - provider: star-ai
+    api_key: sk-your-api-key
+    # base_url 默认 https://star-ai.net/v1
+```
+
+### 计费流程
+
+```
+请求 → 验证 API Key → 检查余额 → 代理到上游 Provider
+→ 响应（流式/同步） → 统计 tokens → 按定价扣费 → 记录日志
+```
+
+## 部署
+
+### 一键部署命令（Windows）
+
+```bash
+# 部署 API 后端
+scripts\deploy.bat "commit message" api
+
+# 部署 Web 前端
+scripts\deploy.bat "commit message" web
+
+# 全量部署（API + Web）
+scripts\deploy.bat "commit message" all
+```
+
+### 部署流程
+
+```
+本地 (e:\starclaw\claw)
+  → robocopy → OSS 仓库 (e:\starclaw-oss)
+  → git push → GitHub (yinhe/starclaw)
+  → SSH 服务器: bash /opt/starclaw/deploy-update.sh [api|web|all]
+  → git pull → docker compose build → restart → health check
+```
+
+### 服务器端口映射
+
+| 域名 | 后端地址 | Docker 容器 |
+|------|---------|-------------|
+| app.starclaw.me | 127.0.0.1:8081 | starclaw-web (80→8081) |
+| api.starclaw.me | 127.0.0.1:8080 | starclaw-api (8080→8080) |
+| starclaw.me/api/ | 127.0.0.1:8085 | queen-api |
+
 ## SSE 流式响应格式
 
 对话和工作流接口使用 Server-Sent Events 流式返回：

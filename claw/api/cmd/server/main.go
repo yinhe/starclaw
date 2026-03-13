@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -54,6 +55,15 @@ func main() {
 			return
 		case "wallet-info":
 			cmdWalletInfo()
+			return
+		case "balance":
+			cmdBalance()
+			return
+		case "transfer":
+			cmdTransfer()
+			return
+		case "transactions":
+			cmdTransactions()
 			return
 		case "version":
 			fmt.Printf("StarClaw v%s\n", molt.Version)
@@ -101,7 +111,7 @@ func main() {
 
 	// Start Swarm client (register with Queen + heartbeat)
 	swarmClient := swarm.NewClient(cfg.Swarm)
-	swarmClient.SetClawID(identity.NodeID)
+	swarmClient.SetIdentity(identity) // sets clawID + initializes CreditClient
 	if cfg.Node.Address != "" {
 		swarmClient.SetAddress(cfg.Node.Address)
 	}
@@ -163,6 +173,9 @@ func printUsage() {
 	fmt.Println("  export-key       Export 24-word mnemonic (BIP-39 backup)")
 	fmt.Println("  import-key       Restore identity from mnemonic or seed hex")
 	fmt.Println("  wallet-info      Show HD wallet addresses and derivation paths")
+	fmt.Println("  balance          Show star credit balance and HP status")
+	fmt.Println("  transfer         Transfer stars to another claw address")
+	fmt.Println("  transactions     Show recent transaction history")
 	fmt.Println("  version          Print version and exit")
 	fmt.Println("  help             Show this help")
 	fmt.Println("")
@@ -175,6 +188,9 @@ func printUsage() {
 	fmt.Println("  starclaw export-key")
 	fmt.Println("  starclaw import-key <24 words or seed-hex>")
 	fmt.Println("  starclaw wallet-info")
+	fmt.Println("  starclaw balance")
+	fmt.Println("  starclaw transfer <claw:address> <amount_stars> [remark]")
+	fmt.Println("  starclaw transactions [--type transfer] [--page 1]")
 }
 
 func openCLIDB() (*config.Config, error) {
@@ -500,6 +516,164 @@ func cmdWalletInfo() {
 	fmt.Println("")
 	fmt.Println("Cold address = master wallet (high-value ops, backup with mnemonic)")
 	fmt.Println("Hot address  = everyday wallet (transfers, heartbeats)")
+}
+
+// cmdBalance queries and displays the star credit balance from Queen.
+func cmdBalance() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	identity := node.LoadOrCreateIdentity()
+	if cfg.Swarm.QueenURL == "" {
+		log.Fatalf("queen_url not configured in swarm settings")
+	}
+
+	cc := swarm.NewCreditClient(cfg.Swarm.QueenURL, identity)
+	balance, err := cc.QueryBalance()
+	if err != nil {
+		log.Fatalf("Failed to query balance: %v", err)
+	}
+
+	hpIcon := map[string]string{
+		"full": "\u2764\ufe0f", "healthy": "\U0001f49a", "low": "\U0001f49b",
+		"critical": "\u2764\ufe0f\u200d\U0001fa79", "hibernated": "\U0001f480",
+	}[balance.HPStatus]
+	if hpIcon == "" {
+		hpIcon = "\u2753"
+	}
+
+	fmt.Println("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
+	fmt.Println("\u2551       StarClaw Star Credits                     \u2551")
+	fmt.Println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563")
+	fmt.Printf("  Claw ID:     %s\n", identity.NodeID)
+	fmt.Printf("  Balance:     %.2f Stars\n", balance.BalanceStars)
+	fmt.Printf("  Frozen:      %.2f Stars\n", balance.FrozenStars)
+	fmt.Printf("  Total In:    %d units\n", balance.TotalIn)
+	fmt.Printf("  Total Out:   %d units\n", balance.TotalOut)
+	fmt.Printf("  Nonce:       %d\n", balance.Nonce)
+	fmt.Printf("  HP Status:   %s %s\n", hpIcon, balance.HPStatus)
+	fmt.Printf("  Trust Level: %s\n", balance.TrustLevel)
+	fmt.Printf("  Status:      %s\n", balance.Status)
+	fmt.Println("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
+}
+
+// cmdTransfer sends star credits to another claw address.
+func cmdTransfer() {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: starclaw transfer <claw:address> <amount_stars> [remark]")
+		fmt.Println("  amount is in Stars (e.g. 10.5 = 10.5 Stars)")
+		os.Exit(1)
+	}
+
+	target := os.Args[2]
+	amountStr := os.Args[3]
+	remark := ""
+	if len(os.Args) > 4 {
+		remark = strings.Join(os.Args[4:], " ")
+	}
+
+	if !strings.HasPrefix(target, "claw:") {
+		log.Fatalf("Invalid target address: must start with claw:")
+	}
+
+	amountStars, err := strconv.ParseFloat(amountStr, 64)
+	if err != nil || amountStars <= 0 {
+		log.Fatalf("Invalid amount: must be a positive number")
+	}
+	amountUnits := int64(amountStars * 10000) // 1 Star = 10000 units
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	identity := node.LoadOrCreateIdentity()
+	if cfg.Swarm.QueenURL == "" {
+		log.Fatalf("queen_url not configured in swarm settings")
+	}
+
+	cc := swarm.NewCreditClient(cfg.Swarm.QueenURL, identity)
+
+	fmt.Printf("Transferring %.2f Stars (%d units) to %s...\n", amountStars, amountUnits, target)
+
+	result, err := cc.Transfer(swarm.TransferRequest{
+		ToClaw: target,
+		Amount: amountUnits,
+		Remark: remark,
+	})
+	if err != nil {
+		log.Fatalf("Transfer failed: %v", err)
+	}
+
+	fmt.Println("========================================")
+	fmt.Printf("  Transaction ID: %s\n", result.TxnID)
+	fmt.Printf("  From:           %s\n", result.From)
+	fmt.Printf("  To:             %s\n", result.To)
+	fmt.Printf("  Amount:         %.2f Stars\n", result.AmountStars)
+	fmt.Printf("  New Balance:    %d units\n", result.NewBalance)
+	fmt.Println("========================================")
+}
+
+// cmdTransactions lists recent transaction history.
+func cmdTransactions() {
+	page := 1
+	pageSize := 20
+	txnType := ""
+
+	for i := 2; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--type":
+			if i+1 < len(os.Args) {
+				txnType = os.Args[i+1]
+				i++
+			}
+		case "--page":
+			if i+1 < len(os.Args) {
+				page, _ = strconv.Atoi(os.Args[i+1])
+				i++
+			}
+		case "--size":
+			if i+1 < len(os.Args) {
+				pageSize, _ = strconv.Atoi(os.Args[i+1])
+				i++
+			}
+		}
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	identity := node.LoadOrCreateIdentity()
+	if cfg.Swarm.QueenURL == "" {
+		log.Fatalf("queen_url not configured in swarm settings")
+	}
+
+	cc := swarm.NewCreditClient(cfg.Swarm.QueenURL, identity)
+	list, err := cc.ListTransactions(page, pageSize, txnType)
+	if err != nil {
+		log.Fatalf("Failed to list transactions: %v", err)
+	}
+
+	if len(list.Transactions) == 0 {
+		fmt.Println("No transactions found.")
+		return
+	}
+
+	fmt.Printf("Transactions (page %d, total %d):\n", list.Page, list.Total)
+	fmt.Printf("%-12s %-10s %-16s %-16s %12s  %s\n", "TYPE", "STATUS", "FROM", "TO", "AMOUNT", "TIME")
+	fmt.Println(strings.Repeat("-", 90))
+
+	for _, txn := range list.Transactions {
+		from := truncate(txn.FromClaw, 16)
+		to := truncate(txn.ToClaw, 16)
+		stars := fmt.Sprintf("%.2f", float64(txn.Amount)/10000)
+		t := txn.CreatedAt.Format("01-02 15:04")
+		fmt.Printf("%-12s %-10s %-16s %-16s %10s \u2b50  %s\n", txn.Type, txn.Status, from, to, stars, t)
+	}
 }
 
 // cmdResetPassword resets the owner password.

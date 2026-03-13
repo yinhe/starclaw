@@ -133,7 +133,8 @@ func (h *SystemHandler) LeaveSwarm(c *gin.Context) {
 
 // --- Credits (星力) ---
 
-// GetCredits returns cached star credit balance from Queen (updated via heartbeat)
+// GetCredits returns cached star credit balance from Queen (updated via heartbeat).
+// If ?refresh=true, queries Queen directly for latest balance.
 func (h *SystemHandler) GetCredits(c *gin.Context) {
 	if h.swarmClient == nil || !h.swarmClient.Connected() {
 		c.JSON(http.StatusOK, gin.H{
@@ -141,6 +142,30 @@ func (h *SystemHandler) GetCredits(c *gin.Context) {
 			"message":   "未连接虫群，无法获取星力余额",
 		})
 		return
+	}
+
+	// Direct query if requested
+	if c.Query("refresh") == "true" {
+		if cc := h.swarmClient.CreditClient(); cc != nil {
+			if balance, err := cc.QueryBalance(); err == nil {
+				c.JSON(http.StatusOK, gin.H{
+					"connected":     true,
+					"balance":       balance.Balance,
+					"balance_stars": balance.BalanceStars,
+					"frozen":        balance.Frozen,
+					"frozen_stars":  balance.FrozenStars,
+					"total_in":      balance.TotalIn,
+					"total_out":     balance.TotalOut,
+					"nonce":         balance.Nonce,
+					"status":        balance.Status,
+					"hp_status":     balance.HPStatus,
+					"hp":            string(cc.HP()),
+					"trust_level":   balance.TrustLevel,
+					"updated_at":    balance.UpdatedAt,
+				})
+				return
+			}
+		}
 	}
 
 	credits := h.swarmClient.Credits()
@@ -151,6 +176,11 @@ func (h *SystemHandler) GetCredits(c *gin.Context) {
 			"message":   "等待心跳同步余额...",
 		})
 		return
+	}
+
+	hp := "unknown"
+	if cc := h.swarmClient.CreditClient(); cc != nil {
+		hp = string(cc.HP())
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -164,9 +194,92 @@ func (h *SystemHandler) GetCredits(c *gin.Context) {
 		"nonce":         credits.Nonce,
 		"status":        credits.Status,
 		"hp_status":     credits.HPStatus,
+		"hp":            hp,
 		"trust_level":   credits.TrustLevel,
 		"updated_at":    credits.UpdatedAt,
 	})
+}
+
+// TransferCredits handles POST /system/credits/transfer — Ed25519-signed transfer
+func (h *SystemHandler) TransferCredits(c *gin.Context) {
+	cc := h.getCreditClient(c)
+	if cc == nil {
+		return
+	}
+
+	var req struct {
+		ToClaw string  `json:"to_claw" binding:"required"`
+		Amount float64 `json:"amount" binding:"required"` // in Stars
+		Remark string  `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整: to_claw, amount (Stars) 必填"})
+		return
+	}
+
+	amountUnits := int64(req.Amount * 10000)
+	result, err := cc.Transfer(swarm.TransferRequest{
+		ToClaw: req.ToClaw,
+		Amount: amountUnits,
+		Remark: req.Remark,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"txn_id":       result.TxnID,
+		"from":         result.From,
+		"to":           result.To,
+		"amount":       result.Amount,
+		"amount_stars": result.AmountStars,
+		"new_balance":  result.NewBalance,
+	})
+}
+
+// ListCreditTransactions handles GET /system/credits/transactions
+func (h *SystemHandler) ListCreditTransactions(c *gin.Context) {
+	cc := h.getCreditClient(c)
+	if cc == nil {
+		return
+	}
+
+	page := 1
+	pageSize := 20
+	if v := c.Query("page"); v != "" {
+		fmt.Sscanf(v, "%d", &page)
+	}
+	if v := c.Query("page_size"); v != "" {
+		fmt.Sscanf(v, "%d", &pageSize)
+	}
+	txnType := c.Query("type")
+
+	list, err := cc.ListTransactions(page, pageSize, txnType)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"transactions": list.Transactions,
+		"total":        list.Total,
+		"page":         list.Page,
+		"page_size":    list.PageSize,
+	})
+}
+
+func (h *SystemHandler) getCreditClient(c *gin.Context) *swarm.CreditClient {
+	if h.swarmClient == nil || !h.swarmClient.Connected() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "未连接虫群"})
+		return nil
+	}
+	cc := h.swarmClient.CreditClient()
+	if cc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "CreditClient 未初始化"})
+		return nil
+	}
+	return cc
 }
 
 // --- Bounty ---

@@ -844,12 +844,12 @@ Claw 调用 Router API（目标流程）：
 
 | 阶段 | 范围 | 状态 |
 |------|------|------|
-| **Phase 1** | 密钥基础设施：BIP-39 + HD + 冷/热钱包 + 多签原语 | ✅ 已完成 |
-| **Phase 2** | Queen 账本 API：余额查询 / 转账 / 冻结 / 交易历史 | 计划中 |
+| **Phase 1** | 密钥基础设施：BIP-39 + HD + 冷/热钱包 + 多签原语 | ✅ 已完成（v2026.0312） |
+| **Phase 2** | Queen 账本 API：余额查询 / 转账 / 冻结 / 交易历史 | ✅ 已完成（`queen/api/internal/handler/credit.go`） |
 | **Phase 3** | Router 签名认证：claw 签名替代 API Key + 按调用扣费 | 计划中 |
-| **Phase 4** | 血量系统：Claw 端余额监控 + 休眠/复活机制 | 计划中 |
-| **Phase 5** | 充值通道：star-ai.net 充值 → claw 地址到账 | 计划中 |
-| **Phase 6** | 推理挖矿：GPU 贡献 → Queen 调度 → 星力发放（见 §3.10） | 计划中 |
+| **Phase 4** | 血量系统：Claw 端余额监控 + 休眠/复活机制 | ✅ 已完成（`swarm/credit_client.go` HP 监控 + CLI） |
+| **Phase 5** | 充值通道：star-ai.net 充值 → claw 地址到账 | 部分（Queen 计费 + 支付宝/微信已对接） |
+| **Phase 6** | 推理挖矿：GPU 贡献 → Queen 调度 → 星力发放（见 §3.10） | ✅ 已完成（ContributorService + 90/10 结算） |
 | **Phase 7** | 市场经济：Agent/模板/插件买卖 + 交易手续费 | 计划中 |
 | **Phase 8** | 跨 Brood 交易：不同 Overlord 下的 Claw 互相转账 | 计划中 |
 
@@ -858,7 +858,9 @@ Claw 调用 Router API（目标流程）：
 **核心理念：** 以太坊矿工算无用的哈希来争记账权，StarClaw 矿工做 **真正有用的 AI 推理**。
 每一份贡献的算力都直接服务于真实的 AI 任务——**Proof of Useful Work（有用工作证明）**。
 
-#### 3.10.1 推理挖矿机制（Phase 1 — 当前核心）
+#### 3.10.1 推理挖矿机制（Phase 1 — ✅ 已实现）
+
+> **实现状态：** 算力贡献（ContributorService v2026.0312.1855）、信任体系（TrustScore + SpotChecker v2026.0312.1934）、NAT 穿透（Nydus v2026.0312.2039）、星力账本（Queen credit API）、Claw 端星力客户端（CreditClient + HP 监控 + CLI v2026.0313）均已完成。
 
 有 GPU 的 Claw 向 Queen 注册为 **算力提供者**，为其他无 GPU 节点或 Router 用户提供推理服务：
 
@@ -1442,11 +1444,19 @@ Nydus 是 StarClaw 的 **开源 P2P 互联层**——小龙虾之间可以直接
 **已实现功能（开源，`claw/api/internal/node/`）：**
 
 - **Ed25519 加密身份**：每个节点有唯一的 `claw:` 地址（见 §3.4），握手时签名验证
+- **BIP-39 HD 钱包**：24 词助记词备份 + SLIP-0010 派生 + 冷/热钱包分离 + m-of-n 多签（v2026.0312）
 - **Gossip 协议**：节点每 30 秒交换已知节点列表，拓扑自动扩展
 - **claw: 地址解析**：输入 `claw:xxx` 自动级联解析为网络地址（见 §3.5）
 - **节点握手**：`GET /v1/peer/handshake` — 交换公钥 + challenge 签名
 - **任务中继**：`POST /v1/peer/relay` — 通过已知节点转发任务
 - **IP 自动检测**：支持 Docker 环境，自动检测公网/内网 IP，一键配置
+- **STUN NAT 探测**：`nydus_stun.go` — 双 STUN 服务器探测，分类 5 种 NAT 类型（v2026.0312.2039）
+- **UDP 打洞**：`nydus_punch.go` — JSON probe + nonce 验证，direct → simultaneous punch 策略
+- **Relay 兜底**：`nydus_relay.go` — HTTP 中继，消息队列 + 60s TTL，max 100 pending/node
+- **NydusManager**：`nydus.go` — 编排 STUN→打洞→中继，PeerConn 池，5min 重探，IP 变化回调
+- **算力贡献**：`inference/contributor.go` — 自动检测 Ollama 模型，注册到 peer router，30s 心跳（v2026.0312.1855）
+- **信任体系**：`inference/trust.go` + `spotcheck.go` — 五维信任评分 + 1% 抽检 + 信任加权调度（v2026.0312.1934）
+- **星力客户端**：`swarm/credit_client.go` — Ed25519 签名转账 + HP 血量监控 + CLI（v2026.0313）
 
 #### 7.4.1 多层节点发现（Peer Discovery）
 
@@ -1915,23 +1925,23 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 | 菌毯 | Creep | 共享智能网络 | 全网数据层 | 规划中 |
 | 领主 | Overlord | 资源配额 + 监控 + 企业管理 | `overlord/` | ✅ |
 | 脊刺/孢子 | Spine/Spore | 节点认证 + API 安全 | 全节点 | 部分 |
-| 坑道虫 | Nydus | P2P 节点互联（Ed25519 + Gossip + DHT + NAT穿透） | `node/` + 全网 | 部分✅ |
+| 坑道虫 | Nydus | P2P 节点互联（Ed25519 + Gossip + DHT + NAT穿透） | `node/` + 全网 | ✅ |
 | 坑道虫·DHT | Nydus DHT | Kademlia 去中心化节点发现 | `node/dht/` | 规划中 |
-| 坑道虫·穿透 | Nydus NAT | STUN 探测 + UDP 打洞 + QUIC 传输 | `node/nat/` | 规划中 |
-| 坑道虫·中继 | Nydus Relay | Queen 加密中继转发（NAT 穿透失败兜底） | `queen/relay/` | 规划中 |
+| 坑道虫·穿透 | Nydus NAT | STUN 探测 + UDP 打洞 + Relay 兜底 | `node/nydus_*.go` | ✅ v2026.0312 |
+| 坑道虫·中继 | Nydus Relay | P2P HTTP 中继转发（NAT 穿透失败兜底） | `node/nydus_relay.go` | ✅ v2026.0312 |
 | 失控 | Feral | 断连独立运行（DHT 保证去中心化发现不中断） | 全节点 | ✅ |
 | 进化腔 | Evolution | 能力市场 | Queen + Claw | 规划中 |
 | 孵化进化 | Hatch→Lair→Hive | 节点角色升级 | 全节点 | 规划中 |
 | 蜕皮 | Molt | OTA 自动更新 | §3.7 | 基础✅ |
 | 虫群 | Swarm | 全网节点注册 + claw: 地址解析 | `queen/swarm/` | ✅ |
 | 虫巢 | Brood | 企业级节点注册 + claw: 地址解析 | `overlord/` | ✅ |
-| 提取器 | Extractor | AI 算力提取（LLM 路由 + 媒体算力 + 算力市场） | `router/` | 脚手架✅ |
+| 提取器 | Extractor | AI 算力提取（LLM 路由 + 媒体算力 + 算力市场） | `router/` | ✅ |
 | 虫群意志 | Hivemind | 分布式信任共识（投票/评价/仲裁） | §7.6 | 规划中 |
 | 脑虫 | Cerebrate | 跨会话记忆（用户画像 + 技能经验） | §7.10 | 规划中 |
 | 生命周期 | Lifecycle | 孵化→在线→离线→休眠→死亡→复活→繁殖 | §7.11 | 规划中 |
 | 繁殖 | Breed | 轻量部署 + 分裂繁殖 + 批量孵化 | §7.12 | 规划中 |
 | 适应 | Adaptation | 自主进化（模型选择/Prompt/工作流优化） | §7.13 | 规划中 |
-| 触手 | Tentacle | 多平台通信整合（微信/TG/Slack/钉钉…） | §7.14 | 规划中 |
+| 触手 | Tentacle | 多平台通信整合（飞书/钉钉/企微/Slack/Discord/TG） | `tool/*_tool.go` | ✅ v2026.0311 |
 | 本能 | Instinct | 主动行为系统（活动/关怀/定时任务） | §7.15 | 规划中 |
 | 幼虫 | Larva (别名 Kernel) | 最小 Claw 内核（8MB，IoT/嵌入式） | §7.12 体型 | 规划中 |
 | 小狗 | Zergling (别名 Nano) | 轻量 Claw（64MB，手机/树莓派/边缘） | §7.12 体型 | 规划中 |
@@ -2551,7 +2561,7 @@ StarClaw Claw:  执行任务 → 观察结果 → 发现规律 → 自我调整 
 
 ### 7.14 触手 Tentacle — 多平台通信整合
 
-> ⚠️ **当前状态：规划中。**
+> ✅ **当前状态：已实现（v2026.0311）。** 飞书、钉钉、企业微信、Slack、Discord、Telegram 六大平台适配器已完成，通过 Tool 机制集成（`*_tool.go`），支持发送消息/Webhook/卡片/群列表等操作。前端集成管理页面（`IntegrationsPage.tsx`）。
 
 虫族通过触手感知和操控外部世界——StarClaw 的触手是 **通信平台适配器**。
 小龙虾不应该只活在 Web 页面里，它需要伸出触手，接入用户日常使用的所有通信工具。
@@ -4016,8 +4026,8 @@ providers:
 
 | 优先级 | 任务 | 域名 | 状态 |
 |--------|------|------|:----:|
-| P0 | star-ai.net API Gateway 基础（代理 + 计费） | star-ai.net | 规划中 |
-| P0 | Claw 新增 star-ai provider | starclaw.me | 规划中 |
+| P0 | star-ai.net API Gateway 基础（代理 + 计费） | star-ai.net | ✅ 已完成 |
+| P0 | Claw 新增 star-ai provider | starclaw.me | ✅ 已完成 |
 | P1 | Agent 市场 API（上架/搜索/安装） | starclaw.net | 规划中 |
 | P1 | Claw 对接市场（浏览/一键安装） | starclaw.me | 规划中 |
 | P1 | 清理 system 用户 | starclaw.me | 待修复 |
@@ -4025,3 +4035,39 @@ providers:
 | P2 | 开发者中心（提交/审核） | starclaw.net | 规划中 |
 | P3 | star-ai.net 用户 Dashboard | star-ai.net | 规划中 |
 | P3 | 国内 CDN 加速 | star-ai.net | 规划中 |
+
+---
+
+## 附录：开发进度日志
+
+> 本节记录各阶段实际完成状态，与上文规划形成对照。
+
+| 阶段 | 内容 | 关键文件 | 版本 | 日期 |
+|:----:|------|---------|:----:|:----:|
+| Phase 1–5 | Claw Agent 引擎（对话/RAG/Tool/MCP/浏览器/视频/音乐/图片/文档） | `claw/api/` 全模块 | — | 持续 |
+| Phase 5.1 | RBAC 权限系统 + 手机号认证 | `model/rbac.go`, `middleware/rbac.go` | — | 2026-03 |
+| Phase 5.2 | 消息平台集成（飞书/钉钉/企微/Slack/Discord/TG） | `tool/*_tool.go`, `IntegrationsPage.tsx` | v2026.0311.1704 | 2026-03-11 |
+| Phase 5.3 | 视频制作质量升级（Crossfade + 角色一致性 + 导演级 Prompt） | `video_tool.go`, `builtin_agents.go` | v2026.0312 | 2026-03-12 |
+| Phase 6 | Ed25519 身份 + BIP-39 HD 钱包 + 多签 | `node/identity.go`, `wallet.go`, `multisig.go` | v2026.0312 | 2026-03-12 |
+| Phase 7 | 算力贡献（ContributorService + SettlementClient + 90/10 结算） | `inference/contributor.go`, `settlement.go` | v2026.0312.1855 | 2026-03-13 |
+| Phase 8 | 信任体系（TrustScore + SpotChecker 1% 抽检 + 信任加权调度） | `inference/trust.go`, `spotcheck.go` | v2026.0312.1934 | 2026-03-13 |
+| Phase 9 | Nydus NAT 穿透（STUN 探测 + UDP 打洞 + Relay 兜底 + NydusManager） | `node/nydus_*.go` | v2026.0312.2039 | 2026-03-13 |
+| Phase 10 | 星力经济 Claw 集成（CreditClient + HP 血量监控 + CLI balance/transfer/transactions） | `swarm/credit_client.go`, `system.go` | v2026.0313 | 2026-03-13 |
+| Phase 11 | 脑虫记忆 Cerebrate（LLM 自动提取 5 类记忆 + 对话注入 + CRUD API） | `memory/cerebrate.go`, `model/memory.go` | v2026.0313 | 2026-03-13 |
+| Phase 12 | star-ai.net API Gateway（OpenAI 兼容代理 + Anthropic 转换 + 按量计费 + API Key 管理） | `handler/gateway.go`, `provider/starai.go` | v2026.0313 | 2026-03-13 |
+
+**Queen 侧已完成（闭源）：**
+
+| 模块 | 内容 | 关键文件 |
+|------|------|---------|
+| 认证 | 邮箱/手机/OAuth(Google/GitHub) + JWT | `handler/auth.go` |
+| 计费 | 支付宝/微信支付 + 套餐 + 余额 + 订单 | `handler/billing.go` |
+| 星力账本 | 余额/Ed25519 签名转账/冻结/解冻/结算/推理结算/定价 | `handler/credit.go` |
+| 商城 | Agent 模板上架/搜索 | `handler/marketplace.go` |
+| 节点绑定 | claw: 地址 ↔ Queen 用户关联 | `handler/node_binding.go` |
+| 管理后台 | 用户/计费/内容审核/节点/Molt/赏金/社区 | `handler/admin_*.go`, `dashboard.go` |
+| Swarm | 全网节点注册/心跳/解析/Molt 发布 | `queen/swarm/` |
+
+**测试统计（截至 2026-03-13）：**
+- Claw: 50 tests pass（inference 16 + middleware 5 + node/nydus 12 + swarm/credit 9 + memory 8）
+- Queen: 线上运行，API 全部就绪

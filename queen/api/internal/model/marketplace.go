@@ -11,8 +11,8 @@ type MarketplaceItem struct {
 	Description string    `json:"description" gorm:"type:text"`
 	Icon        string    `json:"icon" gorm:"type:varchar(500)"`
 	Version     string    `json:"version" gorm:"type:varchar(20);default:1.0.0"`
-	Tags        string    `json:"tags" gorm:"type:varchar(500)"`        // comma separated
-	Config      string    `json:"config" gorm:"type:longtext"`          // JSON blob
+	Tags        string    `json:"tags" gorm:"type:varchar(500)"`                    // comma separated
+	Config      string    `json:"config" gorm:"type:longtext"`                      // JSON blob
 	Status      string    `json:"status" gorm:"type:varchar(20);default:published"` // draft / published / removed
 	Downloads   int       `json:"downloads" gorm:"default:0"`
 	Rating      float64   `json:"rating" gorm:"default:0"`
@@ -33,12 +33,18 @@ type MarketplaceReview struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// APIKey for developer Open API access
+// APIKey for developer Open API / star-ai.net gateway access
 type APIKey struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	UserID    string    `json:"user_id" gorm:"type:varchar(36);index"`
-	Name      string    `json:"name" gorm:"type:varchar(100)"`
-	Key       string    `json:"key" gorm:"type:varchar(64);uniqueIndex"`
-	LastUsed  *time.Time `json:"last_used"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID            string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID        string     `json:"user_id" gorm:"type:varchar(36);index"`
+	Name          string     `json:"name" gorm:"type:varchar(100)"`
+	Key           string     `json:"-" gorm:"type:varchar(64);uniqueIndex"`
+	KeyPrefix     string     `json:"key_prefix" gorm:"type:varchar(12)"` // sk-xxxx... (safe to display)
+	Enabled       bool       `json:"enabled" gorm:"default:true"`
+	RateLimit     int        `json:"rate_limit" gorm:"default:60"` // requests per minute, 0=unlimited
+	TotalRequests int64      `json:"total_requests" gorm:"default:0"`
+	TotalTokens   int64      `json:"total_tokens" gorm:"default:0"`
+	LastUsedAt    *time.Time `json:"last_used_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
