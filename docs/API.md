@@ -387,6 +387,77 @@ contributor:
 | `starclaw transfer <claw:地址> <金额> [备注]` | 签名转账 |
 | `starclaw transactions [--type transfer] [--page 1]` | 查看交易记录 |
 
+## star-ai.net API Gateway
+
+统一 AI API 网关。用一个 API Key 调用所有主流模型，OpenAI 兼容接口，按量计费从余额扣除。
+
+### 使用方式
+
+```bash
+# 与 OpenAI SDK 完全兼容
+curl https://star-ai.net/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+### 支持的模型
+
+| Provider | 模型 | 定价（分/1M tokens） |
+|----------|------|---------------------|
+| OpenAI | gpt-4o, gpt-4.1, o3 | 入 150–200 / 出 600–800 |
+| OpenAI | gpt-4o-mini, gpt-4.1-mini, gpt-4.1-nano, o3-mini, o4-mini | 入 15 / 出 60 |
+| Anthropic | claude-sonnet-4-20250514 | 入 200 / 出 800 |
+| Anthropic | claude-3-5-haiku-20241022 | 入 50 / 出 200 |
+| DeepSeek | deepseek-chat, deepseek-reasoner | 入 10 / 出 20 |
+| Qwen | qwen-plus, qwen-turbo, qwen-max | 入 10 / 出 20 |
+| Google | gemini-2.5-pro-preview-06-05 | 入 100 / 出 400 |
+| Google | gemini-2.0-flash | 入 5 / 出 15 |
+
+### Gateway API
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/v1/chat/completions` | API Key | OpenAI 兼容聊天接口（支持 stream） |
+| GET | `/v1/models` | API Key | 列出可用模型 |
+
+### API Key 管理（需 JWT 登录）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/v1/api-keys` | 创建 API Key（每用户最多 5 个） |
+| GET | `/v1/api-keys` | 列出我的 API Keys |
+| DELETE | `/v1/api-keys/:id` | 删除 API Key |
+| GET | `/v1/api-keys/usage` | 使用量统计 + 近期调用日志 |
+
+#### POST /v1/api-keys
+
+```json
+// 请求
+{"name": "我的项目"}
+
+// 响应（Key 仅在创建时返回一次）
+{"id": "uuid", "name": "我的项目", "key": "sk-xxxx...", "key_prefix": "sk-xxxx..."}
+```
+
+### Claw 集成
+
+在 Claw 设置中添加 star-ai provider：
+
+```yaml
+models:
+  - provider: star-ai
+    api_key: sk-your-api-key
+    # base_url 默认 https://star-ai.net/v1
+```
+
+### 计费流程
+
+```
+请求 → 验证 API Key → 检查余额 → 代理到上游 Provider
+→ 响应（流式/同步） → 统计 tokens → 按定价扣费 → 记录日志
+```
+
 ## 部署
 
 ### 一键部署命令（Windows）
