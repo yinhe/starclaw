@@ -743,6 +743,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/swarm/join", systemHandler.JoinSwarm)
 			protected.POST("/system/swarm/leave", systemHandler.LeaveSwarm)
 			protected.GET("/system/credits", systemHandler.GetCredits)
+			protected.POST("/system/credits/transfer", systemHandler.TransferCredits)
+			protected.GET("/system/credits/transactions", systemHandler.ListCreditTransactions)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
 
 			// Device Management
