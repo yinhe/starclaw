@@ -1,13 +1,14 @@
 #!/bin/bash
 # StarClaw Claw — Deploy via GitHub
-# Usage: bash scripts/deploy.sh [commit message]
+# Usage: bash scripts/deploy.sh [commit message] [target]
+#   target: api (default), web, all
 #
-# Flow: local commit & push → server git pull → docker rebuild
+# Flow: sync to OSS repo → push GitHub → server git pull → docker rebuild
 set -e
 
 MSG="${1:-update}"
+TARGET="${2:-api}"
 REMOTE_HOST="root@starclaw.me"
-REMOTE_DIR="/opt/starclaw/claw"
 
 echo "=== [1/3] Sync to OSS repo ==="
 # Copy to starclaw-oss (excluding binaries, node_modules, data)
@@ -35,8 +36,8 @@ else
 fi
 
 echo ""
-echo "=== [2/3] Deploy on server ==="
-ssh "$REMOTE_HOST" "cd $REMOTE_DIR && bash deploy-update.sh"
+echo "=== [2/3] Deploy on server (target: $TARGET) ==="
+ssh "$REMOTE_HOST" "bash /opt/starclaw/deploy-update.sh $TARGET"
 
 echo ""
 echo "=== [3/3] Done ==="
