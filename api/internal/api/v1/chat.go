@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	agentpkg "github.com/yinhe/starclaw/internal/agent"
+	"github.com/yinhe/starclaw/internal/memory"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
@@ -26,10 +27,14 @@ type ChatHandler struct {
 	providerRegistry *provider.Registry
 	toolRegistry     *tool.Registry
 	embedder         rag.EmbeddingProvider
+	cerebrate        *memory.Cerebrate
 }
 
 func NewChatHandler(db *gorm.DB, pr *provider.Registry, tr *tool.Registry, emb rag.EmbeddingProvider) *ChatHandler {
-	return &ChatHandler{db: db, providerRegistry: pr, toolRegistry: tr, embedder: emb}
+	return &ChatHandler{
+		db: db, providerRegistry: pr, toolRegistry: tr, embedder: emb,
+		cerebrate: memory.NewCerebrate(db, pr),
+	}
 }
 
 type ChatCompletionRequest struct {
@@ -186,6 +191,15 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
+	// Cerebrate: inject cross-session memories into system prompt
+	if h.cerebrate != nil {
+		memories, err := h.cerebrate.Retrieve(userID, agent.ID, req.Message, 10)
+		if err == nil && len(memories) > 0 {
+			systemPrompt += memory.BuildPromptInjection(memories)
+			log.Printf("[cerebrate] injected %d memories for user %s", len(memories), userID)
+		}
+	}
+
 	messages := buildProviderMessages(systemPrompt, history, req.Images)
 
 	// Get or create provider dynamically
@@ -232,6 +246,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	// Store platform key flag for billing
 	c.Set("is_platform_key", modelCfg.IsPlatform)
+	c.Set("agent_id_for_cerebrate", agent.ID)
 
 	if req.Stream {
 		h.handleStreamWithTools(c, rt, runReq, conversation.ID)
@@ -261,6 +276,11 @@ func (h *ChatHandler) handleSyncWithTools(c *gin.Context, rt *agentpkg.Runtime, 
 		go recordUsage(h.db, c.GetString("user_id"), "tokens", int64(result.Usage.TotalTokens), c.GetBool("is_platform_key"))
 	}
 	h.db.Create(&assistantMsg)
+
+	// Cerebrate: async extract memories from this conversation turn
+	if h.cerebrate != nil {
+		go h.cerebrate.ExtractAndStore(context.Background(), c.GetString("user_id"), c.GetString("agent_id_for_cerebrate"), result.Messages)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"conversation_id": convID,
@@ -438,6 +458,11 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				}
 				h.db.Create(&assistantMsg)
 				saved = true
+
+				// Cerebrate: async extract memories from this conversation
+				if h.cerebrate != nil {
+					go h.cerebrate.ExtractAndStore(context.Background(), userID, c.GetString("agent_id_for_cerebrate"), req.Messages)
+				}
 
 				// Long-running conversation notification (>30s)
 				if elapsed := time.Since(startTime); elapsed > 30*time.Second {
