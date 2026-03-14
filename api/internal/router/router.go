@@ -229,6 +229,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			})
 		})
 
+		// Auth request endpoints (MetaMask-style: public create+poll, protected approve)
+		authReqHandler := v1.NewAuthRequestHandler(identity)
+		apiV1.POST("/identity/auth-request", authReqHandler.Create)
+		apiV1.GET("/identity/auth-request/:id", authReqHandler.GetStatus)
+
 		// Deploy mode info (public, no auth needed)
 		apiV1.GET("/config", func(c *gin.Context) {
 			c.JSON(200, gin.H{
@@ -784,7 +789,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
 
-			// Identity signing (protected — requires Claw auth to prevent impersonation)
+			// Auth request management (protected — user approves/rejects on their Claw UI)
+			protected.GET("/identity/auth-requests", authReqHandler.List)
+			protected.POST("/identity/auth-request/:id/approve", authReqHandler.Approve)
+			protected.POST("/identity/auth-request/:id/reject", authReqHandler.Reject)
+
+			// Direct sign-challenge (protected — fallback for Claw-to-Queen internal use)
 			protected.POST("/identity/sign-challenge", func(c *gin.Context) {
 				var req struct {
 					Challenge string `json:"challenge" binding:"required"`

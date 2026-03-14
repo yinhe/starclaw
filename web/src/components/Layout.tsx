@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText, Link2, Brain } from 'lucide-react'
-import { notificationAPI, versionAPI, systemAPI } from '../lib/api'
+import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
@@ -157,6 +157,38 @@ export default function Layout() {
     }
   }
 
+  // Auth Request approval (MetaMask-style)
+  const [authRequests, setAuthRequests] = useState<any[]>([])
+  const [authApproving, setAuthApproving] = useState(false)
+
+  useEffect(() => {
+    const pollAuth = async () => {
+      try {
+        const res = await authRequestAPI.list()
+        setAuthRequests(res.data.requests || [])
+      } catch {}
+    }
+    pollAuth()
+    const interval = setInterval(pollAuth, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleAuthApprove = async (id: string) => {
+    setAuthApproving(true)
+    try {
+      await authRequestAPI.approve(id)
+      setAuthRequests(prev => prev.filter(r => r.id !== id))
+    } catch {}
+    setAuthApproving(false)
+  }
+
+  const handleAuthReject = async (id: string) => {
+    try {
+      await authRequestAPI.reject(id)
+      setAuthRequests(prev => prev.filter(r => r.id !== id))
+    } catch {}
+  }
+
   const handleLogout = () => {
     logout()
     navigate('/login')
@@ -164,6 +196,54 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen">
+      {/* Auth Request Approval Modal */}
+      {authRequests.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 animate-in">
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-3">
+                <Radar className="w-7 h-7 text-violet-600 dark:text-violet-400" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">登录授权请求</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Queen 虫群门户请求使用你的 Claw 身份登录</p>
+            </div>
+            {authRequests.slice(0, 1).map(req => (
+              <div key={req.id} className="space-y-3">
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">来源</span>
+                    <span className="text-gray-700 dark:text-gray-300 font-mono">{req.origin || '未知'}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">挑战码</span>
+                    <span className="text-gray-700 dark:text-gray-300 font-mono truncate max-w-[180px]">{req.challenge?.slice(0, 16)}...</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">时间</span>
+                    <span className="text-gray-700 dark:text-gray-300">{new Date(req.created_at * 1000).toLocaleTimeString()}</span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleAuthReject(req.id)}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                  >
+                    拒绝
+                  </button>
+                  <button
+                    onClick={() => handleAuthApprove(req.id)}
+                    disabled={authApproving}
+                    className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition disabled:opacity-50"
+                  >
+                    {authApproving ? '签名中...' : '授权登录'}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 text-center">授权后将使用你的 Claw 身份签名登录 Queen 门户</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Mobile header */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-30 h-12 bg-gray-900 flex items-center px-4 gap-3">
         <button onClick={() => setMobileOpen(!mobileOpen)} className="text-white">

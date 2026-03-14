@@ -172,6 +172,13 @@ export const deviceAPI = {
   revoke: (id: string) => api.post(`/devices/${id}/revoke`),
 }
 
+// Auth Requests (MetaMask-style login approval)
+export const authRequestAPI = {
+  list: () => api.get('/identity/auth-requests'),
+  approve: (id: string) => api.post(`/identity/auth-request/${id}/approve`),
+  reject: (id: string) => api.post(`/identity/auth-request/${id}/reject`),
+}
+
 // Queen Account Linking
 export const queenAPI = {
   getStatus: () => api.get('/queen/status'),
