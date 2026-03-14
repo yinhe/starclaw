@@ -90,6 +90,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	videoTool := tool.NewVideoTool(db)
 	toolRegistry.Register(videoTool)
 	toolRegistry.Register(tool.NewDubbingTool(db))
+	toolRegistry.Register(tool.NewSubtitleTool(db))
 	toolRegistry.Register(tool.NewMVTool(db))
 	toolRegistry.Register(tool.NewComicTool(db))
 	toolRegistry.Register(tool.NewMusicTool(db))

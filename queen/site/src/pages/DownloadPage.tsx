@@ -89,7 +89,7 @@ export function DownloadPage() {
             <p className="mt-3 text-sm text-gray-500">
               {t('dl.nydus.note')}{' '}
               <a
-                href="https://nydus.starclaw.net/releases/latest"
+                href="https://nydus.starclaw.net"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-orange-400 hover:underline"
