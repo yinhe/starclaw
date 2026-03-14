@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -351,23 +352,32 @@ func (h *AuthHandler) TokenLogin(c *gin.Context) {
 		h.db.Create(&device)
 
 		if !autoApprove {
+			idPrefix := device.ID[:8]
+			log.Printf("\n╔══════════════════════════════════════════╗")
+			log.Printf("║  🔔 新设备等待审批                       ║")
+			log.Printf("║  设备: %-33s ║", req.DeviceName)
+			log.Printf("║  审批: make approve ID=%-17s ║", idPrefix)
+			log.Printf("╚══════════════════════════════════════════╝")
 			clearTokenFailure(ip)
 			c.JSON(http.StatusAccepted, gin.H{
 				"status":      "pending_approval",
 				"device_id":   device.DeviceID,
 				"device_name": req.DeviceName,
-				"message":     "新设备需要审批，请在已登录设备或服务器上执行: starclaw approve " + device.ID[:8],
+				"message":     "新设备需要审批，请在服务器项目目录执行: make approve ID=" + idPrefix,
+				"approve_cmd": "make approve ID=" + idPrefix,
 			})
 			return
 		}
 	} else if !device.Approved {
 		// Existing device still pending
+		idPrefix := device.ID[:8]
 		clearTokenFailure(ip)
 		c.JSON(http.StatusAccepted, gin.H{
 			"status":      "pending_approval",
 			"device_id":   device.DeviceID,
 			"device_name": device.DeviceName,
-			"message":     "设备等待审批中，请在已登录设备或服务器上执行: starclaw approve " + device.ID[:8],
+			"message":     "设备等待审批中，请在服务器项目目录执行: make approve ID=" + idPrefix,
+			"approve_cmd": "make approve ID=" + idPrefix,
 		})
 		return
 	} else {
