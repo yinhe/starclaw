@@ -1114,8 +1114,8 @@ export default function SettingsPage() {
                   <LogOut className="w-3.5 h-3.5" /> 脱离
                 </button>
               </div>
-              {queenStatus.queen_api_url && (
-                <a href={queenStatus.queen_api_url.replace('api.', '')} target="_blank" rel="noopener noreferrer"
+              {queenStatus.portal_url && (
+                <a href={queenStatus.portal_url} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline">
                   <ExternalLink className="w-3 h-3" /> 前往虫群门户
                 </a>
