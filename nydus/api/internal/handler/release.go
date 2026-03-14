@@ -51,6 +51,60 @@ func getTagMessage(bareRepo, tag string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// ListReleases returns all version tags from claw.git as releases.
+func ListReleases(c *gin.Context) {
+	bareRepo := clawBareRepoPath()
+	if _, err := os.Stat(bareRepo); os.IsNotExist(err) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "claw.git not initialized yet"})
+		return
+	}
+
+	cmd := exec.Command("git", "--git-dir="+bareRepo, "tag", "-l", "v*", "--sort=-version:refname")
+	out, err := cmd.Output()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "failed to list tags"})
+		return
+	}
+
+	tags := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(tags) == 0 || tags[0] == "" {
+		c.JSON(200, gin.H{"releases": []interface{}{}})
+		return
+	}
+
+	type releaseItem struct {
+		TagName string `json:"tag_name"`
+		Name    string `json:"name"`
+		Body    string `json:"body"`
+		Commit  string `json:"commit"`
+		HTMLURL string `json:"html_url"`
+		Latest  bool   `json:"latest"`
+	}
+
+	releases := make([]releaseItem, 0, len(tags))
+	for i, tag := range tags {
+		if tag == "" {
+			continue
+		}
+		commit := ""
+		cmd2 := exec.Command("git", "--git-dir="+bareRepo, "rev-parse", tag)
+		if hashOut, err := cmd2.Output(); err == nil {
+			commit = strings.TrimSpace(string(hashOut))
+		}
+		body := getTagMessage(bareRepo, tag)
+		releases = append(releases, releaseItem{
+			TagName: tag,
+			Name:    "StarClaw " + tag,
+			Body:    body,
+			Commit:  commit,
+			HTMLURL: fmt.Sprintf("https://github.com/yinhe/starclaw/releases/tag/%s", tag),
+			Latest:  i == 0,
+		})
+	}
+
+	c.JSON(200, gin.H{"releases": releases})
+}
+
 // GetLatestRelease returns release info from local claw.git (public, no auth).
 func GetLatestRelease(c *gin.Context) {
 	bareRepo := clawBareRepoPath()

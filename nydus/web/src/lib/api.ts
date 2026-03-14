@@ -111,6 +111,15 @@ export interface Tag {
   date: string
 }
 
+export interface ReleaseItem {
+  tag_name: string
+  name: string
+  body: string
+  commit: string
+  html_url: string
+  latest: boolean
+}
+
 export interface ServerStats {
   repos: number
   targets: number
@@ -133,6 +142,7 @@ export const nydusAPI = {
     api().get<{ commits: Commit[] }>('/commits', { params: { repo, limit } }),
   deploys: () => api().get<{ deploys: Deploy[] }>('/deploys'),
   release: () => pubAPI.get<Release>('/releases/latest'),
+  releases: () => api().get<{ releases: ReleaseItem[] }>('/releases'),
   stats: () => api().get<ServerStats>('/stats'),
 }
 

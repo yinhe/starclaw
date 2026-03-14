@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { nydusAPI, healthAPI, isAuthenticated, setSecret, verifySecret } from './lib/api'
-import type { Repo, Commit, Deploy, Release, TreeItem, ServerStats } from './lib/api'
+import type { Repo, Commit, Deploy, Release, ReleaseItem, TreeItem, ServerStats } from './lib/api'
 import {
   GitBranch, Tag, Clock, Server, Download, ExternalLink,
   CheckCircle2, XCircle, Activity, RefreshCw,
@@ -16,6 +16,7 @@ export default function App() {
   const [repos, setRepos] = useState<Repo[]>([])
   const [deploys, setDeploys] = useState<Deploy[]>([])
   const [release, setRelease] = useState<Release | null>(null)
+  const [releases, setReleases] = useState<ReleaseItem[]>([])
   const [healthy, setHealthy] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
   const [serverStats, setServerStats] = useState<ServerStats | null>(null)
@@ -67,6 +68,10 @@ export default function App() {
       const r = await nydusAPI.release()
       setRelease(r.data)
     } catch { /* no release */ }
+    try {
+      const rels = await nydusAPI.releases()
+      setReleases(rels.data.releases || [])
+    } catch { /* no releases */ }
     setLoading(false)
   }, [])
 
@@ -166,7 +171,7 @@ export default function App() {
       <main className="max-w-6xl mx-auto px-6 py-6">
         {page.view === 'home' ? (
           <HomePage
-            repos={repos} deploys={deploys} release={release}
+            repos={repos} deploys={deploys} release={release} releases={releases}
             serverStats={serverStats} loading={loading}
             onRepoClick={goRepo}
           />
@@ -175,7 +180,8 @@ export default function App() {
             repo={currentRepo || null}
             repoName={page.name}
             commits={commits} treeItems={treeItems} treePath={treePath}
-            readme={readme} release={release} loading={loading}
+            readme={readme} release={release} releases={releases} loading={loading}
+            authed={authed}
             onNavigateTree={(item) => {
               if (item.type === 'tree') setTreePath(treePath ? `${treePath}/${item.name}` : item.name)
             }}
@@ -204,8 +210,8 @@ export default function App() {
 /* ════════════════════════════════════════════════════════
    HOME PAGE — overview + repo list + recent activity
    ════════════════════════════════════════════════════════ */
-function HomePage({ repos, deploys, release, serverStats, loading, onRepoClick }: {
-  repos: Repo[]; deploys: Deploy[]; release: Release | null
+function HomePage({ repos, deploys, release, releases, serverStats, loading, onRepoClick }: {
+  repos: Repo[]; deploys: Deploy[]; release: Release | null; releases: ReleaseItem[]
   serverStats: ServerStats | null; loading: boolean
   onRepoClick: (name: string) => void
 }) {
@@ -333,37 +339,37 @@ function HomePage({ repos, deploys, release, serverStats, loading, onRepoClick }
             </div>
           </SidebarCard>
 
-          {release && (
-            <SidebarCard title="Latest Release">
-              <div className="flex items-center gap-2 mb-2">
-                <Tag className="w-4 h-4 text-nydus-green" />
-                <span className="text-sm font-semibold text-nydus-green">{release.tag_name}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-700/20 text-nydus-green border border-green-700/30">Latest</span>
+          {releases.length > 0 && (
+            <SidebarCard title={`Releases (${releases.length})`}>
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {releases.map((rel) => (
+                  <div key={rel.tag_name} className="flex items-start gap-2">
+                    <Tag className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${rel.latest ? 'text-nydus-green' : 'text-nydus-muted'}`} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <a href={rel.html_url} target="_blank" rel="noreferrer"
+                          className={`text-sm font-medium hover:underline ${rel.latest ? 'text-nydus-green' : 'text-nydus-blue'}`}>
+                          {rel.tag_name}
+                        </a>
+                        {rel.latest && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-700/20 text-nydus-green border border-green-700/30">Latest</span>
+                        )}
+                      </div>
+                      {rel.body && <p className="text-xs text-nydus-dim mt-0.5 truncate">{rel.body}</p>}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="flex gap-2">
-                <a href="/releases/source.tar.gz"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 transition-colors">
-                  <Download className="w-3 h-3" /> tar.gz
-                </a>
-                <a href={release.html_url} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-nydus-bg border border-nydus-border text-nydus-muted hover:text-nydus-text transition-colors">
-                  <ExternalLink className="w-3 h-3" /> GitHub
-                </a>
-              </div>
+              {release && (
+                <div className="mt-3 pt-3 border-t border-nydus-border">
+                  <a href="/releases/source.tar.gz"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 transition-colors">
+                    <Download className="w-3 h-3" /> Download Latest tar.gz
+                  </a>
+                </div>
+              )}
             </SidebarCard>
           )}
-
-          <SidebarCard title="Public API">
-            <div className="space-y-1.5">
-              <APIItem method="GET" path="/health" />
-              <APIItem method="GET" path="/releases/latest" />
-              <APIItem method="GET" path="/releases/source.tar.gz" />
-              <APIItem method="GET" path="/v1/repos" />
-              <APIItem method="GET" path="/v1/commits" />
-              <APIItem method="GET" path="/v1/deploys" />
-              <APIItem method="GET" path="/v1/stats" />
-            </div>
-          </SidebarCard>
         </div>
       </div>
     </>
@@ -373,10 +379,11 @@ function HomePage({ repos, deploys, release, serverStats, loading, onRepoClick }
 /* ════════════════════════════════════════════════════════
    REPO DETAIL PAGE — file tree + README + commits
    ════════════════════════════════════════════════════════ */
-function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, release, loading, onNavigateTree, onNavigateUp, onBack }: {
+function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, release, releases, loading, authed, onNavigateTree, onNavigateUp, onBack }: {
   repo: Repo | null; repoName: string
   commits: Commit[]; treeItems: TreeItem[]; treePath: string
-  readme: string; release: Release | null; loading: boolean
+  readme: string; release: Release | null; releases: ReleaseItem[]; loading: boolean
+  authed: boolean
   onNavigateTree: (item: TreeItem) => void
   onNavigateUp: () => void
   onBack: () => void
@@ -527,24 +534,31 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
             </SidebarCard>
           )}
 
-          {/* Release */}
-          {release && (
-            <SidebarCard title="Latest Release">
-              <div className="flex items-center gap-2 mb-2">
-                <Tag className="w-4 h-4 text-nydus-green" />
-                <span className="text-sm font-semibold text-nydus-green">{release.tag_name}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-700/20 text-nydus-green border border-green-700/30">Latest</span>
+          {/* Releases */}
+          {releases.length > 0 && (
+            <SidebarCard title={`Releases (${releases.length})`}>
+              <div className="space-y-2.5 max-h-60 overflow-y-auto">
+                {releases.slice(0, 10).map((rel) => (
+                  <div key={rel.tag_name} className="flex items-center gap-2">
+                    <Tag className={`w-3.5 h-3.5 shrink-0 ${rel.latest ? 'text-nydus-green' : 'text-nydus-muted'}`} />
+                    <a href={rel.html_url} target="_blank" rel="noreferrer"
+                      className={`text-sm hover:underline ${rel.latest ? 'text-nydus-green font-medium' : 'text-nydus-blue'}`}>
+                      {rel.tag_name}
+                    </a>
+                    {rel.latest && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-700/20 text-nydus-green border border-green-700/30">Latest</span>
+                    )}
+                  </div>
+                ))}
               </div>
-              <div className="flex gap-2">
-                <a href="/releases/source.tar.gz"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 transition-colors">
-                  <Download className="w-3 h-3" /> tar.gz
-                </a>
-                <a href={release.html_url} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-nydus-bg border border-nydus-border text-nydus-muted hover:text-nydus-text transition-colors">
-                  <ExternalLink className="w-3 h-3" /> GitHub
-                </a>
-              </div>
+              {release && (
+                <div className="mt-2 pt-2 border-t border-nydus-border">
+                  <a href="/releases/source.tar.gz"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 transition-colors">
+                    <Download className="w-3 h-3" /> tar.gz
+                  </a>
+                </div>
+              )}
             </SidebarCard>
           )}
 
@@ -557,17 +571,19 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
             </SidebarCard>
           )}
 
-          {/* API for this repo */}
-          <SidebarCard title="API Endpoints">
-            <div className="space-y-1.5">
-              <APIItem method="GET" path={`/v1/repos/${repoName}`} />
-              <APIItem method="GET" path={`/v1/repos/${repoName}/tree`} />
-              <APIItem method="GET" path={`/v1/repos/${repoName}/readme`} />
-              <APIItem method="GET" path={`/v1/repos/${repoName}/branches`} />
-              <APIItem method="GET" path={`/v1/repos/${repoName}/tags`} />
-              <APIItem method="GET" path={`/v1/commits?repo=${repoName}`} />
-            </div>
-          </SidebarCard>
+          {/* API for this repo — admin only */}
+          {authed && (
+            <SidebarCard title="API Endpoints">
+              <div className="space-y-1.5">
+                <APIItem method="GET" path={`/v1/repos/${repoName}`} />
+                <APIItem method="GET" path={`/v1/repos/${repoName}/tree`} />
+                <APIItem method="GET" path={`/v1/repos/${repoName}/readme`} />
+                <APIItem method="GET" path={`/v1/repos/${repoName}/branches`} />
+                <APIItem method="GET" path={`/v1/repos/${repoName}/tags`} />
+                <APIItem method="GET" path={`/v1/commits?repo=${repoName}`} />
+              </div>
+            </SidebarCard>
+          )}
         </div>
       </div>
     </>

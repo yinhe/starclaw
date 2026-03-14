@@ -77,6 +77,7 @@ func Setup() *gin.Engine {
 		v1.GET("/commits", handler.GetRecentCommits)
 		v1.GET("/deploys", handler.ListDeploys)
 		v1.GET("/releases/latest", handler.GetLatestRelease)
+		v1.GET("/releases", handler.ListReleases)
 		v1.GET("/stats", handler.GetServerStats)
 	}
 
@@ -97,6 +98,7 @@ func Setup() *gin.Engine {
 		api.GET("/deploys", handler.ListDeploys)
 		api.GET("/stats", handler.GetServerStats)
 		api.GET("/releases/latest", handler.GetLatestRelease)
+		api.GET("/releases", handler.ListReleases)
 	}
 
 	// Hook endpoint (called by post-receive, uses same secret)
