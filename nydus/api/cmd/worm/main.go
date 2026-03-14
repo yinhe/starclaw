@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/nydus/internal/config"
+	"github.com/yinhe/starclaw/nydus/internal/middleware"
 )
 
 func main() {
@@ -31,24 +32,13 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok", "service": "nydus-worm"})
 	})
 
-	r.POST("/deploy", authMiddleware(), deploy)
-	r.GET("/status", authMiddleware(), status)
+	r.POST("/deploy", middleware.WormAuth(), deploy)
+	r.GET("/status", middleware.WormAuth(), status)
 
 	port := config.W.Port
 	log.Printf("[worm] Nydus Worm (deploy agent) starting on :%s", port)
 	if err := r.Run(fmt.Sprintf(":%s", port)); err != nil {
 		log.Fatal(err)
-	}
-}
-
-func authMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := c.GetHeader("X-Nydus-Secret")
-		if token != config.W.Secret {
-			c.AbortWithStatusJSON(401, gin.H{"error": "unauthorized"})
-			return
-		}
-		c.Next()
 	}
 }
 
@@ -106,7 +96,6 @@ func deploy(c *gin.Context) {
 		gitDir := fmt.Sprintf("%s/.git", cacheDir)
 
 		if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-			// Fresh clone
 			log.Printf("[worm] cloning %s → %s", req.RepoURL, cacheDir)
 			os.MkdirAll(cacheDir, 0755)
 			cmd := exec.Command("git", "clone", "--branch", req.Branch, "--single-branch", req.RepoURL, cacheDir)
@@ -120,7 +109,6 @@ func deploy(c *gin.Context) {
 				return
 			}
 		} else {
-			// Pull latest
 			log.Printf("[worm] pulling latest in %s", cacheDir)
 			cmd := exec.Command("git", "-C", cacheDir, "fetch", "origin", req.Branch)
 			cmd.CombinedOutput()
@@ -128,13 +116,12 @@ func deploy(c *gin.Context) {
 			cmd.CombinedOutput()
 		}
 
-		// Step 3: rsync subdir to deploy path
+		// Step 3: sync subdir to deploy path
 		srcDir := cacheDir
 		if req.Subdir != "" {
 			srcDir = fmt.Sprintf("%s/%s", cacheDir, req.Subdir)
 		}
 		log.Printf("[worm] syncing %s/ → %s/", srcDir, req.DeployPath)
-		// Use cp -a to copy, excluding .git
 		syncCmd := exec.Command("sh", "-c", fmt.Sprintf(
 			`cd "%s" && find . -not -path './.git/*' -not -name '.git' | while read f; do
 				if [ -d "$f" ]; then mkdir -p "%s/$f"; else cp -f "$f" "%s/$f" 2>/dev/null; fi

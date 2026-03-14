@@ -4,7 +4,7 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /nydus-server ./cmd/nydus-server/
+RUN CGO_ENABLED=0 go build -o /nydus-server ./cmd/server/
 
 FROM alpine:3.19
 RUN apk add --no-cache git curl openssh-server openssh-client shadow bash && \
@@ -15,7 +15,7 @@ RUN apk add --no-cache git curl openssh-server openssh-client shadow bash && \
     ssh-keygen -A
 WORKDIR /app
 COPY --from=builder /nydus-server .
-COPY nydus.yaml .
+COPY configs/nydus.yaml ./configs/
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 EXPOSE 8095 22

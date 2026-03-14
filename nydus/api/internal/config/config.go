@@ -21,6 +21,7 @@ type ServerConfig struct {
 
 type RepoConfig struct {
 	Description string         `yaml:"description"`
+	Public      bool           `yaml:"public"`
 	Targets     []TargetConfig `yaml:"targets"`
 }
 

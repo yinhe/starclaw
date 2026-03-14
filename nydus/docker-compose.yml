@@ -1,38 +1,46 @@
 services:
-  nydus-server:
+  api:
     build:
-      context: .
+      context: ./api
       dockerfile: Dockerfile
-    container_name: nydus-server
+    container_name: nydus-api
     restart: unless-stopped
     environment:
-      NYDUS_CONFIG: /app/nydus.yaml
+      NYDUS_CONFIG: /app/configs/nydus.yaml
     volumes:
       - /data/nydus/repos:/data/nydus/repos
-      - ./nydus.yaml:/app/nydus.yaml:ro
+      - ./api/configs/nydus.yaml:/app/configs/nydus.yaml:ro
       - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
       - /root/.ssh/known_hosts:/root/.ssh/known_hosts
-    ports:
-      - "127.0.0.1:8095:8095"
-      # SSH handled by host sshd (git user), no container SSH needed
     networks:
       - starqueen
 
-  nydus-worm:
+  web:
     build:
-      context: .
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: nydus-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8095:80"
+    depends_on:
+      - api
+    networks:
+      - starqueen
+
+  worm:
+    build:
+      context: ./api
       dockerfile: Dockerfile.worm
     container_name: nydus-worm
     restart: unless-stopped
     environment:
-      NYDUS_WORM_CONFIG: /app/worm.yaml
+      NYDUS_WORM_CONFIG: /app/configs/worm.yaml
     volumes:
-      - ./worm.yaml:/app/worm.yaml:ro
+      - ./api/configs/worm.yaml:/app/configs/worm.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - /opt:/opt    # access to deploy paths
-      - /data/nydus/repos:/data/nydus/repos:ro  # access to bare repos for clone
-    ports:
-      - "127.0.0.1:8096:8096"
+      - /opt:/opt
+      - /data/nydus/repos:/data/nydus/repos:ro
     networks:
       - starqueen
 

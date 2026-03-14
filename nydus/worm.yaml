@@ -1,7 +1,0 @@
-port: "8096"
-secret: "nydus-sc2026-vKwRmT9xLpQjN3hB"
-
-# repo name → local deploy directory mapping
-deploy_dirs:
-  queen: "/opt/starclaw-queen"
-  overlord: "/opt/starclaw-overlord"
