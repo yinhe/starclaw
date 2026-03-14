@@ -162,7 +162,7 @@ export default function LoginPage() {
         // Handle pending approval (HTTP 202)
         if (res.status === 202 && res.data?.status === 'pending_approval') {
           setPendingApproval(true)
-          setPendingMessage(res.data.message || '新设备等待审批中...')
+          setPendingMessage(res.data.approve_cmd || res.data.message || '新设备等待审批中...')
           setLoading(false)
           return
         }
@@ -206,7 +206,8 @@ export default function LoginPage() {
               <div className="bg-gray-50 rounded-lg p-3 text-left text-xs text-gray-600 space-y-1">
                 <p className="font-medium text-gray-700">审批方式：</p>
                 <p>1. 在已登录设备的 <b>设置 → 设备管理</b> 中审批</p>
-                <p>2. 在服务器上执行 <code className="bg-gray-200 px-1 rounded">starclaw devices</code> 查看并 <code className="bg-gray-200 px-1 rounded">starclaw approve &lt;id&gt;</code></p>
+                <p>2. 在服务器项目目录执行：</p>
+                <code className="block bg-gray-200 px-2 py-1 rounded mt-1 select-all">{pendingMessage}</code>
               </div>
               <button
                 type="button"
