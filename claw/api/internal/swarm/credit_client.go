@@ -84,7 +84,7 @@ func (cc *CreditClient) UpdateFromHeartbeat(cb *CreditBalance) {
 
 	if oldHP != HPStatus(cb.HPStatus) && oldHP != HPUnknown {
 		newHP := HPStatus(cb.HPStatus)
-		logHPChange(oldHP, newHP, cb.BalanceStars)
+		logHPChange(oldHP, newHP, cb.BalanceEnergy)
 		for _, fn := range callbacks {
 			fn(newHP)
 		}
@@ -108,17 +108,17 @@ func (cc *CreditClient) QueryBalance() (*CreditBalance, error) {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			ClawID       string  `json:"claw_id"`
-			Balance      int64   `json:"balance"`
-			BalanceStars float64 `json:"balance_stars"`
-			Frozen       int64   `json:"frozen"`
-			FrozenStars  float64 `json:"frozen_stars"`
-			TotalIn      int64   `json:"total_in"`
-			TotalOut     int64   `json:"total_out"`
-			Nonce        int64   `json:"nonce"`
-			Status       string  `json:"status"`
-			HPStatus     string  `json:"hp_status"`
-			TrustLevel   string  `json:"trust_level"`
+			ClawID        string  `json:"claw_id"`
+			Balance       int64   `json:"balance"`
+			BalanceEnergy float64 `json:"balance_energy"`
+			Frozen        int64   `json:"frozen"`
+			FrozenEnergy  float64 `json:"frozen_energy"`
+			TotalIn       int64   `json:"total_in"`
+			TotalOut      int64   `json:"total_out"`
+			Nonce         int64   `json:"nonce"`
+			Status        string  `json:"status"`
+			HPStatus      string  `json:"hp_status"`
+			TrustLevel    string  `json:"trust_level"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -129,17 +129,17 @@ func (cc *CreditClient) QueryBalance() (*CreditBalance, error) {
 	}
 
 	cb := &CreditBalance{
-		Balance:      result.Data.Balance,
-		BalanceStars: result.Data.BalanceStars,
-		Frozen:       result.Data.Frozen,
-		FrozenStars:  result.Data.FrozenStars,
-		TotalIn:      result.Data.TotalIn,
-		TotalOut:     result.Data.TotalOut,
-		Nonce:        result.Data.Nonce,
-		Status:       result.Data.Status,
-		HPStatus:     result.Data.HPStatus,
-		TrustLevel:   result.Data.TrustLevel,
-		UpdatedAt:    time.Now(),
+		Balance:       result.Data.Balance,
+		BalanceEnergy: result.Data.BalanceEnergy,
+		Frozen:        result.Data.Frozen,
+		FrozenEnergy:  result.Data.FrozenEnergy,
+		TotalIn:       result.Data.TotalIn,
+		TotalOut:      result.Data.TotalOut,
+		Nonce:         result.Data.Nonce,
+		Status:        result.Data.Status,
+		HPStatus:      result.Data.HPStatus,
+		TrustLevel:    result.Data.TrustLevel,
+		UpdatedAt:     time.Now(),
 	}
 
 	cc.UpdateFromHeartbeat(cb)
@@ -155,12 +155,12 @@ type TransferRequest struct {
 
 // TransferResult holds the result of a successful transfer.
 type TransferResult struct {
-	TxnID       string  `json:"txn_id"`
-	From        string  `json:"from"`
-	To          string  `json:"to"`
-	Amount      int64   `json:"amount"`
-	AmountStars float64 `json:"amount_stars"`
-	NewBalance  int64   `json:"new_balance"`
+	TxnID        string  `json:"txn_id"`
+	From         string  `json:"from"`
+	To           string  `json:"to"`
+	Amount       int64   `json:"amount"`
+	AmountEnergy float64 `json:"amount_energy"`
+	NewBalance   int64   `json:"new_balance"`
 }
 
 // Transfer sends star energy to another claw address, signed with Ed25519.
@@ -223,12 +223,12 @@ func (cc *CreditClient) Transfer(req TransferRequest) (*TransferResult, error) {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			TxnID       string  `json:"txn_id"`
-			From        string  `json:"from"`
-			To          string  `json:"to"`
-			Amount      int64   `json:"amount"`
-			AmountStars float64 `json:"amount_stars"`
-			NewBalance  int64   `json:"new_balance"`
+			TxnID        string  `json:"txn_id"`
+			From         string  `json:"from"`
+			To           string  `json:"to"`
+			Amount       int64   `json:"amount"`
+			AmountEnergy float64 `json:"amount_energy"`
+			NewBalance   int64   `json:"new_balance"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -247,12 +247,12 @@ func (cc *CreditClient) Transfer(req TransferRequest) (*TransferResult, error) {
 	cc.mu.Unlock()
 
 	return &TransferResult{
-		TxnID:       result.Data.TxnID,
-		From:        result.Data.From,
-		To:          result.Data.To,
-		Amount:      result.Data.Amount,
-		AmountStars: result.Data.AmountStars,
-		NewBalance:  result.Data.NewBalance,
+		TxnID:        result.Data.TxnID,
+		From:         result.Data.From,
+		To:           result.Data.To,
+		Amount:       result.Data.Amount,
+		AmountEnergy: result.Data.AmountEnergy,
+		NewBalance:   result.Data.NewBalance,
 	}, nil
 }
 
@@ -331,8 +331,8 @@ func (cc *CreditClient) Stats() map[string]interface{} {
 		"queen_url": cc.queenURL,
 	}
 	if cc.cached != nil {
-		stats["balance_stars"] = cc.cached.BalanceStars
-		stats["frozen_stars"] = cc.cached.FrozenStars
+		stats["balance_energy"] = cc.cached.BalanceEnergy
+		stats["frozen_energy"] = cc.cached.FrozenEnergy
 		stats["total_in"] = cc.cached.TotalIn
 		stats["total_out"] = cc.cached.TotalOut
 		stats["nonce"] = cc.cached.Nonce

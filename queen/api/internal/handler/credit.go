@@ -27,8 +27,8 @@ type CreditHandler struct{}
 // ─── Constants ───
 
 const (
-	StarUnit         = 10000                // 1 Star = 10000 internal units (4 decimal precision)
-	NewClawBonus     = 100 * StarUnit       // 100 ⭐ welcome bonus
+	EnergyUnit       = 10000                // 1 Star = 10000 internal units (4 decimal precision)
+	NewClawBonus     = 100 * EnergyUnit     // 100 ⭐ welcome bonus
 	MaxTransferNoFee = int64(math.MaxInt64) // no fee on transfers currently
 )
 
@@ -92,7 +92,7 @@ func (h *CreditHandler) GetBalance(c *gin.Context) {
 	acct := ensureCreditAccount(clawID)
 
 	// Calculate HP status
-	stars := acct.Balance / int64(StarUnit)
+	stars := acct.Balance / int64(EnergyUnit)
 	hpStatus := "hibernated"
 	switch {
 	case stars > 1000:
@@ -106,17 +106,17 @@ func (h *CreditHandler) GetBalance(c *gin.Context) {
 	}
 
 	middleware.OK(c, gin.H{
-		"claw_id":       acct.ClawID,
-		"balance":       acct.Balance,
-		"balance_stars": float64(acct.Balance) / float64(StarUnit),
-		"frozen":        acct.Frozen,
-		"frozen_stars":  float64(acct.Frozen) / float64(StarUnit),
-		"total_in":      acct.TotalIn,
-		"total_out":     acct.TotalOut,
-		"nonce":         acct.Nonce,
-		"status":        acct.Status,
-		"hp_status":     hpStatus,
-		"trust_level":   acct.TrustLevel,
+		"claw_id":        acct.ClawID,
+		"balance":        acct.Balance,
+		"balance_energy": float64(acct.Balance) / float64(EnergyUnit),
+		"frozen":         acct.Frozen,
+		"frozen_energy":  float64(acct.Frozen) / float64(EnergyUnit),
+		"total_in":       acct.TotalIn,
+		"total_out":      acct.TotalOut,
+		"nonce":          acct.Nonce,
+		"status":         acct.Status,
+		"hp_status":      hpStatus,
+		"trust_level":    acct.TrustLevel,
 	})
 }
 
@@ -229,12 +229,12 @@ func (h *CreditHandler) Transfer(c *gin.Context) {
 	}
 
 	middleware.OK(c, gin.H{
-		"txn_id":       txnID,
-		"from":         req.FromClaw,
-		"to":           req.ToClaw,
-		"amount":       req.Amount,
-		"amount_stars": float64(req.Amount) / float64(StarUnit),
-		"new_balance":  newBalance,
+		"txn_id":        txnID,
+		"from":          req.FromClaw,
+		"to":            req.ToClaw,
+		"amount":        req.Amount,
+		"amount_energy": float64(req.Amount) / float64(EnergyUnit),
+		"new_balance":   newBalance,
 	})
 }
 
@@ -793,15 +793,15 @@ func calculateStarCost(resourceType string, quantity int64) int64 {
 		// 1 ⭐ per 1K tokens = 10000 units per 1K = 10 units per token
 		return quantity * 10
 	case "image":
-		return quantity * 5 * int64(StarUnit) // 5 ⭐ per image
+		return quantity * 5 * int64(EnergyUnit) // 5 ⭐ per image
 	case "image_hd":
-		return quantity * 10 * int64(StarUnit) // 10 ⭐ per HD image
+		return quantity * 10 * int64(EnergyUnit) // 10 ⭐ per HD image
 	case "video_short":
-		return quantity * 50 * int64(StarUnit) // 50 ⭐ per short video
+		return quantity * 50 * int64(EnergyUnit) // 50 ⭐ per short video
 	case "video_long":
-		return quantity * 200 * int64(StarUnit) // 200 ⭐ per long video
+		return quantity * 200 * int64(EnergyUnit) // 200 ⭐ per long video
 	case "sandbox_min":
-		return quantity * 1 * int64(StarUnit) // 1 ⭐ per minute
+		return quantity * 1 * int64(EnergyUnit) // 1 ⭐ per minute
 	default:
 		return quantity // raw units
 	}

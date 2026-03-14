@@ -571,8 +571,8 @@ func (h *BillingHandler) completeOrder(orderNo, tradeNo, callbackRaw string) {
 
 		// ── Grant Star Energy to bound claw_id ──
 		if order.ClawID != "" {
-			stars := cnyToStars(order.Amount + order.BonusAmount)
-			grantStarCredits(tx, order.ClawID, stars, fmt.Sprintf("recharge order %s", order.OrderNo))
+			stars := cnyToEnergy(order.Amount + order.BonusAmount)
+			grantStarEnergy(tx, order.ClawID, stars, fmt.Sprintf("recharge order %s", order.OrderNo))
 			order.StarsGranted = stars
 			tx.Model(&order).Update("stars_granted", stars)
 			log.Printf("[billing] Granted %d star units to %s (order %s)", stars, order.ClawID, orderNo)
@@ -609,16 +609,16 @@ const (
 	// Early promo rate: ¥0.01 = 1 Star = 10000 internal units
 	// So ¥1 (100分) = 100 Stars = 1,000,000 units
 	// Therefore: 1分 = 1 Star = 10000 units
-	CnyFenToStarUnits = 10000
+	CnyFenToEnergyUnits = 10000
 )
 
-// cnyToStars converts CNY amount (分) to Star Energy internal units
-func cnyToStars(amountFen int64) int64 {
-	return amountFen * CnyFenToStarUnits
+// cnyToEnergy converts CNY amount (分) to Star Energy internal units
+func cnyToEnergy(amountFen int64) int64 {
+	return amountFen * CnyFenToEnergyUnits
 }
 
-// grantStarCredits adds Star Energy to a claw account within an existing DB transaction
-func grantStarCredits(tx *gorm.DB, clawID string, amount int64, remark string) {
+// grantStarEnergy adds Star Energy to a claw account within an existing DB transaction
+func grantStarEnergy(tx *gorm.DB, clawID string, amount int64, remark string) {
 	if clawID == "" || amount <= 0 {
 		return
 	}

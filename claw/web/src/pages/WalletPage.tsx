@@ -5,9 +5,9 @@ import { systemAPI, nodeAPI } from '../lib/api'
 interface CreditData {
   connected: boolean
   balance?: number
-  balance_stars?: number
+  balance_energy?: number
   frozen?: number
-  frozen_stars?: number
+  frozen_energy?: number
   total_in?: number
   total_out?: number
   nonce?: number
@@ -34,10 +34,10 @@ const trustConfig: Record<string, { label: string; color: string; icon: string }
   legendary:  { label: '传奇',   color: 'bg-amber-100 text-amber-700',  icon: '👑' },
 }
 
-const STAR_UNIT = 10000
+const ENERGY_UNIT = 10000
 
 function formatStars(units: number): string {
-  const stars = units / STAR_UNIT
+  const stars = units / ENERGY_UNIT
   if (stars >= 10000) return `${(stars / 1000).toFixed(1)}K`
   if (stars >= 1000) return `${(stars / 1000).toFixed(2)}K`
   return stars.toFixed(2)
@@ -93,15 +93,15 @@ export default function WalletPage() {
   }
 
   const connected = credits?.connected ?? false
-  const stars = credits?.balance_stars ?? 0
+  const stars = credits?.balance_energy ?? 0
   const hp = credits?.hp_status ?? 'hibernated'
   const cfg = hpConfig[hp] || hpConfig.hibernated
   const trust = trustConfig[credits?.trust_level || 'newcomer'] || trustConfig.newcomer
   const pct = Math.min(100, (stars / 2000) * 100)
 
-  const totalInStars = (credits?.total_in ?? 0) / STAR_UNIT
-  const totalOutStars = (credits?.total_out ?? 0) / STAR_UNIT
-  const frozenStars = credits?.frozen_stars ?? 0
+  const totalInStars = (credits?.total_in ?? 0) / ENERGY_UNIT
+  const totalOutStars = (credits?.total_out ?? 0) / ENERGY_UNIT
+  const frozenStars = credits?.frozen_energy ?? 0
 
   return (
     <div className="h-full overflow-y-auto">

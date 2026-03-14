@@ -5,9 +5,9 @@ import { systemAPI } from '../lib/api'
 
 interface CreditData {
   connected: boolean
-  balance_stars?: number
+  balance_energy?: number
   hp_status?: string
-  frozen_stars?: number
+  frozen_energy?: number
   status?: string
   message?: string
 }
@@ -43,7 +43,7 @@ export default function HPBar() {
     )
   }
 
-  const stars = data.balance_stars ?? 0
+  const stars = data.balance_energy ?? 0
   const hp = data.hp_status ?? 'hibernated'
   const cfg = hpConfig[hp] || hpConfig.hibernated
 
@@ -69,10 +69,10 @@ export default function HPBar() {
           style={{ width: `${Math.max(pct, 2)}%` }}
         />
       </div>
-      {data.frozen_stars != null && data.frozen_stars > 0 && (
+      {data.frozen_energy != null && data.frozen_energy > 0 && (
         <div className="flex items-center gap-1 text-[10px] text-gray-500">
           <Snowflake className="w-2.5 h-2.5" />
-          <span>冻结 {data.frozen_stars.toFixed(1)} ⭐</span>
+          <span>冻结 {data.frozen_energy.toFixed(1)} ⭐</span>
         </div>
       )}
     </Link>

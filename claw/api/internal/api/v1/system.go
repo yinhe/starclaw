@@ -149,19 +149,19 @@ func (h *SystemHandler) GetCredits(c *gin.Context) {
 		if cc := h.swarmClient.CreditClient(); cc != nil {
 			if balance, err := cc.QueryBalance(); err == nil {
 				c.JSON(http.StatusOK, gin.H{
-					"connected":     true,
-					"balance":       balance.Balance,
-					"balance_stars": balance.BalanceStars,
-					"frozen":        balance.Frozen,
-					"frozen_stars":  balance.FrozenStars,
-					"total_in":      balance.TotalIn,
-					"total_out":     balance.TotalOut,
-					"nonce":         balance.Nonce,
-					"status":        balance.Status,
-					"hp_status":     balance.HPStatus,
-					"hp":            string(cc.HP()),
-					"trust_level":   balance.TrustLevel,
-					"updated_at":    balance.UpdatedAt,
+					"connected":      true,
+					"balance":        balance.Balance,
+					"balance_energy": balance.BalanceEnergy,
+					"frozen":         balance.Frozen,
+					"frozen_energy":  balance.FrozenEnergy,
+					"total_in":       balance.TotalIn,
+					"total_out":      balance.TotalOut,
+					"nonce":          balance.Nonce,
+					"status":         balance.Status,
+					"hp_status":      balance.HPStatus,
+					"hp":             string(cc.HP()),
+					"trust_level":    balance.TrustLevel,
+					"updated_at":     balance.UpdatedAt,
 				})
 				return
 			}
@@ -184,19 +184,19 @@ func (h *SystemHandler) GetCredits(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"connected":     true,
-		"balance":       credits.Balance,
-		"balance_stars": credits.BalanceStars,
-		"frozen":        credits.Frozen,
-		"frozen_stars":  credits.FrozenStars,
-		"total_in":      credits.TotalIn,
-		"total_out":     credits.TotalOut,
-		"nonce":         credits.Nonce,
-		"status":        credits.Status,
-		"hp_status":     credits.HPStatus,
-		"hp":            hp,
-		"trust_level":   credits.TrustLevel,
-		"updated_at":    credits.UpdatedAt,
+		"connected":      true,
+		"balance":        credits.Balance,
+		"balance_energy": credits.BalanceEnergy,
+		"frozen":         credits.Frozen,
+		"frozen_energy":  credits.FrozenEnergy,
+		"total_in":       credits.TotalIn,
+		"total_out":      credits.TotalOut,
+		"nonce":          credits.Nonce,
+		"status":         credits.Status,
+		"hp_status":      credits.HPStatus,
+		"hp":             hp,
+		"trust_level":    credits.TrustLevel,
+		"updated_at":     credits.UpdatedAt,
 	})
 }
 
@@ -229,12 +229,12 @@ func (h *SystemHandler) TransferCredits(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"txn_id":       result.TxnID,
-		"from":         result.From,
-		"to":           result.To,
-		"amount":       result.Amount,
-		"amount_stars": result.AmountStars,
-		"new_balance":  result.NewBalance,
+		"txn_id":        result.TxnID,
+		"from":          result.From,
+		"to":            result.To,
+		"amount":        result.Amount,
+		"amount_energy": result.AmountEnergy,
+		"new_balance":   result.NewBalance,
 	})
 }
 
