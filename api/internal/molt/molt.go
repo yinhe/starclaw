@@ -122,8 +122,10 @@ func GetVersionInfo() VersionInfo {
 	return vi
 }
 
-// fetchLatestRelease tries all update sources in order (GitHub → Nydus fallback)
+// fetchLatestRelease checks ALL update sources and returns the one with the highest version.
+// This ensures a newer release on Nydus is not missed just because GitHub returned an older one.
 func fetchLatestRelease() (*ReleaseInfo, error) {
+	var best *ReleaseInfo
 	var lastErr error
 	for _, src := range UpdateSources {
 		info, err := fetchFromSource(src)
@@ -133,7 +135,12 @@ func fetchLatestRelease() (*ReleaseInfo, error) {
 			continue
 		}
 		info.Source = src.Name
-		return info, nil
+		if best == nil || trimV(info.TagName) > trimV(best.TagName) {
+			best = info
+		}
+	}
+	if best != nil {
+		return best, nil
 	}
 	return nil, fmt.Errorf("all update sources failed, last: %v", lastErr)
 }
