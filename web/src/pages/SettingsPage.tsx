@@ -494,48 +494,65 @@ export default function SettingsPage() {
             <Monitor className="w-4 h-4" /> 宿主机控制 (MCP Bridge)
           </h2>
           <p className="text-xs text-gray-400 mb-4">启用后，AI Agent 可以在对话中直接操作你的电脑：执行命令、读写文件、获取系统信息等。</p>
-          <div className="flex items-center gap-3 p-3 rounded-lg mb-4" style={{ backgroundColor: bridgeStatus?.connected ? '#f0fdf4' : '#fef2f2' }}>
-            {bridgeStatus?.connected ? (
-              <PlugZap className="w-5 h-5 text-green-600" />
-            ) : (
-              <Plug className="w-5 h-5 text-gray-400" />
-            )}
-            <div>
-              <p className="text-sm font-medium" style={{ color: bridgeStatus?.connected ? '#166534' : '#991b1b' }}>
-                {bridgeStatus?.connected ? '已连接' : '未连接'}
-              </p>
-              {bridgeStatus?.connected && (
-                <p className="text-xs text-gray-400">{bridgeStatus.bridge_url} · {bridgeStatus.tool_count || '?'} 个宿主机工具已注册</p>
-              )}
-            </div>
-          </div>
-          {!bridgeStatus?.connected && (() => {
-            const ua = navigator.userAgent.toLowerCase()
-            const isWindows = ua.includes('win')
-            const isMac = ua.includes('mac')
-            const label = isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux'
-            const apiBase = window.location.origin
-            const bashCmd = `curl -fsSL ${apiBase}/v1/mcp-bridge/install.sh | bash`
-            const psCmd = `irm ${apiBase}/v1/mcp-bridge/install.ps1 | iex`
-            const installCmd = isWindows ? psCmd : bashCmd
-            const terminalName = isWindows ? 'PowerShell' : '终端 (Terminal)'
-            return (
-              <div className="space-y-3">
-                <p className="text-xs text-gray-500 mb-1">打开 <b>{terminalName}</b>，粘贴以下命令一键安装并启动：</p>
-                <div className="relative group">
-                  <code className="block bg-gray-900 text-green-400 px-4 py-3 rounded-lg text-xs font-mono select-all break-all">{installCmd}</code>
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(installCmd); }}
-                    className="absolute top-1.5 right-1.5 p-1.5 rounded bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="复制"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
+
+          {bridgeStatus?.connected ? (
+            <>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 mb-3">
+                <div className="flex items-center gap-3">
+                  <PlugZap className="w-5 h-5 text-green-600" />
+                  <div>
+                    <p className="text-sm font-medium text-green-800">已连接</p>
+                    <p className="text-xs text-gray-400">{bridgeStatus.bridge_url} · {bridgeStatus.tool_count || '?'} 个宿主机工具</p>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-400">自动检测 {label} 系统，下载、安装、启动 MCP Bridge。启动后此页面会自动显示「已连接」。</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      await systemAPI.stopBridge()
+                      setTimeout(() => loadSystemInfo(), 1000)
+                    } catch {}
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  断开
+                </button>
               </div>
-            )
-          })()}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 mb-4">
+                <Plug className="w-5 h-5 text-gray-400" />
+                <p className="text-sm font-medium text-gray-500">未连接</p>
+              </div>
+              {(() => {
+                const ua = navigator.userAgent.toLowerCase()
+                const isWindows = ua.includes('win')
+                const isMac = ua.includes('mac')
+                const label = isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux'
+                const apiBase = window.location.origin
+                const bashCmd = `curl -fsSL ${apiBase}/v1/mcp-bridge/install.sh | bash`
+                const psCmd = `irm ${apiBase}/v1/mcp-bridge/install.ps1 | iex`
+                const installCmd = isWindows ? psCmd : bashCmd
+                const terminalName = isWindows ? 'PowerShell' : '终端 (Terminal)'
+                return (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-600">首次使用？打开 <b>{terminalName}</b> 粘贴一行命令即可（安装后开机自启，无需再操作）：</p>
+                    <div className="relative group">
+                      <code className="block bg-gray-900 text-green-400 px-4 py-3 rounded-lg text-xs font-mono select-all break-all">{installCmd}</code>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(installCmd); }}
+                        className="absolute top-1.5 right-1.5 p-1.5 rounded bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="复制"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400">自动检测 {label} 系统 · 安装后开机自动连接，无需手动启动</p>
+                  </div>
+                )
+              })()}
+            </>
+          )}
         </section>
 
         {/* Nydus Link — P2P Node Interconnection */}

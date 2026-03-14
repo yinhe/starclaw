@@ -136,7 +136,7 @@ func BridgeDownloadURLs() map[string]string {
 }
 
 // GenerateInstallScript returns a bash script that auto-detects OS/arch,
-// downloads the correct MCP Bridge binary, makes it executable, and runs it.
+// downloads the correct MCP Bridge binary, sets up auto-start, and runs it.
 func GenerateInstallScript(serverURL string) string {
 	return fmt.Sprintf(`#!/bin/bash
 set -e
@@ -161,15 +161,20 @@ case "$ARCH" in
 esac
 
 PLATFORM="${PLATFORM_OS}_${PLATFORM_ARCH}"
-BINARY="mcp-bridge-${PLATFORM_OS}-${PLATFORM_ARCH}"
+BINARY="mcp-bridge"
 INSTALL_DIR="$HOME/.starclaw"
 BINARY_PATH="$INSTALL_DIR/$BINARY"
 
 echo "📦 Platform: $PLATFORM_OS/$PLATFORM_ARCH"
 echo "📂 Install to: $INSTALL_DIR"
-
-# Create install directory
 mkdir -p "$INSTALL_DIR"
+
+# Stop existing bridge if running
+if curl -sf http://127.0.0.1:9101/health >/dev/null 2>&1; then
+  echo "⏹  Stopping existing MCP Bridge..."
+  curl -sf -X POST http://127.0.0.1:9101/shutdown >/dev/null 2>&1 || true
+  sleep 1
+fi
 
 # Download binary
 echo "⬇️  Downloading MCP Bridge..."
@@ -181,53 +186,107 @@ elif command -v wget &>/dev/null; then
 else
   echo "❌ curl or wget required"; exit 1
 fi
-
-# Make executable
 chmod +x "$BINARY_PATH"
 
-# macOS: remove quarantine flag (Gatekeeper)
+# macOS: remove quarantine flag
 if [ "$PLATFORM_OS" = "darwin" ]; then
   xattr -d com.apple.quarantine "$BINARY_PATH" 2>/dev/null || true
-  echo "✅ macOS Gatekeeper bypass applied"
 fi
 
-echo "✅ MCP Bridge installed to $BINARY_PATH"
-echo ""
-echo "🚀 Starting MCP Bridge..."
-echo "   (Press Ctrl+C to stop)"
-echo ""
+# --- Set up auto-start as background service ---
+if [ "$PLATFORM_OS" = "darwin" ]; then
+  # macOS: launchd plist
+  PLIST="$HOME/Library/LaunchAgents/com.starclaw.mcp-bridge.plist"
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$PLIST" << PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.starclaw.mcp-bridge</string>
+  <key>ProgramArguments</key><array><string>${BINARY_PATH}</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>${INSTALL_DIR}/bridge.log</string>
+  <key>StandardErrorPath</key><string>${INSTALL_DIR}/bridge.log</string>
+</dict>
+</plist>
+PLISTEOF
+  launchctl unload "$PLIST" 2>/dev/null || true
+  launchctl load "$PLIST"
+  echo "✅ Installed as macOS service (auto-start on login)"
+  echo "   Logs: $INSTALL_DIR/bridge.log"
 
-# Run the bridge
-exec "$BINARY_PATH"
+elif [ "$PLATFORM_OS" = "linux" ]; then
+  # Linux: systemd user service
+  SVCDIR="$HOME/.config/systemd/user"
+  mkdir -p "$SVCDIR"
+  cat > "$SVCDIR/mcp-bridge.service" << SVCEOF
+[Unit]
+Description=StarClaw MCP Bridge
+After=network.target
+
+[Service]
+ExecStart=${BINARY_PATH}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+SVCEOF
+  systemctl --user daemon-reload
+  systemctl --user enable mcp-bridge
+  systemctl --user restart mcp-bridge
+  echo "✅ Installed as systemd user service (auto-start on login)"
+  echo "   Logs: journalctl --user -u mcp-bridge -f"
+fi
+
+echo ""
+echo "🎉 Done! MCP Bridge is running in the background."
+echo "   It will auto-start whenever you log in."
+echo "   Go back to your Claw settings page — it should show 'Connected'."
 `, serverURL)
 }
 
 // GeneratePowerShellInstallScript returns a PowerShell script for Windows.
 func GeneratePowerShellInstallScript(serverURL string) string {
 	return fmt.Sprintf(`# StarClaw MCP Bridge Installer (Windows)
-Write-Host "🦞 StarClaw MCP Bridge Installer" -ForegroundColor Cyan
+Write-Host "StarClaw MCP Bridge Installer" -ForegroundColor Cyan
 Write-Host "================================="
 
 $InstallDir = "$env:USERPROFILE\.starclaw"
-$Binary = "mcp-bridge-windows-amd64.exe"
+$Binary = "mcp-bridge.exe"
 $BinaryPath = "$InstallDir\$Binary"
 $DownloadURL = "%s/v1/mcp-bridge/download/windows_amd64"
 
-# Create install directory
 if (!(Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
 
-# Download binary
+# Stop existing bridge
+try { Invoke-RestMethod -Uri "http://127.0.0.1:9101/shutdown" -Method POST -ErrorAction SilentlyContinue } catch {}
+Start-Sleep -Seconds 1
+
+# Download
 Write-Host "Downloading MCP Bridge..." -ForegroundColor Yellow
 Invoke-WebRequest -Uri $DownloadURL -OutFile $BinaryPath -UseBasicParsing
 
-Write-Host "MCP Bridge installed to $BinaryPath" -ForegroundColor Green
-Write-Host ""
-Write-Host "Starting MCP Bridge..." -ForegroundColor Cyan
-Write-Host "   (Press Ctrl+C to stop)"
-Write-Host ""
+# Auto-start: create startup shortcut
+$StartupDir = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
+$ShortcutPath = "$StartupDir\MCP Bridge.lnk"
+$WshShell = New-Object -ComObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+$Shortcut.TargetPath = $BinaryPath
+$Shortcut.WorkingDirectory = $InstallDir
+$Shortcut.WindowStyle = 7  # minimized
+$Shortcut.Save()
+Write-Host "Auto-start shortcut created" -ForegroundColor Green
 
-# Run the bridge
-& $BinaryPath
+# Start as background process
+Start-Process -FilePath $BinaryPath -WorkingDirectory $InstallDir -WindowStyle Hidden
+
+Write-Host ""
+Write-Host "Done! MCP Bridge is running in the background." -ForegroundColor Green
+Write-Host "It will auto-start whenever you log in."
+Write-Host "Go back to your Claw settings page - it should show Connected."
 `, serverURL)
 }
 

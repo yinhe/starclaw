@@ -1001,9 +1001,28 @@ func callTool(name string, args map[string]interface{}) mcpToolResult {
 // --- HTTP handler ---
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	// CORS headers for browser-based control
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(200)
+		return
+	}
+
 	if r.Method == http.MethodGet && r.URL.Path == "/health" {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "mcp-bridge", "version": version})
+		return
+	}
+
+	if r.Method == http.MethodPost && r.URL.Path == "/shutdown" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "shutting_down"})
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			os.Exit(0)
+		}()
 		return
 	}
 

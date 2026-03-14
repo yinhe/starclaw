@@ -792,6 +792,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/update", systemHandler.TriggerUpdate)
 			protected.POST("/system/update/check", systemHandler.ForceCheck)
 			protected.GET("/system/bridge", systemHandler.GetBridgeStatus)
+			protected.POST("/system/bridge/stop", systemHandler.StopBridge)
 			protected.GET("/system/overlord", systemHandler.GetOverlordStatus)
 			protected.POST("/system/overlord/join", systemHandler.JoinOverlord)
 			protected.POST("/system/overlord/leave", systemHandler.LeaveOverlord)
