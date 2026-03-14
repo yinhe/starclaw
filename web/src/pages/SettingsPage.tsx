@@ -233,6 +233,22 @@ export default function SettingsPage() {
     setQueenLinking(false)
   }
 
+  const handleQueenLinkClaw = async () => {
+    setQueenLinking(true)
+    setQueenMsg('')
+    try {
+      const res = await queenAPI.linkWithClaw()
+      setQueenMsg(res.data.message || '已关联')
+      setQueenMsgType('success')
+      loadQueenStatus()
+      setTimeout(() => setQueenMsg(''), 5000)
+    } catch (e: any) {
+      setQueenMsg(e.response?.data?.error || '关联失败')
+      setQueenMsgType('error')
+    }
+    setQueenLinking(false)
+  }
+
   const handleQueenUnlink = async () => {
     if (!confirm('解除关联后，赏金结算、社区互动等功能将不可用。确定？')) return
     try {
@@ -1184,41 +1200,15 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex gap-2 mb-2">
-                <button onClick={() => setQueenLoginTab('email')} className={`px-3 py-1 text-xs rounded-lg ${queenLoginTab === 'email' ? 'bg-primary-100 text-primary-700' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  <Mail className="w-3 h-3 inline mr-1" />邮箱
-                </button>
-                <button onClick={() => setQueenLoginTab('phone')} className={`px-3 py-1 text-xs rounded-lg ${queenLoginTab === 'phone' ? 'bg-primary-100 text-primary-700' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  <Phone className="w-3 h-3 inline mr-1" />手机号
-                </button>
-              </div>
-              <input
-                value={queenLoginTab === 'email' ? queenForm.email : queenForm.phone}
-                onChange={(e) => queenLoginTab === 'email' ? setQueenForm({ ...queenForm, email: e.target.value }) : setQueenForm({ ...queenForm, phone: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                placeholder={queenLoginTab === 'email' ? 'Queen 账号邮箱' : 'Queen 账号手机号'}
-              />
-              <input
-                value={queenForm.password}
-                onChange={(e) => setQueenForm({ ...queenForm, password: e.target.value })}
-                type="password"
-                className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                placeholder="Queen 账号密码"
-              />
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleQueenLink}
-                  disabled={queenLinking || !(queenLoginTab === 'email' ? queenForm.email : queenForm.phone) || !queenForm.password}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {queenLinking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}
-                  关联账号
-                </button>
-                <a href="https://starclaw.net" target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-primary-500 hover:underline flex items-center gap-1">
-                  <ExternalLink className="w-3 h-3" /> 没有账号？去注册
-                </a>
-              </div>
+              <p className="text-xs text-gray-500">使用当前 Claw 节点身份直接登录 Queen 平台，无需注册。</p>
+              <button
+                onClick={handleQueenLinkClaw}
+                disabled={queenLinking}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              >
+                {queenLinking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}
+                使用 Claw 身份登录 Queen
+              </button>
             </div>
           )}
           {queenMsg && <p className={`text-sm mt-2 ${queenMsgType === 'success' ? 'text-green-600' : 'text-red-600'}`}>{queenMsg}</p>}

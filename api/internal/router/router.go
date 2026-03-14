@@ -845,6 +845,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			queenHandler := v1.NewQueenAccountHandler(cfg, sc, identity)
 			protected.GET("/queen/status", queenHandler.GetStatus)
 			protected.POST("/queen/link", queenHandler.Link)
+			protected.POST("/queen/link-claw", queenHandler.LinkWithClaw)
 			protected.POST("/queen/unlink", queenHandler.Unlink)
 
 			// Node Identity & Peer Networking

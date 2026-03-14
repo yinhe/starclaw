@@ -133,6 +133,7 @@ func (h *SystemHandler) LeaveSwarm(c *gin.Context) {
 
 	if h.swarmClient != nil {
 		h.swarmClient.Stop()
+		h.swarmClient = nil
 	}
 
 	// Clean up credentials
