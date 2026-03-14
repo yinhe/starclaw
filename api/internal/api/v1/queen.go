@@ -277,7 +277,7 @@ func (h *QueenAccountHandler) LinkWithClaw(c *gin.Context) {
 		if e, ok := verifyResult["error"].(string); ok {
 			errMsg = e
 		}
-		c.JSON(http.StatusUnauthorized, gin.H{"error": errMsg})
+		c.JSON(http.StatusBadGateway, gin.H{"error": errMsg})
 		return
 	}
 

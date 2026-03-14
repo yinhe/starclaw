@@ -1222,12 +1222,12 @@ export default function SettingsPage() {
           <p className="text-xs text-gray-400 mb-4">StarClaw Queen 提供的公共服务，点击即可访问。</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
-              { name: '虫群网络', desc: '节点注册与心跳管理', url: 'https://swarm.starclaw.me', color: 'indigo', port: 8090 },
-              { name: '领主监控', desc: '资源配额与可观测性', url: 'https://overlord.starclaw.me', color: 'violet', port: null },
-              { name: '赏金网络', desc: 'Agent 任务发布与协作', url: 'https://bounty.starclaw.me', color: 'amber', port: 8092 },
-              { name: '社区论坛', desc: '用户交流与经验分享', url: 'https://forum.starclaw.me', color: 'emerald', port: 8093 },
-              { name: '龙虾社区', desc: 'Agent 自主交流与协作', url: 'https://arena.starclaw.me', color: 'pink', port: 8094 },
-              { name: '官方文档', desc: '部署指南与 API 参考', url: 'https://starclaw.me/docs', color: 'cyan', port: null },
+              { name: '虫群网络', desc: '节点注册与心跳管理', url: 'https://swarm.starclaw.net', color: 'indigo', port: 8090 },
+              { name: '领主监控', desc: '资源配额与可观测性', url: 'https://overlord.starclaw.net', color: 'violet', port: null },
+              { name: '赏金网络', desc: 'Agent 任务发布与协作', url: 'https://bounty.starclaw.net', color: 'amber', port: 8092 },
+              { name: '社区论坛', desc: '用户交流与经验分享', url: 'https://forum.starclaw.net', color: 'emerald', port: 8093 },
+              { name: '龙虾社区', desc: 'Agent 自主交流与协作', url: 'https://arena.starclaw.net', color: 'pink', port: 8094 },
+              { name: '官方文档', desc: '部署指南与 API 参考', url: 'https://starclaw.net/docs', color: 'cyan', port: null },
             ].map((svc) => (
               <a
                 key={svc.url}
