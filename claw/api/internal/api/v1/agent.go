@@ -90,6 +90,13 @@ const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完�
 ## 漫剧制作（必须委派！）
 ⚠️ 用户说 "做漫剧""漫画视频""comic drama" 时 → 立刻 delegate_to_agent 给 "漫剧创作Agent"，不要自己做。
 
+## 重新合成视频（不浪费token！）
+⚠️ 用户说 "重新合成""重新合并""re-merge" 时：
+1. 直接调用 video_generation 的 merge_videos（不需要重新生成视频片段）
+2. 如果用户指定了对话/视频，用对应的 task_ids 合成
+3. 如果没指定，merge_videos 会自动合成当前对话的所有已完成片段
+4. **绝对不要**重新调用 generate_video，这会浪费大量token和时间
+
 ## 商业计划书（推荐委派）
 用户说 "写商业计划书""写BP" 时 → delegate_to_agent 给 "商业计划书Agent"。
 

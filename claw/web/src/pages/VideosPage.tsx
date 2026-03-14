@@ -48,6 +48,8 @@ export default function VideosPage() {
   const [musicList, setMusicList] = useState<{ id: string; prompt: string; lyrics: string; local_url: string; status: string; duration: number; model: string; created_at: string }[]>([])
   const [selectedMusicId, setSelectedMusicId] = useState<string | null>(null)
   const [musicLoading, setMusicLoading] = useState(false)
+  const [narratedView, setNarratedView] = useState<Record<string, boolean>>({})
+  const [remergingIds, setRemergingIds] = useState<Set<string>>(new Set())
 
   useEffect(() => { loadVideos() }, [])
 
@@ -91,7 +93,17 @@ export default function VideosPage() {
   }
   const handleRemerge = (id: string) => {
     showConfirm('重新合成', '使用原始片段重新合成视频，确定继续吗？', async () => {
-      try { await videoAPI.remerge(id); addToast('info', '视频正在重新合成，请稍候...'); loadVideos(); setTimeout(loadVideos, 2000); setTimeout(loadVideos, 5000) } catch (e) { console.error(e); addToast('error', '重新合成失败') }
+      try {
+        setRemergingIds(prev => new Set(prev).add(id))
+        addToast('info', '视频正在重新合成，请稍候...')
+        await videoAPI.remerge(id)
+        addToast('success', '重新合成完成！')
+        loadVideos()
+      } catch (e) {
+        console.error(e); addToast('error', '重新合成失败')
+      } finally {
+        setRemergingIds(prev => { const next = new Set(prev); next.delete(id); return next })
+      }
     })
   }
   const openDubModal = (video: VideoRecord) => {
@@ -260,10 +272,17 @@ export default function VideosPage() {
         </button>
       )}
       {options?.showRemerge && video.status === 'succeeded' && (
-        <button onClick={() => handleRemerge(video.id)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 transition-colors" title="重新合成视频">
-          <RefreshCw className="w-3.5 h-3.5" />
-          重新合成
-        </button>
+        remergingIds.has(video.id) ? (
+          <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/30">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            合成中...
+          </span>
+        ) : (
+          <button onClick={() => handleRemerge(video.id)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 transition-colors" title="重新合成视频">
+            <RefreshCw className="w-3.5 h-3.5" />
+            重新合成
+          </button>
+        )
       )}
       {video.video_url && (
         <a href={video.video_url} download className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="下载">
@@ -336,7 +355,7 @@ export default function VideosPage() {
                     const clips = getClipsForMerge(mv)
                     const narrated = !isMV ? getNarratedForMerge(mv) : undefined
                     const isExpanded = expandedMerge === mv.id
-                    const showingNarrated = narrated && playingId === `narrated-${mv.id}`
+                    const showingNarrated = narrated && narratedView[mv.id]
                     const activeVideo = showingNarrated ? narrated : mv
                     const borderColor = isMV ? 'border-rose-200 dark:border-rose-800' : 'border-violet-200 dark:border-violet-800'
                     return (
@@ -347,13 +366,13 @@ export default function VideosPage() {
                             {narrated && (
                               <div className="flex mb-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600">
                                 <button
-                                  onClick={() => setPlayingId(showingNarrated ? null : null)}
+                                  onClick={() => { setNarratedView(prev => ({ ...prev, [mv.id]: false })); setPlayingId(null) }}
                                   className={`flex-1 text-xs py-1.5 font-medium transition-colors ${!showingNarrated ? 'bg-violet-500 text-white' : 'bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600'}`}
                                 >
                                   原版
                                 </button>
                                 <button
-                                  onClick={() => setPlayingId(`narrated-${mv.id}`)}
+                                  onClick={() => { setNarratedView(prev => ({ ...prev, [mv.id]: true })); setPlayingId(null) }}
                                   className={`flex-1 text-xs py-1.5 font-medium transition-colors ${showingNarrated ? 'bg-emerald-500 text-white' : 'bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600'}`}
                                 >
                                   🎙 配音版
