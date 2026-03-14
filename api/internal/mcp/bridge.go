@@ -135,6 +135,102 @@ func BridgeDownloadURLs() map[string]string {
 	}
 }
 
+// GenerateInstallScript returns a bash script that auto-detects OS/arch,
+// downloads the correct MCP Bridge binary, makes it executable, and runs it.
+func GenerateInstallScript(serverURL string) string {
+	return fmt.Sprintf(`#!/bin/bash
+set -e
+
+echo "🦞 StarClaw MCP Bridge Installer"
+echo "================================="
+
+# Detect OS and architecture
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+case "$OS" in
+  darwin) PLATFORM_OS="darwin" ;;
+  linux)  PLATFORM_OS="linux" ;;
+  *)      echo "❌ Unsupported OS: $OS"; exit 1 ;;
+esac
+
+case "$ARCH" in
+  x86_64|amd64)  PLATFORM_ARCH="amd64" ;;
+  arm64|aarch64) PLATFORM_ARCH="arm64" ;;
+  *)             echo "❌ Unsupported architecture: $ARCH"; exit 1 ;;
+esac
+
+PLATFORM="${PLATFORM_OS}_${PLATFORM_ARCH}"
+BINARY="mcp-bridge-${PLATFORM_OS}-${PLATFORM_ARCH}"
+INSTALL_DIR="$HOME/.starclaw"
+BINARY_PATH="$INSTALL_DIR/$BINARY"
+
+echo "📦 Platform: $PLATFORM_OS/$PLATFORM_ARCH"
+echo "📂 Install to: $INSTALL_DIR"
+
+# Create install directory
+mkdir -p "$INSTALL_DIR"
+
+# Download binary
+echo "⬇️  Downloading MCP Bridge..."
+DOWNLOAD_URL="%s/v1/mcp-bridge/download/${PLATFORM}"
+if command -v curl &>/dev/null; then
+  curl -fSL "$DOWNLOAD_URL" -o "$BINARY_PATH"
+elif command -v wget &>/dev/null; then
+  wget -q "$DOWNLOAD_URL" -O "$BINARY_PATH"
+else
+  echo "❌ curl or wget required"; exit 1
+fi
+
+# Make executable
+chmod +x "$BINARY_PATH"
+
+# macOS: remove quarantine flag (Gatekeeper)
+if [ "$PLATFORM_OS" = "darwin" ]; then
+  xattr -d com.apple.quarantine "$BINARY_PATH" 2>/dev/null || true
+  echo "✅ macOS Gatekeeper bypass applied"
+fi
+
+echo "✅ MCP Bridge installed to $BINARY_PATH"
+echo ""
+echo "🚀 Starting MCP Bridge..."
+echo "   (Press Ctrl+C to stop)"
+echo ""
+
+# Run the bridge
+exec "$BINARY_PATH"
+`, serverURL)
+}
+
+// GeneratePowerShellInstallScript returns a PowerShell script for Windows.
+func GeneratePowerShellInstallScript(serverURL string) string {
+	return fmt.Sprintf(`# StarClaw MCP Bridge Installer (Windows)
+Write-Host "🦞 StarClaw MCP Bridge Installer" -ForegroundColor Cyan
+Write-Host "================================="
+
+$InstallDir = "$env:USERPROFILE\.starclaw"
+$Binary = "mcp-bridge-windows-amd64.exe"
+$BinaryPath = "$InstallDir\$Binary"
+$DownloadURL = "%s/v1/mcp-bridge/download/windows_amd64"
+
+# Create install directory
+if (!(Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
+
+# Download binary
+Write-Host "Downloading MCP Bridge..." -ForegroundColor Yellow
+Invoke-WebRequest -Uri $DownloadURL -OutFile $BinaryPath -UseBasicParsing
+
+Write-Host "MCP Bridge installed to $BinaryPath" -ForegroundColor Green
+Write-Host ""
+Write-Host "Starting MCP Bridge..." -ForegroundColor Cyan
+Write-Host "   (Press Ctrl+C to stop)"
+Write-Host ""
+
+# Run the bridge
+& $BinaryPath
+`, serverURL)
+}
+
 // BridgeBinaryPath returns the local file path for a given platform binary.
 func BridgeBinaryPath(platform string) (string, string) {
 	m := map[string]string{
