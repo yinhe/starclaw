@@ -6,12 +6,12 @@ import {
   GitBranch, Tag, Server, Download, ExternalLink,
   CheckCircle2, XCircle, Activity, RefreshCw,
   Folder, FileText, ChevronRight, GitCommit, Database,
-  Rocket, ArrowLeft, Lock, Unlock, KeyRound, Code, History,
+  Rocket, ArrowLeft, Lock, Unlock, KeyRound, Code, History, Copy, Package,
 } from 'lucide-react'
 
 // ── Page type ──
 type Page = { view: 'home' } | { view: 'repo'; name: string }
-type RepoTab = 'code' | 'commits' | 'branches' | 'tags'
+type RepoTab = 'code' | 'commits' | 'branches' | 'tags' | 'releases'
 
 function parseHash(): Page {
   const h = window.location.hash.replace(/^#\/?/, '')
@@ -447,11 +447,19 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
   onNavigateUp: () => void
   onBack: () => void
 }) {
+  const [copied, setCopied] = useState('')
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(label)
+    setTimeout(() => setCopied(''), 2000)
+  }
+
   const tabItems: { key: RepoTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'code', label: 'Code', icon: <Code className="w-4 h-4" /> },
     { key: 'commits', label: 'Commits', icon: <History className="w-4 h-4" />, count: repo?.commit_count },
     { key: 'branches', label: 'Branches', icon: <GitBranch className="w-4 h-4" />, count: repo?.branches },
     { key: 'tags', label: 'Tags', icon: <Tag className="w-4 h-4" />, count: repo?.tags },
+    { key: 'releases', label: 'Releases', icon: <Package className="w-4 h-4" />, count: releases.length || undefined },
   ]
 
   return (
@@ -636,6 +644,48 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
             </div>
           )}
 
+          {/* ── Releases Tab ── */}
+          {repoTab === 'releases' && (
+            <div className="space-y-4">
+              {releases.length === 0 && (
+                <div className="bg-nydus-card border border-nydus-border rounded-lg px-4 py-8 text-center text-nydus-muted text-sm">No releases found.</div>
+              )}
+              {releases.map((rel) => (
+                <div key={rel.tag_name} className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b border-nydus-border">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-4 h-4 text-nydus-green" />
+                      <h3 className="text-base font-bold text-nydus-text">{rel.name}</h3>
+                      {rel.latest && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-700/20 text-nydus-green border border-green-700/30">Latest</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-nydus-muted">
+                      <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> {rel.tag_name}</span>
+                      {rel.commit && <code className="text-nydus-blue">{rel.commit.slice(0, 7)}</code>}
+                    </div>
+                  </div>
+                  {rel.body && (
+                    <div className="px-4 py-3 text-sm text-nydus-text/80 prose prose-invert prose-sm max-w-none
+                      prose-headings:text-nydus-text prose-a:text-nydus-blue prose-code:text-nydus-green"
+                      dangerouslySetInnerHTML={{ __html: marked.parse(rel.body, { async: false }) as string }}
+                    />
+                  )}
+                  <div className="px-4 py-2.5 border-t border-nydus-border bg-nydus-bg/30 flex items-center gap-2">
+                    <a href={rel.html_url} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-nydus-bg border border-nydus-border text-nydus-muted hover:text-nydus-text transition-colors">
+                      <ExternalLink className="w-3 h-3" /> GitHub
+                    </a>
+                    <a href="/releases/source.tar.gz"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 transition-colors">
+                      <Download className="w-3 h-3" /> tar.gz
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
         </div>
 
         {/* Sidebar */}
@@ -646,16 +696,30 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
               <div className="space-y-2">
                 <div>
                   <div className="text-[10px] text-nydus-dim uppercase tracking-wider mb-1">HTTPS</div>
-                  <code className="block text-xs bg-nydus-bg px-3 py-2 rounded border border-nydus-border text-nydus-muted select-all break-all">
-                    git clone {repo.https_url || `https://nydus.starclaw.net/${repoName}.git`}
-                  </code>
+                  <div className="flex items-stretch">
+                    <code className="flex-1 text-xs bg-nydus-bg px-3 py-2 rounded-l border border-r-0 border-nydus-border text-nydus-muted select-all break-all">
+                      git clone {repo.https_url || `https://nydus.starclaw.net/${repoName}.git`}
+                    </code>
+                    <button onClick={() => copyToClipboard(`git clone ${repo.https_url || `https://nydus.starclaw.net/${repoName}.git`}`, 'https')}
+                      className="px-2 bg-nydus-bg border border-nydus-border rounded-r hover:bg-nydus-border transition-colors"
+                      title="Copy">
+                      {copied === 'https' ? <CheckCircle2 className="w-3.5 h-3.5 text-nydus-green" /> : <Copy className="w-3.5 h-3.5 text-nydus-muted" />}
+                    </button>
+                  </div>
                 </div>
                 {authed && (
                   <div>
                     <div className="text-[10px] text-nydus-dim uppercase tracking-wider mb-1">SSH</div>
-                    <code className="block text-xs bg-nydus-bg px-3 py-2 rounded border border-nydus-border text-nydus-muted select-all break-all">
-                      git clone {repo.ssh_url}
-                    </code>
+                    <div className="flex items-stretch">
+                      <code className="flex-1 text-xs bg-nydus-bg px-3 py-2 rounded-l border border-r-0 border-nydus-border text-nydus-muted select-all break-all">
+                        git clone {repo.ssh_url}
+                      </code>
+                      <button onClick={() => copyToClipboard(`git clone ${repo.ssh_url}`, 'ssh')}
+                        className="px-2 bg-nydus-bg border border-nydus-border rounded-r hover:bg-nydus-border transition-colors"
+                        title="Copy">
+                        {copied === 'ssh' ? <CheckCircle2 className="w-3.5 h-3.5 text-nydus-green" /> : <Copy className="w-3.5 h-3.5 text-nydus-muted" />}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
