@@ -23,7 +23,7 @@ func NewSwarmHandler(db *gorm.DB) *SwarmHandler {
 	return &SwarmHandler{db: db}
 }
 
-// fetchCreditBalance queries Queen API for a claw's star credit balance
+// fetchCreditBalance queries Queen API for a claw's star energy balance
 func fetchCreditBalance(clawID string) map[string]interface{} {
 	queenAPI := os.Getenv("QUEEN_API_URL")
 	if queenAPI == "" {

@@ -132,7 +132,7 @@ func TestCreditClient_QueryBalance(t *testing.T) {
 	}
 
 	if balance.BalanceEnergy != 100.0 {
-		t.Errorf("balance_stars: got %.1f, want 100.0", balance.BalanceEnergy)
+		t.Errorf("balance_energy: got %.1f, want 100.0", balance.BalanceEnergy)
 	}
 	if balance.Nonce != 3 {
 		t.Errorf("nonce: got %d, want 3", balance.Nonce)

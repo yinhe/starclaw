@@ -173,7 +173,7 @@ func printUsage() {
 	fmt.Println("  export-key       Export 24-word mnemonic (BIP-39 backup)")
 	fmt.Println("  import-key       Restore identity from mnemonic or seed hex")
 	fmt.Println("  wallet-info      Show HD wallet addresses and derivation paths")
-	fmt.Println("  balance          Show star credit balance and HP status")
+	fmt.Println("  balance          Show star energy balance and HP status")
 	fmt.Println("  transfer         Transfer stars to another claw address")
 	fmt.Println("  transactions     Show recent transaction history")
 	fmt.Println("  version          Print version and exit")
@@ -518,7 +518,7 @@ func cmdWalletInfo() {
 	fmt.Println("Hot address  = everyday wallet (transfers, heartbeats)")
 }
 
-// cmdBalance queries and displays the star credit balance from Queen.
+// cmdBalance queries and displays the star energy balance from Queen.
 func cmdBalance() {
 	cfg, err := config.Load()
 	if err != nil {
