@@ -66,10 +66,12 @@ AI 算力平台 + API Gateway，面向付费用户和开发者。
 | MySQL | star-ai-mysql | 3306 | 数据库 (star_ai + starclaw_queen) |
 | Redis | star-ai-redis | 6379 | 缓存 |
 | nginx | nginx | 80/443 | 反向代理 |
+| **Nydus Worm** | **systemd** | **8097** | **部署执行 Agent（本地监听）** |
 
 **代码目录：** `router/` (api + web + core), Gateway 用 `queen/api`
 **部署路径：** `/opt/starclaw/router/` + `/opt/starclaw/gateway/`
 **nginx 配置：** `/dnmp/services/nginx/conf.d/starai-router.conf`
+**Worm 二进制：** `/opt/nydus-worm`，配置 `/opt/nydus/worm.yaml`，systemd: `nydus-worm.service`
 
 ### Gateway 路由
 
@@ -83,15 +85,21 @@ api.star-ai.net/*               → api:8096      (Router API)
 
 ### Gateway 更新流程
 
-```bash
-# 本地
-scp -i ~/.ssh/starai_deploy -r queen/api root@47.103.51.32:/opt/starclaw/gateway/
-scp -i ~/.ssh/starai_deploy queen/docker-compose.gateway.yml root@47.103.51.32:/opt/starclaw/gateway/
+**自动（通过 Nydus）：** `git push nydus master` → Nydus Server 通过 SSH 同步 `queen/api` 到 Server B → 调用本地 Worm 构建
 
-# 服务器
-ssh -i ~/.ssh/starai_deploy root@47.103.51.32
-cd /opt/starclaw/gateway
-docker compose -f docker-compose.gateway.yml up -d --build
+```
+git push nydus master
+  → Nydus Server (Server C)
+  → git archive HEAD:queen/api | ssh root@47.103.51.32 tar xf -
+  → SSH → curl http://127.0.0.1:8097/deploy
+  → Worm: docker compose -f docker-compose.gateway.yml up -d --build
+```
+
+**手动（备用）：**
+
+```bash
+scp -i ~/.ssh/starai_deploy -r queen/api root@47.103.51.32:/opt/starclaw/gateway/
+ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docker compose -f docker-compose.gateway.yml up -d --build'
 ```
 
 ## Server C — Queen (starclaw.net)
@@ -122,16 +130,43 @@ docker compose -f docker-compose.gateway.yml up -d --build
 
 ### Nydus 虫道部署系统
 
+一次 `git push`，两台服务器同时部署：
+
 ```
-本地 git push nydus master
+git push nydus master
   → SSH → /data/nydus/repos/starclaw.git (bare repo)
   → post-receive hook → Nydus Server (:8095)
-  → 调度 Worm → clone + sync queen/ 子目录
-  → docker compose -f docker-compose.prod.yml up -d --build
+  ├─ Target 1: queen-server-c (本地)
+  │  → Worm clone + sync queen/ 子目录
+  │  → docker compose -f docker-compose.prod.yml up -d --build (~20s)
+  └─ Target 2: gateway-server-b (跨服务器 SSH)
+     → git archive HEAD:queen/api | ssh → Server B
+     → SSH → Worm (:8097) → docker compose gateway (~1s cached)
 ```
 
 **Nydus remote:** `git remote add nydus git@43.106.158.26:starclaw.git`
 **SSH config:** `~/.ssh/config` 中 Host 43.106.158.26 使用 `~/.ssh/queen_deploy`
+**跨服务器 SSH:** Server C (`id_ed25519`) → Server B (`authorized_keys`)
+
+### 部署架构图
+
+```
+开发者 (git push nydus master)
+    │
+    ▼
+Server C: starclaw.git (bare)
+    │ post-receive hook
+    ▼
+Nydus Server (:8095)
+    ├───────────────────────────────────────────────┐
+    │ Local (Docker network)                        │ SSH tunnel
+    ▼                                               ▼
+Worm Server C (:8096)                    Worm Server B (:8097)
+    │ clone + sync queen/                    │ code synced via git archive
+    ▼                                               ▼
+Queen (12 containers)                    Gateway (queen-api)
+starclaw.net                             star-ai.net/v1/*
+```
 
 ## Server D — Proxy (proxy.star-ai.net)
 
