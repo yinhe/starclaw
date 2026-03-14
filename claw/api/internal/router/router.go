@@ -369,6 +369,31 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			c.File(filePath)
 		})
 
+		// MCP Bridge one-line installer script (macOS/Linux)
+		apiV1.GET("/mcp-bridge/install.sh", func(c *gin.Context) {
+			// Determine the server's external URL from the request
+			scheme := "http"
+			if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+				scheme = "https"
+			}
+			serverURL := scheme + "://" + c.Request.Host
+			script := mcp.GenerateInstallScript(serverURL)
+			c.Header("Content-Type", "text/plain; charset=utf-8")
+			c.String(200, script)
+		})
+
+		// MCP Bridge one-line installer script (Windows PowerShell)
+		apiV1.GET("/mcp-bridge/install.ps1", func(c *gin.Context) {
+			scheme := "http"
+			if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+				scheme = "https"
+			}
+			serverURL := scheme + "://" + c.Request.Host
+			script := mcp.GeneratePowerShellInstallScript(serverURL)
+			c.Header("Content-Type", "text/plain; charset=utf-8")
+			c.String(200, script)
+		})
+
 		// Music files (public, secured by UUID filename)
 		apiV1.GET("/music/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")

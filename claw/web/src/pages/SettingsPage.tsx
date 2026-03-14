@@ -509,34 +509,30 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
-          {!bridgeStatus?.connected && bridgeStatus?.downloads && (() => {
-            // Detect OS from browser user agent (backend runtime.GOOS returns 'linux' in Docker)
+          {!bridgeStatus?.connected && (() => {
             const ua = navigator.userAgent.toLowerCase()
-            let platform = 'linux_amd64'
-            let label = 'Linux'
-            if (ua.includes('mac')) {
-              label = 'macOS'
-              platform = ua.includes('arm') || ua.includes('aarch64') ? 'darwin_arm64' : 'darwin_amd64'
-            } else if (ua.includes('win')) {
-              platform = 'windows_amd64'; label = 'Windows'
-            }
-            if (!bridgeStatus.downloads[platform]) { platform = 'linux_amd64' }
-            const url = bridgeStatus.downloads[platform]
+            const isWindows = ua.includes('win')
+            const isMac = ua.includes('mac')
+            const label = isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux'
+            const apiBase = window.location.origin
+            const bashCmd = `curl -fsSL ${apiBase}/v1/mcp-bridge/install.sh | bash`
+            const psCmd = `irm ${apiBase}/v1/mcp-bridge/install.ps1 | iex`
+            const installCmd = isWindows ? psCmd : bashCmd
+            const terminalName = isWindows ? 'PowerShell' : '终端 (Terminal)'
             return (
               <div className="space-y-3">
-                <a
-                  href={url}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
-                >
-                  <Download className="w-4 h-4" /> 下载 MCP Bridge ({label})
-                </a>
-                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-                  <p className="font-medium text-gray-600 mb-1">下载后运行：</p>
-                  <code className="block bg-gray-100 px-2 py-1 rounded text-xs font-mono">
-                    {platform.startsWith('windows') ? '.\\mcp-bridge-windows-amd64.exe' : `chmod +x mcp-bridge-${platform} && ./mcp-bridge-${platform}`}
-                  </code>
-                  <p className="mt-2 text-gray-400">启动后此页面会自动显示「已连接」，无需其他配置。</p>
+                <p className="text-xs text-gray-500 mb-1">打开 <b>{terminalName}</b>，粘贴以下命令一键安装并启动：</p>
+                <div className="relative group">
+                  <code className="block bg-gray-900 text-green-400 px-4 py-3 rounded-lg text-xs font-mono select-all break-all">{installCmd}</code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(installCmd); }}
+                    className="absolute top-1.5 right-1.5 p-1.5 rounded bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="复制"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+                <p className="text-xs text-gray-400">自动检测 {label} 系统，下载、安装、启动 MCP Bridge。启动后此页面会自动显示「已连接」。</p>
               </div>
             )
           })()}
