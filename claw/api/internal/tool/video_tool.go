@@ -834,6 +834,22 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 		totalDuration += r.Duration
 	}
 	clipIDsJSON, _ := json.Marshal(clipIDList)
+
+	// Remove any existing merged videos for this conversation to avoid duplicates
+	if convID != "" {
+		var oldMerges []model.VideoRecord
+		t.db.Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").Find(&oldMerges)
+		for _, om := range oldMerges {
+			if om.VideoURL != "" {
+				os.Remove(filepath.Join("/app/merged_videos", filepath.Base(om.VideoURL)))
+			}
+		}
+		if len(oldMerges) > 0 {
+			t.db.Unscoped().Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").Delete(&model.VideoRecord{})
+			log.Printf("[VideoTool] merge_videos: deleted %d old merged records for conversation %s", len(oldMerges), convID)
+		}
+	}
+
 	mergedRecord := model.VideoRecord{
 		UserID: userID, ConversationID: convID,
 		Model: "merged", Prompt: fmt.Sprintf("合成视频: %d个片段, 共%d秒", len(records), totalDuration),
