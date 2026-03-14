@@ -471,12 +471,14 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, treeRef,
   const filteredBranches = branches.filter(b => b.name.toLowerCase().includes(refFilter.toLowerCase()))
   const filteredTags = tags.filter(t => t.name.toLowerCase().includes(refFilter.toLowerCase()))
 
+  const isClaw = repoName === 'claw'
+
   const tabItems: { key: RepoTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'code', label: 'Code', icon: <Code className="w-4 h-4" /> },
     { key: 'commits', label: 'Commits', icon: <History className="w-4 h-4" />, count: repo?.commit_count },
     { key: 'branches', label: 'Branches', icon: <GitBranch className="w-4 h-4" />, count: repo?.branches },
     { key: 'tags', label: 'Tags', icon: <Tag className="w-4 h-4" />, count: repo?.tags },
-    { key: 'releases', label: 'Releases', icon: <Package className="w-4 h-4" />, count: releases.length || undefined },
+    ...(isClaw ? [{ key: 'releases' as RepoTab, label: 'Releases', icon: <Package className="w-4 h-4" />, count: releases.length || undefined }] : []),
     { key: 'docs', label: 'Docs', icon: <BookOpen className="w-4 h-4" /> },
   ]
 
@@ -855,8 +857,8 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, treeRef,
             </SidebarCard>
           )}
 
-          {/* Releases */}
-          {releases.length > 0 && (
+          {/* Releases — only for claw repo */}
+          {isClaw && releases.length > 0 && (
             <SidebarCard title={`Releases (${releases.length})`}>
               <div className="space-y-2.5 max-h-60 overflow-y-auto">
                 {releases.slice(0, 10).map((rel) => (
