@@ -14,11 +14,11 @@ repos:
         deploy_path: "/opt/starclaw-queen"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build"
         subdir: "queen"
-        branch: "main"
+        branch: "master"
 
       - name: "gateway-server-b"
         worm_url: "http://47.103.51.32:8096"
         deploy_path: "/opt/starclaw/gateway"
         deploy_cmd: "docker compose -f docker-compose.gateway.yml up -d --build"
         subdir: "queen/api"
-        branch: "main"
+        branch: "master"
