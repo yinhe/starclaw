@@ -368,6 +368,24 @@ func (h *SystemHandler) GetBridgeStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, mcp.BridgeStatus())
 }
 
+// StopBridge sends a shutdown command to the MCP Bridge process
+func (h *SystemHandler) StopBridge(c *gin.Context) {
+	bridgeURL := mcp.DetectBridgeURL()
+	if !mcp.ProbeBridge(bridgeURL) {
+		c.JSON(http.StatusOK, gin.H{"status": "not_running", "message": "Bridge is not running"})
+		return
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	req, _ := http.NewRequest("POST", bridgeURL+"/shutdown", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "stopped", "message": "Bridge shutdown signal sent"})
+		return
+	}
+	resp.Body.Close()
+	c.JSON(http.StatusOK, gin.H{"status": "stopped", "message": "Bridge shutdown signal sent"})
+}
+
 // --- Overlord ---
 
 // GetOverlordStatus returns overlord connection state
