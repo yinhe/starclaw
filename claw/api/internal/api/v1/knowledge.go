@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -181,10 +182,11 @@ func (h *KnowledgeHandler) UploadDocument(c *gin.Context) {
 		return
 	}
 
-	// Process async (for MVP, do it synchronously in goroutine)
+	// Process async — use Background context since the HTTP request context
+	// is cancelled as soon as this handler returns
 	go func() {
 		_ = h.pipeline.IngestDocument(
-			c.Request.Context(),
+			context.Background(),
 			&doc,
 			textContent,
 			kb.ChunkSize,
@@ -265,7 +267,7 @@ func (h *KnowledgeHandler) UploadText(c *gin.Context) {
 
 	go func() {
 		_ = h.pipeline.IngestDocument(
-			c.Request.Context(),
+			context.Background(),
 			&doc,
 			req.Content,
 			kb.ChunkSize,

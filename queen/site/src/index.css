@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-claw-50: #fff1f0;
+  --color-claw-100: #ffe0de;
+  --color-claw-200: #ffc7c3;
+  --color-claw-300: #ff9f99;
+  --color-claw-400: #ff6b5e;
+  --color-claw-500: #ff3d2e;
+  --color-claw-600: #ed2010;
+  --color-claw-700: #c81508;
+  --color-claw-800: #a5160c;
+  --color-claw-900: #881912;
+  --color-claw-950: #4b0804;
+}
+
+html { scroll-behavior: smooth; }
