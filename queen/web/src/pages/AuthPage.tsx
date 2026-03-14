@@ -12,56 +12,82 @@ export function AuthPage() {
 
   // Claw node login state
   const [clawUrl, setClawUrl] = useState('http://localhost:8080');
-  const [clawPassword, setClawPassword] = useState('');
-  const [clawStep, setClawStep] = useState<'input' | 'authenticating' | 'connecting' | 'signing' | 'verifying' | 'done' | 'error'>('input');
+  const [clawStep, setClawStep] = useState<'input' | 'connecting' | 'waiting' | 'verifying' | 'done' | 'error'>('input');
   const [clawNodeInfo, setClawNodeInfo] = useState<{ node_id: string; public_key: string } | null>(null);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const pollRef = { current: null as ReturnType<typeof setInterval> | null };
 
   async function handleClawLogin() {
-    if (!clawPassword) { setMsg({ text: '请输入 Claw 节点密码', error: true }); return; }
-    setClawStep('authenticating');
+    setClawStep('connecting');
     setMsg(null);
     const baseUrl = clawUrl.replace(/\/$/, '');
     try {
-      // Step 1: Authenticate with Claw node (owner-login) to get a token
-      const loginRes = await clawNodeRequest<{ token: string }>(
-        baseUrl, '/v1/auth/owner-login',
-        { method: 'POST', body: JSON.stringify({ password: clawPassword }) }
-      );
-      const clawToken = loginRes.token;
-
-      // Step 2: Get node identity (public, just for display)
-      setClawStep('connecting');
+      // Step 1: Get node identity (public)
       const info = await clawNodeRequest<{ node_id: string; public_key: string }>(
         baseUrl, '/v1/identity/info'
       );
       setClawNodeInfo(info);
 
-      // Step 3: Get challenge from Queen
-      setClawStep('signing');
+      // Step 2: Get challenge from Queen
       const { challenge } = await clawAuthAPI.challenge();
 
-      // Step 4: Send challenge to Claw node for counter-signature (PROTECTED — requires Claw token)
-      const signed = await clawNodeRequest<{ node_id: string; public_key: string; signature: string; challenge: string }>(
-        baseUrl, '/v1/identity/sign-challenge',
-        { method: 'POST', body: JSON.stringify({ challenge }), token: clawToken }
+      // Step 3: Send auth-request to Claw (public endpoint — creates pending request)
+      const reqRes = await clawNodeRequest<{ id: string; status: string }>(
+        baseUrl, '/v1/identity/auth-request',
+        { method: 'POST', body: JSON.stringify({ challenge, origin: window.location.hostname }) }
       );
+      const requestId = reqRes.id;
 
-      // Step 5: Submit signature to Queen for verification
-      setClawStep('verifying');
-      const data = await clawAuthAPI.verify({
-        challenge: signed.challenge,
-        node_id: signed.node_id,
-        public_key: signed.public_key,
-        signature: signed.signature,
+      // Step 4: Poll for approval — user must approve on their Claw UI
+      setClawStep('waiting');
+      setMsg({ text: '请在你的 Claw 界面确认授权登录', error: false });
+
+      await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        pollRef.current = setInterval(async () => {
+          attempts++;
+          if (attempts > 100) { // 5min timeout (100 * 3s)
+            if (pollRef.current) clearInterval(pollRef.current);
+            reject(new Error('授权超时，请重试'));
+            return;
+          }
+          try {
+            const status = await clawNodeRequest<{
+              id: string; status: string;
+              node_id?: string; public_key?: string; signature?: string; challenge?: string;
+            }>(baseUrl, `/v1/identity/auth-request/${requestId}`);
+
+            if (status.status === 'approved') {
+              if (pollRef.current) clearInterval(pollRef.current);
+
+              // Step 5: Submit signature to Queen for verification
+              setClawStep('verifying');
+              const data = await clawAuthAPI.verify({
+                challenge: status.challenge!,
+                node_id: status.node_id!,
+                public_key: status.public_key!,
+                signature: status.signature!,
+              });
+
+              setClawStep('done');
+              setAuth(data.token, data.user);
+              setMsg({ text: `${info.node_id.slice(0, 18)}... 身份验证成功`, error: false });
+              setTimeout(() => navigate(searchParams.get('redirect') || '/dashboard'), 1200);
+              resolve();
+            } else if (status.status === 'rejected') {
+              if (pollRef.current) clearInterval(pollRef.current);
+              reject(new Error('授权被拒绝'));
+            }
+          } catch (e: any) {
+            if (e.message?.includes('expired') || e.message?.includes('not found')) {
+              if (pollRef.current) clearInterval(pollRef.current);
+              reject(new Error('请求已过期，请重试'));
+            }
+          }
+        }, 3000);
       });
-
-      // Success — account created or logged in
-      setClawStep('done');
-      setAuth(data.token, data.user);
-      setMsg({ text: `${info.node_id.slice(0, 18)}... 身份验证成功`, error: false });
-      setTimeout(() => navigate(searchParams.get('redirect') || '/dashboard'), 1200);
     } catch (e: any) {
+      if (pollRef.current) clearInterval(pollRef.current);
       setClawStep('error');
       setMsg({ text: e.message || '连接 Claw 节点失败', error: true });
     }
@@ -102,28 +128,23 @@ export function AuthPage() {
                     <Fingerprint className="w-7 h-7 text-indigo-500" />
                   </div>
                   <h2 className="text-lg font-bold text-gray-900">Claw 节点认证</h2>
-                  <p className="text-sm text-gray-400 mt-1">输入节点地址和密码，通过签名验证身份</p>
+                  <p className="text-sm text-gray-400 mt-1">输入节点地址，在你的 Claw 上确认授权</p>
                 </div>
 
-                {/* Node URL + Password Input */}
+                {/* Node URL Input */}
                 {clawStep === 'input' && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Claw 节点地址</label>
                       <input type="url" value={clawUrl} onChange={e => setClawUrl(e.target.value)}
-                        className={INPUT} placeholder="http://localhost:8080" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">节点密码</label>
-                      <input type="password" value={clawPassword} onChange={e => setClawPassword(e.target.value)}
-                        className={INPUT} placeholder="你的 Claw 节点登录密码"
+                        className={INPUT} placeholder="http://localhost:8080"
                         onKeyDown={e => e.key === 'Enter' && handleClawLogin()} />
                     </div>
 
                     <div className="flex items-start gap-2 p-3 bg-indigo-50/70 rounded-xl">
                       <Shield className="w-4 h-4 text-indigo-400 mt-0.5 flex-none" />
                       <p className="text-xs text-indigo-600/70 leading-relaxed">
-                        安全回签：需要节点密码授权签名，防止他人用你的地址冒充登录。
+                        安全回签：请求会发送到你的 Claw 节点，你需要在 Claw 界面确认授权后才能登录，无人可冒充。
                       </p>
                     </div>
 
@@ -132,7 +153,7 @@ export function AuthPage() {
                     <button type="button" onClick={handleClawLogin}
                       className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/25">
                       <Fingerprint className="w-5 h-5" />
-                      连接节点并认证
+                      发送认证请求
                     </button>
                   </>
                 )}
@@ -140,12 +161,10 @@ export function AuthPage() {
                 {/* Progress Steps */}
                 {clawStep !== 'input' && clawStep !== 'error' && (
                   <div className="space-y-3 py-2">
-                    <StepIndicator done={clawStep !== 'authenticating'} active={clawStep === 'authenticating'}
-                      label="验证节点密码" />
-                    <StepIndicator done={!['authenticating', 'connecting'].includes(clawStep)} active={clawStep === 'connecting'}
+                    <StepIndicator done={clawStep !== 'connecting'} active={clawStep === 'connecting'}
                       label="连接 Claw 节点" sub={clawNodeInfo ? clawNodeInfo.node_id.slice(0, 20) + '...' : ''} />
-                    <StepIndicator done={clawStep === 'verifying' || clawStep === 'done'} active={clawStep === 'signing'}
-                      label="节点回签挑战码" sub="Ed25519 签名" />
+                    <StepIndicator done={clawStep === 'verifying' || clawStep === 'done'} active={clawStep === 'waiting'}
+                      label="等待 Claw 授权确认" sub={clawStep === 'waiting' ? '请在 Claw 界面点击「授权登录」' : ''} />
                     <StepIndicator done={clawStep === 'done'} active={clawStep === 'verifying'}
                       label="Queen 验证身份" />
                     {clawStep === 'done' && msg && (
