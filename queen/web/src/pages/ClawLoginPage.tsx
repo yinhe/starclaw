@@ -21,7 +21,8 @@ export function ClawLoginPage() {
     // Verify token and get user profile
     (async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/v1/user/profile`, {
+        const apiBase = import.meta.env.VITE_API_BASE || '/api';
+        const res = await fetch(`${apiBase}/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error('凭证无效或已过期');
