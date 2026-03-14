@@ -289,6 +289,34 @@ func callWorm(t config.TargetConfig, repo, branch, rev string) (string, string) 
 	payload := fmt.Sprintf(`{"repo":"%s","branch":"%s","rev":"%s","deploy_path":"%s","deploy_cmd":"%s","subdir":"%s","repo_url":"/data/nydus/repos/%s.git"}`,
 		repo, branch, rev, t.DeployPath, t.DeployCmd, t.Subdir, repo)
 
+	// If ssh_host is set, call the remote Worm via SSH tunnel (avoids opening ports)
+	if t.SSHHost != "" {
+		wormURL := t.WormURL
+		if wormURL == "" {
+			wormURL = "http://127.0.0.1:8097"
+		}
+		sshArgs := []string{
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "ConnectTimeout=10",
+		}
+		if t.SSHKey != "" {
+			sshArgs = append(sshArgs, "-i", t.SSHKey)
+		}
+		curlCmd := fmt.Sprintf(`curl -sf -X POST '%s/deploy' -H 'Content-Type: application/json' -H 'X-Nydus-Secret: %s' -d '%s' --connect-timeout 5 --max-time 300`,
+			wormURL, config.C.Server.Secret, payload)
+		sshArgs = append(sshArgs, t.SSHHost, curlCmd)
+
+		cmd := exec.Command("ssh", sshArgs...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("[nydus] SSH deploy to %s failed: %v\n%s", t.Name, err, out)
+			return "failed", fmt.Sprintf("%v: %s", err, out)
+		}
+		log.Printf("[nydus] SSH deploy to %s success: %s", t.Name, out)
+		return "success", string(out)
+	}
+
+	// Local Worm: direct HTTP call
 	cmd := exec.Command("curl", "-sf", "-X", "POST",
 		fmt.Sprintf("%s/deploy", t.WormURL),
 		"-H", "Content-Type: application/json",

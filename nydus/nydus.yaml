@@ -17,7 +17,9 @@ repos:
         branch: "master"
 
       - name: "gateway-server-b"
-        worm_url: "http://47.103.51.32:8096"
+        ssh_host: "root@47.103.51.32"
+        ssh_key: "/root/.ssh/id_ed25519"
+        worm_url: "http://127.0.0.1:8097"
         deploy_path: "/opt/starclaw/gateway"
         deploy_cmd: "docker compose -f docker-compose.gateway.yml up -d --build"
         subdir: "queen/api"

@@ -27,6 +27,8 @@ type RepoConfig struct {
 type TargetConfig struct {
 	Name       string `yaml:"name"`
 	WormURL    string `yaml:"worm_url"`
+	SSHHost    string `yaml:"ssh_host"`
+	SSHKey     string `yaml:"ssh_key"`
 	DeployPath string `yaml:"deploy_path"`
 	DeployCmd  string `yaml:"deploy_cmd"`
 	Subdir     string `yaml:"subdir"`
