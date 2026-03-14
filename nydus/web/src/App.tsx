@@ -6,12 +6,12 @@ import {
   GitBranch, Tag, Server, Download, ExternalLink,
   CheckCircle2, XCircle, Activity, RefreshCw,
   Folder, FileText, ChevronRight, GitCommit, Database,
-  Rocket, ArrowLeft, Lock, Unlock, KeyRound, Code, History, Copy, Package,
+  Rocket, ArrowLeft, Lock, Unlock, KeyRound, Code, History, Copy, Package, ChevronDown, BookOpen,
 } from 'lucide-react'
 
 // ── Page type ──
 type Page = { view: 'home' } | { view: 'repo'; name: string }
-type RepoTab = 'code' | 'commits' | 'branches' | 'tags' | 'releases'
+type RepoTab = 'code' | 'commits' | 'branches' | 'tags' | 'releases' | 'docs'
 
 function parseHash(): Page {
   const h = window.location.hash.replace(/^#\/?/, '')
@@ -40,6 +40,7 @@ export default function App() {
   const [treePath, setTreePath] = useState('')
   const [readme, setReadme] = useState('')
   const [repoTab, setRepoTab] = useState<RepoTab>('code')
+  const [treeRef, setTreeRef] = useState('HEAD')
   const [branches, setBranches] = useState<Branch[]>([])
   const [tags, setTags] = useState<TagType[]>([])
 
@@ -90,12 +91,12 @@ export default function App() {
   }, [])
 
   // ── Fetch repo detail ──
-  const fetchRepo = useCallback(async (name: string, path: string) => {
+  const fetchRepo = useCallback(async (name: string, path: string, ref = 'HEAD') => {
     setLoading(true)
     try {
       const [commitRes, treeRes, readmeRes] = await Promise.allSettled([
         nydusAPI.commits(name, 20),
-        nydusAPI.repoTree(name, path),
+        nydusAPI.repoTree(name, path, ref),
         path === '' ? nydusAPI.repoReadme(name) : Promise.reject('skip'),
       ])
       if (commitRes.status === 'fulfilled') setCommits(commitRes.value.data.commits || [])
@@ -117,6 +118,7 @@ export default function App() {
     setReadme('')
     setCommits([])
     setRepoTab('code')
+    setTreeRef('HEAD')
   }, [])
 
   const goRepo = useCallback((name: string) => {
@@ -124,6 +126,7 @@ export default function App() {
     setPage({ view: 'repo', name })
     setTreePath('')
     setRepoTab('code')
+    setTreeRef('HEAD')
   }, [])
 
   // ── Fetch branches/tags on tab switch ──
@@ -166,8 +169,13 @@ export default function App() {
   }, [fetchHome, authed])
 
   useEffect(() => {
-    if (page.view === 'repo') fetchRepo(page.name, treePath)
-  }, [page, treePath, fetchRepo, authed])
+    if (page.view === 'repo') {
+      fetchRepo(page.name, treePath, treeRef)
+      // Also fetch branches+tags for the ref switcher
+      fetchBranches(page.name)
+      fetchTags(page.name)
+    }
+  }, [page, treePath, treeRef, fetchRepo, fetchBranches, fetchTags, authed])
 
   const currentRepo = page.view === 'repo' ? repos.find(r => r.name === page.name) : null
 
@@ -231,15 +239,12 @@ export default function App() {
           <RepoDetailPage
             repo={currentRepo || null}
             repoName={page.name}
-            commits={commits} treeItems={treeItems} treePath={treePath}
+            commits={commits} treeItems={treeItems} treePath={treePath} treeRef={treeRef}
             readme={readme} release={release} releases={releases} loading={loading}
             authed={authed}
             repoTab={repoTab} branches={branches} tags={tags}
-            onTabChange={(tab) => {
-              setRepoTab(tab)
-              if (tab === 'branches') fetchBranches(page.name)
-              if (tab === 'tags') fetchTags(page.name)
-            }}
+            onTabChange={(tab) => setRepoTab(tab)}
+            onRefChange={(ref) => { setTreeRef(ref); setTreePath('') }}
             onNavigateTree={(item) => {
               if (item.type === 'tree') setTreePath(treePath ? `${treePath}/${item.name}` : item.name)
             }}
@@ -437,22 +442,34 @@ function HomePage({ repos, deploys, release, releases, serverStats, loading, onR
 /* ════════════════════════════════════════════════════════
    REPO DETAIL PAGE — file tree + README + commits
    ════════════════════════════════════════════════════════ */
-function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, release, releases, loading, authed, repoTab, branches, tags, onTabChange, onNavigateTree, onNavigateUp, onBack }: {
+function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, treeRef, readme, release, releases, loading, authed, repoTab, branches, tags, onTabChange, onRefChange, onNavigateTree, onNavigateUp, onBack }: {
   repo: Repo | null; repoName: string
-  commits: Commit[]; treeItems: TreeItem[]; treePath: string
+  commits: Commit[]; treeItems: TreeItem[]; treePath: string; treeRef: string
   readme: string; release: Release | null; releases: ReleaseItem[]; loading: boolean
   authed: boolean; repoTab: RepoTab; branches: Branch[]; tags: TagType[]
   onTabChange: (tab: RepoTab) => void
+  onRefChange: (ref: string) => void
   onNavigateTree: (item: TreeItem) => void
   onNavigateUp: () => void
   onBack: () => void
 }) {
   const [copied, setCopied] = useState('')
+  const [showRefPicker, setShowRefPicker] = useState(false)
+  const [refFilter, setRefFilter] = useState('')
+  const [refTab, setRefTab] = useState<'branches' | 'tags'>('branches')
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
     setCopied(label)
     setTimeout(() => setCopied(''), 2000)
   }
+
+  const currentRefLabel = treeRef === 'HEAD'
+    ? (branches.length > 0 ? branches[0].name : 'HEAD')
+    : treeRef
+
+  const filteredBranches = branches.filter(b => b.name.toLowerCase().includes(refFilter.toLowerCase()))
+  const filteredTags = tags.filter(t => t.name.toLowerCase().includes(refFilter.toLowerCase()))
 
   const tabItems: { key: RepoTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'code', label: 'Code', icon: <Code className="w-4 h-4" /> },
@@ -460,6 +477,7 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
     { key: 'branches', label: 'Branches', icon: <GitBranch className="w-4 h-4" />, count: repo?.branches },
     { key: 'tags', label: 'Tags', icon: <Tag className="w-4 h-4" />, count: repo?.tags },
     { key: 'releases', label: 'Releases', icon: <Package className="w-4 h-4" />, count: releases.length || undefined },
+    { key: 'docs', label: 'Docs', icon: <BookOpen className="w-4 h-4" /> },
   ]
 
   return (
@@ -517,13 +535,74 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
           {repoTab === 'code' && (
             <>
               <div className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden">
-                {/* Breadcrumb */}
-                {treePath && (
-                  <div className="px-4 py-2 border-b border-nydus-border bg-nydus-bg/50 flex items-center gap-1 text-sm">
+                {/* Branch/Tag Switcher + Breadcrumb row */}
+                <div className="px-4 py-2 border-b border-nydus-border bg-nydus-bg/50 flex items-center gap-3 flex-wrap">
+                  {/* Ref Picker */}
+                  <div className="relative">
+                    <button onClick={() => { setShowRefPicker(!showRefPicker); setRefFilter('') }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-nydus-card border border-nydus-border rounded-md hover:border-nydus-muted transition-colors">
+                      <GitBranch className="w-3.5 h-3.5 text-nydus-muted" />
+                      <span className="text-nydus-text max-w-[120px] truncate">{currentRefLabel}</span>
+                      <ChevronDown className="w-3 h-3 text-nydus-muted" />
+                    </button>
+
+                    {showRefPicker && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setShowRefPicker(false)} />
+                        <div className="absolute left-0 top-full mt-1 z-20 w-72 bg-nydus-card border border-nydus-border rounded-lg shadow-xl overflow-hidden">
+                          <div className="p-2 border-b border-nydus-border">
+                            <input type="text" value={refFilter} onChange={(e) => setRefFilter(e.target.value)}
+                              placeholder="Filter branches/tags..."
+                              className="w-full px-2.5 py-1.5 text-xs bg-nydus-bg border border-nydus-border rounded text-nydus-text placeholder:text-nydus-dim focus:outline-none focus:border-nydus-blue"
+                              autoFocus />
+                          </div>
+                          <div className="flex border-b border-nydus-border">
+                            <button onClick={() => setRefTab('branches')}
+                              className={`flex-1 px-3 py-1.5 text-xs font-medium ${refTab === 'branches' ? 'text-nydus-text border-b-2 border-nydus-accent' : 'text-nydus-muted'}`}>
+                              Branches
+                            </button>
+                            <button onClick={() => setRefTab('tags')}
+                              className={`flex-1 px-3 py-1.5 text-xs font-medium ${refTab === 'tags' ? 'text-nydus-text border-b-2 border-nydus-accent' : 'text-nydus-muted'}`}>
+                              Tags
+                            </button>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto">
+                            {refTab === 'branches' && filteredBranches.map((b) => (
+                              <button key={b.name} onClick={() => { onRefChange(b.name); setShowRefPicker(false) }}
+                                className={`w-full text-left px-3 py-2 text-xs hover:bg-nydus-bg/50 flex items-center gap-2
+                                  ${currentRefLabel === b.name ? 'text-nydus-green font-medium' : 'text-nydus-text'}`}>
+                                <GitBranch className="w-3 h-3 shrink-0" />
+                                {b.name}
+                                {currentRefLabel === b.name && <CheckCircle2 className="w-3 h-3 ml-auto text-nydus-green" />}
+                              </button>
+                            ))}
+                            {refTab === 'tags' && filteredTags.map((t) => (
+                              <button key={t.name} onClick={() => { onRefChange(t.name); setShowRefPicker(false) }}
+                                className={`w-full text-left px-3 py-2 text-xs hover:bg-nydus-bg/50 flex items-center gap-2
+                                  ${currentRefLabel === t.name ? 'text-nydus-green font-medium' : 'text-nydus-text'}`}>
+                                <Tag className="w-3 h-3 shrink-0" />
+                                {t.name}
+                                {currentRefLabel === t.name && <CheckCircle2 className="w-3 h-3 ml-auto text-nydus-green" />}
+                              </button>
+                            ))}
+                            {refTab === 'branches' && filteredBranches.length === 0 && (
+                              <div className="px-3 py-2 text-xs text-nydus-dim">No branches match</div>
+                            )}
+                            {refTab === 'tags' && filteredTags.length === 0 && (
+                              <div className="px-3 py-2 text-xs text-nydus-dim">No tags match</div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Breadcrumb */}
+                  <div className="flex items-center gap-1 text-sm">
                     <button onClick={() => onNavigateUp()} className="text-nydus-blue hover:underline">
                       {repoName}
                     </button>
-                    {treePath.split('/').map((seg, i, arr) => (
+                    {treePath && treePath.split('/').map((seg, i, arr) => (
                       <span key={i} className="flex items-center gap-1">
                         <span className="text-nydus-dim">/</span>
                         {i === arr.length - 1 ? (
@@ -534,7 +613,7 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
                       </span>
                     ))}
                   </div>
-                )}
+                </div>
 
                 {/* File Tree */}
                 <div className="divide-y divide-nydus-border">
@@ -683,6 +762,56 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Docs Tab ── */}
+          {repoTab === 'docs' && (
+            <div className="space-y-4">
+              <div className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-nydus-border flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-nydus-blue" />
+                  <h3 className="text-sm font-bold text-nydus-text">Documentation</h3>
+                </div>
+                <div className="px-4 py-4 space-y-3">
+                  <a href={`https://github.com/yinhe/starclaw/tree/main/docs`} target="_blank" rel="noreferrer"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-nydus-border hover:border-nydus-muted hover:bg-nydus-bg/50 transition-colors">
+                    <Folder className="w-5 h-5 text-nydus-blue" />
+                    <div>
+                      <div className="text-sm font-medium text-nydus-text">docs/</div>
+                      <div className="text-xs text-nydus-muted">Architecture, API reference, and guides on GitHub</div>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-nydus-dim ml-auto shrink-0" />
+                  </a>
+                  <a href="https://github.com/yinhe/starclaw#readme" target="_blank" rel="noreferrer"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-nydus-border hover:border-nydus-muted hover:bg-nydus-bg/50 transition-colors">
+                    <FileText className="w-5 h-5 text-nydus-muted" />
+                    <div>
+                      <div className="text-sm font-medium text-nydus-text">README.md</div>
+                      <div className="text-xs text-nydus-muted">Quick start, features, and installation</div>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-nydus-dim ml-auto shrink-0" />
+                  </a>
+                  <a href="https://github.com/yinhe/starclaw/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-nydus-border hover:border-nydus-muted hover:bg-nydus-bg/50 transition-colors">
+                    <History className="w-5 h-5 text-nydus-muted" />
+                    <div>
+                      <div className="text-sm font-medium text-nydus-text">CHANGELOG.md</div>
+                      <div className="text-xs text-nydus-muted">Version history and release notes</div>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-nydus-dim ml-auto shrink-0" />
+                  </a>
+                  <a href="https://github.com/yinhe/starclaw/blob/main/docs/API.md" target="_blank" rel="noreferrer"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-nydus-border hover:border-nydus-muted hover:bg-nydus-bg/50 transition-colors">
+                    <Database className="w-5 h-5 text-nydus-muted" />
+                    <div>
+                      <div className="text-sm font-medium text-nydus-text">API.md</div>
+                      <div className="text-xs text-nydus-muted">REST API reference documentation</div>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-nydus-dim ml-auto shrink-0" />
+                  </a>
+                </div>
+              </div>
             </div>
           )}
 
