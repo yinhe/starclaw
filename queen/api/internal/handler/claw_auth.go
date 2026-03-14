@@ -180,17 +180,20 @@ func (h *ClawAuthHandler) findOrCreateClawUser(clawID, publicKey string) *model.
 
 	// Check if there's a user with this claw_id as oauth_id (from previous claw login)
 	var user model.User
-	if err := db.Where("oauth_provider = ? AND oauth_id = ?", "claw", clawID).First(&user).Error; err == nil {
+	if err := db.Where("o_auth_provider = ? AND o_auth_id = ?", "claw", clawID).First(&user).Error; err == nil {
 		return &user
 	}
 
 	// Create new user with claw identity
 	shortID := clawID
 	if len(shortID) > 14 {
-		shortID = shortID[:14] + "…"
+		shortID = shortID[:14] + "\u2026"
 	}
+	// Use claw_id as unique email placeholder to avoid uniqueIndex conflict
+	clawEmail := clawID + "@claw.local"
 	user = model.User{
 		ID:            uuid.New().String(),
+		Email:         clawEmail,
 		Nickname:      shortID,
 		Role:          "user",
 		Status:        "active",

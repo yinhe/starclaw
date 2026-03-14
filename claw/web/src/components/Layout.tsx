@@ -221,7 +221,7 @@ export default function Layout() {
         </div>
         <div className="p-3 border-t border-gray-700 space-y-2">
           <a
-            href="https://starclaw.me/docs"
+            href="https://starclaw.net/docs"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"

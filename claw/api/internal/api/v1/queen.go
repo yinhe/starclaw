@@ -215,6 +215,104 @@ func (h *QueenAccountHandler) Link(c *gin.Context) {
 	})
 }
 
+// LinkWithClaw authenticates with Queen using this Claw node's Ed25519 identity.
+// No email/password needed — one-click association.
+func (h *QueenAccountHandler) LinkWithClaw(c *gin.Context) {
+	if h.identity == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "节点身份未初始化"})
+		return
+	}
+
+	queenAPI := h.getQueenAPIURL()
+	if queenAPI == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未配置 Queen 地址，请先加入虫群"})
+		return
+	}
+
+	clawID := h.identity.NodeID
+	pubKeyHex := h.identity.PublicKeyHex()
+
+	// Step 1: Get challenge from Queen
+	challengeResp, err := h.httpC.Post(queenAPI+"/v1/auth/claw/challenge", "application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"node_id":"%s"}`, clawID))))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("无法连接 Queen: %v", err)})
+		return
+	}
+	defer challengeResp.Body.Close()
+
+	var challengeResult map[string]interface{}
+	json.NewDecoder(challengeResp.Body).Decode(&challengeResult)
+	challenge, _ := challengeResult["challenge"].(string)
+	if challenge == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Queen 未返回 challenge"})
+		return
+	}
+
+	// Step 2: Sign the challenge
+	signature := h.identity.Sign([]byte(challenge))
+	sigHex := fmt.Sprintf("%x", signature)
+
+	// Step 3: Verify with Queen → get token
+	verifyBody := map[string]string{
+		"node_id":    clawID,
+		"challenge":  challenge,
+		"signature":  sigHex,
+		"public_key": pubKeyHex,
+		"node_url":   h.cfg.Node.Address,
+	}
+	verifyData, _ := json.Marshal(verifyBody)
+	verifyResp, err := h.httpC.Post(queenAPI+"/v1/auth/claw/verify", "application/json", bytes.NewReader(verifyData))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("验证失败: %v", err)})
+		return
+	}
+	defer verifyResp.Body.Close()
+
+	var verifyResult map[string]interface{}
+	json.NewDecoder(verifyResp.Body).Decode(&verifyResult)
+
+	if verifyResp.StatusCode != 200 {
+		errMsg := "Claw 签名验证失败"
+		if e, ok := verifyResult["error"].(string); ok {
+			errMsg = e
+		}
+		c.JSON(http.StatusBadGateway, gin.H{"error": errMsg})
+		return
+	}
+
+	queenToken, _ := verifyResult["token"].(string)
+	if queenToken == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Queen 未返回 token"})
+		return
+	}
+
+	var queenUserID, queenNickname string
+	if user, ok := verifyResult["user"].(map[string]interface{}); ok {
+		queenUserID, _ = user["id"].(string)
+		queenNickname, _ = user["nickname"].(string)
+	}
+	if queenUserID == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Queen 未返回 user_id"})
+		return
+	}
+
+	// Step 4: Save credentials
+	h.mu.Lock()
+	h.queenUserID = queenUserID
+	h.queenToken = queenToken
+	h.queenEmail = queenNickname // reuse field for display name
+	h.mu.Unlock()
+	h.saveCredentials()
+
+	log.Printf("[queen] linked via Claw signature: user=%s claw=%s", queenUserID, clawID)
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "已通过 Claw 身份关联 Queen 账号",
+		"queen_user_id": queenUserID,
+		"nickname":      queenNickname,
+	})
+}
+
 // Unlink removes the Queen account association from this Claw.
 func (h *QueenAccountHandler) Unlink(c *gin.Context) {
 	h.mu.Lock()

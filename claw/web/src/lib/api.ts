@@ -176,6 +176,7 @@ export const deviceAPI = {
 export const queenAPI = {
   getStatus: () => api.get('/queen/status'),
   link: (data: { email?: string; phone?: string; password: string }) => api.post('/queen/link', data),
+  linkWithClaw: () => api.post('/queen/link-claw'),
   unlink: () => api.post('/queen/unlink'),
 }
 
