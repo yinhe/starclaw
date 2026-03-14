@@ -25,7 +25,7 @@ type Agent struct {
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 
 	User  User        `json:"user,omitempty" gorm:"foreignKey:UserID"`
-	Model ModelConfig `json:"model,omitempty" gorm:"foreignKey:ModelID"`
+	Model ModelConfig `json:"model,omitempty" gorm:"foreignKey:ModelID;references:ID;constraint:false"`
 }
 
 func (a *Agent) BeforeCreate(tx *gorm.DB) error {
