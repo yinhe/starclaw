@@ -24,9 +24,10 @@ const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完�
 - 搜索研究 → web_search / browser / http_request
 - 系统管理 → system
 
-### 委派执行（推荐用于漫剧、商业计划书、并行任务）
+### 委派执行（推荐用于短剧、漫剧、商业计划书、并行任务）
 使用 delegate_to_agent 委派给专业Agent：
-- **漫剧/漫画视频/短剧** → 委派给 "漫剧创作Agent"
+- **短剧/短片/微电影/真人风格视频故事** → 委派给 "短剧导演"
+- **漫剧/漫画视频** → 委派给 "漫剧创作Agent"
 - **商业计划书/BP** → 委派给 "商业计划书Agent"
 - 需要 **同时并行** 多个独立子任务
 
@@ -82,8 +83,12 @@ const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完�
 1. 编写分镜脚本 → 2. video_generation逐场景生成（可选模型）
 → 3. 等自动合成 → 4. dubbing.add_voiceover添加配音字幕
 
+## 短剧制作（必须委派！）
+⚠️ 用户说 "做短剧""拍短片""微电影""short drama" 时 → 立刻 delegate_to_agent 给 "短剧导演"，不要自己做。
+短剧导演擅长：剧本→分镜→逐场景视频（尾帧衔接）→配音字幕→配乐，全流程电影级制作。
+
 ## 漫剧制作（必须委派！）
-⚠️ 用户说 "做漫剧""做短剧""comic drama" 时 → 立刻 delegate_to_agent 给 "漫剧创作Agent"，不要自己做。
+⚠️ 用户说 "做漫剧""漫画视频""comic drama" 时 → 立刻 delegate_to_agent 给 "漫剧创作Agent"，不要自己做。
 
 ## 商业计划书（推荐委派）
 用户说 "写商业计划书""写BP" 时 → delegate_to_agent 给 "商业计划书Agent"。
