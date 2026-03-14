@@ -84,9 +84,12 @@ func (h *SystemHandler) JoinSwarm(c *gin.Context) {
 		return
 	}
 
+	// Normalize claw:// protocol to http(s)://
+	queenURL := swarm.NormalizeQueenURL(req.QueenURL)
+
 	// Update runtime config
 	h.cfg.Swarm.Enabled = true
-	h.cfg.Swarm.QueenURL = req.QueenURL
+	h.cfg.Swarm.QueenURL = queenURL
 	if req.NodeName != "" {
 		h.cfg.Swarm.NodeName = req.NodeName
 	}
@@ -94,9 +97,9 @@ func (h *SystemHandler) JoinSwarm(c *gin.Context) {
 		h.cfg.Swarm.Region = req.Region
 	}
 
-	// Persist to config file
+	// Persist to config file (store normalized URL)
 	viper.Set("swarm.enabled", true)
-	viper.Set("swarm.queen_url", req.QueenURL)
+	viper.Set("swarm.queen_url", queenURL)
 	if req.NodeName != "" {
 		viper.Set("swarm.node_name", req.NodeName)
 	}
@@ -118,8 +121,8 @@ func (h *SystemHandler) JoinSwarm(c *gin.Context) {
 	}
 	h.swarmClient.Start()
 
-	log.Printf("[system] joined swarm: queen=%s node=%s region=%s", req.QueenURL, req.NodeName, req.Region)
-	c.JSON(http.StatusOK, gin.H{"message": "已加入虫群", "queen_url": req.QueenURL})
+	log.Printf("[system] joined swarm: queen=%s (raw: %s) node=%s region=%s", queenURL, req.QueenURL, req.NodeName, req.Region)
+	c.JSON(http.StatusOK, gin.H{"message": "已加入虫群", "queen_url": queenURL})
 }
 
 // LeaveSwarm disconnects from Queen

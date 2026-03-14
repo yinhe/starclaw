@@ -19,7 +19,7 @@ export default function SettingsPage() {
   const [updating, setUpdating] = useState(false)
   const [checking, setChecking] = useState(false)
   const [joiningSwarm, setJoiningSwarm] = useState(false)
-  const [swarmForm, setSwarmForm] = useState({ queen_url: 'https://swarm.starclaw.me', node_name: '', region: '' })
+  const [swarmForm, setSwarmForm] = useState({ queen_url: 'claw://swarm.starclaw.net', node_name: '', region: '' })
   const [swarmMsg, setSwarmMsg] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
   const [bridgeStatus, setBridgeStatus] = useState<any>(null)
@@ -1017,12 +1017,12 @@ export default function SettingsPage() {
           {!swarmStatus?.connected ? (
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Queen 地址</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">虫群地址</label>
                 <input
                   value={swarmForm.queen_url}
                   onChange={(e) => setSwarmForm({ ...swarmForm, queen_url: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="https://swarm.starclaw.me"
+                  placeholder="claw://swarm.starclaw.net"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
