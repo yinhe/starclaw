@@ -894,19 +894,6 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, treeRef,
             </SidebarCard>
           )}
 
-          {/* API for this repo — admin only */}
-          {authed && (
-            <SidebarCard title="API Endpoints">
-              <div className="space-y-1.5">
-                <APIItem method="GET" path={`/v1/repos/${repoName}`} />
-                <APIItem method="GET" path={`/v1/repos/${repoName}/tree`} />
-                <APIItem method="GET" path={`/v1/repos/${repoName}/readme`} />
-                <APIItem method="GET" path={`/v1/repos/${repoName}/branches`} />
-                <APIItem method="GET" path={`/v1/repos/${repoName}/tags`} />
-                <APIItem method="GET" path={`/v1/commits?repo=${repoName}`} />
-              </div>
-            </SidebarCard>
-          )}
         </div>
       </div>
     </>
@@ -953,15 +940,6 @@ function Badge({ children, color }: { children: React.ReactNode; color?: string 
       {color === 'green' && <span className="w-1.5 h-1.5 rounded-full bg-nydus-green" />}
       {children}
     </span>
-  )
-}
-
-function APIItem({ method, path }: { method: string; path: string }) {
-  return (
-    <div className="flex items-center gap-1.5 text-xs">
-      <span className="font-bold text-nydus-green min-w-[28px]">{method}</span>
-      <code className="text-nydus-muted truncate">{path}</code>
-    </div>
   )
 }
 
