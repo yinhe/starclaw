@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Star, Snowflake, Shield, Copy, Check, ArrowDownRight, ArrowUpRight, Wallet, RefreshCw, WifiOff, Loader2, ExternalLink } from 'lucide-react'
+import { Star, Snowflake, Shield, Copy, Check, ArrowDownRight, ArrowUpRight, Zap, RefreshCw, WifiOff, Loader2, ExternalLink } from 'lucide-react'
 import { systemAPI, nodeAPI } from '../lib/api'
 
 interface CreditData {
@@ -110,7 +110,7 @@ export default function WalletPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Wallet className="w-6 h-6" /> 星能钱包
+              <Zap className="w-6 h-6 text-amber-500" /> 星能
             </h1>
             <p className="text-gray-500 text-sm mt-1">算力信用余额与节点身份</p>
           </div>
@@ -136,7 +136,7 @@ export default function WalletPage() {
         )}
 
         {/* Main Balance Card */}
-        <section className={`relative overflow-hidden rounded-2xl p-6 mb-6 bg-gradient-to-br ${connected ? 'from-gray-900 to-gray-800' : 'from-gray-400 to-gray-500'}`}>
+        <section className={`relative overflow-hidden rounded-2xl p-6 mb-6 bg-gradient-to-br ${connected ? 'from-gray-900 to-gray-800' : 'from-gray-500 to-gray-600'}`}>
           {/* Background decoration */}
           <div className="absolute top-0 right-0 w-64 h-64 opacity-5">
             <Star className="w-full h-full" />
@@ -145,15 +145,15 @@ export default function WalletPage() {
           <div className="relative">
             {/* Balance */}
             <div className="mb-4">
-              <p className="text-gray-400 text-xs font-medium mb-1">可用余额</p>
+              <p className="text-gray-300 text-xs font-medium mb-1">可用余额</p>
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-bold text-white tracking-tight">
                   {connected ? formatStars(credits?.balance ?? 0) : '—'}
                 </span>
-                <span className="text-lg text-gray-400">⭐</span>
+                <span className="text-lg text-yellow-400">⭐</span>
               </div>
               {connected && credits?.balance != null && (
-                <p className="text-xs text-gray-500 mt-1 font-mono">{credits.balance.toLocaleString()} 单位</p>
+                <p className="text-xs text-gray-400 mt-1 font-mono">{credits.balance.toLocaleString()} 单位</p>
               )}
             </div>
 
@@ -163,7 +163,7 @@ export default function WalletPage() {
                 <span className={`text-xs font-medium ${cfg.color}`}>
                   {cfg.emoji} HP: {cfg.label}
                 </span>
-                <span className="text-xs text-gray-500">{Math.round(pct)}%</span>
+                <span className="text-xs text-gray-300">{Math.round(pct)}%</span>
               </div>
               <div className="w-full h-2.5 bg-gray-700/50 rounded-full overflow-hidden">
                 <div
@@ -171,7 +171,7 @@ export default function WalletPage() {
                   style={{ width: `${Math.max(connected ? pct : 0, 2)}%` }}
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-1.5">{cfg.desc}</p>
+              <p className="text-xs text-gray-300 mt-1.5">{cfg.desc}</p>
             </div>
 
             {/* Trust + Status badges + Top Up */}

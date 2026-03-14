@@ -187,14 +187,8 @@ func (h *TemplateHandler) Categories(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"categories": categories})
 }
 
-// SeedBuiltinTemplates seeds default templates on first run
+// SeedBuiltinTemplates seeds default templates on first run and adds new ones incrementally.
 func SeedBuiltinTemplates(db *gorm.DB) {
-	var count int64
-	db.Model(&model.AgentTemplate{}).Where("is_builtin = ?", true).Count(&count)
-	if count > 0 {
-		return
-	}
-
 	templates := []model.AgentTemplate{
 		{
 			ID:           uuid.New().String(),
@@ -386,6 +380,10 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 	}
 
 	for i := range templates {
-		db.Create(&templates[i])
+		var exists int64
+		db.Model(&model.AgentTemplate{}).Where("name = ? AND is_builtin = ?", templates[i].Name, true).Count(&exists)
+		if exists == 0 {
+			db.Create(&templates[i])
+		}
 	}
 }
