@@ -221,28 +221,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/auth/oauth/github", oauthHandler.GitHubCallback)
 		apiV1.POST("/auth/oauth/google", oauthHandler.GoogleCallback)
 
-		// Public identity endpoints (for Sign-In with Claw on Queen portal)
+		// Public identity endpoint (exposes public key only, safe)
 		apiV1.GET("/identity/info", func(c *gin.Context) {
 			c.JSON(200, gin.H{
 				"node_id":    identity.NodeID,
 				"public_key": identity.PublicKeyHex(),
-			})
-		})
-		apiV1.POST("/identity/sign-challenge", func(c *gin.Context) {
-			var req struct {
-				Challenge string `json:"challenge" binding:"required"`
-			}
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(400, gin.H{"error": "challenge required"})
-				return
-			}
-			// Sign the challenge with this node's private key
-			sig := identity.Sign([]byte(req.Challenge))
-			c.JSON(200, gin.H{
-				"node_id":    identity.NodeID,
-				"public_key": identity.PublicKeyHex(),
-				"signature":  fmt.Sprintf("%x", sig),
-				"challenge":  req.Challenge,
 			})
 		})
 
@@ -800,6 +783,24 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
+
+			// Identity signing (protected — requires Claw auth to prevent impersonation)
+			protected.POST("/identity/sign-challenge", func(c *gin.Context) {
+				var req struct {
+					Challenge string `json:"challenge" binding:"required"`
+				}
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(400, gin.H{"error": "challenge required"})
+					return
+				}
+				sig := identity.Sign([]byte(req.Challenge))
+				c.JSON(200, gin.H{
+					"node_id":    identity.NodeID,
+					"public_key": identity.PublicKeyHex(),
+					"signature":  fmt.Sprintf("%x", sig),
+					"challenge":  req.Challenge,
+				})
+			})
 
 			// Settings
 			settingsHandler := v1.NewSettingsHandler(db)
