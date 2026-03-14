@@ -867,12 +867,6 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 		t.mergeMu.Unlock()
 	}()
 
-	var existingMerge int64
-	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").Count(&existingMerge)
-	if existingMerge > 0 {
-		return
-	}
-
 	var totalClips, succeededClips, runningClips int64
 	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '')", userID, convID).Count(&totalClips)
 	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded'", userID, convID).Count(&succeededClips)
@@ -882,7 +876,44 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 		return
 	}
 
-	log.Printf("[VideoTool] Auto-merge triggered: %d clips, conversation %s", succeededClips, convID)
+	// Grace period: wait 90s for the agent to submit more scenes.
+	// Between scene N completing and scene N+1 being submitted, runningClips=0
+	// which would falsely trigger a premature merge.
+	log.Printf("[VideoTool] Auto-merge: %d clips ready, waiting 90s grace period for more scenes...", succeededClips)
+	time.Sleep(90 * time.Second)
+
+	// Re-check after grace period: new clips may have appeared
+	var newRunning, newSucceeded int64
+	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status IN ('running','pending')", userID, convID).Count(&newRunning)
+	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded'", userID, convID).Count(&newSucceeded)
+	if newRunning > 0 {
+		log.Printf("[VideoTool] Auto-merge deferred: %d clips still running after grace period", newRunning)
+		return
+	}
+
+	// Check if a merge already exists with the same clip count (another goroutine beat us)
+	var existingMerge model.VideoRecord
+	hasMerge := t.db.Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").
+		Order("created_at DESC").First(&existingMerge).Error == nil
+
+	if hasMerge {
+		// Count clips in the existing merge
+		var existingClipIDs []string
+		json.Unmarshal([]byte(existingMerge.ClipIDs), &existingClipIDs)
+		if int64(len(existingClipIDs)) >= newSucceeded {
+			return // existing merge already has all clips
+		}
+		// New clips available since last merge — delete old merge, re-merge with all clips
+		log.Printf("[VideoTool] Re-merge: %d clips now vs %d in previous merge", newSucceeded, len(existingClipIDs))
+		// Delete old merged file
+		if existingMerge.VideoURL != "" {
+			oldFile := filepath.Join("/app/merged_videos", filepath.Base(existingMerge.VideoURL))
+			os.Remove(oldFile)
+		}
+		t.db.Unscoped().Delete(&existingMerge)
+	}
+
+	log.Printf("[VideoTool] Auto-merge triggered: %d clips, conversation %s", newSucceeded, convID)
 
 	var records []model.VideoRecord
 	t.db.Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded'", userID, convID).
@@ -940,7 +971,7 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 	clipIDsJSON, _ := json.Marshal(clipIDList)
 	mergedRecord := model.VideoRecord{
 		UserID: userID, ConversationID: convID,
-		Model: "merged", Prompt: fmt.Sprintf("自动合成视频: %d个片段, 共%d秒", len(records), totalDuration),
+		Model: "merged", Prompt: fmt.Sprintf("合成视频: %d个片段, 共%d秒", len(records), totalDuration),
 		VideoURL: downloadURL, Size: records[0].Size, Duration: totalDuration,
 		Status: "succeeded", Type: "merged", ClipIDs: string(clipIDsJSON),
 	}
