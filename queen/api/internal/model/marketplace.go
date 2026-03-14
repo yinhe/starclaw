@@ -2,6 +2,16 @@ package model
 
 import "time"
 
+// Marketplace item statuses
+const (
+	ItemStatusDraft         = "draft"          // saved but not submitted
+	ItemStatusPendingReview = "pending_review" // submitted, awaiting admin review
+	ItemStatusApproved      = "approved"       // reviewed and approved → visible in marketplace
+	ItemStatusRejected      = "rejected"       // reviewed and rejected
+	ItemStatusPublished     = "published"      // legacy: directly published (pre-review era)
+	ItemStatusRemoved       = "removed"        // taken down by admin
+)
+
 // MarketplaceItem is a generic marketplace entry (agent / skill / workflow / mcp)
 type MarketplaceItem struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
@@ -13,15 +23,23 @@ type MarketplaceItem struct {
 	Version     string    `json:"version" gorm:"type:varchar(20);default:1.0.0"`
 	Tags        string    `json:"tags" gorm:"type:varchar(500)"`                    // comma separated
 	Config      string    `json:"config" gorm:"type:longtext"`                      // JSON blob
-	Status      string    `json:"status" gorm:"type:varchar(20);default:published"` // draft / published / removed
+	Status      string    `json:"status" gorm:"type:varchar(20);default:published"` // draft / pending_review / approved / rejected / published / removed
 	Downloads   int       `json:"downloads" gorm:"default:0"`
 	Rating      float64   `json:"rating" gorm:"default:0"`
 	RatingCount int       `json:"rating_count" gorm:"default:0"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
+	// Review workflow
+	ReviewStatus string     `json:"review_status" gorm:"type:varchar(20);index"` // pending / approved / rejected
+	ReviewerID   string     `json:"reviewer_id" gorm:"type:varchar(36)"`
+	ReviewNote   string     `json:"review_note" gorm:"type:text"`
+	ReviewedAt   *time.Time `json:"reviewed_at"`
+	SubmittedAt  *time.Time `json:"submitted_at"`
+
 	// Virtual
-	Author *User `json:"author,omitempty" gorm:"foreignKey:UserID"`
+	Author   *User `json:"author,omitempty" gorm:"foreignKey:UserID"`
+	Reviewer *User `json:"reviewer,omitempty" gorm:"foreignKey:ReviewerID"`
 }
 
 type MarketplaceReview struct {

@@ -504,7 +504,7 @@ func (h *AgentHandler) GetShared(c *gin.Context) {
 
 // EnsureSuperAgent creates system-level built-in agents (visible to all users)
 func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
-	const systemUID = "system"
+	ownerID := getOwnerOrSystemID(h.db)
 
 	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
 	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","feishu"]`
@@ -512,7 +512,7 @@ func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 	// Ensure SuperAgent (system-level)
 	var superAgent model.Agent
 	created := false
-	if err := h.db.Where("user_id = ? AND name = ?", systemUID, "全能助手").First(&superAgent).Error; err == nil {
+	if err := h.db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, "全能助手").First(&superAgent).Error; err == nil {
 		h.db.Model(&superAgent).Updates(map[string]interface{}{
 			"system_prompt": superAgentSystemPrompt,
 			"tools":         superTools,
@@ -522,7 +522,7 @@ func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 		h.db.Where("id = ?", superAgent.ID).First(&superAgent)
 	} else {
 		superAgent = model.Agent{
-			UserID:       systemUID,
+			UserID:       ownerID,
 			Name:         "全能助手",
 			Description:  superDesc,
 			Tools:        superTools,
@@ -538,7 +538,7 @@ func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 	// Ensure all built-in specialist agents
 	for _, def := range builtinAgents {
 		var existing model.Agent
-		if err := h.db.Where("user_id = ? AND name = ?", systemUID, def.Name).First(&existing).Error; err == nil {
+		if err := h.db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, def.Name).First(&existing).Error; err == nil {
 			h.db.Model(&existing).Updates(map[string]interface{}{
 				"system_prompt": def.Prompt,
 				"tools":         def.Tools,
@@ -547,7 +547,7 @@ func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 			})
 		} else {
 			specialist := model.Agent{
-				UserID:       systemUID,
+				UserID:       ownerID,
 				Name:         def.Name,
 				Description:  def.Description,
 				Tools:        def.Tools,

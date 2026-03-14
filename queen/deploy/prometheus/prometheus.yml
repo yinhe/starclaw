@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  # ── Queen API ──
+  - job_name: "queen-api"
+    static_configs:
+      - targets: ["queen-api:8080"]
+    metrics_path: /metrics
+
+  # ── Router (star-ai.net API) ──
+  - job_name: "starai-router"
+    static_configs:
+      - targets: ["starai-api:8096"]
+    metrics_path: /metrics
+
+  # ── Queen Swarm Service ──
+  - job_name: "queen-swarm"
+    static_configs:
+      - targets: ["queen-swarm:8082"]
+    metrics_path: /metrics
+
+  # ── Overlord Manager ──
+  - job_name: "overlord-manager"
+    static_configs:
+      - targets: ["overlord-manager:8090"]
+    metrics_path: /metrics
+
+  # ── Claw Nodes (dynamic discovery via Queen swarm API) ──
+  # In production, use file_sd_configs or HTTP SD to auto-discover Claw nodes
+  # For now, manually list known Claw instances
+  - job_name: "claw-nodes"
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["claw-api:8080"]
+    metrics_path: /metrics
+
+  # ── Prometheus self-monitoring ──
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

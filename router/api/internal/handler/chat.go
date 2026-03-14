@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw-router/internal/billing"
+	"github.com/yinhe/starclaw-router/internal/middleware"
 	"github.com/yinhe/starclaw-router/internal/model"
 	"github.com/yinhe/starclaw-router/internal/provider"
 	"github.com/yinhe/starclaw-router/internal/proxy"
@@ -33,13 +34,22 @@ func NewChatHandler(db *gorm.DB, proxyClient *proxy.Client, reg *provider.Regist
 // Routes domestic models directly, overseas models via proxy
 func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	start := time.Now()
+	authType := c.GetString("auth_type")
 	userID := c.GetString("user_id")
 	apiKeyID := c.GetString("api_key_id")
+	clawID := c.GetString("claw_id")
 
-	// Balance check
-	if err := h.meter.CheckBalance(userID); err != nil {
-		c.JSON(http.StatusPaymentRequired, openAIError("insufficient balance", "billing_error"))
-		return
+	// Balance check — route by auth type
+	if authType == "claw" {
+		if err := h.meter.CheckClawBalance(clawID); err != nil {
+			c.JSON(http.StatusPaymentRequired, openAIError("insufficient star energy (⚡)", "billing_error"))
+			return
+		}
+	} else {
+		if err := h.meter.CheckBalance(userID); err != nil {
+			c.JSON(http.StatusPaymentRequired, openAIError("insufficient balance", "billing_error"))
+			return
+		}
 	}
 
 	// Read body
@@ -97,7 +107,7 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	// Record usage + billing (async)
-	go h.recordAndBill(userID, apiKeyID, provSlug, req.Model, "/v1/chat/completions", via, time.Since(start))
+	go h.recordAndBill(authType, userID, apiKeyID, clawID, provSlug, req.Model, "/v1/chat/completions", via, time.Since(start))
 }
 
 // Embeddings handles POST /v1/embeddings
@@ -200,7 +210,10 @@ func (h *ChatHandler) forwardToProxy(c *gin.Context, path string, body []byte) {
 	}
 }
 
-func (h *ChatHandler) recordAndBill(userID, apiKeyID, provSlug, modelName, endpoint, via string, duration time.Duration) {
+func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug, modelName, endpoint, via string, duration time.Duration) {
+	// Record inference metrics
+	middleware.InferenceLatency.WithLabelValues(provSlug, modelName).Observe(duration.Seconds())
+
 	// Estimate tokens (TODO: parse from upstream response for accuracy)
 	estPrompt := 500
 	estCompletion := 200
@@ -221,16 +234,36 @@ func (h *ChatHandler) recordAndBill(userID, apiKeyID, provSlug, modelName, endpo
 		Status:           "ok",
 	}
 
-	if costCents > 0 {
-		if err := h.meter.Deduct(userID, costCents, upstreamCents, record); err != nil {
-			log.Printf("[star-ai] billing deduct failed: %v", err)
-			// Still record usage even if billing fails
-			record.CostCents = costCents
-			record.UpstreamCost = upstreamCents
-			h.db.Create(record)
+	if authType == "claw" {
+		// Star energy billing via Queen
+		record.Via = via + "/claw"
+		record.UserID = clawID // use claw_id as user identifier for records
+		if err := h.meter.DeductClaw(clawID, costCents, modelName, endpoint, record); err != nil {
+			log.Printf("[star-ai] star energy deduct failed for %s: %v", clawID, err)
+			middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via+"/claw", "billing_error").Inc()
+		} else {
+			middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via+"/claw", "ok").Inc()
+			middleware.BillingDeductionsTotal.WithLabelValues("star_energy").Inc()
+			middleware.BillingDeductionAmount.WithLabelValues("star_energy").Add(float64(costCents))
 		}
 	} else {
-		h.db.Create(record)
+		// Traditional ¥ balance billing
+		if costCents > 0 {
+			if err := h.meter.Deduct(userID, costCents, upstreamCents, record); err != nil {
+				log.Printf("[star-ai] billing deduct failed: %v", err)
+				record.CostCents = costCents
+				record.UpstreamCost = upstreamCents
+				h.db.Create(record)
+				middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via, "billing_error").Inc()
+			} else {
+				middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via, "ok").Inc()
+				middleware.BillingDeductionsTotal.WithLabelValues("cny").Inc()
+				middleware.BillingDeductionAmount.WithLabelValues("cny").Add(float64(costCents))
+			}
+		} else {
+			h.db.Create(record)
+			middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via, "ok").Inc()
+		}
 	}
 }
 

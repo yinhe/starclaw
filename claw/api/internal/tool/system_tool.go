@@ -147,7 +147,7 @@ func (t *SystemTool) createAgent(args systemArgs) (string, error) {
 		return "", fmt.Errorf("name is required")
 	}
 	if args.UserID == "" {
-		args.UserID = "system"
+		args.UserID = model.SystemUserID
 	}
 
 	// Dedup: reuse existing agent with same name for this user
@@ -310,7 +310,7 @@ func (t *SystemTool) createWorkflow(args systemArgs) (string, error) {
 		return "", fmt.Errorf("name is required")
 	}
 	if args.UserID == "" {
-		args.UserID = "system"
+		args.UserID = model.SystemUserID
 	}
 
 	definition := args.Definition
@@ -461,7 +461,7 @@ func (t *SystemTool) scheduleTask(args systemArgs) (string, error) {
 		return "", fmt.Errorf("goal or title is required")
 	}
 	if args.UserID == "" {
-		args.UserID = "system"
+		args.UserID = model.SystemUserID
 	}
 
 	title := args.Title
@@ -628,7 +628,7 @@ func (t *SystemTool) createTask(args systemArgs) (string, error) {
 		args.Title = truncateStr(args.Goal, 100)
 	}
 	if args.UserID == "" {
-		args.UserID = "system"
+		args.UserID = model.SystemUserID
 	}
 
 	task := model.Task{
@@ -744,7 +744,7 @@ func (t *SystemTool) notifyUser(args systemArgs) (string, error) {
 		args.Title = truncateStr(args.Message, 100)
 	}
 	if args.UserID == "" {
-		args.UserID = "system"
+		args.UserID = model.SystemUserID
 	}
 
 	notifType := model.NotifyInfo

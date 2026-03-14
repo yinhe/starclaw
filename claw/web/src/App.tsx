@@ -25,6 +25,7 @@ import MarketplacePage from './pages/MarketplacePage'
 import WorkflowTemplatePage from './pages/WorkflowTemplatePage'
 import CodingAgentPage from './pages/CodingAgentPage'
 import TasksPage from './pages/TasksPage'
+import ActivityPage from './pages/ActivityPage'
 import VisualizationPage from './pages/VisualizationPage'
 import SkillsPage from './pages/SkillsPage'
 import VideosPage from './pages/VideosPage'
@@ -106,6 +107,7 @@ export default function App() {
         <Route path="workflows/templates" element={<WorkflowTemplatePage />} />
         <Route path="coding" element={<CodingAgentPage />} />
         <Route path="tasks" element={<TasksPage />} />
+        <Route path="activities" element={<ActivityPage />} />
         <Route path="visualization" element={<VisualizationPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="wallet" element={<WalletPage />} />

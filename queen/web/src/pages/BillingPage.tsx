@@ -4,7 +4,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { billingAPI, type RechargePackage, type BalanceInfo, type BalanceTransaction, type RechargeOrder } from '../lib/api';
 import { isLoggedIn } from '../lib/auth';
-import { Wallet, CreditCard, ArrowUpRight, ArrowDownRight, Receipt, Clock, CheckCircle, XCircle, Sparkles, Lock } from 'lucide-react';
+import { Wallet, CreditCard, ArrowUpRight, ArrowDownRight, Receipt, Clock, CheckCircle, XCircle, Sparkles, Lock, Zap } from 'lucide-react';
 
 function formatAmount(amount: number) {
   return `¥${(amount / 100).toFixed(2)}`;
@@ -41,6 +41,12 @@ export function BillingPage() {
   const [creating, setCreating] = useState(false);
   const [payUrl, setPayUrl] = useState('');
 
+  // Star Energy conversion state
+  const [convertAmount, setConvertAmount] = useState('');
+  const [converting, setConverting] = useState(false);
+  const [convertResult, setConvertResult] = useState<{ energy_granted: number; claw_id: string; new_balance: number } | null>(null);
+  const [convertError, setConvertError] = useState('');
+
   useEffect(() => {
     if (!isLoggedIn()) { navigate('/auth?redirect=/billing'); return; }
     Promise.all([
@@ -72,6 +78,26 @@ export function BillingPage() {
   }
 
   const PAY_LABELS: Record<string, string> = { alipay: '支付宝', wechatpay: '微信支付' };
+
+  async function handleConvert() {
+    const yuan = parseFloat(convertAmount);
+    if (!yuan || yuan < 1) { setConvertError('最低兑换 ¥1.00'); return; }
+    setConverting(true);
+    setConvertError('');
+    setConvertResult(null);
+    try {
+      const amountFen = Math.round(yuan * 100);
+      const r = await billingAPI.convertToEnergy(amountFen, clawId || undefined);
+      setConvertResult(r);
+      setConvertAmount('');
+      // Refresh balance
+      billingAPI.balance().then(setBalance).catch(() => {});
+    } catch (e: any) {
+      setConvertError(e?.message || '兑换失败');
+    } finally {
+      setConverting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -108,6 +134,67 @@ export function BillingPage() {
               <span className="flex items-center gap-1"><ArrowUpRight className="w-4 h-4" />累计充值 {formatAmount(balance.total_recharged)}</span>
               <span className="flex items-center gap-1"><ArrowDownRight className="w-4 h-4" />累计消费 {formatAmount(balance.total_consumed)}</span>
             </div>
+          </div>
+        )}
+
+        {/* ─── Star Energy Conversion ─── */}
+        {(clawId || balance) && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-6 mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md shadow-amber-500/25">
+                <Zap className="w-5 h-5 text-white" fill="white" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">兑换星能 ⚡</h3>
+                <p className="text-xs text-gray-500">将余额兑换为 Claw 节点的星能（¥0.01 = 1⚡）</p>
+              </div>
+            </div>
+            {clawId && (
+              <div className="mb-3 px-3 py-2 bg-white/60 rounded-lg text-xs font-mono text-gray-600 flex items-center gap-2">
+                <Zap className="w-3 h-3 text-amber-500" fill="currentColor" />
+                目标节点: {clawId.length > 30 ? clawId.slice(0, 15) + '...' + clawId.slice(-10) : clawId}
+              </div>
+            )}
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <label className="text-xs text-gray-600 font-medium mb-1 block">兑换金额（元）</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">¥</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="10"
+                    value={convertAmount}
+                    onChange={e => setConvertAmount(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2.5 border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 bg-white"
+                  />
+                </div>
+                {convertAmount && parseFloat(convertAmount) >= 1 && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <Zap className="w-3 h-3" fill="currentColor" />
+                    将获得 {(parseFloat(convertAmount) * 100).toLocaleString()} ⚡ 星能
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleConvert}
+                disabled={converting || !convertAmount || parseFloat(convertAmount) < 1}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-white text-sm font-bold hover:from-amber-500 hover:to-orange-600 disabled:opacity-50 transition-all shadow-lg shadow-orange-500/20 flex items-center gap-1.5"
+              >
+                <Zap className="w-4 h-4" fill="white" />
+                {converting ? '兑换中...' : '兑换'}
+              </button>
+            </div>
+            {convertError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{convertError}</div>
+            )}
+            {convertResult && (
+              <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                成功兑换 {convertResult.energy_granted.toFixed(1)} ⚡ 到 {convertResult.claw_id.slice(0, 20)}...，当前余额 ¥{convertResult.new_balance.toFixed(2)}
+              </div>
+            )}
           </div>
         )}
 

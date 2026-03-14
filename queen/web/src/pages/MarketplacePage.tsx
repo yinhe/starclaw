@@ -160,7 +160,7 @@ export function MarketplacePage() {
         {/* CTA */}
         <section className="py-16 text-center">
           <p className="text-gray-400 text-sm">更多内容持续上架中...</p>
-          <a href="https://app.starclaw.me" className="inline-block mt-4 px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">发布你的作品</a>
+          <Link to="/developer" className="inline-block mt-4 px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">发布你的作品</Link>
         </section>
       </main>
 

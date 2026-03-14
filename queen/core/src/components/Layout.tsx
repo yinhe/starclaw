@@ -9,6 +9,7 @@ import {
   Package,
   Users,
   Flag,
+  ShoppingBag,
   Layers,
   LogOut,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ const navItems = [
   { to: '/nodes', icon: Server, label: '节点管理' },
   { to: '/users', icon: Users, label: '用户管理' },
   { to: '/reports', icon: Flag, label: '内容审核' },
+  { to: '/reviews', icon: ShoppingBag, label: '开发者审核' },
   { to: '/services', icon: Layers, label: '服务概览' },
   { to: '/billing', icon: CreditCard, label: '收入统计' },
   { to: '/orders', icon: Receipt, label: '订单管理' },

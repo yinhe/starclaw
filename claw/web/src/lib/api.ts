@@ -328,6 +328,20 @@ export const scheduleAPI = {
   delete: (id: string) => api.delete(`/schedules/${id}`),
 }
 
+// Activities (Instinct — proactive behavior system)
+export const activityAPI = {
+  list: (type?: string) => api.get('/activities', { params: type ? { type } : {} }),
+  get: (id: string) => api.get(`/activities/${id}`),
+  create: (data: any) => api.post('/activities', data),
+  update: (id: string, data: any) => api.put(`/activities/${id}`, data),
+  toggle: (id: string) => api.post(`/activities/${id}/toggle`),
+  delete: (id: string) => api.delete(`/activities/${id}`),
+  logs: (id: string) => api.get(`/activities/${id}/logs`),
+  templates: () => api.get('/activities/templates'),
+  seed: (agentId?: string) => api.post('/activities/seed', null, { params: agentId ? { agent_id: agentId } : {} }),
+  fireEvent: (event: string) => api.post(`/activities/events/${event}`),
+}
+
 // Long-term Memory
 export const memoryAPI = {
   list: (agentId?: string) => api.get('/memories', { params: agentId ? { agent_id: agentId } : {} }),

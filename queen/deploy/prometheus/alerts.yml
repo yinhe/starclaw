@@ -1,0 +1,157 @@
+groups:
+  # ── Service Health ──
+  - name: service_health
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "{{ $labels.instance }} has been unreachable for 2 minutes."
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(queen_http_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(queen_http_requests_total[5m])) by (job)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "5xx error rate above 5% for 5 minutes (current: {{ $value | humanizePercentage }})."
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(queen_http_request_duration_seconds_bucket[5m])) by (le, job)
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on {{ $labels.job }}"
+          description: "p95 latency above 5s for 5 minutes (current: {{ $value | humanizeDuration }})."
+
+  # ── Router / Inference ──
+  - name: router_inference
+    rules:
+      - alert: RouterHighErrorRate
+        expr: |
+          (
+            sum(rate(starai_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(starai_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Router high 5xx error rate"
+          description: "Router error rate above 5% (current: {{ $value | humanizePercentage }})."
+
+      - alert: InferenceBillingErrors
+        expr: sum(rate(starai_inference_requests_total{status="billing_error"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inference billing errors detected"
+          description: "Billing errors rate: {{ $value }}/s. Check Queen credit API connectivity."
+
+      - alert: InferenceHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(starai_inference_latency_seconds_bucket[5m])) by (le, provider)
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High inference latency for {{ $labels.provider }}"
+          description: "p95 inference latency above 30s (current: {{ $value | humanizeDuration }})."
+
+  # ── Claw Nodes ──
+  - name: claw_nodes
+    rules:
+      - alert: ClawHighErrorRate
+        expr: |
+          (
+            sum(rate(starclaw_http_requests_total{status=~"5.."}[5m])) by (instance)
+            /
+            sum(rate(starclaw_http_requests_total[5m])) by (instance)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Claw node {{ $labels.instance }} high error rate"
+          description: "5xx error rate above 10% (current: {{ $value | humanizePercentage }})."
+
+      - alert: ClawStarEnergyLow
+        expr: starclaw_star_energy_balance < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Claw node star energy critically low"
+          description: "Star energy balance below 10⚡ — node may hibernate soon."
+
+      - alert: ClawStarEnergyDepleted
+        expr: starclaw_star_energy_balance == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Claw node star energy depleted — hibernated"
+          description: "Star energy is 0. Node is in hibernation mode."
+
+  # ── Star Energy Economy ──
+  - name: star_energy
+    rules:
+      - alert: CreditGrantSpikeAnomaly
+        expr: sum(rate(queen_credit_grant_amount_units[5m])) > 100000000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unusual star energy grant volume"
+          description: "Star energy grant rate is abnormally high: {{ $value }} units/s."
+
+      - alert: CreditConsumeDropoff
+        expr: |
+          sum(rate(queen_credit_consume_amount_units[1h]))
+          < 0.1 * sum(rate(queen_credit_consume_amount_units[1h] offset 1d))
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Star energy consumption dropped significantly"
+          description: "Current consumption is <10% of yesterday's rate."
+
+  # ── Billing ──
+  - name: billing
+    rules:
+      - alert: NoRechargesReceived
+        expr: sum(increase(queen_billing_recharges_total{status="paid"}[6h])) == 0
+        for: 1m
+        labels:
+          severity: info
+        annotations:
+          summary: "No successful recharges in the last 6 hours"
+          description: "This may be normal during off-peak hours."
+
+      - alert: PaymentFailureSpike
+        expr: |
+          sum(rate(queen_billing_recharges_total{status="failed"}[30m]))
+          > 0.5 * sum(rate(queen_billing_recharges_total[30m]))
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High payment failure rate"
+          description: "Over 50% of recharge attempts are failing — check payment gateway."

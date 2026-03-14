@@ -11,9 +11,16 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Proxy    ProxyConfig    `mapstructure:"proxy"`
+	Queen    QueenConfig    `mapstructure:"queen"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Alipay   AlipayConfig   `mapstructure:"alipay"`
 	Wechat   WechatConfig   `mapstructure:"wechat"`
+}
+
+// QueenConfig holds connection info for Queen's internal API (star energy billing)
+type QueenConfig struct {
+	URL   string `mapstructure:"url"`   // http://queen-api:8080
+	Token string `mapstructure:"token"` // internal service auth token
 }
 
 type AlipayConfig struct {
@@ -99,6 +106,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("redis.db", 0)
 	viper.SetDefault("proxy.url", "http://localhost:8000")
 	viper.SetDefault("proxy.secret_key", "star-ai-internal-secret")
+	viper.SetDefault("queen.url", "http://localhost:8080")
+	viper.SetDefault("queen.token", "")
 	viper.SetDefault("jwt.secret", "star-ai-jwt-change-me")
 	viper.SetDefault("jwt.expire_hours", 72)
 

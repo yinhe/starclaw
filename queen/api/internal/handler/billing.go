@@ -649,6 +649,100 @@ func grantStarEnergy(tx *gorm.DB, clawID string, amount int64, remark string) {
 	})
 }
 
+// ---------- Convert Balance to Star Energy ----------
+
+// POST /pay/convert-energy — convert ¥ balance to Star Energy for a bound claw
+func (h *BillingHandler) ConvertToEnergy(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req struct {
+		Amount int64  `json:"amount" binding:"required"` // 金额，单位：分
+		ClawID string `json:"claw_id"`                   // 目标 claw 地址，空则自动选择
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整，需要 amount（分）"})
+		return
+	}
+	if req.Amount < 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "最低兑换 ¥1.00（100 分）"})
+		return
+	}
+
+	// Auto-resolve claw_id from user's bound nodes if not provided
+	clawID := req.ClawID
+	if clawID == "" {
+		var binding model.NodeBinding
+		if err := database.DB.Where("queen_user_id = ? AND status = ?", userID, "active").
+			Order("last_seen DESC").First(&binding).Error; err == nil {
+			clawID = binding.NodeID
+		}
+	}
+	if clawID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未绑定 Claw 节点，请先在设置中绑定"})
+		return
+	}
+
+	db := database.DB
+	stars := cnyToEnergy(req.Amount)
+	var newBalance int64
+	var newEnergy float64
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		// Lock user balance
+		var bal model.UserBalance
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("user_id = ?", userID).First(&bal).Error; err != nil {
+			return fmt.Errorf("用户余额账户不存在")
+		}
+		if bal.Balance < req.Amount {
+			return fmt.Errorf("余额不足（可用 ¥%.2f，需要 ¥%.2f）",
+				float64(bal.Balance)/100, float64(req.Amount)/100)
+		}
+
+		// Deduct ¥ balance
+		before := bal.Balance
+		tx.Model(&bal).Updates(map[string]interface{}{
+			"balance":   gorm.Expr("balance - ?", req.Amount),
+			"total_out": gorm.Expr("total_out + ?", req.Amount),
+		})
+		newBalance = before - req.Amount
+
+		// Record balance transaction
+		tx.Create(&model.BalanceTransaction{
+			ID:     uuid.New().String(),
+			UserID: userID,
+			Type:   "consume",
+			Amount: -req.Amount,
+			Before: before,
+			After:  newBalance,
+			Remark: fmt.Sprintf("兑换星能 %.1f⚡ → %s", float64(stars)/float64(CnyFenToEnergyUnits), clawID),
+		})
+
+		// Grant star energy
+		grantStarEnergy(tx, clawID, stars, fmt.Sprintf("balance convert by user %s", userID))
+		newEnergy = float64(stars) / float64(CnyFenToEnergyUnits)
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[billing] convert-energy failed: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("[billing] User %s converted ¥%.2f → %.1f⚡ for %s",
+		userID, float64(req.Amount)/100, newEnergy, clawID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "兑换成功",
+		"amount_cny":     float64(req.Amount) / 100,
+		"stars_granted":  stars,
+		"energy_granted": newEnergy,
+		"claw_id":        clawID,
+		"new_balance":    float64(newBalance) / 100,
+	})
+}
+
 // ---------- Helpers ----------
 
 func ensureBalance(userID string) *model.UserBalance {

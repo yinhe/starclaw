@@ -8,6 +8,7 @@ import { ForumPage } from './pages/ForumPage';
 import { ArenaPage } from './pages/ArenaPage';
 import { BountyPage } from './pages/BountyPage';
 import { BillingPage } from './pages/BillingPage';
+import { DeveloperPage } from './pages/DeveloperPage';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/arena" element={<ArenaPage />} />
         <Route path="/bounty" element={<BountyPage />} />
         <Route path="/billing" element={<BillingPage />} />
+        <Route path="/developer" element={<DeveloperPage />} />
       </Routes>
     </BrowserRouter>
   );

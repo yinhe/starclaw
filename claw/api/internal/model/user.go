@@ -7,6 +7,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// SystemUserID is the well-known constant for system-level operations.
+// Used as fallback owner for builtin agents/templates/tasks when no real Owner exists yet.
+// No actual DB user record is created for this ID.
+const SystemUserID = "system"
+
 type User struct {
 	ID            string         `json:"id" gorm:"type:varchar(36);primaryKey"`
 	Email         *string        `json:"email" gorm:"type:varchar(255);uniqueIndex"`

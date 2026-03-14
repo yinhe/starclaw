@@ -346,6 +346,9 @@ func (h *CreditHandler) InternalGrant(c *gin.Context) {
 		return
 	}
 
+	middleware.CreditGrantsTotal.Inc()
+	middleware.CreditGrantAmount.Add(float64(req.Amount))
+
 	c.JSON(http.StatusOK, gin.H{
 		"claw_id":     req.ClawID,
 		"granted":     req.Amount,
@@ -431,6 +434,9 @@ func (h *CreditHandler) InternalConsume(c *gin.Context) {
 		c.JSON(http.StatusPaymentRequired, gin.H{"error": err.Error(), "code": middleware.CodeBillingInsufficient})
 		return
 	}
+
+	middleware.CreditConsumesTotal.Inc()
+	middleware.CreditConsumeAmount.Add(float64(req.Amount))
 
 	c.JSON(http.StatusOK, gin.H{
 		"claw_id":  req.ClawID,

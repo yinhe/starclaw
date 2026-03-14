@@ -52,18 +52,31 @@ func main() {
 	// Billing meter
 	meter := billing.NewMeter(db, reg)
 
+	// Queen credit client (star energy billing for Claw signature auth)
+	queenCredit := billing.NewQueenCreditClient(cfg.Queen)
+	if queenCredit.Enabled() {
+		meter.SetQueenCredit(queenCredit)
+		log.Printf("[star-ai] Queen credit client enabled (url=%s)", cfg.Queen.URL)
+	} else {
+		log.Println("[star-ai] Queen credit client not configured — Claw signature auth will be unavailable")
+	}
+
 	// Gin router
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestLogger())
+	r.Use(middleware.PrometheusMetrics())
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Claw-ID", "X-Claw-PubKey", "X-Claw-Signature", "X-Claw-Timestamp"},
 		ExposeHeaders:    []string{"X-RateLimit-Limit", "X-RateLimit-Remaining"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	// Prometheus metrics endpoint (no auth)
+	r.GET("/metrics", middleware.MetricsHandler())
 
 	// Health check (no auth)
 	r.GET("/health", func(c *gin.Context) {
@@ -124,9 +137,9 @@ func main() {
 	admin.GET("/permissions", middleware.RequirePermission("manage_roles"), adminHandler.ListPermissions)
 	admin.GET("/me", adminHandler.AdminMe)
 
-	// ── OpenAI-compatible API routes (API Key auth) ──
+	// ── OpenAI-compatible API routes (API Key OR Claw signature auth) ──
 	v1 := r.Group("/v1")
-	v1.Use(middleware.APIKeyAuth(db))
+	v1.Use(middleware.DualAuth(db))
 	if rdb != nil {
 		v1.Use(middleware.RateLimit(rdb, 60, time.Minute)) // 60 req/min per key
 	}

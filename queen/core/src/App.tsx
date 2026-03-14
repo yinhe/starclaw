@@ -11,6 +11,7 @@ import PackagesPage from './pages/PackagesPage'
 import UsersPage from './pages/UsersPage'
 import ReportsPage from './pages/ReportsPage'
 import ServicesPage from './pages/ServicesPage'
+import ReviewsPage from './pages/ReviewsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isLoggedIn()) return <Navigate to="/login" replace />
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="packages" element={<PackagesPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="reviews" element={<ReviewsPage />} />
         <Route path="services" element={<ServicesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

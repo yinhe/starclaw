@@ -6,8 +6,7 @@
 |--------|------|-----|------|-----|
 | A | starclaw.me | (域名直连) | Claw — 开源官网 + app + api | `ssh -i ~/.ssh/claw_deploy root@starclaw.me` |
 | B | star-ai.net | 47.103.51.32 | Router — AI 算力平台 (国内) | `ssh -i ~/.ssh/starai_deploy root@47.103.51.32` |
-| C | starclaw.net | 43.106.158.26 | Queen — 中央控制 | `ssh -i ~/.ssh/queen_deploy root@43.106.158.26` |
-| D | proxy.star-ai.net | 47.237.11.193 | Proxy — 海外中转节点 | `ssh -i ~/.ssh/starai_proxy_deploy root@47.237.11.193` |
+| C | starclaw.net | 43.106.158.26 | Queen + Nydus + Proxy — 中央控制 (新加坡) | `ssh -i ~/.ssh/queen_deploy root@43.106.158.26` |
 
 ## 架构全景
 
@@ -24,34 +23,33 @@
  │    ├── star-ai.net/v1/*   → star-ai-gateway (:8085)  ← API Gateway
  │    └── core.star-ai.net   → star-ai-core (:3097)
  │
- ├── starclaw.net ─────────── Server C (Queen + Nydus)
- │    ├── starclaw.net        → queen-web (:8086)
- │    ├── api.starclaw.net    → queen-api (:8085)
- │    ├── swarm.starclaw.net  → swarm (:8090)
- │    ├── core.starclaw.net   → core (:8091)
- │    ├── bounty.starclaw.net → bounty (:8092)
- │    ├── forum.starclaw.net  → forum (:8093)
- │    ├── arena.starclaw.net  → arena (:8094)
- │    └── nydus (internal)    → nydus-server (:8095)
- │
- └── proxy.star-ai.net ──── Server D (Proxy)
-      └── Node.js 中转       → /www/proxy/server.js
+ └── starclaw.net ─────────── Server C (Queen + Nydus + Proxy)
+      ├── starclaw.net         → queen-web (:8086)
+      ├── api.starclaw.net     → queen-api (:8085)
+      ├── swarm.starclaw.net   → swarm (:8090)
+      ├── core.starclaw.net    → core (:8091)
+      ├── bounty.starclaw.net  → bounty (:8092)
+      ├── forum.starclaw.net   → forum (:8093)
+      ├── arena.starclaw.net   → arena (:8094)
+      ├── nydus.starclaw.net   → nydus-server (:8095)  ← Claw 更新备源
+      └── proxy.starclaw.net   → proxy (:8000)          ← AI API 中转
 ```
 
-## Server A — Claw (starclaw.me)
+## Server A — Claw + Site (starclaw.me)
 
-开源 AI Agent 平台，面向终端用户。
+开源 AI Agent 平台 + 官网。
 
-| 服务 | 容器名 | 端口 | 说明 |
-|------|--------|------|------|
-| Claw API | starclaw-api | 8080 | Go 后端 |
-| Claw Web | starclaw-web | 3000 | React 前端 |
-| MySQL | starclaw-mysql | 3306 | 数据库 |
-| Redis | starclaw-redis | 6379 | 缓存 |
+| 服务 | 容器名 | 端口 | 域名 | 说明 |
+|------|--------|------|------|------|
+| **官网** | — (静态文件) | — | **starclaw.me** | **落地页 + 文档 (10 语言)** |
+| Claw Web | starclaw-web | 8081 | app.starclaw.me | React 前端 (产品 Demo) |
+| Claw API | starclaw-api | 8080 | api.starclaw.me | Go 后端 |
+| MySQL | starclaw-mysql | 3306 | — | 数据库 |
+| Redis | starclaw-redis | 6379 | — | 缓存 |
 
-**代码目录：** `claw/`
-**部署：** `docker-compose.prod.yml`
-**nginx：** 容器内，端口 80/443
+**代码目录：** `claw/` (开源产品) + `queen/site/` (官网，闭源)
+**部署：** `docker-compose.prod.yml` (Claw) + 静态文件 `/var/www/starclaw/website/` (官网)
+**nginx：** `/etc/nginx/sites-enabled/starclaw`
 
 ## Server B — Router (star-ai.net)
 
@@ -102,9 +100,9 @@ scp -i ~/.ssh/starai_deploy -r queen/api root@47.103.51.32:/opt/starclaw/gateway
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docker compose -f docker-compose.gateway.yml up -d --build'
 ```
 
-## Server C — Queen (starclaw.net)
+## Server C — Queen + Nydus + Proxy (starclaw.net)
 
-中央控制服务器，管理虫群网络、赏金、社区。
+中央控制服务器（新加坡），管理虫群网络、赏金、社区、代码部署、AI API 中转。
 
 | 服务 | 容器名 | 端口 | 域名 | 说明 |
 |------|--------|------|------|------|
@@ -115,18 +113,20 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 | Bounty | starclaw-queen-bounty | 8092 | bounty.starclaw.net | 赏金市场 |
 | Forum | starclaw-queen-forum | 8093 | forum.starclaw.net | 社区论坛 |
 | Arena | starclaw-queen-arena | 8094 | arena.starclaw.net | 机器人竞技场 |
-| MySQL | starclaw-queen-mysql | 3307 | — | 数据库 (starclaw_queen) |
+| **Proxy** | **starclaw-queen-proxy** | **8000** | **proxy.starclaw.net** | **AI API 中转 (OpenAI/Grok/Fal/Runway)** |
+| **Redis** | **starclaw-queen-redis** | **6379** | — | **Proxy 队列** |
+| Nydus Server | nydus-server | 8095 | nydus.starclaw.net | Git 仓库 + 部署调度 + Claw 更新备源 |
+| Nydus Worm | nydus-worm | 8096 | — | 部署执行 Agent |
+| MySQL | starclaw-queen-mysql | 3306 | — | 数据库 (starclaw_queen) |
 | Prometheus | starclaw-queen-prometheus | 9090 | — | 监控指标 |
 | Grafana | starclaw-queen-grafana | 3000 | — | 监控面板 |
-| **Nydus Server** | **nydus-server** | **8095** | — | **Git 仓库 + 部署调度** |
-| **Nydus Worm** | **nydus-worm** | **8096** | — | **部署执行 Agent** |
 
-**代码目录：** `queen/` + `nydus/`
-**部署路径：** `/opt/starclaw-queen/` (Queen) + `/opt/nydus/` (Nydus)
-**部署：** `docker-compose.prod.yml` (Queen) + `docker-compose.yml` (Nydus)
-**nginx：** `/etc/nginx/sites-enabled/queen`
-**SSL：** Let's Encrypt 通配符 `*.starclaw.net`
-**状态：** ✅ 全部 12 个容器运行中
+**代码目录：** `queen/` (含 `queen/proxy/`) + `nydus/`
+**部署路径：** `/opt/starclaw-queen/` (Queen+Proxy) + `/opt/nydus/` (Nydus)
+**部署：** `docker-compose.prod.yml` (Queen+Proxy+Redis) + Nydus (裸进程)
+**nginx：** `/etc/nginx/sites-enabled/queen` + `nydus` + `proxy`
+**SSL：** Let's Encrypt — `*.starclaw.net` + `nydus.starclaw.net` + `proxy.starclaw.net`
+**状态：** ✅ 14 个容器运行中
 
 ### Nydus 虫道部署系统
 
@@ -168,17 +168,10 @@ Queen (12 containers)                    Gateway (queen-api)
 starclaw.net                             star-ai.net/v1/*
 ```
 
-## Server D — Proxy (proxy.star-ai.net)
+## Server D — 已废弃 (~47.237.11.193)
 
-海外中转节点，代理国内无法直连的 API。
-
-| 项目 | 说明 |
-|------|------|
-| 运行方式 | 裸 Node.js（非 Docker） |
-| 路径 | `/www/proxy/server.js` |
-| 代理目标 | OpenAI, Anthropic, Google, Grok, fal.ai, RunwayML |
-
-**代码目录：** `proxy/`
+> **已迁移到 Server C（proxy.starclaw.net）。** 原 Proxy 服务已 Docker 化并合入 Queen docker-compose。
+> Server D 可安全下线。
 
 ## 仓库目录结构
 
@@ -186,7 +179,7 @@ starclaw.net                             star-ai.net/v1/*
 starclaw/                        # 私有 monorepo
 ├── claw/           🦞           # Server A — 开源 Claw
 ├── router/         ⛽           # Server B — star-ai.net
-├── proxy/          🌏           # Server D — 海外中转
+├── queen/proxy/    🌏           # Server C — AI API 海外中转 (proxy.starclaw.net)
 ├── queen/          👑           # Server C — Queen 中央控制
 ├── nydus/          🕳️           # Server C — 虫道代码分发系统
 ├── .env                         # 环境变量（gitignored，含密钥）

@@ -7,24 +7,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// SeedBuiltinAgents creates system-level built-in agents on startup (visible to all users)
+// SeedBuiltinAgents creates system-level built-in agents on startup (visible to all users).
+// If an Owner user exists, builtin agents are owned by the Owner.
+// Otherwise they use model.SystemUserID as a placeholder (migrated to Owner on setup).
 func SeedBuiltinAgents(db *gorm.DB) {
-	const systemUID = "system"
-
-	// Ensure system user exists (required by foreign key constraint)
-	var sysUser model.User
-	if err := db.Where("id = ?", systemUID).First(&sysUser).Error; err != nil {
-		sysEmail := "system@starclaw.me"
-		sysUser = model.User{
-			ID:       systemUID,
-			Email:    &sysEmail,
-			Username: "StarClaw",
-			Password: "-",
-			Role:     "system",
-		}
-		db.Create(&sysUser)
-		log.Println("[Seed] Created system user")
-	}
+	ownerID := getOwnerOrSystemID(db)
 
 	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
 	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","feishu"]`
@@ -33,11 +20,11 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	db.Exec("SET FOREIGN_KEY_CHECKS = 0")
 	defer db.Exec("SET FOREIGN_KEY_CHECKS = 1")
 
-	// Seed SuperAgent
+	// Seed SuperAgent (search by both ownerID and old "system" for backward compat)
 	var superAgent model.Agent
-	if err := db.Where("user_id = ? AND name = ?", systemUID, "全能助手").First(&superAgent).Error; err != nil {
+	if err := db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, "全能助手").First(&superAgent).Error; err != nil {
 		superAgent = model.Agent{
-			UserID:       systemUID,
+			UserID:       ownerID,
 			Name:         "全能助手",
 			Description:  superDesc,
 			Tools:        superTools,
@@ -61,9 +48,9 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	// Seed specialist agents
 	for _, def := range builtinAgents {
 		var existing model.Agent
-		if err := db.Where("user_id = ? AND name = ?", systemUID, def.Name).First(&existing).Error; err != nil {
+		if err := db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, def.Name).First(&existing).Error; err != nil {
 			specialist := model.Agent{
-				UserID:       systemUID,
+				UserID:       ownerID,
 				Name:         def.Name,
 				Description:  def.Description,
 				Tools:        def.Tools,
@@ -84,6 +71,39 @@ func SeedBuiltinAgents(db *gorm.DB) {
 			})
 		}
 	}
+}
+
+// getOwnerOrSystemID returns the Owner's user ID if one exists, otherwise model.SystemUserID.
+func getOwnerOrSystemID(db *gorm.DB) string {
+	var owner model.User
+	if err := db.Where("owner_token IS NOT NULL AND owner_token != ''").First(&owner).Error; err == nil {
+		return owner.ID
+	}
+	return model.SystemUserID
+}
+
+// MigrateSystemToOwner reassigns all system-owned agents, templates, workflows,
+// tasks, schedules and notifications to the real Owner user.
+// Called after Setup completes to clean up the placeholder system user.
+func MigrateSystemToOwner(db *gorm.DB, ownerID string) {
+	if ownerID == "" || ownerID == model.SystemUserID {
+		return
+	}
+	tables := []string{"agents", "agent_templates", "workflows", "tasks", "schedules", "notifications"}
+	for _, table := range tables {
+		result := db.Exec("UPDATE "+table+" SET user_id = ? WHERE user_id = ?", ownerID, model.SystemUserID)
+		if result.RowsAffected > 0 {
+			log.Printf("[Migration] Reassigned %d rows in %s from %s to %s", result.RowsAffected, table, model.SystemUserID, ownerID)
+		}
+	}
+	// Also migrate author_id in agent_templates
+	result := db.Exec("UPDATE agent_templates SET author_id = ? WHERE author_id = ?", ownerID, model.SystemUserID)
+	if result.RowsAffected > 0 {
+		log.Printf("[Migration] Reassigned %d template authors from %s to %s", result.RowsAffected, model.SystemUserID, ownerID)
+	}
+	// Delete the orphan system user record if it exists
+	db.Exec("DELETE FROM users WHERE id = ? AND owner_token IS NULL", model.SystemUserID)
+	log.Printf("[Migration] System user cleanup complete for owner %s", ownerID)
 }
 
 // Built-in specialist agent definitions

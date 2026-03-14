@@ -846,9 +846,9 @@ Claw 调用 Router API（目标流程）：
 |------|------|------|
 | **Phase 1** | 密钥基础设施：BIP-39 + HD + 冷/热钱包 + 多签原语 | ✅ 已完成（v2026.0312） |
 | **Phase 2** | Queen 账本 API：余额查询 / 转账 / 冻结 / 交易历史 | ✅ 已完成（`queen/api/internal/handler/credit.go`） |
-| **Phase 3** | Router 签名认证：claw 签名替代 API Key + 按调用扣费 | 计划中 |
+| **Phase 3** | Router 签名认证：claw 签名替代 API Key + 按调用扣费 | ✅ 已完成（DualAuth + ClawSignatureAuth + QueenCreditClient） |
 | **Phase 4** | 血量系统：Claw 端余额监控 + 休眠/复活机制 | ✅ 已完成（`swarm/credit_client.go` HP 监控 + CLI） |
-| **Phase 5** | 充值通道：star-ai.net 充值 → claw 地址到账 | 部分（Queen 计费 + 支付宝/微信已对接） |
+| **Phase 5** | 充值通道：star-ai.net 充值 → claw 地址到账 | ✅ 已完成（支付回调自动到账 + ¥余额→星能兑换 + UI） |
 | **Phase 6** | 推理挖矿：GPU 贡献 → Queen 调度 → 星能发放（见 §3.10） | ✅ 已完成（ContributorService + 90/10 结算） |
 | **Phase 7** | 市场经济：Agent/模板/插件买卖 + 交易手续费 | 计划中 |
 | **Phase 8** | 跨 Brood 交易：不同 Overlord 下的 Claw 互相转账 | 计划中 |
@@ -1937,12 +1937,12 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 | 虫巢 | Brood | 企业级节点注册 + claw: 地址解析 | `overlord/` | ✅ |
 | 提取器 | Extractor | AI 算力提取（LLM 路由 + 媒体算力 + 算力市场） | `router/` | ✅ |
 | 虫群意志 | Hivemind | 分布式信任共识（投票/评价/仲裁） | §7.6 | 规划中 |
-| 脑虫 | Cerebrate | 跨会话记忆（用户画像 + 技能经验） | §7.10 | 规划中 |
+| 脑虫 | Cerebrate | 跨会话记忆（用户画像 + 技能经验） | §7.10 | ✅ v2026.0313 |
 | 生命周期 | Lifecycle | 孵化→在线→离线→休眠→死亡→复活→繁殖 | §7.11 | 规划中 |
 | 繁殖 | Breed | 轻量部署 + 分裂繁殖 + 批量孵化 | §7.12 | 规划中 |
 | 适应 | Adaptation | 自主进化（模型选择/Prompt/工作流优化） | §7.13 | 规划中 |
 | 触手 | Tentacle | 多平台通信整合（飞书/钉钉/企微/Slack/Discord/TG） | `tool/*_tool.go` | ✅ v2026.0311 |
-| 本能 | Instinct | 主动行为系统（活动/关怀/定时任务） | §7.15 | 规划中 |
+| 本能 | Instinct | 主动行为系统（活动/关怀/定时任务） | §7.15 | ✅ v2026.0315 |
 | 幼虫 | Larva (别名 Kernel) | 最小 Claw 内核（8MB，IoT/嵌入式） | §7.12 体型 | 规划中 |
 | 小狗 | Zergling (别名 Nano) | 轻量 Claw（64MB，手机/树莓派/边缘） | §7.12 体型 | 规划中 |
 | 刺蛇 | Hydralisk (别名 Standard) | 标准 Claw（256MB，PC/服务器，当前版本） | §7.12 体型 | ✅ |
@@ -1951,7 +1951,7 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 
 ### 7.9 可观测性架构 — 三支柱
 
-> ⚠️ **当前状态：设计阶段，尚未实现。**
+> ✅ **Metrics + 结构化日志 + 告警规则已实现。** Traces（OpenTelemetry）待后续集成。
 
 虫群必须有视野才能作战——可观测性是 StarClaw 的「侦察网络」。
 
@@ -2644,7 +2644,7 @@ Claw Agent 引擎处理
 
 ### 7.15 虫族本能 Instinct — 主动行为系统
 
-> ⚠️ **当前状态：规划中。**
+> ✅ **已实现：Instinct Engine + Activity 模型 + 8 个内置活动模板 + REST API + 前端 UI。**
 
 虫族有本能反应——遇到威胁自动防御，看到资源自动采集。
 StarClaw 的**本能系统**让小龙虾不再只是被动等待用户指令，而是**主动行动**。
@@ -3173,7 +3173,7 @@ Bounty 测试场景:
 | 文档描述 | 实际情况 | 差距 |
 |---------|---------|------|
 | §4.5 赏金资金流依赖 `billing/` 冻结/释放 | billing 已实现在 `queen/api/`（非独立服务），冻结/释放待集成 | Bounty 资金流待对接 |
-| §7.2 "实现：Prometheus + Grafana" | 无任何监控代码 | 声明与现实不符 |
+| §7.2 "实现：Prometheus + Grafana" | Claw/Queen/Router 已有 /metrics + 告警规则 | Grafana 面板待配置 |
 | §7.3 Spine 使用 "mTLS + 注册 Token" | 实际仅有 Ed25519 P2P 签名 | 安全级别低于设计 |
 | §3.7 Molt "Queen 监听 GitHub Webhook" | 仅有基础版本检查 | 更新链路未打通 |
 | §7.5 Queen 容灾 "主从热备，故障转移 < 30s" | 实际单点部署 | 容灾能力为零 |
@@ -3193,7 +3193,7 @@ Bounty 测试场景:
 ████████░░  80%  Billing 计费（充值/扣费/支付宝/微信 + 冻结/释放/结算 ✅，账单导出 ❌）
 ███████░░░  70%  Claw↔Queen 用户关联（Queen NodeBinding API + Claw queen.go + 前端 ✅，OAuth 绑定 ❌）
 ██████░░░░  60%  Queen 用户认证（User/JWT/auth/phone + OAuth 路由 ✅，第三方 OAuth 对接 ❌）
-█████░░░░░  50%  可观测性（Claw /metrics + Queen Prometheus+Grafana ✅，分布式 Traces/结构化日志 ❌）
+███████░░░  70%  可观测性（Claw/Queen/Router /metrics + 结构化日志 + 告警规则 ✅，Traces/Grafana面板 ❌）
 ████░░░░░░  40%  Molt 更新（基础版本检查 ✅，灰度/回滚/Webhook ❌）
 ██░░░░░░░░  20%  安全体系（JWT/RBAC ✅，mTLS/异常检测/DDoS ❌）
 ░░░░░░░░░░   0%  DHT 去中心化发现（Kademlia 协议）
@@ -4022,19 +4022,39 @@ providers:
 3. 将 `system` 创建的 Agent/数据归属到 Owner
 4. 代码中需要 system 操作的地方使用常量 ID，不查 DB
 
-### 17.7 实施优先级
+### 17.7 国内 CDN 加速
+
+**缓存策略（已实施）：**
+
+| 资源类型 | 路径 | Cache-Control | TTL |
+|----------|------|---------------|-----|
+| HTML 入口 | `/index.html` | `no-cache, no-store, must-revalidate` | 0 |
+| Hashed JS/CSS | `/assets/*` | `public, max-age=31536000, immutable` | 1年 |
+| 图片/字体 | `*.png,*.woff2` 等 | `public, expires 7d` | 7天 |
+| API | `/v1/*`, `/api/*` | 不缓存 | 0 |
+
+**已完成配置：**
+- 全部 8 个前端 nginx.conf 统一：gzip + 安全头 + 分层缓存
+- 3 个部署层 nginx 添加 CDN-friendly gzip
+- CDN 接入文档：`queen/deploy/CDN-SETUP.md`
+- 共享片段：`queen/deploy/cdn-common.conf`
+
+**前端 nginx 覆盖范围：**
+`claw/web` · `queen/web` · `queen/core` · `queen/site` · `router/web` · `router/core` · `overlord/console` · `nydus/web`
+
+### 17.8 实施优先级
 
 | 优先级 | 任务 | 域名 | 状态 |
 |--------|------|------|:----:|
 | P0 | star-ai.net API Gateway 基础（代理 + 计费） | star-ai.net | ✅ 已完成 |
 | P0 | Claw 新增 star-ai provider | starclaw.me | ✅ 已完成 |
-| P1 | Agent 市场 API（上架/搜索/安装） | starclaw.net | 规划中 |
-| P1 | Claw 对接市场（浏览/一键安装） | starclaw.me | 规划中 |
-| P1 | 清理 system 用户 | starclaw.me | 待修复 |
-| P2 | 官网 Landing Page | starclaw.me | 规划中 |
-| P2 | 开发者中心（提交/审核） | starclaw.net | 规划中 |
-| P3 | star-ai.net 用户 Dashboard | star-ai.net | 规划中 |
-| P3 | 国内 CDN 加速 | star-ai.net | 规划中 |
+| P1 | Agent 市场 API（上架/搜索/安装） | starclaw.net | ✅ 已完成 |
+| P1 | Claw 对接市场（浏览/一键安装） | starclaw.me | ✅ 已完成 |
+| P1 | 清理 system 用户 | starclaw.me | ✅ 已完成 |
+| P2 | 官网 Landing Page | starclaw.me | ✅ 已完成 |
+| P2 | 开发者中心（提交/审核） | starclaw.net | ✅ 已完成 |
+| P3 | star-ai.net 用户 Dashboard | star-ai.net | ✅ 已完成 |
+| P3 | 国内 CDN 加速 | 全域名 | ✅ 已完成 |
 
 ---
 
