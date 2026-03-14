@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { nydusAPI, healthAPI, isAuthenticated, setSecret, verifySecret } from './lib/api'
-import type { Repo, Commit, Deploy, Release, ReleaseItem, TreeItem, ServerStats } from './lib/api'
+import type { Repo, Commit, Deploy, Release, ReleaseItem, TreeItem, Branch, Tag as TagType, ServerStats } from './lib/api'
 import { marked } from 'marked'
 import {
-  GitBranch, Tag, Clock, Server, Download, ExternalLink,
+  GitBranch, Tag, Server, Download, ExternalLink,
   CheckCircle2, XCircle, Activity, RefreshCw,
   Folder, FileText, ChevronRight, GitCommit, Database,
-  Rocket, ArrowLeft, Lock, Unlock, KeyRound,
+  Rocket, ArrowLeft, Lock, Unlock, KeyRound, Code, History,
 } from 'lucide-react'
 
 // ── Page type ──
 type Page = { view: 'home' } | { view: 'repo'; name: string }
+type RepoTab = 'code' | 'commits' | 'branches' | 'tags'
 
 function parseHash(): Page {
   const h = window.location.hash.replace(/^#\/?/, '')
@@ -38,6 +39,9 @@ export default function App() {
   const [treeItems, setTreeItems] = useState<TreeItem[]>([])
   const [treePath, setTreePath] = useState('')
   const [readme, setReadme] = useState('')
+  const [repoTab, setRepoTab] = useState<RepoTab>('code')
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [tags, setTags] = useState<TagType[]>([])
 
   const handleLogin = async (secret: string) => {
     const ok = await verifySecret(secret)
@@ -112,12 +116,29 @@ export default function App() {
     setTreeItems([])
     setReadme('')
     setCommits([])
+    setRepoTab('code')
   }, [])
 
   const goRepo = useCallback((name: string) => {
     window.location.hash = `/repo/${name}`
     setPage({ view: 'repo', name })
     setTreePath('')
+    setRepoTab('code')
+  }, [])
+
+  // ── Fetch branches/tags on tab switch ──
+  const fetchBranches = useCallback(async (name: string) => {
+    try {
+      const res = await nydusAPI.repoBranches(name)
+      setBranches(res.data.branches || [])
+    } catch { setBranches([]) }
+  }, [])
+
+  const fetchTags = useCallback(async (name: string) => {
+    try {
+      const res = await nydusAPI.repoTags(name)
+      setTags(res.data.tags || [])
+    } catch { setTags([]) }
   }, [])
 
   // ── Hash change listener (browser back/forward) ──
@@ -213,6 +234,12 @@ export default function App() {
             commits={commits} treeItems={treeItems} treePath={treePath}
             readme={readme} release={release} releases={releases} loading={loading}
             authed={authed}
+            repoTab={repoTab} branches={branches} tags={tags}
+            onTabChange={(tab) => {
+              setRepoTab(tab)
+              if (tab === 'branches') fetchBranches(page.name)
+              if (tab === 'tags') fetchTags(page.name)
+            }}
             onNavigateTree={(item) => {
               if (item.type === 'tree') setTreePath(treePath ? `${treePath}/${item.name}` : item.name)
             }}
@@ -410,15 +437,23 @@ function HomePage({ repos, deploys, release, releases, serverStats, loading, onR
 /* ════════════════════════════════════════════════════════
    REPO DETAIL PAGE — file tree + README + commits
    ════════════════════════════════════════════════════════ */
-function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, release, releases, loading, authed, onNavigateTree, onNavigateUp, onBack }: {
+function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, release, releases, loading, authed, repoTab, branches, tags, onTabChange, onNavigateTree, onNavigateUp, onBack }: {
   repo: Repo | null; repoName: string
   commits: Commit[]; treeItems: TreeItem[]; treePath: string
   readme: string; release: Release | null; releases: ReleaseItem[]; loading: boolean
-  authed: boolean
+  authed: boolean; repoTab: RepoTab; branches: Branch[]; tags: TagType[]
+  onTabChange: (tab: RepoTab) => void
   onNavigateTree: (item: TreeItem) => void
   onNavigateUp: () => void
   onBack: () => void
 }) {
+  const tabItems: { key: RepoTab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { key: 'code', label: 'Code', icon: <Code className="w-4 h-4" /> },
+    { key: 'commits', label: 'Commits', icon: <History className="w-4 h-4" />, count: repo?.commit_count },
+    { key: 'branches', label: 'Branches', icon: <GitBranch className="w-4 h-4" />, count: repo?.branches },
+    { key: 'tags', label: 'Tags', icon: <Tag className="w-4 h-4" />, count: repo?.tags },
+  ]
+
   return (
     <>
       {/* Back link */}
@@ -427,136 +462,180 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
         <ArrowLeft className="w-3.5 h-3.5" /> Back to repositories
       </button>
 
+      {/* Repo header */}
+      <div className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden mb-6">
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <GitBranch className="w-4 h-4 text-nydus-blue" />
+            <h2 className="text-lg font-bold text-nydus-text">{repoName}</h2>
+            {repo?.initialized && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-700/10 text-nydus-green border border-green-700/20">active</span>
+            )}
+          </div>
+          {repo?.description && <p className="text-nydus-muted text-sm mb-2">{repo.description}</p>}
+          {repo?.last_commit && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-nydus-text font-medium">{repo.last_commit.author}</span>
+              <span className="text-nydus-muted truncate flex-1">{repo.last_commit.message}</span>
+              <code className="text-nydus-blue shrink-0">{repo.last_commit.short_hash}</code>
+              <span className="text-nydus-dim shrink-0">{repo.last_commit.time_ago}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex border-t border-nydus-border bg-nydus-bg/30 px-2 overflow-x-auto">
+          {tabItems.map((t) => (
+            <button key={t.key} onClick={() => onTabChange(t.key)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
+                ${repoTab === t.key
+                  ? 'border-nydus-accent text-nydus-text'
+                  : 'border-transparent text-nydus-muted hover:text-nydus-text hover:border-nydus-dim'}`}>
+              {t.icon}
+              {t.label}
+              {t.count !== undefined && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-nydus-bg border border-nydus-border">{t.count}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex gap-6 flex-col lg:flex-row">
         {/* Main */}
         <div className="flex-1 min-w-0 space-y-6">
-          {/* Repo header card */}
-          <div className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden">
-            {/* Repo info */}
-            <div className="px-4 py-3 border-b border-nydus-border">
-              <div className="flex items-center gap-2 mb-1">
-                <GitBranch className="w-4 h-4 text-nydus-blue" />
-                <h2 className="text-lg font-bold text-nydus-text">{repoName}</h2>
-                {repo?.initialized && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-700/10 text-nydus-green border border-green-700/20">active</span>
-                )}
-              </div>
-              {repo?.description && <p className="text-nydus-muted text-sm mb-2">{repo.description}</p>}
-              <div className="flex items-center gap-4 text-xs text-nydus-muted flex-wrap">
-                {repo?.branches !== undefined && (
-                  <span className="flex items-center gap-1">
-                    <GitBranch className="w-3.5 h-3.5" />
-                    <b className="text-nydus-text">{repo.branches}</b> branch{repo.branches !== 1 ? 'es' : ''}
-                  </span>
-                )}
-                {repo?.tags !== undefined && (
-                  <span className="flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5" />
-                    <b className="text-nydus-text">{repo.tags}</b> tags
-                  </span>
-                )}
-                {repo?.commit_count !== undefined && (
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />
-                    <b className="text-nydus-text">{repo.commit_count}</b> commits
-                  </span>
-                )}
-              </div>
-              {repo?.last_commit && (
-                <div className="flex items-center gap-2 mt-2 text-xs">
-                  <span className="text-nydus-text font-medium">{repo.last_commit.author}</span>
-                  <span className="text-nydus-muted truncate flex-1">{repo.last_commit.message}</span>
-                  <code className="text-nydus-blue shrink-0">{repo.last_commit.short_hash}</code>
-                  <span className="text-nydus-dim shrink-0">{repo.last_commit.time_ago}</span>
-                </div>
-              )}
-            </div>
 
-            {/* Breadcrumb */}
-            {treePath && (
-              <div className="px-4 py-2 border-b border-nydus-border bg-nydus-bg/50 flex items-center gap-1 text-sm">
-                <button onClick={() => onNavigateUp()} className="text-nydus-blue hover:underline">
-                  {repoName}
-                </button>
-                {treePath.split('/').map((seg, i, arr) => (
-                  <span key={i} className="flex items-center gap-1">
-                    <span className="text-nydus-dim">/</span>
-                    {i === arr.length - 1 ? (
-                      <span className="text-nydus-text font-medium">{seg}</span>
-                    ) : (
-                      <span className="text-nydus-muted">{seg}</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
+          {/* ── Code Tab ── */}
+          {repoTab === 'code' && (
+            <>
+              <div className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden">
+                {/* Breadcrumb */}
+                {treePath && (
+                  <div className="px-4 py-2 border-b border-nydus-border bg-nydus-bg/50 flex items-center gap-1 text-sm">
+                    <button onClick={() => onNavigateUp()} className="text-nydus-blue hover:underline">
+                      {repoName}
+                    </button>
+                    {treePath.split('/').map((seg, i, arr) => (
+                      <span key={i} className="flex items-center gap-1">
+                        <span className="text-nydus-dim">/</span>
+                        {i === arr.length - 1 ? (
+                          <span className="text-nydus-text font-medium">{seg}</span>
+                        ) : (
+                          <span className="text-nydus-muted">{seg}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
-            {/* File Tree */}
-            <div className="divide-y divide-nydus-border">
-              {treePath && (
-                <button onClick={onNavigateUp}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-nydus-blue hover:bg-nydus-bg/50 w-full text-left">
-                  <ArrowLeft className="w-3.5 h-3.5" /> ..
-                </button>
-              )}
-              {treeItems.length === 0 && !loading && (
-                <div className="px-4 py-8 text-center text-nydus-muted text-sm">
-                  Repository is empty or not initialized.
-                </div>
-              )}
-              {treeItems.map((item) => (
-                <div key={item.name}
-                  className={`flex items-center gap-3 px-4 py-2 text-sm hover:bg-nydus-bg/50 ${item.type === 'tree' ? 'cursor-pointer' : ''}`}
-                  onClick={() => onNavigateTree(item)}>
-                  {item.type === 'tree' ? (
-                    <Folder className="w-4 h-4 text-nydus-blue shrink-0" />
-                  ) : (
-                    <FileText className="w-4 h-4 text-nydus-muted shrink-0" />
+                {/* File Tree */}
+                <div className="divide-y divide-nydus-border">
+                  {treePath && (
+                    <button onClick={onNavigateUp}
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-nydus-blue hover:bg-nydus-bg/50 w-full text-left">
+                      <ArrowLeft className="w-3.5 h-3.5" /> ..
+                    </button>
                   )}
-                  <span className={`shrink-0 ${item.type === 'tree' ? 'text-nydus-blue font-medium' : 'text-nydus-text'}`}>
-                    {item.name}
-                  </span>
-                  <span className="flex-1 text-nydus-muted text-xs truncate">{item.message}</span>
-                  <span className="text-nydus-dim text-xs shrink-0">{item.time_ago}</span>
+                  {treeItems.length === 0 && !loading && (
+                    <div className="px-4 py-8 text-center text-nydus-muted text-sm">
+                      Repository is empty or not initialized.
+                    </div>
+                  )}
+                  {treeItems.map((item) => (
+                    <div key={item.name}
+                      className={`flex items-center gap-3 px-4 py-2 text-sm hover:bg-nydus-bg/50 ${item.type === 'tree' ? 'cursor-pointer' : ''}`}
+                      onClick={() => onNavigateTree(item)}>
+                      {item.type === 'tree' ? (
+                        <Folder className="w-4 h-4 text-nydus-blue shrink-0" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-nydus-muted shrink-0" />
+                      )}
+                      <span className={`shrink-0 ${item.type === 'tree' ? 'text-nydus-blue font-medium' : 'text-nydus-text'}`}>
+                        {item.name}
+                      </span>
+                      <span className="flex-1 text-nydus-muted text-xs truncate">{item.message}</span>
+                      <span className="text-nydus-dim text-xs shrink-0">{item.time_ago}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* README */}
-          {readme && (
-            <div className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-nydus-border bg-nydus-bg/50">
-                <FileText className="w-4 h-4 text-nydus-muted" />
-                <span className="text-sm font-medium">README.md</span>
               </div>
-              <div className="px-6 py-4 prose prose-invert prose-sm max-w-none
-                prose-headings:text-nydus-text prose-a:text-nydus-blue prose-strong:text-nydus-text
-                prose-code:text-nydus-green prose-code:bg-nydus-bg prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-                prose-pre:bg-nydus-bg prose-pre:border prose-pre:border-nydus-border
-                prose-img:rounded-md prose-img:mx-auto
-                text-nydus-text/90 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: marked.parse(readme, { async: false }) as string }}
-              />
-            </div>
+
+              {/* README */}
+              {readme && (
+                <div className="bg-nydus-card border border-nydus-border rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-nydus-border bg-nydus-bg/50">
+                    <FileText className="w-4 h-4 text-nydus-muted" />
+                    <span className="text-sm font-medium">README.md</span>
+                  </div>
+                  <div className="px-6 py-4 prose prose-invert prose-sm max-w-none
+                    prose-headings:text-nydus-text prose-a:text-nydus-blue prose-strong:text-nydus-text
+                    prose-code:text-nydus-green prose-code:bg-nydus-bg prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+                    prose-pre:bg-nydus-bg prose-pre:border prose-pre:border-nydus-border
+                    prose-img:rounded-md prose-img:mx-auto
+                    text-nydus-text/90 leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: marked.parse(readme, { async: false }) as string }}
+                  />
+                </div>
+              )}
+            </>
           )}
 
-          {/* Recent Commits */}
-          <Section title="Recent Commits" icon={<GitCommit className="w-5 h-5 text-nydus-muted" />}>
+          {/* ── Commits Tab ── */}
+          {repoTab === 'commits' && (
             <div className="bg-nydus-card border border-nydus-border rounded-lg divide-y divide-nydus-border">
               {commits.length === 0 && (
-                <div className="px-4 py-3 text-nydus-muted text-sm">No commits found.</div>
+                <div className="px-4 py-8 text-center text-nydus-muted text-sm">No commits found.</div>
               )}
               {commits.map((c, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-2 text-sm">
+                <div key={i} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-nydus-bg/30">
+                  <GitCommit className="w-4 h-4 text-nydus-muted shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-nydus-text truncate">{c.message}</div>
+                    {c.author && <div className="text-nydus-dim text-xs mt-0.5">{c.author}</div>}
+                  </div>
                   <code className="text-nydus-blue bg-nydus-bg px-1.5 py-0.5 rounded text-xs shrink-0">{c.hash}</code>
-                  <span className="flex-1 truncate">{c.message}</span>
-                  {c.author && <span className="text-nydus-dim text-xs shrink-0">{c.author}</span>}
                   <span className="text-nydus-dim text-xs shrink-0">{c.time}</span>
                 </div>
               ))}
             </div>
-          </Section>
+          )}
+
+          {/* ── Branches Tab ── */}
+          {repoTab === 'branches' && (
+            <div className="bg-nydus-card border border-nydus-border rounded-lg divide-y divide-nydus-border">
+              {branches.length === 0 && (
+                <div className="px-4 py-8 text-center text-nydus-muted text-sm">No branches found.</div>
+              )}
+              {branches.map((b) => (
+                <div key={b.name} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-nydus-bg/30">
+                  <GitBranch className="w-4 h-4 text-nydus-green shrink-0" />
+                  <span className="text-nydus-text font-medium">{b.name}</span>
+                  <span className="flex-1" />
+                  <code className="text-nydus-blue bg-nydus-bg px-1.5 py-0.5 rounded text-xs shrink-0">{b.head?.slice(0, 7)}</code>
+                  <span className="text-nydus-dim text-xs shrink-0">{b.updated}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Tags Tab ── */}
+          {repoTab === 'tags' && (
+            <div className="bg-nydus-card border border-nydus-border rounded-lg divide-y divide-nydus-border">
+              {tags.length === 0 && (
+                <div className="px-4 py-8 text-center text-nydus-muted text-sm">No tags found.</div>
+              )}
+              {tags.map((t) => (
+                <div key={t.name} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-nydus-bg/30">
+                  <Tag className="w-4 h-4 text-nydus-accent shrink-0" />
+                  <span className="text-nydus-text font-medium">{t.name}</span>
+                  <span className="flex-1" />
+                  <code className="text-nydus-blue bg-nydus-bg px-1.5 py-0.5 rounded text-xs shrink-0">{t.hash?.slice(0, 7)}</code>
+                  <span className="text-nydus-dim text-xs shrink-0">{t.date}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
         </div>
 
         {/* Sidebar */}
