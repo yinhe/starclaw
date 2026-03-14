@@ -28,7 +28,14 @@ RUN VERSION="$BUILD_VERSION" && \
     fi && \
     [ -z "$VERSION" ] && VERSION=dev; \
     echo "Building with version: $VERSION" && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" -o /starclaw ./cmd/server
+    CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" -o /starclaw ./cmd/server && \
+    echo "Cross-compiling MCP Bridge for all platforms..." && \
+    BRIDGE_LDFLAGS="-X main.version=${VERSION}" && \
+    CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "$BRIDGE_LDFLAGS" -o /mcp-bridge-darwin-amd64   ./cmd/mcp-bridge/ && \
+    CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "$BRIDGE_LDFLAGS" -o /mcp-bridge-darwin-arm64   ./cmd/mcp-bridge/ && \
+    CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "$BRIDGE_LDFLAGS" -o /mcp-bridge-linux-amd64   ./cmd/mcp-bridge/ && \
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$BRIDGE_LDFLAGS" -o /mcp-bridge-windows-amd64.exe ./cmd/mcp-bridge/ && \
+    echo "MCP Bridge binaries built for 4 platforms"
 
 ARG REGISTRY=docker.io
 FROM ${REGISTRY}/alpine:latest
@@ -55,6 +62,7 @@ WORKDIR /app
 
 # These layers change on every code update (fast, no package installs)
 COPY --from=builder /starclaw .
+COPY --from=builder /mcp-bridge-* ./mcp-bridge/
 COPY configs/config.yaml ./configs/
 COPY plugins/ ./plugins/
 COPY scripts/ ./scripts/

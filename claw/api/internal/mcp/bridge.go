@@ -125,13 +125,27 @@ func BridgeStatus() map[string]interface{} {
 	return result
 }
 
-// BridgeDownloadURLs returns download URLs for each platform from GitHub Release.
+// BridgeDownloadURLs returns download URLs served directly from this API.
 func BridgeDownloadURLs() map[string]string {
-	base := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s", owner, repoName, BridgeVersion)
 	return map[string]string{
-		"windows_amd64": base + "/mcp-bridge-windows-amd64.exe",
-		"darwin_amd64":  base + "/mcp-bridge-darwin-amd64",
-		"darwin_arm64":  base + "/mcp-bridge-darwin-arm64",
-		"linux_amd64":   base + "/mcp-bridge-linux-amd64",
+		"windows_amd64": "/v1/mcp-bridge/download/windows_amd64",
+		"darwin_amd64":  "/v1/mcp-bridge/download/darwin_amd64",
+		"darwin_arm64":  "/v1/mcp-bridge/download/darwin_arm64",
+		"linux_amd64":   "/v1/mcp-bridge/download/linux_amd64",
 	}
+}
+
+// BridgeBinaryPath returns the local file path for a given platform binary.
+func BridgeBinaryPath(platform string) (string, string) {
+	m := map[string]string{
+		"windows_amd64": "mcp-bridge-windows-amd64.exe",
+		"darwin_amd64":  "mcp-bridge-darwin-amd64",
+		"darwin_arm64":  "mcp-bridge-darwin-arm64",
+		"linux_amd64":   "mcp-bridge-linux-amd64",
+	}
+	filename, ok := m[platform]
+	if !ok {
+		return "", ""
+	}
+	return "/app/mcp-bridge/" + filename, filename
 }
