@@ -57,6 +57,7 @@ func (h *QueenAccountHandler) GetStatus(c *gin.Context) {
 		"queen_user_id": h.queenUserID,
 		"email":         h.queenEmail,
 		"queen_api_url": h.getQueenAPIURL(),
+		"portal_url":    h.getPortalURL(),
 	}
 
 	// If linked, verify token is still valid by calling Queen /v1/user/profile
@@ -327,6 +328,27 @@ func (h *QueenAccountHandler) Unlink(c *gin.Context) {
 }
 
 // --- Internal helpers ---
+
+// getPortalURL returns the Queen web portal URL with auto-login token.
+// https://swarm.starclaw.net → https://starclaw.net/auth/claw-login?token=xxx
+func (h *QueenAccountHandler) getPortalURL() string {
+	apiURL := h.getQueenAPIURL()
+	if apiURL == "" {
+		return ""
+	}
+	h.mu.RLock()
+	token := h.queenToken
+	h.mu.RUnlock()
+
+	// Derive portal base: https://api.starclaw.net → https://starclaw.net
+	portalBase := strings.Replace(apiURL, "api.", "", 1)
+	portalBase = strings.TrimSuffix(portalBase, "/")
+
+	if token != "" {
+		return portalBase + "/auth/claw-login?token=" + token
+	}
+	return portalBase
+}
 
 func (h *QueenAccountHandler) getQueenAPIURL() string {
 	queenURL := h.cfg.Swarm.QueenURL

@@ -9,6 +9,7 @@ import { ArenaPage } from './pages/ArenaPage';
 import { BountyPage } from './pages/BountyPage';
 import { BillingPage } from './pages/BillingPage';
 import { DeveloperPage } from './pages/DeveloperPage';
+import { ClawLoginPage } from './pages/ClawLoginPage';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/auth/claw-login" element={<ClawLoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/marketplace/:type" element={<MarketplacePage />} />
