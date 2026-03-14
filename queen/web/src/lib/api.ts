@@ -29,9 +29,11 @@ export const clawAuthAPI = {
     request<{ token: string; user: UserInfo }>('/auth/claw/verify', { method: 'POST', body: JSON.stringify(body) }),
 };
 
-// Helper: call a Claw node's identity API (cross-origin)
-export async function clawNodeRequest<T>(clawUrl: string, path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${clawUrl}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } });
+// Helper: call a Claw node's API (cross-origin). Pass token for protected endpoints.
+export async function clawNodeRequest<T>(clawUrl: string, path: string, options?: RequestInit & { token?: string }): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...options?.headers as Record<string, string> };
+  if (options?.token) headers['Authorization'] = `Bearer ${options.token}`;
+  const res = await fetch(`${clawUrl}${path}`, { ...options, headers });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || '连接 Claw 节点失败');
   return data as T;
