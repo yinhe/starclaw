@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -289,22 +290,45 @@ func callWorm(t config.TargetConfig, repo, branch, rev string) (string, string) 
 	payload := fmt.Sprintf(`{"repo":"%s","branch":"%s","rev":"%s","deploy_path":"%s","deploy_cmd":"%s","subdir":"%s","repo_url":"/data/nydus/repos/%s.git"}`,
 		repo, branch, rev, t.DeployPath, t.DeployCmd, t.Subdir, repo)
 
-	// If ssh_host is set, call the remote Worm via SSH tunnel (avoids opening ports)
+	// If ssh_host is set, sync code via SCP then call remote Worm via SSH
 	if t.SSHHost != "" {
+		sshBase := []string{
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "ConnectTimeout=10",
+		}
+		if t.SSHKey != "" {
+			sshBase = append(sshBase, "-i", t.SSHKey)
+		}
+
+		// Step 1: Extract subdir from bare repo and sync to remote
+		if t.Subdir != "" {
+			log.Printf("[nydus] syncing %s/%s → %s:%s", repo, t.Subdir, t.SSHHost, t.DeployPath)
+			// Use git archive to extract subdir, pipe through SSH to remote
+			archiveCmd := fmt.Sprintf(
+				`git --git-dir=/data/nydus/repos/%s.git archive HEAD:%s | ssh %s %s 'mkdir -p %s && cd %s && tar xf -'`,
+				repo, t.Subdir,
+				strings.Join(sshBase, " "), t.SSHHost,
+				t.DeployPath, t.DeployPath,
+			)
+			cmd := exec.Command("sh", "-c", archiveCmd)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				log.Printf("[nydus] code sync to %s failed: %v\n%s", t.Name, err, out)
+				return "failed", fmt.Sprintf("code sync failed: %v: %s", err, out)
+			}
+			log.Printf("[nydus] code synced to %s", t.Name)
+		}
+
+		// Step 2: SSH and call local Worm (no repo_url — code already synced)
 		wormURL := t.WormURL
 		if wormURL == "" {
 			wormURL = "http://127.0.0.1:8097"
 		}
-		sshArgs := []string{
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "ConnectTimeout=10",
-		}
-		if t.SSHKey != "" {
-			sshArgs = append(sshArgs, "-i", t.SSHKey)
-		}
+		remotePayload := fmt.Sprintf(`{"repo":"%s","branch":"%s","rev":"%s","deploy_path":"%s","deploy_cmd":"%s"}`,
+			repo, branch, rev, t.DeployPath, t.DeployCmd)
 		curlCmd := fmt.Sprintf(`curl -sf -X POST '%s/deploy' -H 'Content-Type: application/json' -H 'X-Nydus-Secret: %s' -d '%s' --connect-timeout 5 --max-time 300`,
-			wormURL, config.C.Server.Secret, payload)
-		sshArgs = append(sshArgs, t.SSHHost, curlCmd)
+			wormURL, config.C.Server.Secret, remotePayload)
+		sshArgs := append(sshBase, t.SSHHost, curlCmd)
 
 		cmd := exec.Command("ssh", sshArgs...)
 		out, err := cmd.CombinedOutput()

@@ -7,7 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /nydus-server ./cmd/nydus-server/
 
 FROM alpine:3.19
-RUN apk add --no-cache git curl openssh-server shadow bash && \
+RUN apk add --no-cache git curl openssh-server openssh-client shadow bash && \
     adduser -D -s /usr/bin/git-shell git && \
     mkdir -p /data/nydus/repos /home/git/.ssh && \
     chown -R git:git /data/nydus /home/git/.ssh && \

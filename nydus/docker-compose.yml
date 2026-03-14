@@ -10,7 +10,8 @@ services:
     volumes:
       - /data/nydus/repos:/data/nydus/repos
       - ./nydus.yaml:/app/nydus.yaml:ro
-      - /root/.ssh:/root/.ssh:ro
+      - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      - /root/.ssh/known_hosts:/root/.ssh/known_hosts
     ports:
       - "127.0.0.1:8095:8095"
       # SSH handled by host sshd (git user), no container SSH needed
