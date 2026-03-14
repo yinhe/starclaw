@@ -491,7 +491,7 @@ func performDockerUpdate() error {
 	}
 	log.Printf("[molt] compose: %s/%s", projectDir, composeFile)
 
-	// Step 3: Update source code — fetch + reset --hard (not pull, which fails with dirty working tree from tar deploys)
+	// Step 3: Update source code — try GitHub first, fallback to Nydus tarball
 	// Monorepo layout: git may be in claw/ subdir (OSS repo maps claw/ → root)
 	// Standalone layout: git is at project root
 	pullResult, _ := execOnHost(client, fmt.Sprintf(
@@ -499,9 +499,19 @@ func performDockerUpdate() error {
 		projectDir))
 	log.Printf("[molt] source update: %.500s", pullResult)
 
-	if strings.Contains(pullResult, "NO_GIT") {
-		log.Println("[molt] WARNING: no git repo on server, source code not updated. Build will use existing code.")
-		log.Println("[molt] TIP: for monorepo, run: cd /opt/starclaw/claw && git init && git remote add origin https://github.com/yinhe/starclaw.git && git fetch origin main && git reset --mixed origin/main")
+	// Fallback: if git fetch failed or no git, download tarball from Nydus mirror
+	gitFailed := strings.Contains(pullResult, "NO_GIT") || strings.Contains(pullResult, "fatal:") || strings.Contains(pullResult, "error:")
+	if gitFailed {
+		log.Printf("[molt] GitHub git failed, trying Nydus source tarball fallback...")
+		nydusResult, nydusErr := execOnHostTimeout(client, fmt.Sprintf(
+			`cd "%s" && curl -sfL --connect-timeout 10 --max-time 120 "%s" | tar xz --strip-components=1 2>&1 && echo "NYDUS_OK"`,
+			projectDir, molt.NydusSourceURL), 180)
+		if nydusErr != nil || !strings.Contains(nydusResult, "NYDUS_OK") {
+			log.Printf("[molt] Nydus fallback also failed: %v %.500s", nydusErr, nydusResult)
+			log.Println("[molt] WARNING: source code not updated. Build will use existing code.")
+		} else {
+			log.Printf("[molt] source updated via Nydus tarball")
+		}
 	}
 
 	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)

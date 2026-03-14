@@ -136,6 +136,13 @@ func (t *CodeTool) Execute(ctx context.Context, args string) (string, error) {
 		}), nil
 
 	case "write_file":
+		if a.Path == "" {
+			return toJSON(map[string]interface{}{"action": "write_file", "error": "path is required for write_file"}), nil
+		}
+		if a.Content == "" {
+			log.Printf("[CodeTool] write_file called with empty content for path=%q workspace=%s — rejecting", a.Path, effectiveWS)
+			return toJSON(map[string]interface{}{"action": "write_file", "error": "content is empty — please provide the file content"}), nil
+		}
 		err := t.sandbox.WriteFile(effectiveWS, a.Path, a.Content)
 		if err != nil {
 			return toJSON(map[string]interface{}{"action": "write_file", "error": err.Error()}), nil

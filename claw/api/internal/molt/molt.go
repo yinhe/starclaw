@@ -22,12 +22,28 @@ const (
 	checkEvery = 1 * time.Hour
 )
 
+// Update sources: GitHub (primary) → Nydus mirror (fallback for China / offline)
+var UpdateSources = []UpdateSource{
+	{Name: "github", ReleaseURL: "https://api.github.com/repos/yinhe/starclaw/releases/latest", Timeout: 8 * time.Second},
+	{Name: "nydus", ReleaseURL: "https://nydus.starclaw.net/releases/latest", Timeout: 5 * time.Second},
+}
+
+// NydusSourceURL is the tarball URL for source-based updates (fallback when git fetch fails)
+const NydusSourceURL = "https://nydus.starclaw.net/releases/source.tar.gz"
+
+type UpdateSource struct {
+	Name       string
+	ReleaseURL string
+	Timeout    time.Duration
+}
+
 type ReleaseInfo struct {
 	TagName     string `json:"tag_name"`
 	Name        string `json:"name"`
 	Body        string `json:"body"`
 	HTMLURL     string `json:"html_url"`
 	PublishedAt string `json:"published_at"`
+	Source      string `json:"source,omitempty"`
 }
 
 type VersionInfo struct {
@@ -37,6 +53,7 @@ type VersionInfo struct {
 	UpdateAvail   bool      `json:"update_available"`
 	ReleaseNotes  string    `json:"release_notes,omitempty"`
 	LastCheckedAt time.Time `json:"last_checked_at"`
+	Source        string    `json:"source,omitempty"`
 }
 
 var (
@@ -77,7 +94,7 @@ func check() {
 
 	latest := trimV(info.TagName)
 	if latest > Version {
-		log.Printf("[molt] new version available: %s → %s (%s)", Version, latest, info.HTMLURL)
+		log.Printf("[molt] new version available: %s → %s (via %s)", Version, latest, info.Source)
 	}
 }
 
@@ -99,18 +116,34 @@ func GetVersionInfo() VersionInfo {
 		vi.LatestURL = latestInfo.HTMLURL
 		vi.ReleaseNotes = latestInfo.Body
 		vi.UpdateAvail = latest > Version
+		vi.Source = latestInfo.Source
 	}
 
 	return vi
 }
 
+// fetchLatestRelease tries all update sources in order (GitHub → Nydus fallback)
 func fetchLatestRelease() (*ReleaseInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	var lastErr error
+	for _, src := range UpdateSources {
+		info, err := fetchFromSource(src)
+		if err != nil {
+			log.Printf("[molt] %s check failed: %v", src.Name, err)
+			lastErr = err
+			continue
+		}
+		info.Source = src.Name
+		return info, nil
+	}
+	return nil, fmt.Errorf("all update sources failed, last: %v", lastErr)
+}
+
+func fetchFromSource(src UpdateSource) (*ReleaseInfo, error) {
+	req, _ := http.NewRequest("GET", src.ReleaseURL, nil)
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "StarClaw/"+Version)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: src.Timeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -118,7 +151,7 @@ func fetchLatestRelease() (*ReleaseInfo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("%s returned status %d", src.Name, resp.StatusCode)
 	}
 
 	var info ReleaseInfo

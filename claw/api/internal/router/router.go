@@ -49,14 +49,25 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	r.Use(gin.Recovery())
 
 	// CORS
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost", "https://starclaw.me", "https://app.starclaw.me", "https://api.starclaw.me", "https://www.starclaw.me"},
+	corsConfig := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
-	}))
+	}
+	if cfg.Server.DeployMode == "hosted" {
+		corsConfig.AllowOrigins = []string{
+			"https://starclaw.me", "https://app.starclaw.me",
+			"https://api.starclaw.me", "https://www.starclaw.me",
+			"http://localhost:5173", "http://localhost:3000",
+		}
+	} else {
+		// opensource: allow any origin so self-hosted users don't get CORS 403
+		corsConfig.AllowAllOrigins = true
+		corsConfig.AllowCredentials = false // AllowAllOrigins requires credentials=false
+	}
+	r.Use(cors.New(corsConfig))
 
 	// Prometheus metrics
 	r.Use(middleware.PrometheusMetrics())

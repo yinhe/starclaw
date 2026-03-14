@@ -29,11 +29,12 @@ func (h *SettingsHandler) GetProfile(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":         user.ID,
-			"username":   user.Username,
-			"email":      user.Email,
-			"phone":      user.Phone,
-			"created_at": user.CreatedAt,
+			"id":           user.ID,
+			"username":     user.Username,
+			"email":        user.Email,
+			"phone":        user.Phone,
+			"has_password": user.Password != "",
+			"created_at":   user.CreatedAt,
 		},
 	})
 }
@@ -80,7 +81,7 @@ func (h *SettingsHandler) ChangePassword(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var req struct {
-		OldPassword string `json:"old_password" binding:"required"`
+		OldPassword string `json:"old_password"`
 		NewPassword string `json:"new_password" binding:"required,min=6"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -94,9 +95,16 @@ func (h *SettingsHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码不正确"})
-		return
+	// If user already has a password, verify the old one
+	if user.Password != "" {
+		if req.OldPassword == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请输入旧密码"})
+			return
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "旧密码不正确"})
+			return
+		}
 	}
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)

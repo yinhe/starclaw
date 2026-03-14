@@ -1884,9 +1884,9 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Context Panel - right sidebar */}
+      {/* Context Panel - right sidebar (overlay on small screens, inline on xl+) */}
       {contextPanelOpen && currentConversationId && (
-        <div className="w-80 border-l bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
+        <div className="fixed xl:relative right-0 top-0 xl:top-auto h-full z-30 xl:z-auto w-80 border-l bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden shadow-xl xl:shadow-none">
           <div className="px-4 py-3 border-b bg-white dark:bg-gray-800 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">关联面板</h3>
             <button onClick={() => setContextPanelOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 rounded">

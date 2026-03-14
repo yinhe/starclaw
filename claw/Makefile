@@ -24,10 +24,24 @@ init-env: ## Auto-create .env and data directories if missing
 .PHONY: up
 up: init-env ## Build and start all services (version stamped)
 	BUILD_VERSION=$(VERSION) $(COMPOSE) up -d --build
+	@WEB_PORT=$${WEB_PORT:-80}; \
+	if [ "$$WEB_PORT" = "80" ]; then \
+		echo ""; echo "✅ StarClaw is running at: http://localhost"; \
+	else \
+		echo ""; echo "✅ StarClaw is running at: http://localhost:$$WEB_PORT"; \
+	fi; \
+	echo "   API: http://localhost:8080/health"
 
 .PHONY: up-cn
 up-cn: init-env ## Build and start (China mirror acceleration)
 	BUILD_VERSION=$(VERSION) $(COMPOSE_CN) up -d --build
+	@WEB_PORT=$${WEB_PORT:-80}; \
+	if [ "$$WEB_PORT" = "80" ]; then \
+		echo ""; echo "✅ StarClaw is running at: http://localhost"; \
+	else \
+		echo ""; echo "✅ StarClaw is running at: http://localhost:$$WEB_PORT"; \
+	fi; \
+	echo "   API: http://localhost:8080/health"
 
 .PHONY: start
 start: ## Start existing containers (no rebuild)
@@ -122,7 +136,7 @@ verify: ## Verify API and Web are healthy after update
 	@echo "Checking API..."
 	@curl -sf http://localhost:8080/v1/setup/status > /dev/null && echo "  API: OK" || echo "  API: FAILED"
 	@echo "Checking Web..."
-	@curl -sf http://localhost:$${WEB_PORT:-3080}/ > /dev/null && echo "  Web: OK" || echo "  Web: FAILED"
+	@curl -sf http://localhost:$${WEB_PORT:-80}/ > /dev/null && echo "  Web: OK" || echo "  Web: FAILED"
 	@$(COMPOSE) ps --format 'table {{.Name}}\t{{.Status}}'
 
 # ======================== Rebuild Single Service ========================
