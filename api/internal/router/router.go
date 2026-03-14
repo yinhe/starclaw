@@ -353,6 +353,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			c.File(filePath)
 		})
 
+		// MCP Bridge binary download (public, no auth — users need this before logging in)
+		apiV1.GET("/mcp-bridge/download/:platform", func(c *gin.Context) {
+			platform := c.Param("platform")
+			filePath, filename := mcp.BridgeBinaryPath(platform)
+			if filePath == "" {
+				c.JSON(404, gin.H{"error": "unsupported platform, use: windows_amd64, darwin_amd64, darwin_arm64, linux_amd64"})
+				return
+			}
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				c.JSON(404, gin.H{"error": "binary not available, rebuild with: docker compose build api"})
+				return
+			}
+			c.Header("Content-Disposition", "attachment; filename="+filename)
+			c.File(filePath)
+		})
+
 		// Music files (public, secured by UUID filename)
 		apiV1.GET("/music/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
