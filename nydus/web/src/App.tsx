@@ -139,9 +139,10 @@ export default function App() {
   }, [])
 
   // ── Effects ──
+  // Always load global data (repos list, releases, stats, deploys) on mount & auth change
   useEffect(() => {
-    if (page.view === 'home') fetchHome()
-  }, [page, fetchHome, authed])
+    fetchHome()
+  }, [fetchHome, authed])
 
   useEffect(() => {
     if (page.view === 'repo') fetchRepo(page.name, treePath)
