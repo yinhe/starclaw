@@ -24,7 +24,7 @@ type InferenceHandler struct {
 // InferenceHandlerOption configures optional dependencies for InferenceHandler.
 type InferenceHandlerOption func(*InferenceHandler)
 
-// WithSettlement sets the settlement client for star credit reporting.
+// WithSettlement sets the settlement client for star energy reporting.
 func WithSettlement(s *inference.SettlementClient) InferenceHandlerOption {
 	return func(h *InferenceHandler) { h.settlement = s }
 }
@@ -190,7 +190,7 @@ func (h *InferenceHandler) Infer(c *gin.Context) {
 		}
 	}
 
-	// Report usage for star credit settlement (async, non-blocking)
+	// Report usage for star energy settlement (async, non-blocking)
 	if h.settlement != nil && contributor != nil {
 		requesterClaw := c.GetString("claw_id") // set by auth middleware if available
 		if requesterClaw == "" {

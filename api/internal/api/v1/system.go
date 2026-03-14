@@ -133,7 +133,7 @@ func (h *SystemHandler) LeaveSwarm(c *gin.Context) {
 
 // --- Credits (星能) ---
 
-// GetCredits returns cached star credit balance from Queen (updated via heartbeat).
+// GetCredits returns cached star energy balance from Queen (updated via heartbeat).
 // If ?refresh=true, queries Queen directly for latest balance.
 func (h *SystemHandler) GetCredits(c *gin.Context) {
 	if h.swarmClient == nil || !h.swarmClient.Connected() {
@@ -513,6 +513,11 @@ func performDockerUpdate() error {
 			log.Printf("[molt] source updated via Nydus tarball")
 		}
 	}
+
+	// Step 3.5: Write version to .version file so Dockerfile picks it up during build
+	targetVersion := molt.GetVersionInfo().Latest
+	execOnHost(client, fmt.Sprintf(`echo -n "%s" > "%s/api/.version"`, targetVersion, projectDir))
+	log.Printf("[molt] wrote version %s to api/.version", targetVersion)
 
 	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)
 	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,

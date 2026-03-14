@@ -26,7 +26,7 @@ const (
 // FeralThreshold: after this many consecutive heartbeat failures, enter feral mode
 const FeralThreshold = 3
 
-// CreditBalance holds cached star credit balance from Queen
+// CreditBalance holds cached star energy balance from Queen
 type CreditBalance struct {
 	Balance       int64     `json:"balance"`
 	BalanceEnergy float64   `json:"balance_energy"`
@@ -55,7 +55,7 @@ type Client struct {
 	lastHeartbeat    time.Time
 	feralSince       time.Time // zero if not in feral mode
 	credits          *CreditBalance
-	creditClient     *CreditClient // star credit operations client
+	creditClient     *CreditClient // star energy operations client
 }
 
 // NewClient creates a swarm client from config
@@ -199,7 +199,7 @@ func (c *Client) SetIdentity(identity *node.Identity) {
 	c.mu.Unlock()
 }
 
-// CreditClient returns the star credit operations client (may be nil if not connected to Queen).
+// CreditClient returns the star energy operations client (may be nil if not connected to Queen).
 func (c *Client) CreditClient() *CreditClient {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -410,7 +410,7 @@ func (c *Client) heartbeat() error {
 	return nil
 }
 
-// Credits returns the cached star credit balance (updated each heartbeat)
+// Credits returns the cached star energy balance (updated each heartbeat)
 func (c *Client) Credits() *CreditBalance {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

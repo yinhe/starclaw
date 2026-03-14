@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// SettlementClient reports inference usage to the swarm ledger for star credit settlement.
+// SettlementClient reports inference usage to the swarm ledger for star energy settlement.
 type SettlementClient struct {
 	ledgerURL string // swarm ledger endpoint, e.g. https://api.starclaw.net
 	nodeToken string // internal API auth token
