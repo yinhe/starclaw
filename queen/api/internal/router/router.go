@@ -56,6 +56,11 @@ func Setup() *gin.Engine {
 	v1.POST("/auth/oauth/google", auth.OAuthGoogle)
 	v1.POST("/auth/oauth/github", auth.OAuthGitHub)
 
+	// ---- Sign-In with Claw (public) ----
+	clawAuth := handler.NewClawAuthHandler()
+	v1.POST("/auth/claw/challenge", authRL.Middleware(), clawAuth.Challenge)
+	v1.POST("/auth/claw/verify", authRL.Middleware(), clawAuth.Verify)
+
 	// ---- Marketplace (public read) ----
 	mp := &handler.MarketplaceHandler{}
 	v1.GET("/marketplace/items", mp.List)
@@ -91,6 +96,7 @@ func Setup() *gin.Engine {
 		authed.PUT("/marketplace/items/:id", writeRL.UserRateLimit(), mp.Update)
 		authed.DELETE("/marketplace/items/:id", writeRL.UserRateLimit(), mp.Delete)
 		authed.GET("/marketplace/my", mp.My)
+		authed.POST("/marketplace/items/:id/submit", writeRL.UserRateLimit(), mp.Submit)
 
 		// Node binding
 		nb := &handler.NodeBindingHandler{}
@@ -109,6 +115,7 @@ func Setup() *gin.Engine {
 		authed.GET("/pay/transactions", billing.ListTransactions)
 		authed.GET("/pay/orders", billing.ListOrders)
 		authed.POST("/pay/create", writeRL.UserRateLimit(), billing.CreateOrder)
+		authed.POST("/pay/convert-energy", writeRL.UserRateLimit(), billing.ConvertToEnergy)
 		authed.GET("/pay/order/:order_no/status", billing.QueryOrderStatus)
 	}
 
@@ -153,6 +160,13 @@ func Setup() *gin.Engine {
 		admin.GET("/molt/releases/:id", dash.GetRelease)
 		admin.POST("/molt/releases/:id/start", dash.StartRelease)
 		admin.POST("/molt/releases/:id/pause", dash.PauseRelease)
+
+		// Marketplace review (developer center)
+		admin.GET("/marketplace/pending", mp.AdminListPending)
+		admin.GET("/marketplace/stats", mp.AdminReviewStats)
+		admin.PUT("/marketplace/items/:id/approve", mp.AdminApprove)
+		admin.PUT("/marketplace/items/:id/reject", mp.AdminReject)
+		admin.PUT("/marketplace/items/:id/remove", mp.AdminRemove)
 
 		// Service proxies (bounty / forum / arena)
 		proxy := handler.NewAdminProxyHandler()

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { LogoMark } from '../components/Logo';
-import { authAPI } from '../lib/api';
+import { authAPI, clawAuthAPI, clawNodeRequest } from '../lib/api';
 import { isLoggedIn, setAuth, clearAuth, getUserDisplayName } from '../lib/auth';
-import { Github } from 'lucide-react';
+import { Github, Fingerprint, CheckCircle2, AlertCircle, Loader2 as Spinner } from 'lucide-react';
 
 type Tab = 'login' | 'register';
 type Method = 'email' | 'phone';
@@ -91,6 +91,52 @@ export function AuthPage() {
       setLoading(false);
     }
   };
+
+  // ---- Claw Login ----
+  const [clawMode, setClawMode] = useState(false);
+  const [clawUrl, setClawUrl] = useState('http://localhost:8080');
+  const [clawStep, setClawStep] = useState<'input' | 'connecting' | 'signing' | 'verifying' | 'done' | 'error'>('input');
+  const [clawNodeInfo, setClawNodeInfo] = useState<{ node_id: string; public_key: string } | null>(null);
+
+  async function handleClawLogin() {
+    setClawStep('connecting');
+    setMsg(null);
+    try {
+      // Step 1: Get node identity
+      const info = await clawNodeRequest<{ node_id: string; public_key: string }>(
+        clawUrl.replace(/\/$/, ''), '/v1/identity/info'
+      );
+      setClawNodeInfo(info);
+
+      // Step 2: Get challenge from Queen
+      setClawStep('signing');
+      const { challenge } = await clawAuthAPI.challenge();
+
+      // Step 3: Ask Claw to sign the challenge
+      const signed = await clawNodeRequest<{ node_id: string; public_key: string; signature: string; challenge: string }>(
+        clawUrl.replace(/\/$/, ''), '/v1/identity/sign-challenge',
+        { method: 'POST', body: JSON.stringify({ challenge }) }
+      );
+
+      // Step 4: Verify with Queen
+      setClawStep('verifying');
+      const data = await clawAuthAPI.verify({
+        challenge: signed.challenge,
+        node_id: signed.node_id,
+        public_key: signed.public_key,
+        signature: signed.signature,
+      });
+
+      // Success!
+      setClawStep('done');
+      setAuth(data.token, data.user);
+      setMsg({ text: `Claw ${info.node_id.slice(0, 14)}... 登录成功！`, error: false });
+      setTimeout(() => navigate(searchParams.get('redirect') || '/dashboard'), 1200);
+    } catch (e: any) {
+      setClawStep('error');
+      setMsg({ text: e.message || '连接 Claw 节点失败', error: true });
+    }
+  }
 
   // ---- OAuth ----
   function loginWithGoogle() {
@@ -195,25 +241,88 @@ export function AuthPage() {
                     {loading ? '登录中...' : '登录'}
                   </button>
 
-                  {/* OAuth divider */}
+                  {/* Divider */}
                   <div className="relative my-2">
                     <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
-                    <div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-gray-400">或使用第三方账号登录</span></div>
+                    <div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-gray-400">或</span></div>
                   </div>
 
-                  {/* OAuth buttons */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <button type="button" onClick={loginWithGoogle}
-                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition">
-                      <GoogleIcon />
-                      Google
-                    </button>
-                    <button type="button" onClick={loginWithGithub}
-                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition">
-                      <Github className="w-4 h-4" />
-                      GitHub
-                    </button>
-                  </div>
+                  {/* Sign-In with Claw */}
+                  {!clawMode ? (
+                    <>
+                      <button type="button" onClick={() => setClawMode(true)}
+                        className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold text-sm hover:from-orange-600 hover:to-red-600 transition shadow-lg shadow-orange-500/25">
+                        <Fingerprint className="w-5 h-5" />
+                        使用 Claw 节点登录
+                      </button>
+
+                      {/* OAuth buttons */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <button type="button" onClick={loginWithGoogle}
+                          className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition">
+                          <GoogleIcon />
+                          Google
+                        </button>
+                        <button type="button" onClick={loginWithGithub}
+                          className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition">
+                          <Github className="w-4 h-4" />
+                          GitHub
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4 rounded-xl border-2 border-orange-200 bg-orange-50/50 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-orange-700">
+                          <Fingerprint className="w-4 h-4" />
+                          使用 Claw 节点登录
+                        </div>
+                        <button type="button" onClick={() => { setClawMode(false); setClawStep('input'); setMsg(null); }}
+                          className="text-xs text-gray-400 hover:text-gray-600">返回</button>
+                      </div>
+
+                      {clawStep === 'input' && (
+                        <>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Claw 节点地址</label>
+                            <input type="url" value={clawUrl} onChange={e => setClawUrl(e.target.value)}
+                              className="w-full px-3 py-2.5 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+                              placeholder="http://localhost:8080" />
+                          </div>
+                          <p className="text-[11px] text-gray-400">输入你的 Claw 节点地址，我们会通过 Ed25519 签名验证你的身份，无需密码。</p>
+                          <button type="button" onClick={handleClawLogin}
+                            className="w-full py-2.5 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition">
+                            连接并登录
+                          </button>
+                        </>
+                      )}
+
+                      {clawStep !== 'input' && clawStep !== 'error' && (
+                        <div className="space-y-2">
+                          <StepIndicator done={clawStep !== 'connecting'} active={clawStep === 'connecting'} label="连接 Claw 节点" sub={clawNodeInfo ? clawNodeInfo.node_id.slice(0, 20) + '...' : ''} />
+                          <StepIndicator done={clawStep === 'verifying' || clawStep === 'done'} active={clawStep === 'signing'} label="签名挑战码" />
+                          <StepIndicator done={clawStep === 'done'} active={clawStep === 'verifying'} label="验证身份" />
+                          {clawStep === 'done' && (
+                            <div className="flex items-center gap-2 text-green-600 text-sm font-medium pt-1">
+                              <CheckCircle2 className="w-4 h-4" /> 登录成功，正在跳转...
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {clawStep === 'error' && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-red-500 text-sm">
+                            <AlertCircle className="w-4 h-4" /> {msg?.text || '连接失败'}
+                          </div>
+                          <button type="button" onClick={() => { setClawStep('input'); setMsg(null); }}
+                            className="w-full py-2 rounded-lg border border-orange-300 text-orange-600 text-sm font-medium hover:bg-orange-50 transition">
+                            重试
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <p className="text-center text-xs text-gray-400">登录后可管理你的开发者资源和市场发布</p>
                 </form>
@@ -288,6 +397,22 @@ export function AuthPage() {
           <a href="https://github.com/yinhe/starclaw" className="hover:text-gray-600">GitHub</a>
         </p>
       </div>
+    </div>
+  );
+}
+
+function StepIndicator({ done, active, label, sub }: { done: boolean; active: boolean; label: string; sub?: string }) {
+  return (
+    <div className="flex items-center gap-2.5 text-sm">
+      {done ? (
+        <CheckCircle2 className="w-4 h-4 text-green-500 flex-none" />
+      ) : active ? (
+        <Spinner className="w-4 h-4 text-orange-500 animate-spin flex-none" />
+      ) : (
+        <div className="w-4 h-4 rounded-full border-2 border-gray-200 flex-none" />
+      )}
+      <span className={done ? 'text-green-700' : active ? 'text-orange-700 font-medium' : 'text-gray-400'}>{label}</span>
+      {sub && <span className="text-[10px] text-gray-400 font-mono">{sub}</span>}
     </div>
   );
 }

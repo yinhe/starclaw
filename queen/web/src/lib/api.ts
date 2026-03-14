@@ -21,6 +21,22 @@ export const authAPI = {
     request<{ token: string; user: UserInfo }>(`/auth/oauth/${provider}`, { method: 'POST', body: JSON.stringify({ code }) }),
 };
 
+// Sign-In with Claw (Ed25519 signature auth)
+export const clawAuthAPI = {
+  challenge: () =>
+    request<{ challenge: string; expires_in: number }>('/auth/claw/challenge', { method: 'POST' }),
+  verify: (body: { challenge: string; node_id: string; public_key: string; signature: string }) =>
+    request<{ token: string; user: UserInfo }>('/auth/claw/verify', { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// Helper: call a Claw node's identity API (cross-origin)
+export async function clawNodeRequest<T>(clawUrl: string, path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${clawUrl}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '连接 Claw 节点失败');
+  return data as T;
+}
+
 export const userAPI = {
   getProfile: () => request<{ user: UserInfo }>('/user/profile'),
   updateProfile: (body: { nickname?: string; avatar?: string; bio?: string }) =>
@@ -44,6 +60,7 @@ export const marketplaceAPI = {
   update: (id: string, body: Partial<MarketplaceItem>) =>
     request<{ message: string }>(`/marketplace/items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (id: string) => request<{ message: string }>(`/marketplace/items/${id}`, { method: 'DELETE' }),
+  submit: (id: string) => request<{ message: string }>(`/marketplace/items/${id}/submit`, { method: 'POST' }),
 };
 
 export interface UserInfo {
@@ -72,6 +89,10 @@ export interface MarketplaceItem {
   downloads: number;
   rating: number;
   rating_count: number;
+  review_status: string;
+  review_note: string;
+  reviewed_at: string | null;
+  submitted_at: string | null;
   created_at: string;
   author?: UserInfo;
 }
@@ -311,4 +332,8 @@ export const billingAPI = {
   createOrder: (body: { package_id: string; pay_method: string; claw_id?: string }) =>
     request<{ order_no: string; pay_url: string }>('/pay/create', { method: 'POST', body: JSON.stringify(body) }),
   queryOrder: (orderNo: string) => request<{ status: string; paid: boolean }>(`/pay/order/${orderNo}/status`),
+  convertToEnergy: (amount: number, clawId?: string) =>
+    request<{ message: string; amount_cny: number; stars_granted: number; energy_granted: number; claw_id: string; new_balance: number }>(
+      '/pay/convert-energy', { method: 'POST', body: JSON.stringify({ amount, claw_id: clawId }) }
+    ),
 };

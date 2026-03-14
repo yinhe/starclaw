@@ -16,6 +16,7 @@ import (
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/overlord"
 	"github.com/yinhe/starclaw/internal/swarm"
 )
@@ -24,11 +25,12 @@ import (
 type SystemHandler struct {
 	cfg            *config.Config
 	swarmClient    *swarm.Client
+	identity       *node.Identity
 	overlordClient *overlord.Client
 }
 
-func NewSystemHandler(cfg *config.Config, sc *swarm.Client, oc ...*overlord.Client) *SystemHandler {
-	h := &SystemHandler{cfg: cfg, swarmClient: sc}
+func NewSystemHandler(cfg *config.Config, sc *swarm.Client, identity *node.Identity, oc ...*overlord.Client) *SystemHandler {
+	h := &SystemHandler{cfg: cfg, swarmClient: sc, identity: identity}
 	if len(oc) > 0 {
 		h.overlordClient = oc[0]
 	}
@@ -108,6 +110,12 @@ func (h *SystemHandler) JoinSwarm(c *gin.Context) {
 		h.swarmClient.Stop()
 	}
 	h.swarmClient = swarm.NewClient(h.cfg.Swarm)
+	if h.identity != nil {
+		h.swarmClient.SetIdentity(h.identity)
+	}
+	if h.cfg.Node.Address != "" {
+		h.swarmClient.SetAddress(h.cfg.Node.Address)
+	}
 	h.swarmClient.Start()
 
 	log.Printf("[system] joined swarm: queen=%s node=%s region=%s", req.QueenURL, req.NodeName, req.Region)

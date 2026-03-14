@@ -24,6 +24,7 @@ import (
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/inference"
+	"github.com/yinhe/starclaw/internal/instinct"
 	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
@@ -144,7 +145,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	mcp.AutoRegisterBridge(toolRegistry)
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
@@ -155,6 +156,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
 	taskWorker.Start()
+
+	// Start Instinct engine (proactive behavior system)
+	instinctEngine := instinct.NewEngine(db)
+	instinctEngine.Start()
 
 	// RAG embedding provider (configured via env or config)
 	embedder := rag.NewOpenAIEmbedding(rag.OpenAIEmbeddingConfig{
@@ -215,6 +220,31 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.GET("/auth/oauth/providers", oauthHandler.GetOAuthConfig)
 		apiV1.POST("/auth/oauth/github", oauthHandler.GitHubCallback)
 		apiV1.POST("/auth/oauth/google", oauthHandler.GoogleCallback)
+
+		// Public identity endpoints (for Sign-In with Claw on Queen portal)
+		apiV1.GET("/identity/info", func(c *gin.Context) {
+			c.JSON(200, gin.H{
+				"node_id":    identity.NodeID,
+				"public_key": identity.PublicKeyHex(),
+			})
+		})
+		apiV1.POST("/identity/sign-challenge", func(c *gin.Context) {
+			var req struct {
+				Challenge string `json:"challenge" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "challenge required"})
+				return
+			}
+			// Sign the challenge with this node's private key
+			sig := identity.Sign([]byte(req.Challenge))
+			c.JSON(200, gin.H{
+				"node_id":    identity.NodeID,
+				"public_key": identity.PublicKeyHex(),
+				"signature":  fmt.Sprintf("%x", sig),
+				"challenge":  req.Challenge,
+			})
+		})
 
 		// Deploy mode info (public, no auth needed)
 		apiV1.GET("/config", func(c *gin.Context) {
@@ -787,7 +817,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			if len(swarmClient) > 0 {
 				sc = swarmClient[0]
 			}
-			systemHandler := v1.NewSystemHandler(cfg, sc)
+			systemHandler := v1.NewSystemHandler(cfg, sc, identity)
 			protected.GET("/system/update", systemHandler.GetUpdateInfo)
 			protected.POST("/system/update", systemHandler.TriggerUpdate)
 			protected.POST("/system/update/check", systemHandler.ForceCheck)
@@ -845,6 +875,19 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/schedules", scheduleHandler.Create)
 			protected.POST("/schedules/:id/toggle", scheduleHandler.Toggle)
 			protected.DELETE("/schedules/:id", scheduleHandler.Delete)
+
+			// Activities (Instinct — proactive behavior system)
+			activityHandler := v1.NewActivityHandler(db, instinctEngine)
+			protected.GET("/activities", activityHandler.List)
+			protected.GET("/activities/templates", activityHandler.Templates)
+			protected.POST("/activities/seed", activityHandler.Seed)
+			protected.POST("/activities", activityHandler.Create)
+			protected.GET("/activities/:id", activityHandler.Get)
+			protected.PUT("/activities/:id", activityHandler.Update)
+			protected.POST("/activities/:id/toggle", activityHandler.Toggle)
+			protected.DELETE("/activities/:id", activityHandler.Delete)
+			protected.GET("/activities/:id/logs", activityHandler.Logs)
+			protected.POST("/activities/events/:event", activityHandler.FireEvent)
 
 			// Audit Logs
 			auditHandler := v1.NewAuditHandler(db)
