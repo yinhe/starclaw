@@ -1,0 +1,39 @@
+services:
+  nydus-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nydus-server
+    restart: unless-stopped
+    environment:
+      NYDUS_CONFIG: /app/nydus.yaml
+    volumes:
+      - /data/nydus/repos:/data/nydus/repos
+      - ./nydus.yaml:/app/nydus.yaml:ro
+    ports:
+      - "127.0.0.1:8095:8095"
+      # SSH handled by host sshd (git user), no container SSH needed
+    networks:
+      - starqueen
+
+  nydus-worm:
+    build:
+      context: .
+      dockerfile: Dockerfile.worm
+    container_name: nydus-worm
+    restart: unless-stopped
+    environment:
+      NYDUS_WORM_CONFIG: /app/worm.yaml
+    volumes:
+      - ./worm.yaml:/app/worm.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt:/opt    # access to deploy paths
+    ports:
+      - "127.0.0.1:8096:8096"
+    networks:
+      - starqueen
+
+networks:
+  starqueen:
+    name: starqueen
+    external: true

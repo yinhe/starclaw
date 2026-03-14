@@ -1,0 +1,24 @@
+server:
+  port: "8095"
+  secret: "nydus-sc2026-vKwRmT9xLpQjN3hB"
+  repos_dir: "/data/nydus/repos"
+  ssh_user: "git"
+
+# Monorepo 模式：一个 starclaw.git 仓库，按子目录分发到不同服务器
+repos:
+  starclaw:
+    description: "StarClaw monorepo — 全部代码"
+    targets:
+      - name: "queen-server-c"
+        worm_url: "http://127.0.0.1:8096"
+        deploy_path: "/opt/starclaw-queen"
+        deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build"
+        subdir: "queen"
+        branch: "main"
+
+      - name: "gateway-server-b"
+        worm_url: "http://47.103.51.32:8096"
+        deploy_path: "/opt/starclaw/gateway"
+        deploy_cmd: "docker compose -f docker-compose.gateway.yml up -d --build"
+        subdir: "queen/api"
+        branch: "main"

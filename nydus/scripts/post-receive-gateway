@@ -1,0 +1,7 @@
+#!/bin/sh
+while read oldrev newrev refname; do
+  branch=$(echo "$refname" | sed 's|refs/heads/||')
+  curl -sf -X POST "http://127.0.0.1:8095/hooks/push?secret=nydus-sc2026-vKwRmT9xLpQjN3hB" \
+    -H "Content-Type: application/json" \
+    -d "{\"repo\":\"gateway\",\"branch\":\"$branch\",\"newrev\":\"$newrev\"}" || true
+done

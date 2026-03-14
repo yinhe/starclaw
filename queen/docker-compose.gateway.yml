@@ -1,0 +1,37 @@
+# Star-AI Gateway — Queen API on Server B (star-ai.net)
+# Reuses existing star-ai-mysql via router_default network
+#
+# Usage:
+#   cd /opt/starclaw/gateway
+#   docker compose -f docker-compose.gateway.yml up -d --build
+
+services:
+  queen-api:
+    build:
+      context: ./api
+      args:
+        GOPROXY: https://goproxy.cn,direct
+    container_name: star-ai-gateway
+    restart: unless-stopped
+    environment:
+      QUEEN_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(star-ai-mysql:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      QUEEN_PORT: "8085"
+      JWT_SECRET: "${JWT_SECRET}"
+      GIN_MODE: release
+      # Gateway upstream provider API keys
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY}"
+      DASHSCOPE_API_KEY: "${DASHSCOPE_API_KEY}"
+      GOOGLE_API_KEY: "${GOOGLE_API_KEY}"
+      GROK_API_KEY: "${GROK_API_KEY}"
+      MINIMAX_API_KEY: "${MINIMAX_API_KEY}"
+      PROXY_INTERNAL_SECRET: "${PROXY_INTERNAL_SECRET}"
+    ports:
+      - "8085:8085"
+    networks:
+      - router_default
+
+networks:
+  router_default:
+    external: true

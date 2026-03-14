@@ -39,3 +39,18 @@ cors:
     - "https://star-ai.net"
     - "http://localhost:5173"
     - "http://localhost:5174"
+
+# star-ai.net API Gateway — upstream provider config
+# 海外 Provider 通过 proxy.star-ai.net 中转，国内 Provider 直连
+gateway:
+  providers:
+    openai:
+      base_url: "https://proxy.star-ai.net/v1"
+    anthropic:
+      base_url: "https://proxy.star-ai.net/v1"
+    deepseek: {}
+    qwen: {}
+    gemini:
+      base_url: "https://proxy.star-ai.net/v1"
+    grok:
+      base_url: "https://proxy.star-ai.net/v1"

@@ -136,8 +136,38 @@ func Load() {
 		C.JWT.Secret = secret
 	}
 
+	// Env override for gateway provider API keys
+	loadGatewayEnv()
+
 	// Load payment config from .env
 	loadPayConfig()
+}
+
+func loadGatewayEnv() {
+	if C.Gateway.Providers == nil {
+		C.Gateway.Providers = make(map[string]GatewayProviderConfig)
+	}
+	// 国内直连 Provider — 用各自的 API Key
+	directEnv := map[string]string{
+		"deepseek": "DEEPSEEK_API_KEY",
+		"qwen":     "DASHSCOPE_API_KEY",
+		"minimax":  "MINIMAX_API_KEY",
+	}
+	for provider, envKey := range directEnv {
+		if key := viper.GetString(envKey); key != "" {
+			p := C.Gateway.Providers[provider]
+			p.APIKey = key
+			C.Gateway.Providers[provider] = p
+		}
+	}
+	// 海外 Provider — 统一用 PROXY_INTERNAL_SECRET 认证 proxy
+	if secret := viper.GetString("PROXY_INTERNAL_SECRET"); secret != "" {
+		for _, provider := range []string{"openai", "anthropic", "gemini", "grok"} {
+			p := C.Gateway.Providers[provider]
+			p.APIKey = secret
+			C.Gateway.Providers[provider] = p
+		}
+	}
 }
 
 func loadPayConfig() {

@@ -392,7 +392,8 @@ app.use((req, res, next) => {
 	if (
 		req.path.startsWith('/audio') ||
 		req.path.startsWith('/uploads') ||
-		req.path.startsWith('/videos')
+		req.path.startsWith('/videos') ||
+		req.path.startsWith('/v1/')
 	) {
 		next() // 如果是/audio路径的请求，直接放行，不进行API密钥验证
 	} else {
@@ -782,6 +783,98 @@ function apiKeyValidation(req, res, next) {
 		res.status(401).send({ error: 'API Key is invalid or missing' })
 	}
 }
+
+// === Gateway 中转（供 star-ai.net Gateway 代理海外 API） ===
+// 根据 model 前缀自动路由到正确的上游 Provider
+const PROXY_INTERNAL_SECRET = process.env.PROXY_INTERNAL_SECRET || ''
+const GATEWAY_PROVIDERS = {
+	openai:    { url: 'https://api.openai.com/v1',                           key: process.env.OPENAI_API_KEY || process.env.API_KEY },
+	grok:      { url: 'https://api.x.ai/v1',                                key: process.env.GROK_API_KEY || process.env.GROK_API_KEY_4 },
+	anthropic: { url: 'https://api.anthropic.com/v1',                        key: process.env.ANTHROPIC_API_KEY },
+	gemini:    { url: 'https://generativelanguage.googleapis.com/v1beta/openai', key: process.env.GOOGLE_API_KEY },
+}
+
+function resolveGatewayProvider(model) {
+	if (!model) return null
+	if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4') || model.startsWith('chatgpt-') || model.startsWith('codex-')) return 'openai'
+	if (model.startsWith('grok-')) return 'grok'
+	if (model.startsWith('claude-')) return 'anthropic'
+	if (model.startsWith('gemini-')) return 'gemini'
+	return 'openai' // default fallback
+}
+
+function gatewayAuth(req, res, next) {
+	const xKey = (req.get('X-API-KEY') || '').toString()
+	const bearer = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+	const key = xKey || bearer
+	const validKeys = [PROXY_API_KEY, PROXY_INTERNAL_SECRET].filter(Boolean)
+	if (key && validKeys.includes(key)) {
+		next()
+	} else {
+		res.status(401).json({ error: { message: 'API Key is invalid or missing' } })
+	}
+}
+
+app.post('/v1/chat/completions', gatewayAuth, async (req, res) => {
+	try {
+		const model = (req.body?.model || '').toString()
+		const providerName = resolveGatewayProvider(model)
+		console.log(`[gateway] ${model} → ${providerName}`)
+
+		// Grok: 使用 OpenAI SDK client（避免 Cloudflare 拦截）
+		if (providerName === 'grok') {
+			const grokClient = getBestGrokClientForModel(model) || getDefaultGrokClient()
+			if (!grokClient) {
+				return res.status(400).json({ error: { message: 'Grok API not configured on proxy' } })
+			}
+			if (req.body?.stream) {
+				const stream = await grokClient.chat.completions.create({ ...req.body, stream: true })
+				res.setHeader('Content-Type', 'text/event-stream')
+				res.setHeader('Cache-Control', 'no-cache')
+				res.setHeader('Connection', 'keep-alive')
+				for await (const chunk of stream) {
+					res.write(`data: ${JSON.stringify(chunk)}\n\n`)
+				}
+				res.write('data: [DONE]\n\n')
+				res.end()
+			} else {
+				const result = await grokClient.chat.completions.create(req.body)
+				res.json(result)
+			}
+			return
+		}
+
+		// 其他 Provider: 使用 axios 直接转发
+		const provider = GATEWAY_PROVIDERS[providerName]
+		if (!provider || !provider.key) {
+			return res.status(400).json({ error: { message: `provider "${providerName}" not configured on proxy` } })
+		}
+		const upstreamUrl = `${provider.url}/chat/completions`
+		const upstreamRes = await axios({
+			method: 'POST',
+			url: upstreamUrl,
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${provider.key}`,
+			},
+			data: req.body,
+			responseType: req.body?.stream ? 'stream' : 'json',
+			timeout: 300000,
+		})
+		if (req.body?.stream) {
+			res.setHeader('Content-Type', 'text/event-stream')
+			res.setHeader('Cache-Control', 'no-cache')
+			res.setHeader('Connection', 'keep-alive')
+			upstreamRes.data.pipe(res)
+		} else {
+			res.status(upstreamRes.status).json(upstreamRes.data)
+		}
+	} catch (e) {
+		const status = e.response?.status || e.status || 502
+		const data = e.response?.data || { error: { message: e.message } }
+		res.status(status).json(data)
+	}
+})
 
 // 全局应用到所有路由
 app.use(limiter)

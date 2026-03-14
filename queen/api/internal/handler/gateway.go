@@ -661,28 +661,90 @@ type modelPricing struct {
 }
 
 var supportedModels = []modelEntry{
-	// OpenAI
-	{ID: "gpt-4o", Provider: "openai"},
-	{ID: "gpt-4o-mini", Provider: "openai"},
+	// ── OpenAI: Reasoning ──
+	{ID: "o3", Provider: "openai"},
+	{ID: "o3-mini", Provider: "openai"},
+	{ID: "o3-pro", Provider: "openai"},
+	{ID: "o4-mini", Provider: "openai"},
+	{ID: "o1", Provider: "openai"},
+	{ID: "o1-mini", Provider: "openai"},
+	{ID: "o1-pro", Provider: "openai"},
+	// ── OpenAI: GPT-4.1 ──
 	{ID: "gpt-4.1", Provider: "openai"},
 	{ID: "gpt-4.1-mini", Provider: "openai"},
 	{ID: "gpt-4.1-nano", Provider: "openai"},
-	{ID: "o3", Provider: "openai"},
-	{ID: "o3-mini", Provider: "openai"},
-	{ID: "o4-mini", Provider: "openai"},
-	// Anthropic
+	// ── OpenAI: GPT-4o ──
+	{ID: "gpt-4o", Provider: "openai"},
+	{ID: "gpt-4o-mini", Provider: "openai"},
+	{ID: "gpt-4o-search-preview", Provider: "openai"},
+	{ID: "gpt-4o-mini-search-preview", Provider: "openai"},
+	{ID: "chatgpt-4o-latest", Provider: "openai"},
+	// ── OpenAI: Legacy ──
+	{ID: "gpt-4-turbo", Provider: "openai"},
+	{ID: "gpt-4", Provider: "openai"},
+	{ID: "gpt-3.5-turbo", Provider: "openai"},
+	// ── OpenAI: Codex ──
+	{ID: "codex-mini-latest", Provider: "openai"},
+	// ── Anthropic ──
 	{ID: "claude-sonnet-4-20250514", Provider: "anthropic"},
+	{ID: "claude-3-7-sonnet-20250219", Provider: "anthropic"},
+	{ID: "claude-3-5-sonnet-20241022", Provider: "anthropic"},
 	{ID: "claude-3-5-haiku-20241022", Provider: "anthropic"},
-	// DeepSeek
+	{ID: "claude-3-opus-20240229", Provider: "anthropic"},
+	// ── DeepSeek ──
 	{ID: "deepseek-chat", Provider: "deepseek"},
 	{ID: "deepseek-reasoner", Provider: "deepseek"},
-	// Qwen
+	// ── Qwen: 核心系列 ──
+	{ID: "qwen3.5-plus", Provider: "qwen"},
+	{ID: "qwen3-max", Provider: "qwen"},
+	{ID: "qwen-max", Provider: "qwen"},
 	{ID: "qwen-plus", Provider: "qwen"},
 	{ID: "qwen-turbo", Provider: "qwen"},
-	{ID: "qwen-max", Provider: "qwen"},
-	// Gemini
+	{ID: "qwen-flash", Provider: "qwen"},
+	{ID: "qwen-long", Provider: "qwen"},
+	// ── Qwen: 推理 (QwQ) ──
+	{ID: "qwq-plus", Provider: "qwen"},
+	{ID: "qwq-max", Provider: "qwen"},
+	{ID: "qwq-32b", Provider: "qwen"},
+	// ── Qwen: 视觉 ──
+	{ID: "qwen3-vl-plus", Provider: "qwen"},
+	{ID: "qwen3-vl-flash", Provider: "qwen"},
+	{ID: "qwen-vl-max", Provider: "qwen"},
+	{ID: "qwen-vl-plus", Provider: "qwen"},
+	// ── Qwen: 编程 ──
+	{ID: "qwen3-coder-plus", Provider: "qwen"},
+	{ID: "qwen3-coder-flash", Provider: "qwen"},
+	{ID: "qwen-coder-plus", Provider: "qwen"},
+	{ID: "qwen-coder-turbo", Provider: "qwen"},
+	// ── Qwen: 数学 ──
+	{ID: "qwen-math-plus", Provider: "qwen"},
+	{ID: "qwen-math-turbo", Provider: "qwen"},
+	// ── Qwen: 全模态 ──
+	{ID: "qwen3-omni-flash", Provider: "qwen"},
+	{ID: "qwen-omni-turbo", Provider: "qwen"},
+	// ── Qwen: 其他 ──
+	{ID: "qwen-deep-research", Provider: "qwen"},
+	// ── Gemini ──
+	{ID: "gemini-2.5-pro", Provider: "gemini"},
+	{ID: "gemini-2.5-flash", Provider: "gemini"},
 	{ID: "gemini-2.0-flash", Provider: "gemini"},
-	{ID: "gemini-2.5-pro-preview-06-05", Provider: "gemini"},
+	{ID: "gemini-2.0-flash-lite", Provider: "gemini"},
+	{ID: "gemini-1.5-pro", Provider: "gemini"},
+	{ID: "gemini-1.5-flash", Provider: "gemini"},
+	// ── Grok ──
+	{ID: "grok-3", Provider: "grok"},
+	{ID: "grok-3-mini", Provider: "grok"},
+	{ID: "grok-3-fast", Provider: "grok"},
+	{ID: "grok-2", Provider: "grok"},
+	{ID: "grok-2-mini", Provider: "grok"},
+	{ID: "grok-2-vision", Provider: "grok"},
+	// ── MiniMax ──
+	{ID: "MiniMax-M2.5", Provider: "minimax"},
+	{ID: "MiniMax-M2.5-highspeed", Provider: "minimax"},
+	{ID: "MiniMax-M2.1", Provider: "minimax"},
+	{ID: "MiniMax-M2", Provider: "minimax"},
+	{ID: "MiniMax-Text-01", Provider: "minimax"},
+	{ID: "MiniMax-VL-01", Provider: "minimax"},
 }
 
 // Default upstream URLs (OpenAI-compatible)
@@ -692,6 +754,8 @@ var defaultUpstreams = map[string]string{
 	"deepseek":  "https://api.deepseek.com/v1",
 	"qwen":      "https://dashscope.aliyuncs.com/compatible-mode/v1",
 	"gemini":    "https://generativelanguage.googleapis.com/v1beta/openai",
+	"grok":      "https://api.x.ai/v1",
+	"minimax":   "https://api.minimax.io/v1",
 }
 
 func (h *GatewayHandler) resolveProvider(modelName string) (providerName, upstreamURL, apiKey string) {
@@ -707,16 +771,20 @@ func (h *GatewayHandler) resolveProvider(modelName string) (providerName, upstre
 	// Fallback: infer from model name prefix
 	if provider == "" {
 		switch {
-		case strings.HasPrefix(modelName, "gpt-") || strings.HasPrefix(modelName, "o1") || strings.HasPrefix(modelName, "o3") || strings.HasPrefix(modelName, "o4"):
+		case strings.HasPrefix(modelName, "gpt-") || strings.HasPrefix(modelName, "o1") || strings.HasPrefix(modelName, "o3") || strings.HasPrefix(modelName, "o4") || strings.HasPrefix(modelName, "chatgpt-") || strings.HasPrefix(modelName, "codex-"):
 			provider = "openai"
 		case strings.HasPrefix(modelName, "claude-"):
 			provider = "anthropic"
 		case strings.HasPrefix(modelName, "deepseek-"):
 			provider = "deepseek"
-		case strings.HasPrefix(modelName, "qwen-"):
+		case strings.HasPrefix(modelName, "qwen") || strings.HasPrefix(modelName, "qwq") || strings.HasPrefix(modelName, "qvq"):
 			provider = "qwen"
 		case strings.HasPrefix(modelName, "gemini-"):
 			provider = "gemini"
+		case strings.HasPrefix(modelName, "grok-"):
+			provider = "grok"
+		case strings.HasPrefix(modelName, "MiniMax-"):
+			provider = "minimax"
 		default:
 			return "", "", ""
 		}
@@ -737,23 +805,29 @@ func getModelPricing(modelName string) modelPricing {
 	// Pricing in 分 per 1M tokens (approximate, generous margins)
 	// NOTE: check -mini/-nano BEFORE prefix matches so o3-mini is cheap
 	switch {
-	case strings.HasSuffix(modelName, "-mini") || strings.HasSuffix(modelName, "-nano"):
+	case strings.HasSuffix(modelName, "-mini") || strings.HasSuffix(modelName, "-nano") || strings.HasSuffix(modelName, "-lite"):
 		return modelPricing{InputPer1M: 15, OutputPer1M: 60}
 	// OpenAI premium
+	case modelName == "o3-pro":
+		return modelPricing{InputPer1M: 1000, OutputPer1M: 4000}
 	case strings.HasPrefix(modelName, "o3") || strings.HasPrefix(modelName, "o4") ||
 		modelName == "gpt-4.1":
 		return modelPricing{InputPer1M: 200, OutputPer1M: 800}
 	case modelName == "gpt-4o":
 		return modelPricing{InputPer1M: 150, OutputPer1M: 600}
 	// Anthropic
-	case strings.HasPrefix(modelName, "claude-sonnet"):
+	case strings.Contains(modelName, "opus"):
+		return modelPricing{InputPer1M: 1000, OutputPer1M: 4000}
+	case strings.Contains(modelName, "sonnet"):
 		return modelPricing{InputPer1M: 200, OutputPer1M: 800}
-	case strings.HasPrefix(modelName, "claude-3-5-haiku"):
+	case strings.Contains(modelName, "haiku"):
 		return modelPricing{InputPer1M: 50, OutputPer1M: 200}
 	// DeepSeek (cheap)
 	case strings.HasPrefix(modelName, "deepseek-"):
 		return modelPricing{InputPer1M: 10, OutputPer1M: 20}
-	// Qwen (cheap)
+	// Qwen
+	case strings.HasPrefix(modelName, "qwen3") || strings.HasPrefix(modelName, "qwq") || strings.HasPrefix(modelName, "qvq"):
+		return modelPricing{InputPer1M: 20, OutputPer1M: 40}
 	case strings.HasPrefix(modelName, "qwen-"):
 		return modelPricing{InputPer1M: 10, OutputPer1M: 20}
 	// Gemini
@@ -761,6 +835,14 @@ func getModelPricing(modelName string) modelPricing {
 		return modelPricing{InputPer1M: 100, OutputPer1M: 400}
 	case strings.HasPrefix(modelName, "gemini-"):
 		return modelPricing{InputPer1M: 5, OutputPer1M: 15}
+	// Grok
+	case modelName == "grok-3":
+		return modelPricing{InputPer1M: 200, OutputPer1M: 800}
+	case strings.HasPrefix(modelName, "grok-"):
+		return modelPricing{InputPer1M: 50, OutputPer1M: 200}
+	// MiniMax
+	case strings.HasPrefix(modelName, "MiniMax-"):
+		return modelPricing{InputPer1M: 50, OutputPer1M: 200}
 	default:
 		return modelPricing{InputPer1M: 100, OutputPer1M: 400}
 	}
