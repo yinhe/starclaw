@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { nydusAPI, healthAPI, isAuthenticated, setSecret, verifySecret } from './lib/api'
 import type { Repo, Commit, Deploy, Release, ReleaseItem, TreeItem, ServerStats } from './lib/api'
+import { marked } from 'marked'
 import {
   GitBranch, Tag, Clock, Server, Download, ExternalLink,
   CheckCircle2, XCircle, Activity, RefreshCw,
@@ -528,9 +529,14 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
                 <FileText className="w-4 h-4 text-nydus-muted" />
                 <span className="text-sm font-medium">README.md</span>
               </div>
-              <div className="px-6 py-4 text-sm leading-relaxed text-nydus-text/90 whitespace-pre-wrap font-mono">
-                {readme}
-              </div>
+              <div className="px-6 py-4 prose prose-invert prose-sm max-w-none
+                prose-headings:text-nydus-text prose-a:text-nydus-blue prose-strong:text-nydus-text
+                prose-code:text-nydus-green prose-code:bg-nydus-bg prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+                prose-pre:bg-nydus-bg prose-pre:border prose-pre:border-nydus-border
+                prose-img:rounded-md prose-img:mx-auto
+                text-nydus-text/90 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: marked.parse(readme, { async: false }) as string }}
+              />
             </div>
           )}
 
@@ -564,12 +570,14 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
                     git clone {repo.https_url || `https://nydus.starclaw.net/${repoName}.git`}
                   </code>
                 </div>
-                <div>
-                  <div className="text-[10px] text-nydus-dim uppercase tracking-wider mb-1">SSH</div>
-                  <code className="block text-xs bg-nydus-bg px-3 py-2 rounded border border-nydus-border text-nydus-muted select-all break-all">
-                    git clone {repo.ssh_url}
-                  </code>
-                </div>
+                {authed && (
+                  <div>
+                    <div className="text-[10px] text-nydus-dim uppercase tracking-wider mb-1">SSH</div>
+                    <code className="block text-xs bg-nydus-bg px-3 py-2 rounded border border-nydus-border text-nydus-muted select-all break-all">
+                      git clone {repo.ssh_url}
+                    </code>
+                  </div>
+                )}
               </div>
             </SidebarCard>
           )}
