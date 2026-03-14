@@ -146,6 +146,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Auto-migrate task & notification tables
 	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{})
 
+	// Drop FK constraint on agents.model_id so agents can be created without a model
+	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
+
 	// Seed built-in agent templates (Creep marketplace)
 	v1.SeedBuiltinTemplates(db)
 
