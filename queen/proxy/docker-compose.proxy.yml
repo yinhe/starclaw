@@ -1,0 +1,27 @@
+# Append to /opt/starclaw-queen/docker-compose.prod.yml
+# Add before the volumes: section
+
+  redis-proxy:
+    image: redis:7-alpine
+    container_name: starclaw-queen-redis
+    restart: unless-stopped
+    volumes:
+      - redis_proxy_data:/data
+    networks:
+      - starqueen
+
+  proxy:
+    build:
+      context: ./proxy
+    container_name: starclaw-queen-proxy
+    restart: unless-stopped
+    env_file:
+      - ./proxy/.env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./proxy/data:/app/data
+    depends_on:
+      - redis-proxy
+    networks:
+      - starqueen

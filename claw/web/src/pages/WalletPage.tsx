@@ -19,11 +19,11 @@ interface CreditData {
 }
 
 const hpConfig: Record<string, { color: string; bg: string; gradient: string; label: string; emoji: string; desc: string }> = {
-  full:       { color: 'text-emerald-400', bg: 'bg-emerald-500', gradient: 'from-emerald-400 to-green-500',  label: '充沛', emoji: '🟢', desc: '星力充足，所有功能正常运行' },
-  healthy:    { color: 'text-green-400',   bg: 'bg-green-400',   gradient: 'from-green-400 to-emerald-500',  label: '健康', emoji: '🟢', desc: '星力健康，请保持' },
-  low:        { color: 'text-yellow-400',  bg: 'bg-yellow-400',  gradient: 'from-yellow-400 to-amber-500',   label: '偏低', emoji: '🟡', desc: '星力偏低，建议充值以避免服务中断' },
-  critical:   { color: 'text-orange-400',  bg: 'bg-orange-500',  gradient: 'from-orange-400 to-red-500',     label: '危急', emoji: '🟠', desc: '星力即将耗尽，请尽快充值！' },
-  hibernated: { color: 'text-red-400',     bg: 'bg-red-500',     gradient: 'from-red-400 to-red-600',        label: '休眠', emoji: '🔴', desc: '星力耗尽，部分功能已暂停' },
+  full:       { color: 'text-emerald-400', bg: 'bg-emerald-500', gradient: 'from-emerald-400 to-green-500',  label: '充沛', emoji: '🟢', desc: '星能充足，所有功能正常运行' },
+  healthy:    { color: 'text-green-400',   bg: 'bg-green-400',   gradient: 'from-green-400 to-emerald-500',  label: '健康', emoji: '🟢', desc: '星能健康，请保持' },
+  low:        { color: 'text-yellow-400',  bg: 'bg-yellow-400',  gradient: 'from-yellow-400 to-amber-500',   label: '偏低', emoji: '🟡', desc: '星能偏低，建议充值以避免服务中断' },
+  critical:   { color: 'text-orange-400',  bg: 'bg-orange-500',  gradient: 'from-orange-400 to-red-500',     label: '危急', emoji: '🟠', desc: '星能即将耗尽，请尽快充值！' },
+  hibernated: { color: 'text-red-400',     bg: 'bg-red-500',     gradient: 'from-red-400 to-red-600',        label: '休眠', emoji: '🔴', desc: '星能耗尽，部分功能已暂停' },
 }
 
 const trustConfig: Record<string, { label: string; color: string; icon: string }> = {
@@ -110,7 +110,7 @@ export default function WalletPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Wallet className="w-6 h-6" /> 星力钱包
+              <Wallet className="w-6 h-6" /> 星能钱包
             </h1>
             <p className="text-gray-500 text-sm mt-1">算力信用余额与节点身份</p>
           </div>
@@ -130,7 +130,7 @@ export default function WalletPage() {
             <WifiOff className="w-5 h-5 text-red-500 shrink-0" />
             <div>
               <p className="text-sm font-medium text-red-800">未连接虫群</p>
-              <p className="text-xs text-red-600 mt-0.5">星力余额通过虫群心跳同步，请先在设置中加入虫群。</p>
+              <p className="text-xs text-red-600 mt-0.5">星能余额通过虫群心跳同步，请先在设置中加入虫群。</p>
             </div>
           </div>
         )}
@@ -193,7 +193,7 @@ export default function WalletPage() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-semibold hover:from-amber-500 hover:to-orange-600 transition-all shadow-lg shadow-orange-500/25"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> 充值星力
+                  <ExternalLink className="w-3.5 h-3.5" /> 充值星能
                 </a>
               )}
             </div>
@@ -292,20 +292,20 @@ export default function WalletPage() {
           </section>
         )}
 
-        {/* Star Credits Explainer */}
+        {/* Star Energy Explainer */}
         <section className="bg-white border rounded-xl p-6">
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
-            <Star className="w-4 h-4" /> 关于星力 (Star Credits)
+            <Star className="w-4 h-4" /> 关于星能 (Star Energy)
           </h2>
           <div className="text-xs text-gray-500 space-y-2 leading-relaxed">
             <p>
-              <strong className="text-gray-700">星力 ⭐</strong> 是 StarClaw 虫群网络的算力信用单位。
+              <strong className="text-gray-700">星能 ⚡</strong> 是 StarClaw 虫群网络的算力能量单位。
               1 ⭐ = 10,000 内部单位，精度为 4 位小数。
             </p>
             <p>
               每个新注册的 Claw 节点加入虫群时自动获得 <strong className="text-gray-700">100 ⭐ 欢迎奖励</strong>。
-              星力可用于支付 API 调用费用、发布赏金任务、以及算力贡献结算。
-              你也可以在 <a href="https://star-ai.net/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-medium">star-ai.net</a> 直接充值星力。
+              星能可用于支付 API 调用费用、发布赏金任务、以及算力贡献结算。
+              你也可以在 <a href="https://star-ai.net/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-medium">star-ai.net</a> 直接充值星能。
             </p>
             <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
               <p className="text-amber-800 font-medium">HP 状态等级</p>

@@ -14,7 +14,7 @@ import (
 	"github.com/yinhe/starclaw/internal/node"
 )
 
-// HPStatus represents claw health (star credit = HP)
+// HPStatus represents claw health (star energy = HP)
 type HPStatus string
 
 const (
@@ -26,12 +26,12 @@ const (
 	HPUnknown    HPStatus = "unknown"    // not yet queried
 )
 
-// CreditClient handles star credit operations with Queen's ledger API.
+// CreditClient handles star energy operations with Queen's ledger API.
 // It provides Ed25519-signed transfers, balance queries, and HP monitoring.
 type CreditClient struct {
-	queenURL  string
-	identity  *node.Identity
-	httpC     *http.Client
+	queenURL string
+	identity *node.Identity
+	httpC    *http.Client
 
 	mu        sync.RWMutex
 	cached    *CreditBalance
@@ -163,7 +163,7 @@ type TransferResult struct {
 	NewBalance  int64   `json:"new_balance"`
 }
 
-// Transfer sends star credits to another claw address, signed with Ed25519.
+// Transfer sends star energy to another claw address, signed with Ed25519.
 func (cc *CreditClient) Transfer(req TransferRequest) (*TransferResult, error) {
 	if cc.queenURL == "" {
 		return nil, fmt.Errorf("queen_url not configured")
@@ -326,8 +326,8 @@ func (cc *CreditClient) Stats() map[string]interface{} {
 	defer cc.mu.RUnlock()
 
 	stats := map[string]interface{}{
-		"hp":       string(cc.hp),
-		"claw_id":  cc.identity.NodeID,
+		"hp":        string(cc.hp),
+		"claw_id":   cc.identity.NodeID,
 		"queen_url": cc.queenURL,
 	}
 	if cc.cached != nil {
@@ -346,7 +346,7 @@ func (cc *CreditClient) Stats() map[string]interface{} {
 func logHPChange(old, new HPStatus, stars float64) {
 	switch new {
 	case HPHibernated:
-		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⭐) — HIBERNATED: star credits depleted, recharge to restore full functionality", old, new, stars)
+		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⭐) — HIBERNATED: star energy depleted, recharge to restore full functionality", old, new, stars)
 	case HPCritical:
 		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⭐) — CRITICAL: only basic text chat available", old, new, stars)
 	case HPLow:

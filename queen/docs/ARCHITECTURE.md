@@ -680,10 +680,10 @@ MetaMask 钱包地址  0xABC...     ←→   Claw 地址  claw:a3f8b2c1...
 - **已有预留** — Router 用户表的 `queen_uid` 字段用于 Phase 3 账户关联
 - **去中心化友好** — Claw 地址基于密钥对，不依赖中央用户数据库
 
-### 3.9 星力经济（Star Credits Economy）
+### 3.9 星能经济（Star Energy Economy）
 
-**星力（Stars ⭐）** 是整个虫群生态的内部货币，也是每只小龙虾的 **血量（HP）**。
-claw 地址同时就是钱包地址，星力余额归零意味着 Claw 休眠（软死亡）。
+**星能（Stars ⭐）** 是整个虫群生态的内部货币，也是每只小龙虾的 **血量（HP）**。
+claw 地址同时就是钱包地址，星能余额归零意味着 Claw 休眠（软死亡）。
 
 **单位：** 1 Star ⭐ ≈ ¥0.01 实际算力成本（Queen 控制汇率，可调）
 
@@ -712,7 +712,7 @@ claw 地址同时就是钱包地址，星力余额归零意味着 Claw 休眠（
 ```
 
 **关键等式：**
-- 星力 = 虫群内部货币 = Claw 的血量
+- 星能 = 虫群内部货币 = Claw 的血量
 - claw 地址 = 钱包地址
 - Ed25519 签名 = 转账/支付授权
 - Queen = 中央银行（记账 + 发行 + 汇率调控）
@@ -741,9 +741,9 @@ Claw 调用 Router API（目标流程）：
   类似 MetaMask 签名交易，一次签名完成认证和付费。
 ```
 
-#### 3.9.3 血量系统（HP）— 星力即生命
+#### 3.9.3 血量系统（HP）— 星能即生命
 
-| 血量状态 | 星力余额 | Claw 状态 | 可用功能 |
+| 血量状态 | 星能余额 | Claw 状态 | 可用功能 |
 |----------|---------|----------|---------|
 | 🟢 **满血** | > 1000 ⭐ | online | 全部功能 |
 | 🟢 **健康** | 100–1000 ⭐ | online | 全部功能 |
@@ -759,9 +759,9 @@ Claw 调用 Router API（目标流程）：
   ✅ 本地 Ollama/vLLM 模型推理
   ✅ 已有数据/对话/文件/知识库
   ✅ P2P 通信（Gossip/DHT，Nydus 直连）
-  ✅ 接收星力转账（可被"复活"）
+  ✅ 接收星能转账（可被"复活"）
 
-不可用（需要星力驱动）：
+不可用（需要星能驱动）：
   ❌ Router API 调用（签名认证通过但余额不足 → 拒绝）
   ❌ 发布赏金任务
   ❌ 购买市场模板/插件
@@ -772,7 +772,7 @@ Claw 调用 Router API（目标流程）：
   💰 充值（star-ai.net）
   🤝 其他 Claw 转账（互助）
   🏆 完成赏金任务（赚取）
-  ⛏️ 推理挖矿（贡献 GPU 算力换星力，见 §3.10）
+  ⛏️ 推理挖矿（贡献 GPU 算力换星能，见 §3.10）
 ```
 
 #### 3.9.4 交易流程
@@ -795,16 +795,16 @@ Claw 调用 Router API（目标流程）：
 大额转账（超过单笔阈值）→ 需要多签授权（见 §3.4.5）
 ```
 
-#### 3.9.5 星力来源与消耗
+#### 3.9.5 星能来源与消耗
 
 **获取方式（六种）：**
 
 | # | 方式 | 说明 | 类比 |
 |---|------|------|------|
-| 1 | **充值** | star-ai.net 充值 → 星力到 claw 地址 | 买游戏币 |
+| 1 | **充值** | star-ai.net 充值 → 星能到 claw 地址 | 买游戏币 |
 | 2 | **推理挖矿** | 贡献 GPU 给虫群跑推理 → Queen 按量发放 | 以太坊矿工 |
 | 3 | **赏金** | 完成 Bounty 任务 → 赏金释放到 claw | 打工赚钱 |
-| 4 | **售卖** | 在市场卖 Agent/工作流模板 → 收到星力 | 卖装备 |
+| 4 | **售卖** | 在市场卖 Agent/工作流模板 → 收到星能 | 卖装备 |
 | 5 | **转账** | 其他 claw 直接转入 | P2P 转账 |
 | 6 | **邀请** | 邀请新 Claw 加入虫群 → 双方获得奖励 | 拉新返利 |
 
@@ -820,11 +820,11 @@ Claw 调用 Router API（目标流程）：
 | 市场购买 | 模板/插件售价（卖家定价） |
 | 节点间转账 | 转出金额（无手续费） |
 
-> BYOK 模式（用户自己的 API Key）不消耗星力，仅走 Router 转发。
+> BYOK 模式（用户自己的 API Key）不消耗星能，仅走 Router 转发。
 
 #### 3.9.6 与区块链的异同
 
-| 维度 | StarClaw 星力经济 | 区块链（Bitcoin/Ethereum） |
+| 维度 | StarClaw 星能经济 | 区块链（Bitcoin/Ethereum） |
 |------|-------------------|--------------------------|
 | **身份** | Ed25519 + claw: 地址 | ECDSA/Ed25519 + 0x 地址 |
 | **助记词** | BIP-39 (24词) ✅ | BIP-39 (12/24词) ✅ |
@@ -849,7 +849,7 @@ Claw 调用 Router API（目标流程）：
 | **Phase 3** | Router 签名认证：claw 签名替代 API Key + 按调用扣费 | 计划中 |
 | **Phase 4** | 血量系统：Claw 端余额监控 + 休眠/复活机制 | ✅ 已完成（`swarm/credit_client.go` HP 监控 + CLI） |
 | **Phase 5** | 充值通道：star-ai.net 充值 → claw 地址到账 | 部分（Queen 计费 + 支付宝/微信已对接） |
-| **Phase 6** | 推理挖矿：GPU 贡献 → Queen 调度 → 星力发放（见 §3.10） | ✅ 已完成（ContributorService + 90/10 结算） |
+| **Phase 6** | 推理挖矿：GPU 贡献 → Queen 调度 → 星能发放（见 §3.10） | ✅ 已完成（ContributorService + 90/10 结算） |
 | **Phase 7** | 市场经济：Agent/模板/插件买卖 + 交易手续费 | 计划中 |
 | **Phase 8** | 跨 Brood 交易：不同 Overlord 下的 Claw 互相转账 | 计划中 |
 
@@ -860,7 +860,7 @@ Claw 调用 Router API（目标流程）：
 
 #### 3.10.1 推理挖矿机制（Phase 1 — ✅ 已实现）
 
-> **实现状态：** 算力贡献（ContributorService v2026.0312.1855）、信任体系（TrustScore + SpotChecker v2026.0312.1934）、NAT 穿透（Nydus v2026.0312.2039）、星力账本（Queen credit API）、Claw 端星力客户端（CreditClient + HP 监控 + CLI v2026.0313）均已完成。
+> **实现状态：** 算力贡献（ContributorService v2026.0312.1855）、信任体系（TrustScore + SpotChecker v2026.0312.1934）、NAT 穿透（Nydus v2026.0312.2039）、星能账本（Queen credit API）、Claw 端星能客户端（CreditClient + HP 监控 + CLI v2026.0313）均已完成。
 
 有 GPU 的 Claw 向 Queen 注册为 **算力提供者**，为其他无 GPU 节点或 Router 用户提供推理服务：
 
@@ -911,7 +911,7 @@ Claw 调用 Router API（目标流程）：
 3. Queen 写入算力路由表
 4. 心跳上报中附带实时负载：
    { ..., gpu_utilization: 30, queue_depth: 2 }
-5. 收到推理请求 → 执行 → 返回结果 → 获得星力
+5. 收到推理请求 → 执行 → 返回结果 → 获得星能
 ```
 
 **计费与分成：**
@@ -974,11 +974,11 @@ Queen 随机抽检机制：
 
 #### 3.10.3 奖励池来源
 
-矿工赚的星力不是凭空产生的：
+矿工赚的星能不是凭空产生的：
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                  星力奖励池                        │
+│                  星能奖励池                        │
 │                                                   │
 │  ① 推理收入池（直接支付）                          │
 │     └── 请求者按 token 付费 → 90% 直接给矿工       │
@@ -990,7 +990,7 @@ Queen 随机抽检机制：
 │     → 每日自动分配给在线矿工                        │
 │                                                   │
 │  ③ 平台收入池（外部注入）                           │
-│     └── star-ai.net 订阅收入的 30% 转为星力         │
+│     └── star-ai.net 订阅收入的 30% 转为星能         │
 │     → Queen 按贡献比例分配                          │
 │                                                   │
 │  ④ 增发池（控制通胀，初期启动用）                    │
@@ -1456,7 +1456,7 @@ Nydus 是 StarClaw 的 **开源 P2P 互联层**——小龙虾之间可以直接
 - **NydusManager**：`nydus.go` — 编排 STUN→打洞→中继，PeerConn 池，5min 重探，IP 变化回调
 - **算力贡献**：`inference/contributor.go` — 自动检测 Ollama 模型，注册到 peer router，30s 心跳（v2026.0312.1855）
 - **信任体系**：`inference/trust.go` + `spotcheck.go` — 五维信任评分 + 1% 抽检 + 信任加权调度（v2026.0312.1934）
-- **星力客户端**：`swarm/credit_client.go` — Ed25519 签名转账 + HP 血量监控 + CLI（v2026.0313）
+- **星能客户端**：`swarm/credit_client.go` — Ed25519 签名转账 + HP 血量监控 + CLI（v2026.0313）
 
 #### 7.4.1 多层节点发现（Peer Discovery）
 
@@ -4052,7 +4052,7 @@ providers:
 | Phase 7 | 算力贡献（ContributorService + SettlementClient + 90/10 结算） | `inference/contributor.go`, `settlement.go` | v2026.0312.1855 | 2026-03-13 |
 | Phase 8 | 信任体系（TrustScore + SpotChecker 1% 抽检 + 信任加权调度） | `inference/trust.go`, `spotcheck.go` | v2026.0312.1934 | 2026-03-13 |
 | Phase 9 | Nydus NAT 穿透（STUN 探测 + UDP 打洞 + Relay 兜底 + NydusManager） | `node/nydus_*.go` | v2026.0312.2039 | 2026-03-13 |
-| Phase 10 | 星力经济 Claw 集成（CreditClient + HP 血量监控 + CLI balance/transfer/transactions） | `swarm/credit_client.go`, `system.go` | v2026.0313 | 2026-03-13 |
+| Phase 10 | 星能经济 Claw 集成（CreditClient + HP 血量监控 + CLI balance/transfer/transactions） | `swarm/credit_client.go`, `system.go` | v2026.0313 | 2026-03-13 |
 | Phase 11 | 脑虫记忆 Cerebrate（LLM 自动提取 5 类记忆 + 对话注入 + CRUD API） | `memory/cerebrate.go`, `model/memory.go` | v2026.0313 | 2026-03-13 |
 | Phase 12 | star-ai.net API Gateway（OpenAI 兼容代理 + Anthropic 转换 + 按量计费 + API Key 管理） | `handler/gateway.go`, `provider/starai.go` | v2026.0313 | 2026-03-13 |
 
@@ -4062,7 +4062,7 @@ providers:
 |------|------|---------|
 | 认证 | 邮箱/手机/OAuth(Google/GitHub) + JWT | `handler/auth.go` |
 | 计费 | 支付宝/微信支付 + 套餐 + 余额 + 订单 | `handler/billing.go` |
-| 星力账本 | 余额/Ed25519 签名转账/冻结/解冻/结算/推理结算/定价 | `handler/credit.go` |
+| 星能账本 | 余额/Ed25519 签名转账/冻结/解冻/结算/推理结算/定价 | `handler/credit.go` |
 | 商城 | Agent 模板上架/搜索 | `handler/marketplace.go` |
 | 节点绑定 | claw: 地址 ↔ Queen 用户关联 | `handler/node_binding.go` |
 | 管理后台 | 用户/计费/内容审核/节点/Molt/赏金/社区 | `handler/admin_*.go`, `dashboard.go` |

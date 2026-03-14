@@ -62,7 +62,7 @@ func main() {
 		&model.RechargePackage{},
 		&model.NodeBinding{},
 		&model.ContentReport{},
-		// Star Credits (星力)
+		// Star Energy (星能)
 		&model.CreditAccount{},
 		&model.CreditTransaction{},
 		&model.CreditFreeze{},

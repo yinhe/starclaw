@@ -545,7 +545,7 @@ func cmdBalance() {
 	}
 
 	fmt.Println("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
-	fmt.Println("\u2551       StarClaw Star Credits                     \u2551")
+	fmt.Println("\u2551       StarClaw Star Energy                     \u2551")
 	fmt.Println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563")
 	fmt.Printf("  Claw ID:     %s\n", identity.NodeID)
 	fmt.Printf("  Balance:     %.2f Stars\n", balance.BalanceStars)
@@ -559,7 +559,7 @@ func cmdBalance() {
 	fmt.Println("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
 }
 
-// cmdTransfer sends star credits to another claw address.
+// cmdTransfer sends star energy to another claw address.
 func cmdTransfer() {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: starclaw transfer <claw:address> <amount_stars> [remark]")

@@ -347,7 +347,7 @@ contributor:
 }
 ```
 
-## 星力经济（Star Credits）
+## 星能经济（Star Energy）
 
 节点间的价值交换体系。每个 Claw 节点有唯一的 `claw:` 地址（Ed25519 公钥派生），可查询余额、签名转账、查看交易记录。
 
@@ -365,7 +365,7 @@ contributor:
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/v1/system/credits` | 查询星力余额（缓存值，加 `?refresh=true` 直接查 Queen） |
+| GET | `/v1/system/credits` | 查询星能余额（缓存值，加 `?refresh=true` 直接查 Queen） |
 | POST | `/v1/system/credits/transfer` | Ed25519 签名转账 |
 | GET | `/v1/system/credits/transactions` | 交易记录（`?page=1&page_size=20&type=transfer`） |
 
@@ -383,7 +383,7 @@ contributor:
 
 | 命令 | 说明 |
 |------|------|
-| `starclaw balance` | 查询星力余额和 HP 状态 |
+| `starclaw balance` | 查询星能余额和 HP 状态 |
 | `starclaw transfer <claw:地址> <金额> [备注]` | 签名转账 |
 | `starclaw transactions [--type transfer] [--page 1]` | 查看交易记录 |
 

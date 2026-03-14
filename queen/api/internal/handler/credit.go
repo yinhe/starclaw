@@ -21,7 +21,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// CreditHandler handles star credit (星力) operations
+// CreditHandler handles star energy (星能) operations
 type CreditHandler struct{}
 
 // ─── Constants ───

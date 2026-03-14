@@ -172,7 +172,7 @@ func (h *BillingHandler) CreateOrder(c *gin.Context) {
 		PackageID string `json:"package_id" binding:"required"`
 		PayMethod string `json:"pay_method" binding:"required"` // alipay / wechatpay
 		PayForm   string `json:"pay_form"`                      // pc / h5 / native
-		ClawID    string `json:"claw_id"`                       // optional: target claw for Star Credits
+		ClawID    string `json:"claw_id"`                       // optional: target claw for Star Energy
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
@@ -569,7 +569,7 @@ func (h *BillingHandler) completeOrder(orderNo, tradeNo, callbackRaw string) {
 			})
 		}
 
-		// ── Grant Star Credits to bound claw_id ──
+		// ── Grant Star Energy to bound claw_id ──
 		if order.ClawID != "" {
 			stars := cnyToStars(order.Amount + order.BonusAmount)
 			grantStarCredits(tx, order.ClawID, stars, fmt.Sprintf("recharge order %s", order.OrderNo))
@@ -603,7 +603,7 @@ func (h *BillingHandler) PayMethods(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"methods": methods})
 }
 
-// ---------- Star Credits Integration ----------
+// ---------- Star Energy Integration ----------
 
 const (
 	// Early promo rate: ¥0.01 = 1 Star = 10000 internal units
@@ -612,12 +612,12 @@ const (
 	CnyFenToStarUnits = 10000
 )
 
-// cnyToStars converts CNY amount (分) to Star Credit internal units
+// cnyToStars converts CNY amount (分) to Star Energy internal units
 func cnyToStars(amountFen int64) int64 {
 	return amountFen * CnyFenToStarUnits
 }
 
-// grantStarCredits adds Star Credits to a claw account within an existing DB transaction
+// grantStarCredits adds Star Energy to a claw account within an existing DB transaction
 func grantStarCredits(tx *gorm.DB, clawID string, amount int64, remark string) {
 	if clawID == "" || amount <= 0 {
 		return

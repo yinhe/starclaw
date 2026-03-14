@@ -179,7 +179,7 @@ func Setup() *gin.Engine {
 	v1.POST("/chat/completions", gw.ChatCompletions)
 	v1.GET("/models", gw.ListModels)
 
-	// ---- Star Credits (星力) — public API for claw wallets ----
+	// ---- Star Energy (星能) — public API for claw wallets ----
 	credit := &handler.CreditHandler{}
 	v1.GET("/credits/balance", credit.GetBalance)
 	v1.GET("/credits/transactions", credit.ListTransactions)
@@ -196,7 +196,7 @@ func Setup() *gin.Engine {
 		internal.POST("/billing/unfreeze", billing.InternalUnfreeze)
 		internal.POST("/billing/settle", billing.InternalSettle)
 
-		// Star Credits (internal — for Router/Swarm services)
+		// Star Energy (internal — for Router/Swarm services)
 		internal.POST("/credits/grant", credit.InternalGrant)
 		internal.POST("/credits/consume", credit.InternalConsume)
 		internal.GET("/credits/balance/:claw_id", credit.InternalGetBalance)

@@ -84,11 +84,11 @@ var ErrMsg = map[int]string{
 	CodeBountyStatusConflict: "赏金任务状态不允许此操作",
 	CodeBountyPermission:     "无权操作此赏金任务",
 
-	CodeCreditInsufficient:     "星力余额不足",
+	CodeCreditInsufficient:     "星能余额不足",
 	CodeCreditInvalidSignature: "签名验证失败",
 	CodeCreditNonceExpired:     "nonce 过期",
-	CodeCreditAccountNotFound:  "星力账户不存在",
-	CodeCreditHibernated:       "节点已休眠（星力耗尽）",
+	CodeCreditAccountNotFound:  "星能账户不存在",
+	CodeCreditHibernated:       "节点已休眠（星能耗尽）",
 }
 
 // APIResponse is the standardized JSON envelope

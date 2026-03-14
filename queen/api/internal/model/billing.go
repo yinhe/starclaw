@@ -19,10 +19,10 @@ type RechargeOrder struct {
 	ID           string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	OrderNo      string     `json:"order_no" gorm:"type:varchar(64);uniqueIndex"` // 商户订单号
 	UserID       string     `json:"user_id" gorm:"type:varchar(36);index"`
-	ClawID       string     `json:"claw_id" gorm:"type:varchar(50);index"`          // claw:xxxx — target node for Star Credits
+	ClawID       string     `json:"claw_id" gorm:"type:varchar(50);index"`          // claw:xxxx — target node for Star Energy
 	Amount       int64      `json:"amount" gorm:"not null"`                         // 支付金额，单位：分
 	BonusAmount  int64      `json:"bonus_amount" gorm:"default:0"`                  // 赠送金额，单位：分
-	StarsGranted int64      `json:"stars_granted" gorm:"default:0"`                 // Star Credits granted (internal units)
+	StarsGranted int64      `json:"stars_granted" gorm:"default:0"`                 // Star Energy granted (internal units)
 	PayMethod    string     `json:"pay_method" gorm:"type:varchar(20)"`             // alipay / wechatpay
 	PayForm      string     `json:"pay_form" gorm:"type:varchar(20);default:h5"`    // pc / h5 / native / app
 	Status       string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / paid / failed / closed / refunded
