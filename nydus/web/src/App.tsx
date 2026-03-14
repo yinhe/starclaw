@@ -11,8 +11,17 @@ import {
 // ── Page type ──
 type Page = { view: 'home' } | { view: 'repo'; name: string }
 
+function parseHash(): Page {
+  const h = window.location.hash.replace(/^#\/?/, '')
+  if (h.startsWith('repo/')) {
+    const name = h.slice(5)
+    if (name) return { view: 'repo', name }
+  }
+  return { view: 'home' }
+}
+
 export default function App() {
-  const [page, setPage] = useState<Page>({ view: 'home' })
+  const [page, setPage] = useState<Page>(parseHash)
   const [repos, setRepos] = useState<Repo[]>([])
   const [deploys, setDeploys] = useState<Deploy[]>([])
   const [release, setRelease] = useState<Release | null>(null)
@@ -96,6 +105,7 @@ export default function App() {
 
   // ── Navigate ──
   const goHome = useCallback(() => {
+    window.location.hash = '/'
     setPage({ view: 'home' })
     setTreePath('')
     setTreeItems([])
@@ -104,8 +114,27 @@ export default function App() {
   }, [])
 
   const goRepo = useCallback((name: string) => {
+    window.location.hash = `/repo/${name}`
     setPage({ view: 'repo', name })
     setTreePath('')
+  }, [])
+
+  // ── Hash change listener (browser back/forward) ──
+  useEffect(() => {
+    const onHash = () => {
+      const p = parseHash()
+      setPage(p)
+      if (p.view === 'home') {
+        setTreePath('')
+        setTreeItems([])
+        setReadme('')
+        setCommits([])
+      } else {
+        setTreePath('')
+      }
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   // ── Effects ──
@@ -528,9 +557,20 @@ function RepoDetailPage({ repo, repoName, commits, treeItems, treePath, readme, 
           {/* Clone */}
           {repo?.ssh_url && (
             <SidebarCard title="Clone">
-              <code className="block text-xs bg-nydus-bg px-3 py-2 rounded border border-nydus-border text-nydus-muted select-all break-all">
-                git clone {repo.ssh_url}
-              </code>
+              <div className="space-y-2">
+                <div>
+                  <div className="text-[10px] text-nydus-dim uppercase tracking-wider mb-1">HTTPS</div>
+                  <code className="block text-xs bg-nydus-bg px-3 py-2 rounded border border-nydus-border text-nydus-muted select-all break-all">
+                    git clone {repo.https_url || `https://nydus.starclaw.net/${repoName}.git`}
+                  </code>
+                </div>
+                <div>
+                  <div className="text-[10px] text-nydus-dim uppercase tracking-wider mb-1">SSH</div>
+                  <code className="block text-xs bg-nydus-bg px-3 py-2 rounded border border-nydus-border text-nydus-muted select-all break-all">
+                    git clone {repo.ssh_url}
+                  </code>
+                </div>
+              </div>
             </SidebarCard>
           )}
 

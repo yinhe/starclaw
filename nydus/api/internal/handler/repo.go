@@ -97,6 +97,7 @@ func ListRepos(c *gin.Context) {
 			"targets":     len(rc.Targets),
 			"initialized": exists,
 			"ssh_url":     fmt.Sprintf("%s@nydus.starclaw.net:%s.git", config.C.Server.SSHUser, name),
+			"https_url":   fmt.Sprintf("https://nydus.starclaw.net/%s.git", name),
 		}
 		if exists {
 			entry["head"] = GetHead(name)
@@ -126,9 +127,10 @@ func CreateRepo(c *gin.Context) {
 	}
 	InitBareRepo(req.Name)
 	c.JSON(201, gin.H{
-		"name":    req.Name,
-		"ssh_url": fmt.Sprintf("%s@nydus.starclaw.net:%s.git", config.C.Server.SSHUser, req.Name),
-		"message": "repo created (add targets to nydus.yaml for auto-deploy)",
+		"name":      req.Name,
+		"ssh_url":   fmt.Sprintf("%s@nydus.starclaw.net:%s.git", config.C.Server.SSHUser, req.Name),
+		"https_url": fmt.Sprintf("https://nydus.starclaw.net/%s.git", req.Name),
+		"message":   "repo created (add targets to nydus.yaml for auto-deploy)",
 	})
 }
 
@@ -147,6 +149,7 @@ func GetRepo(c *gin.Context) {
 		"head":        head,
 		"targets":     rc.Targets,
 		"ssh_url":     fmt.Sprintf("%s@nydus.starclaw.net:%s.git", config.C.Server.SSHUser, name),
+		"https_url":   fmt.Sprintf("https://nydus.starclaw.net/%s.git", name),
 	})
 }
 

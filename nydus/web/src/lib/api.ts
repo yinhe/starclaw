@@ -56,6 +56,7 @@ export interface Repo {
   targets: number
   initialized: boolean
   ssh_url: string
+  https_url?: string
   head?: string
   branches?: number
   tags?: number
