@@ -198,9 +198,13 @@ func (t *SystemTool) createAgent(args systemArgs) (string, error) {
 		Name:         args.Name,
 		Description:  args.Description,
 		SystemPrompt: args.SystemPrompt,
-		ModelID:      args.ModelID,
 		Tools:        tools,
 		Config:       `{"temperature":0.7,"max_tokens":4096}`,
+	}
+
+	// Only set model_id if a valid one is provided (avoid FK constraint violation)
+	if args.ModelID != "" {
+		agent.ModelID = args.ModelID
 	}
 
 	if err := t.db.Create(&agent).Error; err != nil {
@@ -275,11 +279,19 @@ func (t *SystemTool) listModels() (string, error) {
 		})
 	}
 
+	// Also list registered providers (builtin models available even without DB config)
+	var providerNames []string
+	if t.providerRegistry != nil {
+		providerNames = t.providerRegistry.List()
+	}
+
 	result, _ := json.Marshal(map[string]interface{}{
-		"status": "success",
-		"action": "list_models",
-		"count":  len(summaries),
-		"models": summaries,
+		"status":               "success",
+		"action":               "list_models",
+		"count":                len(summaries),
+		"models":               summaries,
+		"registered_providers": providerNames,
+		"hint":                 "Use a model 'id' when creating agents. If no models listed, ask user to configure one in Settings → Models.",
 	})
 	return string(result), nil
 }
@@ -544,16 +556,31 @@ func (t *SystemTool) delegateToAgent(ctx context.Context, args systemArgs) (stri
 		return "", fmt.Errorf("agent delegation not configured")
 	}
 
-	// Look up the target agent
+	// Look up the target agent by ID or name
 	var agent model.Agent
 	if err := t.db.Where("id = ?", args.AgentID).First(&agent).Error; err != nil {
-		return "", fmt.Errorf("agent not found: %s", args.AgentID)
+		// Fallback: search by name (SuperAgent delegates by name, not ID)
+		if err2 := t.db.Where("name = ? AND is_builtin = ?", args.AgentID, true).First(&agent).Error; err2 != nil {
+			if err3 := t.db.Where("name = ?", args.AgentID).First(&agent).Error; err3 != nil {
+				return "", fmt.Errorf("agent not found: %s", args.AgentID)
+			}
+		}
 	}
 
-	// Look up the model config
+	// Look up the model config (fallback to first available if agent has no model_id)
 	var modelCfg model.ModelConfig
-	if err := t.db.Where("id = ?", agent.ModelID).First(&modelCfg).Error; err != nil {
-		return "", fmt.Errorf("model config not found for agent %s", agent.Name)
+	if agent.ModelID != "" {
+		if err := t.db.Where("id = ?", agent.ModelID).First(&modelCfg).Error; err != nil {
+			// model_id set but not found, try any available model
+			if err2 := t.db.First(&modelCfg).Error; err2 != nil {
+				return "", fmt.Errorf("no model configured, please add a model in Settings first")
+			}
+		}
+	} else {
+		// No model_id on agent, use first available model
+		if err := t.db.First(&modelCfg).Error; err != nil {
+			return "", fmt.Errorf("no model configured, please add a model in Settings first")
+		}
 	}
 
 	log.Printf("[SystemTool] Delegating to agent %s (%s): %s", agent.Name, agent.ID, truncateStr(args.Message, 100))

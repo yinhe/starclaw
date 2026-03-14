@@ -13,7 +13,7 @@ type Agent struct {
 	Name            string         `json:"name" gorm:"type:varchar(200);not null"`
 	Description     string         `json:"description" gorm:"type:text"`
 	SystemPrompt    string         `json:"system_prompt" gorm:"type:longtext"`
-	ModelID         string         `json:"model_id" gorm:"type:varchar(36)"`
+	ModelID         string         `json:"model_id" gorm:"type:varchar(36);default:null"`
 	ModelName       string         `json:"model_name" gorm:"type:varchar(100)"`
 	Tools           string         `json:"tools" gorm:"type:json"`                    // JSON array of tool names
 	KnowledgeBaseID string         `json:"knowledge_base_id" gorm:"type:varchar(36)"` // optional RAG KB
