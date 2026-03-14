@@ -2,6 +2,9 @@ package provider
 
 import (
 	"context"
+	"net/http"
+
+	"github.com/yinhe/starclaw/internal/node"
 )
 
 // StarAIProvider wraps OpenAI-compatible API with star-ai.net gateway
@@ -10,8 +13,9 @@ type StarAIProvider struct {
 }
 
 type StarAIConfig struct {
-	APIKey  string
-	BaseURL string // default: https://star-ai.net/v1
+	APIKey   string
+	BaseURL  string         // default: https://star-ai.net/v1
+	Identity *node.Identity // if set, use Ed25519 signature auth instead of API key
 }
 
 func NewStarAIProvider(cfg StarAIConfig) *StarAIProvider {
@@ -23,6 +27,13 @@ func NewStarAIProvider(cfg StarAIConfig) *StarAIProvider {
 		APIKey:  cfg.APIKey,
 		BaseURL: baseURL,
 	})
+
+	// If identity is provided, use Ed25519 signature auth (Claw signature)
+	if cfg.Identity != nil {
+		inner.client = &http.Client{
+			Transport: &SignedTransport{Identity: cfg.Identity},
+		}
+	}
 	inner.models = []string{
 		// ── OpenAI ──
 		"o3", "o3-mini", "o3-pro", "o4-mini",

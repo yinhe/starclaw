@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,8 +60,63 @@ type Client struct {
 	creditClient     *CreditClient // star energy operations client
 }
 
+// NormalizeQueenURL converts claw:// protocol to https:// (or http:// for local addresses).
+//
+//	claw://swarm.starclaw.net       → https://swarm.starclaw.net
+//	claw://192.168.1.100:8090       → http://192.168.1.100:8090
+//	claw://starclaw-queen-swarm:8090→ http://starclaw-queen-swarm:8090
+//	https://swarm.starclaw.net      → https://swarm.starclaw.net (unchanged)
+//	http://localhost:8090            → http://localhost:8090 (unchanged)
+func NormalizeQueenURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, "/")
+
+	if strings.HasPrefix(raw, "claw://") {
+		hostPort := strings.TrimPrefix(raw, "claw://")
+		host := hostPort
+		if h, _, err := net.SplitHostPort(hostPort); err == nil {
+			host = h
+		}
+		// Local/internal addresses use http, public domains use https
+		if isLocalHost(host) {
+			return "http://" + hostPort
+		}
+		return "https://" + hostPort
+	}
+
+	// Already has scheme
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+
+	// Bare domain/IP — guess scheme
+	host := raw
+	if h, _, err := net.SplitHostPort(raw); err == nil {
+		host = h
+	}
+	if isLocalHost(host) {
+		return "http://" + raw
+	}
+	return "https://" + raw
+}
+
+// isLocalHost returns true for localhost, IPs, docker container names (no dots), etc.
+func isLocalHost(host string) bool {
+	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" || host == "::1" {
+		return true
+	}
+	if net.ParseIP(host) != nil {
+		return true // any IP address
+	}
+	if !strings.Contains(host, ".") {
+		return true // docker container name like "starclaw-queen-swarm"
+	}
+	return false
+}
+
 // NewClient creates a swarm client from config
 func NewClient(cfg config.SwarmConfig) *Client {
+	cfg.QueenURL = NormalizeQueenURL(cfg.QueenURL)
 	return &Client{
 		cfg:    cfg,
 		stopCh: make(chan struct{}),

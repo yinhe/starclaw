@@ -192,7 +192,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 	templates := []model.AgentTemplate{
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "全栈开发助手",
 			Description:  "精通前后端开发的全栈工程师，擅长 React/Vue/Go/Python/Node.js，能够帮你设计架构、编写代码、调试问题。",
 			Category:     "coding",
@@ -206,7 +206,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "学术论文助手",
 			Description:  "帮助撰写、润色和翻译学术论文，支持 APA/MLA/Chicago 引用格式，提供文献综述和研究方法指导。",
 			Category:     "research",
@@ -220,7 +220,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "数据分析师",
 			Description:  "专业数据分析师，能够帮你进行数据清洗、可视化、统计分析和机器学习建模。支持 Python/SQL。",
 			Category:     "data",
@@ -234,7 +234,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "创意写作家",
 			Description:  "帮你创作小说、诗歌、剧本、广告文案等各类创意内容，支持多种风格和语调。",
 			Category:     "writing",
@@ -248,7 +248,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "DevOps 运维专家",
 			Description:  "精通 Docker/K8s/CI/CD 的运维专家，帮你设计部署架构、编写配置文件、排查线上问题。",
 			Category:     "devops",
@@ -262,7 +262,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "产品经理助手",
 			Description:  "帮你撰写 PRD、用户故事、竞品分析，进行需求优先级排序和产品规划。",
 			Category:     "business",
@@ -276,7 +276,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "UI/UX 设计顾问",
 			Description:  "提供界面设计建议、配色方案、组件规范，帮你打造出色的用户体验。",
 			Category:     "creative",
@@ -290,7 +290,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:           uuid.New().String(),
-			AuthorID:     "system",
+			AuthorID:     model.SystemUserID,
 			Name:         "英语口语教练",
 			Description:  "模拟真实对话场景练习英语口语，纠正语法错误，教授地道表达和俚语。",
 			Category:     "assistant",
@@ -304,7 +304,7 @@ func SeedBuiltinTemplates(db *gorm.DB) {
 		},
 		{
 			ID:          uuid.New().String(),
-			AuthorID:    "system",
+			AuthorID:    model.SystemUserID,
 			Name:        "短剧导演",
 			Description: "好莱坞风格 AI 短剧导演，从剧本构思到成片交付的一站式制作。擅长场景编排、镜头语言、配音字幕、音乐配乐的全流程把控。",
 			Category:    "creative",

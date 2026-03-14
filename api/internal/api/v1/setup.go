@@ -116,6 +116,10 @@ func (h *SetupHandler) Setup(c *gin.Context) {
 			existingUser.Username = req.Username
 		}
 
+		// Migrate system-owned data to the real owner
+		MigrateSystemToOwner(h.db, existingUser.ID)
+		SeedBuiltinAgents(h.db)
+
 		jwtToken, _ := h.generateJWT(&existingUser)
 		c.JSON(http.StatusCreated, gin.H{
 			"owner_token": ownerToken,
@@ -144,6 +148,10 @@ func (h *SetupHandler) Setup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "初始化失败: " + err.Error()})
 		return
 	}
+
+	// Migrate system-owned data to the real owner
+	MigrateSystemToOwner(h.db, user.ID)
+	SeedBuiltinAgents(h.db)
 
 	jwtToken, _ := h.generateJWT(&user)
 	c.JSON(http.StatusCreated, gin.H{
