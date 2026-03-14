@@ -52,11 +52,11 @@ func TestCreditClient_UpdateFromHeartbeat(t *testing.T) {
 	}
 
 	cb := &CreditBalance{
-		Balance:      5000000,
-		BalanceStars: 500.0,
-		HPStatus:     "healthy",
-		TrustLevel:   "basic",
-		UpdatedAt:    time.Now(),
+		Balance:       5000000,
+		BalanceEnergy: 500.0,
+		HPStatus:      "healthy",
+		TrustLevel:    "basic",
+		UpdatedAt:     time.Now(),
 	}
 
 	cc.UpdateFromHeartbeat(cb)
@@ -69,8 +69,8 @@ func TestCreditClient_UpdateFromHeartbeat(t *testing.T) {
 	if cached == nil {
 		t.Fatal("cached balance should not be nil")
 	}
-	if cached.BalanceStars != 500.0 {
-		t.Errorf("cached balance: got %.1f, want 500.0", cached.BalanceStars)
+	if cached.BalanceEnergy != 500.0 {
+		t.Errorf("cached balance: got %.1f, want 500.0", cached.BalanceEnergy)
 	}
 }
 
@@ -109,17 +109,17 @@ func TestCreditClient_QueryBalance(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"claw_id":       clawID,
-				"balance":       1000000,
-				"balance_stars": 100.0,
-				"frozen":        50000,
-				"frozen_stars":  5.0,
-				"total_in":      2000000,
-				"total_out":     1000000,
-				"nonce":         3,
-				"status":        "active",
-				"hp_status":     "healthy",
-				"trust_level":   "verified",
+				"claw_id":        clawID,
+				"balance":        1000000,
+				"balance_energy": 100.0,
+				"frozen":         50000,
+				"frozen_energy":  5.0,
+				"total_in":       2000000,
+				"total_out":      1000000,
+				"nonce":          3,
+				"status":         "active",
+				"hp_status":      "healthy",
+				"trust_level":    "verified",
 			},
 		})
 	}))
@@ -131,8 +131,8 @@ func TestCreditClient_QueryBalance(t *testing.T) {
 		t.Fatalf("QueryBalance: %v", err)
 	}
 
-	if balance.BalanceStars != 100.0 {
-		t.Errorf("balance_stars: got %.1f, want 100.0", balance.BalanceStars)
+	if balance.BalanceEnergy != 100.0 {
+		t.Errorf("balance_stars: got %.1f, want 100.0", balance.BalanceEnergy)
 	}
 	if balance.Nonce != 3 {
 		t.Errorf("nonce: got %d, want 3", balance.Nonce)
@@ -154,7 +154,7 @@ func TestCreditClient_Transfer(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"balance": 1000000, "balance_stars": 100.0, "nonce": 5,
+					"balance": 1000000, "balance_energy": 100.0, "nonce": 5,
 					"hp_status": "healthy", "status": "active", "trust_level": "basic",
 				},
 			})
@@ -176,12 +176,12 @@ func TestCreditClient_Transfer(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"txn_id":       "txn-001",
-					"from":         id.NodeID,
-					"to":           body["to_claw"],
-					"amount":       body["amount"],
-					"amount_stars": 10.0,
-					"new_balance":  900000,
+					"txn_id":        "txn-001",
+					"from":          id.NodeID,
+					"to":            body["to_claw"],
+					"amount":        body["amount"],
+					"amount_energy": 10.0,
+					"new_balance":   900000,
 				},
 			})
 		default:
@@ -295,14 +295,14 @@ func TestCreditClient_Stats(t *testing.T) {
 
 	// After update
 	cc.UpdateFromHeartbeat(&CreditBalance{
-		BalanceStars: 500.0,
-		HPStatus:     "full",
-		TrustLevel:   "verified",
+		BalanceEnergy: 500.0,
+		HPStatus:      "full",
+		TrustLevel:    "verified",
 	})
 
 	stats = cc.Stats()
-	if stats["balance_stars"] != 500.0 {
-		t.Errorf("balance_stars: got %v, want 500.0", stats["balance_stars"])
+	if stats["balance_energy"] != 500.0 {
+		t.Errorf("balance_energy: got %v, want 500.0", stats["balance_energy"])
 	}
 }
 

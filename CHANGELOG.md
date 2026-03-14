@@ -14,9 +14,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Gossip v2 protocol** — Header-based Ed25519 signed gossip at `POST /v1/peer/v2/gossip` and `POST /v1/peer/v2/relay`. Falls back to v1 body-signed protocol for backwards compatibility with older nodes.
 - **Agent step progress in chat** — Team agent conversations now stream `agent_step` SSE events showing real-time progress (thinking, summarizing) instead of a blank spinner. Frontend displays step name, detail text, and step counter.
 - **HD wallet system** — BIP-39 24-word mnemonic, SLIP-0010 HD key derivation for Ed25519 (`m/44'/9001'/account'/change'/index'`). Cold/hot wallet separation. Multi-signature primitives (m-of-n approval).
-- **Wallet page** — Frontend wallet management with HP (health points) visualization bar showing Star Credits balance status.
+- **Wallet page** — Frontend wallet management with HP (health points) visualization bar showing Star Energy balance status.
 - **HP bar in sidebar** — Clickable HP status indicator in navigation sidebar.
-- **Star Credits balance monitoring** — Swarm heartbeat integration for real-time balance updates.
+- **Star Energy balance monitoring** — Swarm heartbeat integration for real-time balance updates.
 - **Device approval system** — New devices require owner approval via CLI or Web before accessing the instance.
 - **CLI subcommands** — `export-key`, `import-key` (identity backup/restore), `get-token`, `reset-token`, `reset-password`, `version`. Host CLI wrapper (`starclaw`/`claw`) with Makefile targets.
 - **Messaging integrations** — DingTalk, WeCom, Slack, Discord, and Telegram tool support for agent-driven messaging.

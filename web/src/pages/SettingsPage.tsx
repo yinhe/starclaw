@@ -4,6 +4,7 @@ import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI, queenAPI, 
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState({ username: '', email: '', phone: '' })
+  const [hasPassword, setHasPassword] = useState(true)
   const [passwordForm, setPasswordForm] = useState({ old_password: '', new_password: '', confirm: '' })
   const [saving, setSaving] = useState(false)
   const [changingPwd, setChangingPwd] = useState(false)
@@ -273,6 +274,7 @@ export default function SettingsPage() {
       const res = await settingsAPI.getProfile()
       const u = res.data.user
       setProfile({ username: u.username || '', email: u.email || '', phone: u.phone || '' })
+      setHasPassword(u.has_password !== false)
     } catch { /* ignore */ }
   }
 
@@ -508,12 +510,16 @@ export default function SettingsPage() {
             </div>
           </div>
           {!bridgeStatus?.connected && bridgeStatus?.downloads && (() => {
-            const hostOS = bridgeStatus.host_os || 'linux'
-            const hostArch = bridgeStatus.host_arch || 'amd64'
-            let platform = `${hostOS}_${hostArch}`
+            // Detect OS from browser user agent (backend runtime.GOOS returns 'linux' in Docker)
+            const ua = navigator.userAgent.toLowerCase()
+            let platform = 'linux_amd64'
             let label = 'Linux'
-            if (hostOS === 'windows') { platform = 'windows_amd64'; label = 'Windows' }
-            else if (hostOS === 'darwin') { label = 'macOS' }
+            if (ua.includes('mac')) {
+              label = 'macOS'
+              platform = ua.includes('arm') || ua.includes('aarch64') ? 'darwin_arm64' : 'darwin_amd64'
+            } else if (ua.includes('win')) {
+              platform = 'windows_amd64'; label = 'Windows'
+            }
             if (!bridgeStatus.downloads[platform]) { platform = 'linux_amd64' }
             const url = bridgeStatus.downloads[platform]
             return (
@@ -1302,15 +1308,20 @@ export default function SettingsPage() {
             <Shield className="w-4 h-4" /> 修改密码
           </h2>
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">当前密码</label>
-              <input
-                value={passwordForm.old_password}
-                onChange={(e) => setPasswordForm({ ...passwordForm, old_password: e.target.value })}
-                type="password"
-                className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
+            {hasPassword && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">当前密码</label>
+                <input
+                  value={passwordForm.old_password}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, old_password: e.target.value })}
+                  type="password"
+                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            )}
+            {!hasPassword && (
+              <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">尚未设置密码，请直接输入新密码。</div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">新密码</label>
@@ -1334,7 +1345,7 @@ export default function SettingsPage() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleChangePassword}
-                disabled={changingPwd || !passwordForm.old_password || !passwordForm.new_password}
+                disabled={changingPwd || (hasPassword && !passwordForm.old_password) || !passwordForm.new_password}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
               >
                 {changingPwd ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}

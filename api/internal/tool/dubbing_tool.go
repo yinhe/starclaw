@@ -56,25 +56,25 @@ func NewDubbingTool(db *gorm.DB) *DubbingTool {
 func (t *DubbingTool) Name() string { return "dubbing" }
 
 func (t *DubbingTool) Description() string {
-	return `配音与字幕工具，为视频添加人声旁白和字幕。支持阿里云 CosyVoice 多种音色，适用于视频解说、漫剧配音、广告旁白等场景。
+	return `配音工具，为视频添加人声旁白（TTS）。支持阿里云 CosyVoice 多种音色，适用于视频解说、漫剧配音、广告旁白等场景。
 操作：
 - add_voiceover: 为视频添加配音+字幕（最常用）
-- add_subtitles: 仅添加字幕，不加配音
 - list_voices: 查看所有可用音色
 
 音色分类：
 - 女声：longyuan（温柔知性）、longxiaochun（活泼甜美）、longshu（故事旁白）、longwan（端庄大气）
 - 男声：longhua（沉稳大方）、longjing（播音腔）、longshuo（年轻活力）、longfei（浑厚低沉）
 
-字幕自适应视频方向（横屏/竖屏/方屏），自动调整字号和边距。`
+配音时自动添加字幕（可通过 subtitle_style=none 关闭）。
+如需仅添加字幕不配音，请使用 subtitle 工具。`
 }
 
 func (t *DubbingTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":         {Type: "string", Description: "Action: add_voiceover, add_subtitles, list_voices"},
-			"video_id":       {Type: "string", Description: "Video record ID to add dubbing/subtitles to"},
+			"action":         {Type: "string", Description: "Action: add_voiceover, list_voices"},
+			"video_id":       {Type: "string", Description: "Video record ID to add voiceover to"},
 			"narrations":     {Type: "string", Description: "JSON array of narration segments: [{\"text\":\"旁白文字\",\"start\":0,\"end\":5},{\"text\":\"第二段\",\"start\":5,\"end\":10}]"},
 			"voice":          {Type: "string", Description: "TTS voice: longyuan(女,默认), longxiaochun(女), longshu(女), longwan(女), longhua(男), longjing(男,播音), longshuo(男), longfei(男)"},
 			"subtitle_style": {Type: "string", Description: "Subtitle style: auto (default), small, large, none"},
@@ -119,12 +119,10 @@ func (t *DubbingTool) Execute(ctx context.Context, argsJSON string) (string, err
 	switch args.Action {
 	case "add_voiceover":
 		return t.addVoiceover(ctx, args)
-	case "add_subtitles":
-		return t.addSubtitles(ctx, args)
 	case "list_voices":
 		return t.listVoices()
 	default:
-		return "", fmt.Errorf("unknown action: %s. Use: add_voiceover, add_subtitles, list_voices", args.Action)
+		return "", fmt.Errorf("unknown action: %s. Use: add_voiceover, list_voices. For subtitle-only, use the subtitle tool.", args.Action)
 	}
 }
 
@@ -304,81 +302,6 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 		"segments": len(segments), "voice": voiceName,
 		"download_url": downloadURL, "size_mb": fmt.Sprintf("%.1f", sizeMB),
 		"message": fmt.Sprintf("配音完成！%d段旁白，音色: %s。可在视频画廊查看。", len(segments), voiceName),
-	}), nil
-}
-
-func (t *DubbingTool) addSubtitles(ctx context.Context, args dubbingArgs) (string, error) {
-	if args.VideoID == "" {
-		return "", fmt.Errorf("video_id is required")
-	}
-	if args.Narrations == "" {
-		return "", fmt.Errorf("narrations JSON array is required")
-	}
-
-	var segments []NarrationSegment
-	if err := json.Unmarshal([]byte(args.Narrations), &segments); err != nil {
-		return "", fmt.Errorf("invalid narrations JSON: %v", err)
-	}
-
-	userID := ""
-	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
-		userID = uid
-	}
-
-	videoRecPtr, err := findVideoRecord(t.db, args.VideoID, userID)
-	if err != nil {
-		return "", err
-	}
-	videoRec := *videoRecPtr
-
-	tmpDir, err := os.MkdirTemp("", "subtitles-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(tmpDir)
-
-	videoPath, err := resolveVideoFile(videoRec.VideoURL, tmpDir, "source.mp4")
-	if err != nil {
-		return "", err
-	}
-
-	subStyle := GetSubtitleStyle(videoPath, args.SubtitleStyle)
-	if !subStyle.Enabled {
-		return "", fmt.Errorf("subtitle_style is set to 'none'")
-	}
-
-	srtPath := filepath.Join(tmpDir, "subtitles.srt")
-	if err := GenerateSRT(segments, srtPath); err != nil {
-		return "", err
-	}
-
-	outputID := uuid.New().String()
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
-	outputPath := filepath.Join(outputDir, outputID+".mp4")
-
-	escapedSrt := strings.ReplaceAll(srtPath, "\\", "/")
-	escapedSrt = strings.ReplaceAll(escapedSrt, ":", "\\:")
-	vf := fmt.Sprintf("subtitles='%s':force_style='%s'", escapedSrt, subStyle.ForceStyleString())
-
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", videoPath,
-		"-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "copy", outputPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("ffmpeg failed: %v\n%s", err, string(out))
-	}
-
-	downloadURL := fmt.Sprintf("/v1/videos/merged/%s.mp4", outputID)
-	fi, _ := os.Stat(outputPath)
-	sizeMB := float64(0)
-	if fi != nil {
-		sizeMB = float64(fi.Size()) / 1024 / 1024
-	}
-
-	return toJSON(map[string]interface{}{
-		"action": "add_subtitles", "status": "success",
-		"video_id": args.VideoID, "segments": len(segments),
-		"download_url": downloadURL, "size_mb": fmt.Sprintf("%.1f", sizeMB),
-		"message": fmt.Sprintf("字幕添加完成！%d条字幕。", len(segments)),
 	}), nil
 }
 

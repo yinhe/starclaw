@@ -545,11 +545,11 @@ func cmdBalance() {
 	}
 
 	fmt.Println("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
-	fmt.Println("\u2551       StarClaw Star Credits                     \u2551")
+	fmt.Println("\u2551       StarClaw Star Energy                     \u2551")
 	fmt.Println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563")
 	fmt.Printf("  Claw ID:     %s\n", identity.NodeID)
-	fmt.Printf("  Balance:     %.2f Stars\n", balance.BalanceStars)
-	fmt.Printf("  Frozen:      %.2f Stars\n", balance.FrozenStars)
+	fmt.Printf("  Balance:     %.2f Stars\n", balance.BalanceEnergy)
+	fmt.Printf("  Frozen:      %.2f Stars\n", balance.FrozenEnergy)
 	fmt.Printf("  Total In:    %d units\n", balance.TotalIn)
 	fmt.Printf("  Total Out:   %d units\n", balance.TotalOut)
 	fmt.Printf("  Nonce:       %d\n", balance.Nonce)
@@ -559,7 +559,7 @@ func cmdBalance() {
 	fmt.Println("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
 }
 
-// cmdTransfer sends star credits to another claw address.
+// cmdTransfer sends star energy to another claw address.
 func cmdTransfer() {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: starclaw transfer <claw:address> <amount_stars> [remark]")
@@ -578,11 +578,11 @@ func cmdTransfer() {
 		log.Fatalf("Invalid target address: must start with claw:")
 	}
 
-	amountStars, err := strconv.ParseFloat(amountStr, 64)
-	if err != nil || amountStars <= 0 {
+	amountEnergy, err := strconv.ParseFloat(amountStr, 64)
+	if err != nil || amountEnergy <= 0 {
 		log.Fatalf("Invalid amount: must be a positive number")
 	}
-	amountUnits := int64(amountStars * 10000) // 1 Star = 10000 units
+	amountUnits := int64(amountEnergy * 10000) // 1 Star = 10000 units
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -596,7 +596,7 @@ func cmdTransfer() {
 
 	cc := swarm.NewCreditClient(cfg.Swarm.QueenURL, identity)
 
-	fmt.Printf("Transferring %.2f Stars (%d units) to %s...\n", amountStars, amountUnits, target)
+	fmt.Printf("Transferring %.2f Stars (%d units) to %s...\n", amountEnergy, amountUnits, target)
 
 	result, err := cc.Transfer(swarm.TransferRequest{
 		ToClaw: target,
@@ -611,7 +611,7 @@ func cmdTransfer() {
 	fmt.Printf("  Transaction ID: %s\n", result.TxnID)
 	fmt.Printf("  From:           %s\n", result.From)
 	fmt.Printf("  To:             %s\n", result.To)
-	fmt.Printf("  Amount:         %.2f Stars\n", result.AmountStars)
+	fmt.Printf("  Amount:         %.2f Stars\n", result.AmountEnergy)
 	fmt.Printf("  New Balance:    %d units\n", result.NewBalance)
 	fmt.Println("========================================")
 }

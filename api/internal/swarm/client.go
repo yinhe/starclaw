@@ -28,17 +28,17 @@ const FeralThreshold = 3
 
 // CreditBalance holds cached star credit balance from Queen
 type CreditBalance struct {
-	Balance      int64     `json:"balance"`
-	BalanceStars float64   `json:"balance_stars"`
-	Frozen       int64     `json:"frozen"`
-	FrozenStars  float64   `json:"frozen_stars"`
-	TotalIn      int64     `json:"total_in"`
-	TotalOut     int64     `json:"total_out"`
-	Nonce        int64     `json:"nonce"`
-	Status       string    `json:"status"`
-	HPStatus     string    `json:"hp_status"`
-	TrustLevel   string    `json:"trust_level"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	Balance       int64     `json:"balance"`
+	BalanceEnergy float64   `json:"balance_energy"`
+	Frozen        int64     `json:"frozen"`
+	FrozenEnergy  float64   `json:"frozen_energy"`
+	TotalIn       int64     `json:"total_in"`
+	TotalOut      int64     `json:"total_out"`
+	Nonce         int64     `json:"nonce"`
+	Status        string    `json:"status"`
+	HPStatus      string    `json:"hp_status"`
+	TrustLevel    string    `json:"trust_level"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Client handles swarm registration and heartbeat with Queen/Overlord
@@ -368,14 +368,14 @@ func (c *Client) heartbeat() error {
 			if v, ok := creditsMap["balance"].(float64); ok {
 				cb.Balance = int64(v)
 			}
-			if v, ok := creditsMap["balance_stars"].(float64); ok {
-				cb.BalanceStars = v
+			if v, ok := creditsMap["balance_energy"].(float64); ok {
+				cb.BalanceEnergy = v
 			}
 			if v, ok := creditsMap["frozen"].(float64); ok {
 				cb.Frozen = int64(v)
 			}
-			if v, ok := creditsMap["frozen_stars"].(float64); ok {
-				cb.FrozenStars = v
+			if v, ok := creditsMap["frozen_energy"].(float64); ok {
+				cb.FrozenEnergy = v
 			}
 			if v, ok := creditsMap["total_in"].(float64); ok {
 				cb.TotalIn = int64(v)

@@ -331,10 +331,10 @@ export default function ChatPage() {
         analyserRef.current.getByteFrequencyData(dataArray)
         const levels = Array.from(dataArray).slice(0, 32).map(v => v / 255)
 
-        // Silence detection: auto-stop after 2s of silence (skip first 1.5s to let user start)
+        // Silence detection: auto-stop after 2s of silence (skip first 1s to let user start)
         const avgLevel = levels.reduce((a, b) => a + b, 0) / levels.length
         const now = Date.now()
-        if (avgLevel < 0.02 && now - start > 1500) {
+        if (avgLevel < 0.05 && now - start > 1000) {
           if (silenceStartRef.current === 0) silenceStartRef.current = now
           else if (now - silenceStartRef.current > 2000) {
             stopRecording()
@@ -379,11 +379,22 @@ export default function ChatPage() {
     recorder.onstop = async () => {
       const blob = new Blob(chunks, { type: 'audio/webm' })
       if (blob.size < 1000) return
+      const wasEmpty = !input.trim()
       setIsTranscribing(true)
       try {
         const res = await multimodalAPI.stt(blob)
         if (res.data.text) {
-          setInput(prev => prev ? prev + ' ' + res.data.text : res.data.text)
+          setInput(prev => {
+            const next = prev ? prev + ' ' + res.data.text : res.data.text
+            // Auto-send if input was empty before recording (voice-only message)
+            if (wasEmpty) {
+              setTimeout(() => {
+                const sendBtn = document.querySelector('[title="发送"]') as HTMLButtonElement
+                if (sendBtn && !sendBtn.disabled) sendBtn.click()
+              }, 100)
+            }
+            return next
+          })
         }
       } catch (err: any) {
         console.error('STT failed:', err)
@@ -1884,9 +1895,9 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Context Panel - right sidebar */}
+      {/* Context Panel - right sidebar (overlay on small screens, inline on xl+) */}
       {contextPanelOpen && currentConversationId && (
-        <div className="w-80 border-l bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
+        <div className="fixed xl:relative right-0 top-0 xl:top-auto h-full z-30 xl:z-auto w-80 border-l bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden shadow-xl xl:shadow-none">
           <div className="px-4 py-3 border-b bg-white dark:bg-gray-800 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">关联面板</h3>
             <button onClick={() => setContextPanelOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 rounded">

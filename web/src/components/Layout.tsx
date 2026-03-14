@@ -31,7 +31,7 @@ interface NavGroup { group: string; items: NavItem[] }
 
 function getNavGroups(isHosted: boolean): NavGroup[] {
   const systemItems: NavItem[] = [
-    { to: '/wallet', icon: Wallet, label: '星力钱包' },
+    { to: '/wallet', icon: Wallet, label: '星能钱包' },
     { to: '/settings', icon: Settings, label: '设置' },
   ]
   if (isHosted) {
