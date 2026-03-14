@@ -6,7 +6,8 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /nydus-worm ./cmd/nydus-worm/
 
 FROM alpine:3.20
-RUN apk add --no-cache git curl docker-cli docker-cli-compose
+RUN apk add --no-cache git curl docker-cli docker-cli-compose && \
+    git config --global --add safe.directory '*'
 WORKDIR /app
 COPY --from=builder /nydus-worm .
 COPY worm.yaml .

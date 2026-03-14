@@ -24,10 +24,15 @@
  │    ├── star-ai.net/v1/*   → star-ai-gateway (:8085)  ← API Gateway
  │    └── core.star-ai.net   → star-ai-core (:3097)
  │
- ├── starclaw.net ─────────── Server C (Queen)
- │    ├── swarm.starclaw.net → swarm (:8090)
- │    ├── bounty.starclaw.net→ bounty (:8092)
- │    └── ...                → forum/arena/core
+ ├── starclaw.net ─────────── Server C (Queen + Nydus)
+ │    ├── starclaw.net        → queen-web (:8086)
+ │    ├── api.starclaw.net    → queen-api (:8085)
+ │    ├── swarm.starclaw.net  → swarm (:8090)
+ │    ├── core.starclaw.net   → core (:8091)
+ │    ├── bounty.starclaw.net → bounty (:8092)
+ │    ├── forum.starclaw.net  → forum (:8093)
+ │    ├── arena.starclaw.net  → arena (:8094)
+ │    └── nydus (internal)    → nydus-server (:8095)
  │
  └── proxy.star-ai.net ──── Server D (Proxy)
       └── Node.js 中转       → /www/proxy/server.js
@@ -93,19 +98,40 @@ docker compose -f docker-compose.gateway.yml up -d --build
 
 中央控制服务器，管理虫群网络、赏金、社区。
 
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| Queen API | 8085 | 中央 API（用户/计费/星力） |
-| Queen Web | 8086 | Dashboard |
-| Swarm | 8090 | 节点管理 |
-| Core | 8091 | 核心 API |
-| Bounty | 8092 | 赏金市场 |
-| Forum | 8093 | 社区论坛 |
-| Arena | 8094 | 竞技场 |
+| 服务 | 容器名 | 端口 | 域名 | 说明 |
+|------|--------|------|------|------|
+| Queen API | starclaw-queen-api | 8085 | api.starclaw.net | 中央 API（用户/计费/星力） |
+| Queen Web | starclaw-queen-web | 8086 | starclaw.net | Dashboard 前端 |
+| Swarm | starclaw-queen-swarm | 8090 | swarm.starclaw.net | 节点注册/心跳/管理 |
+| Core | starclaw-queen-core | 8091 | core.starclaw.net | 管理面板 |
+| Bounty | starclaw-queen-bounty | 8092 | bounty.starclaw.net | 赏金市场 |
+| Forum | starclaw-queen-forum | 8093 | forum.starclaw.net | 社区论坛 |
+| Arena | starclaw-queen-arena | 8094 | arena.starclaw.net | 机器人竞技场 |
+| MySQL | starclaw-queen-mysql | 3307 | — | 数据库 (starclaw_queen) |
+| Prometheus | starclaw-queen-prometheus | 9090 | — | 监控指标 |
+| Grafana | starclaw-queen-grafana | 3000 | — | 监控面板 |
+| **Nydus Server** | **nydus-server** | **8095** | — | **Git 仓库 + 部署调度** |
+| **Nydus Worm** | **nydus-worm** | **8096** | — | **部署执行 Agent** |
 
-**代码目录：** `queen/`
-**部署：** `queen/docker-compose.prod.yml`
-**状态：** 尚未部署到服务器
+**代码目录：** `queen/` + `nydus/`
+**部署路径：** `/opt/starclaw-queen/` (Queen) + `/opt/nydus/` (Nydus)
+**部署：** `docker-compose.prod.yml` (Queen) + `docker-compose.yml` (Nydus)
+**nginx：** `/etc/nginx/sites-enabled/queen`
+**SSL：** Let's Encrypt 通配符 `*.starclaw.net`
+**状态：** ✅ 全部 12 个容器运行中
+
+### Nydus 虫道部署系统
+
+```
+本地 git push nydus master
+  → SSH → /data/nydus/repos/starclaw.git (bare repo)
+  → post-receive hook → Nydus Server (:8095)
+  → 调度 Worm → clone + sync queen/ 子目录
+  → docker compose -f docker-compose.prod.yml up -d --build
+```
+
+**Nydus remote:** `git remote add nydus git@43.106.158.26:starclaw.git`
+**SSH config:** `~/.ssh/config` 中 Host 43.106.158.26 使用 `~/.ssh/queen_deploy`
 
 ## Server D — Proxy (proxy.star-ai.net)
 
@@ -127,6 +153,7 @@ starclaw/                        # 私有 monorepo
 ├── router/         ⛽           # Server B — star-ai.net
 ├── proxy/          🌏           # Server D — 海外中转
 ├── queen/          👑           # Server C — Queen 中央控制
+├── nydus/          🕳️           # Server C — 虫道代码分发系统
 ├── .env                         # 环境变量（gitignored，含密钥）
 ├── .env.production.example      # 环境变量模板（tracked）
 ├── .env.example                 # Claw 开源版模板

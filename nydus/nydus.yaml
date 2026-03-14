@@ -10,7 +10,7 @@ repos:
     description: "StarClaw monorepo — 全部代码"
     targets:
       - name: "queen-server-c"
-        worm_url: "http://127.0.0.1:8096"
+        worm_url: "http://nydus-worm:8096"
         deploy_path: "/opt/starclaw-queen"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build"
         subdir: "queen"
