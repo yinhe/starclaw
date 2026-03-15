@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bot, Plus, Pencil, Trash2, X, Wrench, Sparkles, Download, Upload, Store, Check, Loader2, Search } from 'lucide-react'
-import { agentAPI, modelAPI, toolAPI, knowledgeBaseAPI, superAgentAPI, queenMarketplaceAPI } from '../lib/api'
+import { Bot, Plus, Pencil, Trash2, X, Wrench, Sparkles, Download, Upload, Store } from 'lucide-react'
+import { agentAPI, modelAPI, toolAPI, knowledgeBaseAPI, superAgentAPI } from '../lib/api'
 
 interface Agent {
   id: string
@@ -29,18 +29,6 @@ interface ModelConfig {
   display_name: string
 }
 
-interface MarketplaceItem {
-  id: string
-  name: string
-  description: string
-  icon: string
-  tags: string
-  config: string
-  downloads: number
-  rating: number
-  status: string
-}
-
 export default function AgentsPage() {
   const navigate = useNavigate()
   const [agents, setAgents] = useState<Agent[]>([])
@@ -60,40 +48,19 @@ export default function AgentsPage() {
   })
   const [selectedTools, setSelectedTools] = useState<string[]>([])
 
-  // Marketplace state
-  const [marketItems, setMarketItems] = useState<MarketplaceItem[]>([])
-  const [installedSourceIDs, setInstalledSourceIDs] = useState<Set<string>>(new Set())
-  const [installingID, setInstallingID] = useState<string | null>(null)
-  const [marketSearch, setMarketSearch] = useState('')
-  const [marketLoading, setMarketLoading] = useState(false)
-
   useEffect(() => {
     loadAgents()
     loadModels()
     loadTools()
     loadKBs()
-    loadMarketplace()
   }, [])
 
   const loadAgents = async () => {
     try {
       try { await superAgentAPI.ensure() } catch { /* ignore */ }
-      const [agentsRes, idsRes] = await Promise.all([
-        agentAPI.list(),
-        agentAPI.installedSourceIDs(),
-      ])
-      setAgents(agentsRes.data.agents || [])
-      setInstalledSourceIDs(new Set(idsRes.data.source_ids || []))
+      const res = await agentAPI.list()
+      setAgents(res.data.agents || [])
     } catch { /* ignore */ }
-  }
-
-  const loadMarketplace = async (q?: string) => {
-    setMarketLoading(true)
-    try {
-      const res = await queenMarketplaceAPI.list({ q: q || undefined })
-      setMarketItems(res.data.items || [])
-    } catch { /* ignore */ }
-    setMarketLoading(false)
   }
 
   const loadModels = async () => {
@@ -151,41 +118,9 @@ export default function AgentsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除/卸载这个智能体吗？')) return
+    if (!confirm('确定要删除这个智能体吗？')) return
     try {
       await agentAPI.delete(id)
-      loadAgents()
-    } catch { /* ignore */ }
-  }
-
-  const handleInstall = async (item: MarketplaceItem) => {
-    setInstallingID(item.id)
-    try {
-      let cfg: { system_prompt?: string; tools?: string; config?: string } = {}
-      try { cfg = JSON.parse(item.config) } catch { /* ignore */ }
-      await agentAPI.installFromMarketplace({
-        source_id: item.id,
-        name: item.name,
-        description: item.description,
-        system_prompt: cfg.system_prompt || '',
-        tools: cfg.tools || '[]',
-        config: cfg.config || '{}',
-        icon: item.icon,
-      })
-      // Refresh
-      const idsRes = await agentAPI.installedSourceIDs()
-      setInstalledSourceIDs(new Set(idsRes.data.source_ids || []))
-      loadAgents()
-    } catch { /* ignore */ }
-    setInstallingID(null)
-  }
-
-  const handleUninstall = async (sourceId: string) => {
-    if (!confirm('确定要卸载这个智能体吗？')) return
-    try {
-      await agentAPI.uninstallBySourceID(sourceId)
-      const idsRes = await agentAPI.installedSourceIDs()
-      setInstalledSourceIDs(new Set(idsRes.data.source_ids || []))
       loadAgents()
     } catch { /* ignore */ }
   }
@@ -200,7 +135,7 @@ export default function AgentsPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">智能体</h1>
-            <p className="text-gray-500 text-sm mt-1">安装社区智能体或创建自己的 AI 智能体</p>
+            <p className="text-gray-500 text-sm mt-1">管理你的 AI 智能体</p>
           </div>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors cursor-pointer">
@@ -271,7 +206,8 @@ export default function AgentsPage() {
             {myAgents.length === 0 ? (
               <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl">
                 <Bot className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">还没有智能体，从下方市场安装或自行创建</p>
+                <p className="text-sm">还没有智能体，去市场安装或自行创建</p>
+                <button onClick={() => navigate('/marketplace')} className="mt-3 px-4 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700">浏览智能体市场</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -318,9 +254,9 @@ export default function AgentsPage() {
                         </button>
                         {!(agent.is_builtin && agent.name === '全能助手') && (
                           <button
-                            onClick={() => agent.source_id ? handleUninstall(agent.source_id) : handleDelete(agent.id)}
+                            onClick={() => handleDelete(agent.id)}
                             className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50"
-                            title={agent.source_id ? '卸载' : '删除'}
+                            title="删除"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -337,86 +273,15 @@ export default function AgentsPage() {
             )}
           </section>
 
-          {/* ── 智能体市场 ── */}
+          {/* ── 浏览市场入口 ── */}
           <section>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Store className="w-4 h-4 text-primary-600" />
-                <h2 className="text-sm font-semibold text-gray-900">智能体市场</h2>
-                <span className="text-xs text-gray-400">来自 StarClaw 社区</span>
-              </div>
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={marketSearch}
-                  onChange={(e) => setMarketSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && loadMarketplace(marketSearch)}
-                  placeholder="搜索智能体..."
-                  className="pl-9 pr-3 py-1.5 border rounded-lg text-xs w-48 outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-            </div>
-            {marketLoading ? (
-              <div className="text-center py-10 text-gray-400">
-                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
-                <p className="text-sm">加载中...</p>
-              </div>
-            ) : marketItems.length === 0 ? (
-              <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl">
-                <Store className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">暂无社区智能体</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {marketItems.map((item) => {
-                  const isInstalled = installedSourceIDs.has(item.id)
-                  const isInstalling = installingID === item.id
-                  return (
-                    <div key={item.id} className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg flex items-center justify-center">
-                          <Bot className="w-5 h-5 text-indigo-600" />
-                        </div>
-                        <div>
-                          {isInstalled ? (
-                            <button
-                              onClick={() => handleUninstall(item.id)}
-                              className="flex items-center gap-1 px-3 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-red-50 hover:text-red-600 transition-colors group"
-                            >
-                              <Check className="w-3.5 h-3.5 group-hover:hidden" />
-                              <Trash2 className="w-3.5 h-3.5 hidden group-hover:block" />
-                              <span className="group-hover:hidden">已安装</span>
-                              <span className="hidden group-hover:inline">卸载</span>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleInstall(item)}
-                              disabled={isInstalling}
-                              className="flex items-center gap-1 px-3 py-1 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
-                            >
-                              {isInstalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                              安装
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <h3 className="font-semibold text-gray-900">{item.name}</h3>
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{item.description}</p>
-                      {item.tags && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {item.tags.split(',').slice(0, 3).map((tag) => (
-                            <span key={tag} className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] rounded">{tag.trim()}</span>
-                          ))}
-                        </div>
-                      )}
-                      {item.downloads > 0 && (
-                        <span className="text-[10px] text-gray-400 mt-2 inline-block">{item.downloads} 次安装</span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <button
+              onClick={() => navigate('/marketplace')}
+              className="w-full flex items-center justify-center gap-2 py-4 border border-dashed rounded-xl text-gray-500 hover:text-primary-600 hover:border-primary-300 transition-colors"
+            >
+              <Store className="w-4 h-4" />
+              <span className="text-sm font-medium">浏览智能体市场 →</span>
+            </button>
           </section>
         </div>
       </div>
