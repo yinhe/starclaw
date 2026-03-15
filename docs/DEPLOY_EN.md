@@ -21,7 +21,15 @@ newgrp docker
 
 ## 3. Deploy
 
-### 3.1 Get the Code
+### One-Click Install (Recommended)
+
+```bash
+curl -fsSL https://starclaw.me/install.sh | bash
+```
+
+This automatically installs Docker, clones the repo, generates secure config, and starts all services. Skip to **3.4 Verify** after running this.
+
+### 3.1 Get the Code (Manual)
 
 ```bash
 git clone https://github.com/yinhe/starclaw.git
