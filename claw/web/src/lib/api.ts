@@ -339,13 +339,12 @@ export const templateAPI = {
   rate: (id: string, rating: number) => api.post(`/templates/${id}/rate`, { rating }),
 }
 
-// Queen Community Marketplace (public, no auth)
-const QUEEN_API = 'https://starclaw.net/api'
+// Community Marketplace (proxied through local Claw backend to avoid CORS)
 export const queenMarketplaceAPI = {
-  list: (params?: { type?: string; q?: string }) =>
-    axios.get(`${QUEEN_API}/marketplace/items`, { params }),
+  list: (params?: { q?: string }) =>
+    api.get('/templates/community', { params }),
   get: (id: string) =>
-    axios.get(`${QUEEN_API}/marketplace/items/${id}`),
+    api.get(`/templates/community/${id}`),
 }
 
 // Schedules (Cron)

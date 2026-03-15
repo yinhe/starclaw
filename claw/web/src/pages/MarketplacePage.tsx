@@ -80,13 +80,14 @@ export default function MarketplacePage() {
 
   const handleSearch = (val: string) => {
     setSearch(val)
-    loadTemplates(activeCategory, val)
+    if (tab === 'community') loadCommunity(val)
+    else loadTemplates(activeCategory, val)
   }
 
   const loadCommunity = async (q?: string) => {
     setLoading(true)
     try {
-      const res = await queenMarketplaceAPI.list({ type: 'agent', q: q || undefined })
+      const res = await queenMarketplaceAPI.list({ q: q || undefined })
       setCommunityItems(res.data.items || [])
     } catch {
       setCommunityItems([])

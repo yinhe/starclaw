@@ -1,13 +1,19 @@
 package v1
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/yinhe/starclaw/internal/model"
 	"gorm.io/gorm"
 )
+
+const queenMarketplaceURL = "https://starclaw.net/api/v1/marketplace"
 
 type TemplateHandler struct {
 	db *gorm.DB
@@ -176,6 +182,65 @@ func (h *TemplateHandler) InstallRemote(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+}
+
+// CommunityList proxies the Queen marketplace API to avoid CORS issues
+func (h *TemplateHandler) CommunityList(c *gin.Context) {
+	q := c.Query("q")
+	url := fmt.Sprintf("%s/items?type=agent", queenMarketplaceURL)
+	if q != "" {
+		url += "&q=" + q
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach community marketplace"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response"})
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid response"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// CommunityGet proxies a single item from Queen marketplace
+func (h *TemplateHandler) CommunityGet(c *gin.Context) {
+	id := c.Param("id")
+	url := fmt.Sprintf("%s/items/%s", queenMarketplaceURL, id)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach community marketplace"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response"})
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid response"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // Rate adds a rating to a template
