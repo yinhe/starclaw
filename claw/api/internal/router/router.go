@@ -1486,6 +1486,14 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				c.JSON(200, gin.H{"message": "deleted"})
 			})
 
+			// Workspace folders (document tree browsing)
+			wsHandler := v1.NewWorkspaceHandler(db)
+			protected.GET("/doc-folders", wsHandler.ListFolders)
+			protected.GET("/doc-folders/:conv_id", wsHandler.ListFolderFiles)
+			protected.DELETE("/doc-folders/:conv_id", wsHandler.DeleteFolder)
+			protected.POST("/doc-folders/:conv_id/lock", wsHandler.LockFolder)
+			protected.POST("/doc-folders/:conv_id/unlock", wsHandler.UnlockFolder)
+
 			// Billing & Tenant
 			billingHandler := v1.NewBillingHandler(db)
 			billingHandler.SeedPlans()
