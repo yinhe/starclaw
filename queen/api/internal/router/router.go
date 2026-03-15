@@ -180,6 +180,17 @@ func Setup() *gin.Engine {
 		admin.GET("/arena/leaderboard", proxy.ArenaLeaderboard)
 	}
 
+	// ---- Overseer (monitoring dashboard API) ----
+	overseer := handler.NewOverseerHandler()
+	admin.GET("/overseer/dashboard", overseer.Dashboard)
+	admin.GET("/overseer/nodes", overseer.Nodes)
+	admin.GET("/overseer/nodes/:id", overseer.NodeDetail)
+	admin.GET("/overseer/services", overseer.Services)
+	admin.GET("/overseer/energy", overseer.Energy)
+	admin.GET("/overseer/metrics/query", overseer.MetricsQuery)
+	admin.GET("/overseer/metrics/query_range", overseer.MetricsQueryRange)
+	admin.GET("/overseer/alerts", overseer.Alerts)
+
 	// ---- API Gateway (star-ai.net) ----
 	gw := handler.NewGatewayHandler()
 

@@ -138,6 +138,20 @@ services:
     networks:
       - starqueen
 
+  # ===================== Overseer (monitoring dashboard) =====================
+
+  overseer:
+    build:
+      context: ./overseer
+    container_name: starclaw-queen-overseer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8087:80"
+    depends_on:
+      - queen-api
+    networks:
+      - starqueen
+
   # ===================== Monitoring =====================
 
   prometheus:

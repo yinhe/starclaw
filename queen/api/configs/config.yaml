@@ -37,8 +37,11 @@ cors:
     - "https://app.starclaw.me"
     - "https://claw.star-ai.net"
     - "https://star-ai.net"
+    - "https://overseer.starclaw.net"
+    - "https://starclaw.net"
     - "http://localhost:5173"
     - "http://localhost:5174"
+    - "http://localhost:5175"
 
 # star-ai.net API Gateway — upstream provider config
 # 海外 Provider 通过 proxy.starclaw.net 中转，国内 Provider 直连
