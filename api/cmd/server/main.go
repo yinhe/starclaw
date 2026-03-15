@@ -115,8 +115,12 @@ func main() {
 	if cfg.Node.Address != "" {
 		swarmClient.SetAddress(cfg.Node.Address)
 	}
+	swarmClient.UpdateFunc = v1.PerformDockerUpdate // wire auto-update
 	swarmClient.Start()
 	defer swarmClient.Stop()
+
+	// Report pending molt update result from previous restart (if any)
+	go swarmClient.ReportPendingMolt()
 
 	// Initialize Queen billing client (for hosted mode centralized billing)
 	billingClient := swarm.NewBillingClient(cfg.Swarm.QueenURL, cfg.JWT.Secret)
