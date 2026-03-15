@@ -41,14 +41,15 @@ repos:
       # ========== CUSTOMER CLAWS (客户 Claw — 仅部署 claw/ 开源代码) ==========
       # 客户 Claw 通过 swarm.starclaw.net 加入远程 Queen 生态
       # subdir 必须为 "claw"，绝不允许部署 queen/ 代码
-
-      - name: "claw-dgp"
-        ssh_host: "root@43.106.114.174"
-        ssh_key: "/root/.ssh/id_ed25519"
-        deploy_path: "/opt/starclaw"
-        deploy_cmd: "docker compose up -d --build api web"
-        subdir: "claw"
-        branch: "master"
+      # NOTE: 快速迭代期间暂时跳过客户节点，避免拖慢部署速度
+      #
+      # - name: "claw-dgp"
+      #   ssh_host: "root@43.106.114.174"
+      #   ssh_key: "/root/.ssh/id_ed25519"
+      #   deploy_path: "/opt/starclaw"
+      #   deploy_cmd: "docker compose up -d --build api web"
+      #   subdir: "claw"
+      #   branch: "master"
 
   claw:
     description: "StarClaw open-source AI agent platform"
