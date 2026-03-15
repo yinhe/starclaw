@@ -123,7 +123,7 @@ else
 
     # Replace placeholders
     sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
-    sed -i "s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=$DB_PASSWORD/" .env
+    sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=$DB_PASSWORD/" .env
 
     echo -e "  ${GREEN}✓ .env generated with secure random secrets${NC}"
 fi

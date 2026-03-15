@@ -162,24 +162,37 @@ func callWorm(t config.TargetConfig, repo, branch, rev string) (string, string) 
 			log.Printf("[nydus] code synced to %s", t.Name)
 		}
 
-		// Step 2: SSH and call local Worm
-		wormURL := t.WormURL
-		if wormURL == "" {
-			wormURL = "http://127.0.0.1:8097"
+		// Step 2: Run deploy command
+		if t.WormURL != "" {
+			// Call remote Worm agent
+			remotePayload := fmt.Sprintf(`{"repo":"%s","branch":"%s","rev":"%s","deploy_path":"%s","deploy_cmd":"%s"}`,
+				repo, branch, rev, t.DeployPath, t.DeployCmd)
+			curlCmd := fmt.Sprintf(`curl -sf -X POST '%s/deploy' -H 'Content-Type: application/json' -H 'X-Nydus-Secret: %s' -d '%s' --connect-timeout 5 --max-time 300`,
+				t.WormURL, config.C.Server.Secret, remotePayload)
+			sshArgs := append(sshBase, t.SSHHost, curlCmd)
+
+			cmd := exec.Command("ssh", sshArgs...)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Printf("[nydus] SSH deploy to %s via Worm failed: %v\n%s", t.Name, err, out)
+				return "failed", fmt.Sprintf("%v: %s", err, out)
+			}
+			log.Printf("[nydus] SSH deploy to %s via Worm success: %s", t.Name, out)
+			return "success", string(out)
 		}
-		remotePayload := fmt.Sprintf(`{"repo":"%s","branch":"%s","rev":"%s","deploy_path":"%s","deploy_cmd":"%s"}`,
-			repo, branch, rev, t.DeployPath, t.DeployCmd)
-		curlCmd := fmt.Sprintf(`curl -sf -X POST '%s/deploy' -H 'Content-Type: application/json' -H 'X-Nydus-Secret: %s' -d '%s' --connect-timeout 5 --max-time 300`,
-			wormURL, config.C.Server.Secret, remotePayload)
-		sshArgs := append(sshBase, t.SSHHost, curlCmd)
+
+		// Direct SSH: run deploy_cmd in deploy_path (no Worm needed)
+		log.Printf("[nydus] direct SSH deploy to %s: cd %s && %s", t.Name, t.DeployPath, t.DeployCmd)
+		remoteCmd := fmt.Sprintf("cd %s && %s", t.DeployPath, t.DeployCmd)
+		sshArgs := append(sshBase, t.SSHHost, remoteCmd)
 
 		cmd := exec.Command("ssh", sshArgs...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("[nydus] SSH deploy to %s failed: %v\n%s", t.Name, err, out)
+			log.Printf("[nydus] SSH direct deploy to %s failed: %v\n%s", t.Name, err, out)
 			return "failed", fmt.Sprintf("%v: %s", err, out)
 		}
-		log.Printf("[nydus] SSH deploy to %s success: %s", t.Name, out)
+		log.Printf("[nydus] SSH direct deploy to %s success: %s", t.Name, out)
 		return "success", string(out)
 	}
 

@@ -1436,8 +1436,10 @@ StarClaw 的**菌毯**是连接所有注册节点的数据网络——接入虫�
 
 ### 7.4 坑道虫 Nydus — P2P 节点互联
 
+> **命名说明：** 本节描述的是 Claw 节点间 P2P 互联功能，代码在 `claw/api/internal/node/`。`nydus/` 项目目录是 CI/CD 代码分发系统（见 §13.0）。两者共享"虫道"概念：CI/CD 虫道传输代码，P2P 虫道传输数据。
+
 坑道虫网络让虫族在两点间瞬间传送，不走主路线。
-Nydus 是 StarClaw 的 **开源 P2P 互联层**——小龙虾之间可以直接建立加密链路，不经过 Queen 或 Overlord。
+Nydus P2P 是 StarClaw 的 **开源 P2P 互联层**——小龙虾之间可以直接建立加密链路，不经过 Queen 或 Overlord。
 
 **核心目标：两只小龙虾只要连上互联网就能互相通信，无需公网 IP、域名、端口映射。**
 
@@ -3100,31 +3102,148 @@ Arena 请求（Claw 身份）:
 
 ## 十三、CI/CD 与测试架构
 
-> ⚠️ **当前状态：手动部署（deploy.sh / update.sh），无自动化流水线。**
+> **当前状态：Nydus 虫道自动部署已上线（`git push nydus master` → 自动构建部署）。GitHub Actions 用于 Release 构建。**
 
-### 13.1 发布流水线（目标）
+### 13.0 Nydus 虫道 — 代码分发系统（✅ 已实现）
+
+灵感来自星际争霸虫族的 **Nydus Network（纳德斯虫道网络）**——代码从一端推入，瞬间从另一端完成部署。
+
+> **注意命名区分：** `nydus/` 项目目录是 CI/CD 代码分发系统。§7.4 中的"Nydus P2P"指的是 Claw 节点间 P2P 互联功能，代码在 `claw/api/internal/node/`。两者共享虫道概念但职责不同。
+
+**代码位置：** `nydus/`（`nydus/api/` Go 服务 + `nydus/web/` React Dashboard）
 
 ```
-开发者 push → GitHub Actions
-                │
-    ┌───────────┼───────────────┐
-    ▼           ▼               ▼
-  lint       unit test      build
-  (golangci) (go test)     (docker build)
-    │           │               │
-    └───────────┼───────────────┘
-                ▼
-          integration test
-          (docker-compose up → API 测试)
-                │
-    ┌───────────┼───────────────┐
-    ▼           ▼               ▼
-  push image  sync OSS      deploy staging
-  (ghcr.io)  (sync-oss.sh)  (auto)
-                                │
-                                ▼
-                          deploy production
-                          (manual approve)
+开发者 (git push nydus master)
+    │
+    ▼ SSH (宿主机 :22, git 用户)
+Server C: /data/nydus/repos/starclaw.git (bare repo)
+    │ post-receive hook
+    ▼
+Nydus API (:8095, Docker)  ←──  Nydus Web (:80, Docker/Nginx)
+    ├───────────────────────────────────────────┐───────────────────┐
+    │ Local (Docker network)                    │ SSH tunnel         │ SSH direct
+    ▼                                           ▼                    ▼
+Worm Server C (:8096)                 Worm Server B (:8097)     starclaw.me
+    │ clone + sync queen/                 │ git archive → ssh      │ git archive → ssh
+    ▼                                     ▼                         ▼
+Queen (12 containers)              Gateway (queen-api)        Claw (api+web)
+starclaw.net                       star-ai.net/v1/*           starclaw.me
+```
+
+**组件：**
+
+| 组件 | 位置 | 端口 | 说明 |
+|------|------|------|------|
+| **Nydus API** | Server C (Docker) | 8095 | Git 仓库管理 + 部署调度 + Release API |
+| **Nydus Web** | Server C (Docker) | 80 | React Dashboard + Nginx 反向代理 |
+| **Nydus Worm** | Server C (Docker) | 8096 | 本地部署 Agent（Queen 部署） |
+| **Nydus Worm** | Server B (systemd) | 8097 | 远程部署 Agent（Gateway 部署） |
+
+**Monorepo 部署目标：**
+
+| Target | 子目录 | 部署服务器 | 方式 |
+|--------|--------|-----------|------|
+| queen-server-c | `queen/` | Server C | 本地 Worm (Docker) |
+| gateway-server-b | `queen/api/` | Server B | SSH + 远程 Worm |
+| claw-starclaw-me | `claw/` | starclaw.me | SSH direct（无 Worm） |
+
+**两种远程部署模式：**
+- **Worm 模式**：`worm_url` 已配置 → git archive 同步代码 + SSH 调用远程 Worm API
+- **Direct SSH 模式**：`worm_url` 为空 → git archive 同步代码 + SSH 直接执行 deploy_cmd
+
+**安全模型：**
+- 仓库分为 `public`（claw，对外可见）和私有（starclaw，对外返回 404）
+- 公开 API `/v1/*` 仅返回 public 仓库数据
+- 管理 API `/api/*` 需 `X-Nydus-Secret` 头
+- Release 端点 `/releases/*` 公开，为 Claw Molt 更新提供回退源
+
+### 13.0.1 开发者部署指南（任意电脑 → Nydus 一键部署）
+
+任何能连上公网的电脑（Windows / macOS / Linux），只需配置好 SSH 密钥，即可通过 `git push nydus master` 触发全套自动部署。
+
+**首次配置（一次性）：**
+
+```bash
+# 1. 在 starclaw monorepo 中添加 nydus remote
+git remote add nydus git@43.106.158.26:starclaw.git
+
+# 2. 配置 SSH（~/.ssh/config）
+#    Windows: C:\Users\<用户名>\.ssh\config
+#    macOS/Linux: ~/.ssh/config
+Host 43.106.158.26
+    IdentityFile ~/.ssh/queen_deploy    # 部署专用密钥
+    User git
+    StrictHostKeyChecking no
+```
+
+**日常部署（一条命令）：**
+
+```bash
+git push nydus master
+```
+
+推送后 Nydus 自动执行：
+1. **Queen** — Worm 同步 `queen/` → Server C → `docker compose up -d --build`
+2. **Gateway** — SSH 同步 `queen/api/` → Server B → `docker compose up -d --build`
+3. **Claw** — SSH 同步 `claw/` → starclaw.me → `docker compose -f docker-compose.prod.yml up -d --build`
+
+三路并行，全程无需 SSH 登录服务器。
+
+**Windows 额外说明：**
+- Git for Windows 自带 SSH，`~/.ssh/config` 对应 `C:\Users\<用户名>\.ssh\config`
+- PowerShell / CMD / Git Bash 均可执行 `git push nydus master`
+- 如果使用 WSL，配置与 Linux 相同
+
+**手动部署（备选）：**
+
+```bash
+# 在任意有 Nydus Secret 的机器上触发
+curl -X POST 'https://nydus.starclaw.net/api/repos/starclaw/deploy?branch=master' \
+  -H 'X-Nydus-Secret: <secret>'
+```
+
+### 13.0.2 用户自部署指南（新 Claw 孵化）
+
+用户也可以在自己的服务器上部署独立的 Claw 实例，无需 Nydus：
+
+```bash
+# 国际网络
+curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
+
+# 中国大陆
+curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install-cn.sh | bash
+```
+
+安装脚本自动完成：Docker 安装 → 代码克隆 → 密钥生成 → 数据目录 → MCP Bridge → 构建启动。
+
+**孵化后加入虫群：**
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1. 部署 | 执行安装脚本 | 5-10 分钟，全自动 |
+| 2. 注册 | 浏览器打开 `http://<IP>` | 第一个注册用户自动成为管理员 |
+| 3. 配置模型 | 设置 → 模型 | BYOK（自带 API Key）或使用 star-ai.net |
+| 4. 加入虫群 | 设置 → 虫群网络 → `claw://swarm.starclaw.net` | `NormalizeQueenURL()` 自动转 https |
+| 5. 向女王报到 | 设置 → 虫群身份 → "向女王报到" | Ed25519 签名认证，无需注册 |
+
+**系统要求：** Linux 服务器（Ubuntu 20.04+ / Debian 11+ / CentOS 8+），2GB+ RAM，Docker 可用。
+
+### 13.1 发布流水线
+
+```
+开发者 push → Nydus (git push nydus master)        开发者 push → GitHub (git push origin)
+                │                                                    │
+    post-receive hook                                     GitHub Actions CI
+                │                                                    │
+    ┌───────────┼───────────────┐                     ┌──────────────┼──────────────┐
+    ▼           ▼               ▼                     ▼              ▼              ▼
+  queen/     queen/api/      claw/                  lint          test           build
+  Server C   Server B       starclaw.me           (golangci)    (go test)    (cross-compile)
+  (Worm)     (Worm+SSH)     (SSH direct)              │              │              │
+                                                      └──────────────┼──────────────┘
+                                                                     ▼
+                                                              GitHub Release
+                                                           (binary + Docker image)
 ```
 
 ### 13.2 测试分层

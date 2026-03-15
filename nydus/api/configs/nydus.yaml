@@ -25,6 +25,14 @@ repos:
         subdir: "queen/api"
         branch: "master"
 
+      - name: "claw-starclaw-me"
+        ssh_host: "root@starclaw.me"
+        ssh_key: "/root/.ssh/id_ed25519"
+        deploy_path: "/opt/starclaw"
+        deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api web"
+        subdir: "claw"
+        branch: "master"
+
   claw:
     description: "StarClaw open-source AI agent platform"
     public: true

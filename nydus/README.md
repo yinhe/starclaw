@@ -41,14 +41,14 @@ Server C: /data/nydus/repos/starclaw.git (bare repo)
     │ post-receive hook
     ▼
 Nydus API (:8095, Docker)  ←──  Nydus Web (:80, Docker/Nginx)
-    ├───────────────────────────────────────────┐
-    │ Local (Docker network)                    │ SSH tunnel
-    ▼                                           ▼
-Worm Server C (:8096)                 Worm Server B (:8097)
-    │ clone + sync queen/                 │ git archive → ssh tar
-    ▼                                           ▼
-Queen (12 containers)                 Gateway (queen-api)
-starclaw.net                          star-ai.net/v1/*
+    ├───────────────────────────────────────────┐───────────────────┐
+    │ Local (Docker network)                    │ SSH tunnel         │ SSH direct
+    ▼                                           ▼                    ▼
+Worm Server C (:8096)                 Worm Server B (:8097)     starclaw.me
+    │ clone + sync queen/                 │ git archive → ssh      │ git archive → ssh
+    ▼                                     ▼                         ▼
+Queen (12 containers)              Gateway (queen-api)        Claw (api+web)
+starclaw.net                       star-ai.net/v1/*           starclaw.me
 ```
 
 ## 组件
@@ -68,6 +68,7 @@ starclaw.net                          star-ai.net/v1/*
 |--------|--------|-----------|------|
 | queen-server-c | `queen/` | Server C | 本地 Worm (Docker) |
 | gateway-server-b | `queen/api/` | Server B | SSH + 远程 Worm |
+| claw-starclaw-me | `claw/` | starclaw.me | SSH direct（无 Worm） |
 
 ## 快速开始
 
@@ -108,11 +109,21 @@ curl -X POST 'http://127.0.0.1:8095/api/repos/starclaw/deploy?branch=master' \
 
 ## 跨服务器部署（SSH 模式）
 
-对于 `ssh_host` 配置的远程 target，Nydus Server：
+对于 `ssh_host` 配置的远程 target，支持两种部署模式：
+
+### Worm 模式（`worm_url` 已配置）
 
 1. 从 bare repo 用 `git archive HEAD:<subdir>` 提取子目录
 2. 通过 SSH 管道传输到远程服务器的 deploy_path
 3. SSH 调用远程 Worm 的 `/deploy` 端点执行构建
+
+### Direct SSH 模式（`worm_url` 为空）
+
+1. 从 bare repo 用 `git archive HEAD:<subdir>` 提取子目录
+2. 通过 SSH 管道传输到远程服务器的 deploy_path
+3. SSH 直接在 deploy_path 中执行 `deploy_cmd`（无需安装 Worm）
+
+适用于不需要 Worm Agent 的简单服务器，如 Claw 实例。
 
 优势：**无需在远程服务器开放额外端口**（绕过云安全组限制）
 
