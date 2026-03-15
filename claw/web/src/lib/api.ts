@@ -334,7 +334,18 @@ export const templateAPI = {
   publish: (data: { agent_id: string; category?: string; tags?: string; icon?: string; description?: string }) =>
     api.post('/templates', data),
   install: (id: string) => api.post(`/templates/${id}/install`),
+  installRemote: (data: { name: string; description?: string; system_prompt?: string; tools?: string; config?: string; source?: string; source_id?: string }) =>
+    api.post('/templates/install-remote', data),
   rate: (id: string, rating: number) => api.post(`/templates/${id}/rate`, { rating }),
+}
+
+// Queen Community Marketplace (public, no auth)
+const QUEEN_API = 'https://starclaw.net/api'
+export const queenMarketplaceAPI = {
+  list: (params?: { type?: string; q?: string }) =>
+    axios.get(`${QUEEN_API}/marketplace/items`, { params }),
+  get: (id: string) =>
+    axios.get(`${QUEEN_API}/marketplace/items/${id}`),
 }
 
 // Schedules (Cron)

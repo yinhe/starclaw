@@ -633,6 +633,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/templates/:id", tplHandler.Get)
 			protected.POST("/templates", tplHandler.Publish)
 			protected.POST("/templates/:id/install", tplHandler.Install)
+			protected.POST("/templates/install-remote", tplHandler.InstallRemote)
 			protected.POST("/templates/:id/rate", tplHandler.Rate)
 
 			// Inference (user-facing: route to contributors)

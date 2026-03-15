@@ -143,6 +143,41 @@ func (h *TemplateHandler) Install(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"agent": agent})
 }
 
+// InstallRemote creates an agent from a remote marketplace template (e.g. from Queen/starclaw.net)
+func (h *TemplateHandler) InstallRemote(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var req struct {
+		Name         string `json:"name" binding:"required"`
+		Description  string `json:"description"`
+		SystemPrompt string `json:"system_prompt"`
+		Tools        string `json:"tools"`
+		Config       string `json:"config"`
+		Icon         string `json:"icon"`
+		Source       string `json:"source"` // e.g. "starclaw.net"
+		SourceID     string `json:"source_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	agent := model.Agent{
+		UserID:       userID,
+		Name:         req.Name,
+		Description:  req.Description,
+		SystemPrompt: req.SystemPrompt,
+		Tools:        req.Tools,
+		Config:       req.Config,
+	}
+	if err := h.db.Create(&agent).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to install"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+}
+
 // Rate adds a rating to a template
 func (h *TemplateHandler) Rate(c *gin.Context) {
 	tplID := c.Param("id")
