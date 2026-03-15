@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Bot, Download, Search, Check, Trash2, Loader2, Store } from 'lucide-react'
 import { agentAPI, queenMarketplaceAPI } from '../lib/api'
 
@@ -15,6 +16,7 @@ interface MarketplaceItem {
 }
 
 export default function MarketplacePage() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<MarketplaceItem[]>([])
   const [installedIDs, setInstalledIDs] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
@@ -148,14 +150,14 @@ export default function MarketplacePage() {
               const isInstalled = installedIDs.has(item.id)
               const isInstalling = installing === item.id
               return (
-                <div key={item.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-shadow">
+                <div key={item.id} onClick={() => navigate(`/marketplace/${item.id}`)} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer">
                   <div className="flex items-start justify-between mb-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-lg flex items-center justify-center">
                       <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
                     {isInstalled ? (
                       <button
-                        onClick={() => handleUninstall(item.id)}
+                        onClick={(e) => { e.stopPropagation(); handleUninstall(item.id); }}
                         className="flex items-center gap-1 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg text-xs font-medium hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors group"
                       >
                         <Check className="w-3.5 h-3.5 group-hover:hidden" />
@@ -165,7 +167,7 @@ export default function MarketplacePage() {
                       </button>
                     ) : (
                       <button
-                        onClick={() => handleInstall(item)}
+                        onClick={(e) => { e.stopPropagation(); handleInstall(item); }}
                         disabled={isInstalling}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
                       >

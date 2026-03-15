@@ -3,6 +3,7 @@ import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MarketplacePage } from './pages/MarketplacePage';
+import { MarketplaceDetailPage } from './pages/MarketplaceDetailPage';
 import { DocsPage } from './pages/DocsPage';
 import { ForumPage } from './pages/ForumPage';
 import { ArenaPage } from './pages/ArenaPage';
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/auth/claw-login" element={<ClawLoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/marketplace/item/:id" element={<MarketplaceDetailPage />} />
         <Route path="/marketplace/:type" element={<MarketplacePage />} />
         <Route path="/docs" element={<DocsPage />} />
         <Route path="/forum" element={<ForumPage />} />

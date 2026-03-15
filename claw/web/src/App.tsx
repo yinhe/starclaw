@@ -22,6 +22,7 @@ import DashboardPage from './pages/DashboardPage'
 import SettingsPage from './pages/SettingsPage'
 import NotFoundPage from './pages/NotFoundPage'
 import MarketplacePage from './pages/MarketplacePage'
+import MarketplaceDetailPage from './pages/MarketplaceDetailPage'
 import WorkflowTemplatePage from './pages/WorkflowTemplatePage'
 import CodingAgentPage from './pages/CodingAgentPage'
 import TasksPage from './pages/TasksPage'
@@ -96,6 +97,7 @@ export default function App() {
         <Route path="agents/:id" element={<AgentDetailPage />} />
         <Route path="teams/:id" element={<TeamDetailPage />} />
         <Route path="marketplace" element={<MarketplacePage />} />
+        <Route path="marketplace/:id" element={<MarketplaceDetailPage />} />
         <Route path="models" element={<ModelsPage />} />
         <Route path="knowledge" element={<KnowledgeBasePage />} />
         <Route path="mcp" element={<MCPPage />} />

@@ -1,8 +1,33 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { LogoMark } from '../components/Logo';
-import { Search, Download, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Search, Download, X, CheckCircle2, AlertCircle, Bot,
+  Music, Video, Code2, BookOpen, Briefcase, Clapperboard,
+  BarChart3, PenTool, Server, Palette, type LucideIcon,
+} from 'lucide-react';
 import { marketplaceAPI, type MarketplaceItem } from '../lib/api';
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  Music, Video, Code2, Search, BookOpen, Briefcase, Clapperboard,
+  BarChart3, PenTool, Server, Palette, Bot,
+};
+
+function AgentIcon({ name, className }: { name?: string; className?: string }) {
+  const Icon = name ? ICON_MAP[name] : null;
+  if (Icon) return <Icon className={className} />;
+  return <Bot className={className} />;
+}
+
+const CATEGORY_TAG_MAP: Record<string, string[]> = {
+  '推荐': [],
+  '客服': ['客服', 'customer', 'support'],
+  '写作': ['写作', 'writing', 'copywriting', 'story', 'creative', '学术', 'academic'],
+  '编程': ['编程', 'code', 'coding', 'fullstack', 'programming', 'react', 'go', 'python'],
+  '数据分析': ['数据', 'data', 'analysis', 'sql', 'visualization'],
+  '自动化': ['自动化', 'automation', 'devops', 'docker', 'kubernetes', 'cicd', '运维'],
+  '多媒体': ['创作', 'mv', 'music', 'video', 'comic', 'manga', 'dubbing', '短剧', 'film'],
+};
 
 type MarketType = 'agents' | 'skills' | 'mcp' | 'workflows';
 
@@ -94,7 +119,7 @@ function InstallModal({ item, onClose }: { item: MarketplaceItem; onClose: () =>
         ) : (
           <>
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-4">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-lg">{item.icon || '🤖'}</div>
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center"><AgentIcon name={item.icon} className="w-5 h-5 text-indigo-600" /></div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm truncate">{item.name}</p>
                 <p className="text-xs text-gray-400 truncate">{item.description}</p>
@@ -139,11 +164,12 @@ function InstallModal({ item, onClose }: { item: MarketplaceItem; onClose: () =>
 
 export function MarketplacePage() {
   const { type: paramType } = useParams<{ type: string }>();
+  const navigate = useNavigate();
   const currentType = (paramType || 'agents') as MarketType;
   const meta = TYPE_META[currentType] || TYPE_META.agents;
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('全部');
-  const [items, setItems] = useState<MarketplaceItem[]>([]);
+  const [allItems, setAllItems] = useState<MarketplaceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [installItem, setInstallItem] = useState<MarketplaceItem | null>(null);
 
@@ -151,19 +177,37 @@ export function MarketplacePage() {
     setLoading(true);
     try {
       const res = await marketplaceAPI.list({ type: currentType === 'mcp' ? 'mcp' : currentType === 'workflows' ? 'workflow' : currentType === 'skills' ? 'skill' : 'agent', q: q || undefined });
-      setItems(res.items || []);
+      setAllItems(res.items || []);
     } catch {
-      setItems([]);
+      setAllItems([]);
     }
     setLoading(false);
   }, [currentType]);
 
-  useEffect(() => { loadItems(); }, [loadItems]);
+  useEffect(() => { loadItems(); setCategory('全部'); }, [loadItems]);
 
   const handleSearch = (val: string) => {
     setSearch(val);
+    setCategory('全部');
     loadItems(val);
   };
+
+  const handleCategory = (c: string) => {
+    setCategory(c);
+    if (c === '全部') return;
+    if (c === '推荐') return;
+  };
+
+  const items = (() => {
+    if (category === '全部' || category === '推荐') return allItems;
+    const tagKeywords = CATEGORY_TAG_MAP[category] || [];
+    if (tagKeywords.length === 0) return allItems;
+    return allItems.filter(item => {
+      const t = (item.tags || '').toLowerCase();
+      const d = (item.description || '').toLowerCase();
+      return tagKeywords.some(k => t.includes(k.toLowerCase()) || d.includes(k.toLowerCase()));
+    });
+  })();
 
   const parseTags = (tags: string): string[] => {
     if (!tags) return [];
@@ -205,7 +249,7 @@ export function MarketplacePage() {
             </div>
             <div className="flex flex-wrap justify-center gap-2 mt-4">
               {meta.categories.map(c => (
-                <button key={c} onClick={() => setCategory(c)}
+                <button key={c} onClick={() => handleCategory(c)}
                   className={`px-3 py-1 rounded-full text-xs transition ${c === category ? 'bg-indigo-600 text-white' : 'bg-white border text-gray-500 cursor-pointer hover:border-indigo-300 hover:text-indigo-600'}`}>
                   {c}
                 </button>
@@ -238,14 +282,17 @@ export function MarketplacePage() {
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {items.map((item) => (
-                  <div key={item.id} className="group bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-lg hover:border-indigo-100 transition-all">
+                  <div key={item.id} onClick={() => navigate(`/marketplace/item/${item.id}`)}
+                    className="group bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-lg hover:border-indigo-100 transition-all cursor-pointer">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-lg">{item.icon || '🤖'}</div>
+                      <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                        <AgentIcon name={item.icon} className="w-5 h-5 text-indigo-600" />
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-sm truncate">{item.name}</h3>
+                        <h3 className="font-bold text-sm truncate group-hover:text-indigo-600 transition-colors">{item.name}</h3>
                         <p className="text-[11px] text-gray-400">by {item.author?.nickname || '匿名'}</p>
                       </div>
-                      <button onClick={() => setInstallItem(item)}
+                      <button onClick={(e) => { e.stopPropagation(); setInstallItem(item); }}
                         className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all whitespace-nowrap">
                         <Download className="w-3.5 h-3.5" />
                         安装
