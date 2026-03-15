@@ -23,6 +23,7 @@ import (
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/database"
 	"github.com/yinhe/starclaw/internal/inference"
 	"github.com/yinhe/starclaw/internal/instinct"
 	"github.com/yinhe/starclaw/internal/mcp"
@@ -76,8 +77,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Rate limiting
 	r.Use(middleware.RateLimit(300, time.Minute, rdb))
 
+	// Node identity (created early so star-ai provider can use it)
+	identity := node.LoadOrCreateIdentity()
+
 	// Provider registry
 	providerRegistry := provider.NewRegistry()
+
+	// Register star-ai provider with node identity (Ed25519 signature auth, no API key needed)
+	providerRegistry.Register("star-ai", provider.NewStarAIProvider(provider.StarAIConfig{
+		Identity: identity,
+	}))
 
 	// Tool registry
 	browserMgr := browser.NewManager()
@@ -153,6 +162,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Seed built-in agent templates (Creep marketplace)
 	v1.SeedBuiltinTemplates(db)
 
+	// Seed star-ai models for all existing users (idempotent)
+	go database.SeedStarAIForAllUsers(db)
+
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
 	taskWorker.Start()
@@ -201,7 +213,6 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	apiV1 := r.Group("/v1")
 	{
 		// Public routes
-		identity := node.LoadOrCreateIdentity()
 		authHandler := v1.NewAuthHandler(db, cfg, identity)
 		apiV1.POST("/auth/register", authHandler.Register)
 		apiV1.POST("/auth/login", authHandler.Login)

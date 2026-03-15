@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/yinhe/starclaw/internal/config"
+	"github.com/yinhe/starclaw/internal/database"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/node"
 	"golang.org/x/crypto/bcrypt"
@@ -119,6 +120,7 @@ func (h *SetupHandler) Setup(c *gin.Context) {
 		// Migrate system-owned data to the real owner
 		MigrateSystemToOwner(h.db, existingUser.ID)
 		SeedBuiltinAgents(h.db)
+		database.SeedStarAIModels(h.db, existingUser.ID)
 
 		jwtToken, _ := h.generateJWT(&existingUser)
 		c.JSON(http.StatusCreated, gin.H{
@@ -152,6 +154,7 @@ func (h *SetupHandler) Setup(c *gin.Context) {
 	// Migrate system-owned data to the real owner
 	MigrateSystemToOwner(h.db, user.ID)
 	SeedBuiltinAgents(h.db)
+	database.SeedStarAIModels(h.db, user.ID)
 
 	jwtToken, _ := h.generateJWT(&user)
 	c.JSON(http.StatusCreated, gin.H{

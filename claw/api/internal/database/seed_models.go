@@ -119,6 +119,61 @@ func SeedModelsForUser(db *gorm.DB, userID string) {
 	}
 }
 
+// starAIModels is the curated list of models available via star-ai.net gateway (no API key needed)
+var starAIModels = []modelSeed{
+	// ── Best picks per provider ──
+	{"star-ai", "deepseek-chat", "DeepSeek V3 ⭐", 65536},
+	{"star-ai", "deepseek-reasoner", "DeepSeek R1 (推理)", 65536},
+	{"star-ai", "qwen-plus", "通义千问 Plus", 131072},
+	{"star-ai", "qwq-plus", "QwQ Plus (推理)", 131072},
+	{"star-ai", "gpt-4o", "GPT-4o", 128000},
+	{"star-ai", "gpt-4o-mini", "GPT-4o Mini", 128000},
+	{"star-ai", "claude-sonnet-4-20250514", "Claude Sonnet 4", 200000},
+	{"star-ai", "claude-3-5-haiku-20241022", "Claude 3.5 Haiku", 200000},
+	{"star-ai", "gemini-2.5-flash", "Gemini 2.5 Flash", 1048576},
+	{"star-ai", "grok-3-mini", "Grok 3 Mini", 131072},
+}
+
+// SeedStarAIModels creates star-ai model configs for a new user (zero-config, uses Claw identity auth)
+func SeedStarAIModels(db *gorm.DB, userID string) {
+	seeded := 0
+	for _, m := range starAIModels {
+		var count int64
+		db.Model(&model.ModelConfig{}).Where("user_id = ? AND provider = ? AND model_name = ?", userID, "star-ai", m.ModelName).Count(&count)
+		if count > 0 {
+			continue
+		}
+		cfg := model.ModelConfig{
+			UserID:      userID,
+			Provider:    m.Provider,
+			ModelName:   m.ModelName,
+			DisplayName: m.DisplayName,
+			APIKey:      "claw-identity", // marker: use Ed25519 signature auth
+			BaseURL:     "https://star-ai.net/v1",
+			MaxTokens:   m.MaxTokens,
+			Temperature: 0.7,
+			IsEnabled:   true,
+		}
+		if err := db.Create(&cfg).Error; err != nil {
+			log.Printf("[SeedStarAI] Failed to create %s: %v", m.ModelName, err)
+		} else {
+			seeded++
+		}
+	}
+	if seeded > 0 {
+		log.Printf("[SeedStarAI] Created %d star-ai model configs for user %s", seeded, userID)
+	}
+}
+
+// SeedStarAIForAllUsers seeds star-ai models for all existing users (idempotent, safe to call on every startup)
+func SeedStarAIForAllUsers(db *gorm.DB) {
+	var userIDs []string
+	db.Model(&model.User{}).Pluck("id", &userIDs)
+	for _, uid := range userIDs {
+		SeedStarAIModels(db, uid)
+	}
+}
+
 // SeedModelsForAllUsers seeds models for all users that have at least one qwen config
 func SeedModelsForAllUsers(db *gorm.DB) {
 	var userIDs []string
