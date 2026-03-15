@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://starclaw.me">Website</a> ·
   <a href="#-quick-start">Quick Start</a> ·
   <a href="docs/DEPLOY_EN.md">Deploy Guide</a> ·
   <a href="docs/API_EN.md">API Docs</a> ·
@@ -41,13 +42,13 @@
 ### One-Click Install (Linux server)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
+curl -fsSL https://starclaw.me/install.sh | bash
 ```
 
 ### One-Click Install (China Mainland)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install-cn.sh | bash
+curl -fsSL https://starclaw.me/install-cn.sh | bash
 ```
 
 This will automatically install Docker (if needed), clone the repo, generate secure config, and start all services.
@@ -164,13 +165,13 @@ StarClaw 是一个功能完整的**开源 AI Agent 编排平台**，支持：
 ### 一键部署
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install.sh | bash
+curl -fsSL https://starclaw.me/install.sh | bash
 ```
 
 ### 一键部署（中国大陆加速版）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yinhe/starclaw/main/scripts/install-cn.sh | bash
+curl -fsSL https://starclaw.me/install-cn.sh | bash
 ```
 
 或手动安装：

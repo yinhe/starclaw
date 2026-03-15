@@ -41,7 +41,20 @@ sudo systemctl daemon-reload && sudo systemctl restart docker
 
 ## 三、部署
 
-### 快速开始（3 条命令）
+### 一键安装（推荐）
+
+```bash
+curl -fsSL https://starclaw.me/install.sh | bash
+```
+
+国内服务器：
+```bash
+curl -fsSL https://starclaw.me/install-cn.sh | bash
+```
+
+自动完成：安装 Docker → 拉取代码 → 生成安全配置 → 启动所有服务。
+
+### 手动安装（3 条命令）
 
 ```bash
 git clone https://github.com/yinhe/starclaw.git
