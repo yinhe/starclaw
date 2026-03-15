@@ -248,6 +248,14 @@ func (h *SwarmHandler) Heartbeat(c *gin.Context) {
 		}
 	}
 
+	// Inject molt update directive if a rolling release targets this node
+	if req.Version != "" {
+		molt := h.checkMoltForNode(node.ID, req.Version, string(node.Role))
+		if molt != nil {
+			resp["molt"] = molt
+		}
+	}
+
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -437,6 +445,49 @@ func (h *SwarmHandler) Resolve(c *gin.Context) {
 		"version": node.Version,
 		"status":  node.Status,
 	})
+}
+
+// checkMoltForNode checks if there's a pending molt update for this node.
+// Returns nil if no update is needed. Reuses the same logic as MoltHandler.Check
+// but avoids an extra HTTP call — the data is injected into heartbeat response.
+func (h *SwarmHandler) checkMoltForNode(nodeID, currentVersion, role string) map[string]interface{} {
+	if role == "" {
+		role = "claw"
+	}
+
+	// Find latest rolling release for this role
+	var release model.MoltRelease
+	err := h.db.Where("target_role = ? AND status = ? AND version != ?",
+		role, model.ReleaseRolling, currentVersion).
+		Order("created_at DESC").First(&release).Error
+	if err != nil {
+		return nil
+	}
+
+	// Check if this node is in the rollout batch
+	var ns model.MoltNodeStatus
+	if h.db.Where("release_id = ? AND node_id = ?", release.ID, nodeID).First(&ns).Error != nil {
+		return nil
+	}
+
+	if ns.Status != "pending" {
+		return nil
+	}
+
+	// Mark as updating
+	h.db.Model(&ns).Updates(map[string]interface{}{
+		"status":     "updating",
+		"updated_at": time.Now(),
+	})
+
+	return map[string]interface{}{
+		"update_available": true,
+		"release_id":       release.ID,
+		"version":          release.Version,
+		"version_url":      release.VersionURL,
+		"changelog":        release.Changelog,
+		"mandatory":        release.Mandatory,
+	}
 }
 
 // ---------- helpers ----------

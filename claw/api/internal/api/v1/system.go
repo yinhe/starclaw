@@ -486,6 +486,12 @@ func execOnHostTimeout(client *mcp.Client, command string, timeoutSec int) (stri
 	return client.CallTool(context.Background(), "shell_exec", string(args))
 }
 
+// PerformDockerUpdate executes a full Docker-based self-update via MCP Bridge.
+// Exported so it can be called from the swarm client's auto-update flow.
+func PerformDockerUpdate() error {
+	return performDockerUpdate()
+}
+
 func performDockerUpdate() error {
 	// MCP Bridge is required — the container cannot rebuild itself
 	bridgeURL := mcp.DetectBridgeURL()

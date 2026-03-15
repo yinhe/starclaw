@@ -58,6 +58,8 @@ type Client struct {
 	feralSince       time.Time // zero if not in feral mode
 	credits          *CreditBalance
 	creditClient     *CreditClient // star energy operations client
+	moltUpdating     bool          // prevents concurrent molt updates
+	UpdateFunc       func() error  // set by system handler to perform Docker update
 }
 
 // NormalizeQueenURL converts claw:// protocol to https:// (or http:// for local addresses).
@@ -464,7 +466,100 @@ func (c *Client) heartbeat() error {
 		}
 	}
 
+	// Parse molt update directive from heartbeat response
+	if moltRaw, ok := resp["molt"]; ok && moltRaw != nil {
+		if moltMap, ok := moltRaw.(map[string]interface{}); ok {
+			if avail, _ := moltMap["update_available"].(bool); avail {
+				releaseID, _ := moltMap["release_id"].(string)
+				targetVer, _ := moltMap["version"].(string)
+				mandatory, _ := moltMap["mandatory"].(bool)
+				log.Printf("[molt] Queen instructed update: %s → %s (release=%s, mandatory=%v)", molt.Version, targetVer, releaseID, mandatory)
+				go c.executeMoltUpdate(releaseID, targetVer)
+			}
+		}
+	}
+
 	return nil
+}
+
+// executeMoltUpdate saves a pending marker file and triggers the Docker update.
+// After restart, ReportPendingMolt() reads the marker and reports success/failure to Queen.
+func (c *Client) executeMoltUpdate(releaseID, targetVersion string) {
+	c.mu.Lock()
+	if c.moltUpdating {
+		c.mu.Unlock()
+		log.Printf("[molt] update already in progress, skipping")
+		return
+	}
+	c.moltUpdating = true
+	c.mu.Unlock()
+
+	// Write .molt_pending so we can report back after restart
+	pending := fmt.Sprintf("%s\n%s\n", releaseID, targetVersion)
+	if err := os.WriteFile(".molt_pending", []byte(pending), 0600); err != nil {
+		log.Printf("[molt] failed to write .molt_pending: %v", err)
+	}
+
+	if c.UpdateFunc == nil {
+		log.Printf("[molt] UpdateFunc not set, cannot perform auto-update. User must update manually.")
+		c.mu.Lock()
+		c.moltUpdating = false
+		c.mu.Unlock()
+		return
+	}
+
+	log.Printf("[molt] executing auto-update to %s...", targetVersion)
+	if err := c.UpdateFunc(); err != nil {
+		log.Printf("[molt] auto-update failed: %v", err)
+		c.mu.Lock()
+		c.moltUpdating = false
+		c.mu.Unlock()
+	}
+	// If update succeeds, the container restarts — we never reach here
+}
+
+// ReportPendingMolt checks if there's a .molt_pending file from a previous update
+// and reports the result to Queen. Called once on startup.
+func (c *Client) ReportPendingMolt() {
+	data, err := os.ReadFile(".molt_pending")
+	if err != nil {
+		return // no pending report
+	}
+	parts := bytes.Split(data, []byte("\n"))
+	if len(parts) < 2 {
+		os.Remove(".molt_pending")
+		return
+	}
+	releaseID := string(parts[0])
+	targetVersion := string(parts[1])
+
+	// Determine if update succeeded by comparing current version
+	status := "ok"
+	errMsg := ""
+	if molt.Version == "dev" || molt.Version < targetVersion {
+		status = "failed"
+		errMsg = fmt.Sprintf("version still %s after update (expected %s)", molt.Version, targetVersion)
+	}
+
+	log.Printf("[molt] reporting update result to Queen: release=%s status=%s (current=%s, target=%s)", releaseID, status, molt.Version, targetVersion)
+
+	c.mu.RLock()
+	nid := c.nodeID
+	c.mu.RUnlock()
+
+	body := map[string]interface{}{
+		"node_id":    nid,
+		"release_id": releaseID,
+		"status":     status,
+		"error":      errMsg,
+	}
+	if _, err := c.post("/swarm/molt/report", body); err != nil {
+		log.Printf("[molt] failed to report to Queen: %v", err)
+		return
+	}
+
+	os.Remove(".molt_pending")
+	log.Printf("[molt] update report sent successfully")
 }
 
 // Credits returns the cached star energy balance (updated each heartbeat)
