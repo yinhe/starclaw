@@ -2,8 +2,11 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - "alerts.yml"
+
 scrape_configs:
-  # Queen services
+  # ── Queen Services (same Docker network: starqueen) ──
   - job_name: 'queen-api'
     static_configs:
       - targets: ['queen-api:8085']
@@ -29,7 +32,17 @@ scrape_configs:
       - targets: ['arena:8094']
     metrics_path: /metrics
 
-  # Prometheus self-monitoring
+  # ── External: Claw (starclaw.me) ──
+  # Requires Claw /metrics to be accessible from Server C
+  # In production, use file_sd_configs or HTTP SD for dynamic discovery
+  - job_name: 'claw-starclaw-me'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['starclaw.me:443']
+    scheme: https
+    metrics_path: /metrics
+
+  # ── Prometheus self ──
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']

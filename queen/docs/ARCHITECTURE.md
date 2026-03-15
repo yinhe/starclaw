@@ -1,6 +1,6 @@
 # StarClaw — 系统架构文档
 
-> 最后更新：2026-03-10 (Queen Core v2)
+> 最后更新：2026-03-16 (Marketplace Unified + Instinct + Nydus CI/CD)
 
 ---
 
@@ -1423,16 +1423,38 @@ StarClaw 的**菌毯**是连接所有注册节点的数据网络——接入虫�
 脊刺防地面、孢子防空中——两层防御体系。
 
 **脊刺 Spine — 节点间认证（内部防御）：**
-- Claw↔Overlord↔Queen 之间使用 **mTLS + 注册 Token** 互信
-- 首次注册时 Queen 颁发节点证书，后续通信全程加密
-- 防止伪造节点接入虫群
-- 节点身份不可伪造（基于非对称加密）
+
+| 层级 | 设计目标 | 当前实现 | 状态 |
+|------|---------|---------|:----:|
+| 节点身份 | Ed25519 密钥对 + `claw:` 地址 | `node/identity.go` 自动生成 + 持久化 | ✅ |
+| P2P 握手 | Challenge-Response 签名验证 | `GET /v1/peer/handshake` Ed25519 验签 | ✅ |
+| Swarm 注册 | 节点 Token 认证 | Queen 颁发 Node Token，心跳携带 | ✅ |
+| 星能转账 | Ed25519 签名 + Nonce 防重放 | `POST /v1/credits/transfer` 签名验证 | ✅ |
+| Gossip 节点交换 | 签名验证来源 | `POST /v1/peer/gossip` | ✅ |
+| mTLS 双向证书 | 全链路 TLS 客户端证书 | **未实现** — 当前依赖 HTTPS + Token | ❌ |
+| 节点证书颁发 | Queen CA 签发证书 | **未实现** — 当前用 Node Token 替代 | ❌ |
+
+> ⚠️ **差距说明：** 当前安全模型为 **Ed25519 签名 + HTTPS + Token**，而非最初设计的 mTLS 双向证书。
+> Ed25519 签名已覆盖关键场景（身份验证/转账/P2P 握手），mTLS 作为 P2 优先级在虫群规模达到 1000+ 节点后实施。
 
 **孢子 Spore — 外部防御（对外防御）：**
-- API 层：速率限制、DDoS 防护、JWT 认证、CORS
-- 数据层：API Key AES 加密存储，敏感数据传输 TLS
-- 行为层：异常检测（某 Claw 突然大量异常请求 → 自动隔离）
-- 审计：所有管理操作记录审计日志
+
+| 层级 | 设计目标 | 当前实现 | 状态 |
+|------|---------|---------|:----:|
+| API 认证 | JWT + Owner Token + RBAC | Claw JWT/Owner Token + Queen JWT + Overlord Admin Token | ✅ |
+| 速率限制 | 多级限流 | Queen 三级限流（全局/写入/认证）| ✅ |
+| CORS | 来源白名单 | Claw 允许 starclaw.net + 同源 | ✅ |
+| 数据加密 | API Key 加密存储 | AES 加密 Provider Key | ✅ |
+| 传输加密 | HTTPS/TLS | 全部生产域名 Let's Encrypt TLS | ✅ |
+| 审计日志 | 管理操作记录 | Overlord AuditLog 模型，全操作记录 | ✅ |
+| 异常检测 | 行为分析 + 自动隔离 | **未实现** | ❌ |
+| DDoS 防护 | 基础设施级 | **未实现** — 依赖 CDN/云防护 | ❌ |
+
+**安全路线图：**
+1. **P0（已完成）：** Ed25519 身份 + JWT 认证 + HTTPS + RBAC + 限流 + 审计
+2. **P1（下一步）：** Node Token → Ed25519 签名认证（`X-Claw-ID` + `X-Claw-Signature`）
+3. **P2（规模化后）：** mTLS 双向证书 + 异常检测 + 行为分析
+4. **P3（长期）：** DDoS 防护 + 安全审计 + 渗透测试
 
 ### 7.4 坑道虫 Nydus — P2P 节点互联
 
@@ -1812,12 +1834,18 @@ Claw 心跳 goroutine（启动即运行）：
 5. 拉取离线期间的配置变更和版本更新
 6. 无缝回归虫群，**数据零丢失**
 
-**Queen 容灾：**
-- Queen 自身采用**主从热备**（唯一的虫后，但有休眠备份）
-- 自动故障转移时间 < 30 秒
-- 数据库主从复制 + Redis Sentinel
-- Queen 恢复后，所有 Feral 节点在 5 分钟内自动回归（指数退避上限）
-- 即使 Queen 永久消失，Claw 通过 DHT + 本地缓存 + mDNS 仍可互相发现和通信
+**Queen 容灾（⚠️ 当前：单点部署，未实现 HA）：**
+
+| 能力 | 设计目标 | 当前状态 |
+|------|---------|---------|
+| 数据库 HA | MySQL 主从复制 + 自动故障转移 | ❌ 单实例 MySQL |
+| 缓存 HA | Redis Sentinel | ❌ Queen 未使用 Redis |
+| 应用 HA | 主从热备，故障转移 < 30s | ❌ 单 Docker Compose |
+| Feral 回归 | Queen 恢复后 5min 内全部回归 | ✅ Claw 指数退避重连已实现 |
+| 去中心化兜底 | Queen 永久消失仍可互通 | ✅ DHT（规划） + 本地缓存 + Gossip |
+
+> 📋 **Queen HA 作为 P3 优先级，在用户规模达到日活 1000+ 后实施。**
+> 当前通过 Nydus CI/CD 快速重建（`git push nydus master` 约 3 分钟恢复全部服务）缓解。
 
 ### 7.6 虫群共识 Hivemind — 分布式信任机制
 
@@ -1880,27 +1908,69 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 
 ### 7.7 进化腔 Evolution Chamber — 能力市场
 
+> ✅ **Agent 模板市场已实现（v2026.0316）。** Queen 统一种子 + 列表/详情/搜索 API + Claw 代理安装 + 双端详情页。Tool 插件市场待实现。
+
 进化腔解锁新的攻击、护甲升级。StarClaw 的进化腔是 **Plugin/Agent/Workflow 能力市场**。
 
 与 Molt 蜕皮（整体版本更新）不同，进化腔是**单项能力的安装/卸载**。
 
-| 类型 | 说明 | 分发方式 |
-|------|------|---------|
-| **Tool 插件** | 第三方 JSON Tool 插件（如天气、股票、翻译） | 市场下载 → 放入 `plugins/` |
-| **Agent 模板** | 预配置的 Agent（如代码助手、客服、写作） | 通过 Creep 菌毯全网传播 |
-| **工作流模板** | 预制工作流（如视频制作流水线） | 通过 Creep 菌毯全网传播 |
-| **Provider 适配** | 新的 LLM Provider 接入插件 | 随 Molt 更新或独立安装 |
+| 类型 | 说明 | 分发方式 | 状态 |
+|------|------|---------|:----:|
+| **Agent 模板** | 预配置的 Agent（如代码助手、客服、写作） | Queen 市场 → Claw 代理安装 | ✅ |
+| **Tool 插件** | 第三方 JSON Tool 插件（如天气、股票、翻译） | 市场下载 → 放入 `plugins/` | 规划中 |
+| **工作流模板** | 预制工作流（如视频制作流水线） | 通过 Creep 菌毯全网传播 | 规划中 |
+| **Provider 适配** | 新的 LLM Provider 接入插件 | 随 Molt 更新或独立安装 | 规划中 |
+
+#### 7.7.1 统一市场架构（已实现）
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    统一市场数据流                                  │
+│                                                                  │
+│  Queen (starclaw.net)                                           │
+│  ┌──────────────────────────────────┐                           │
+│  │ seed_marketplace.go              │  启动时种子 16 个官方模板    │
+│  │ marketplace.go (List/Get/Search) │  列表/详情/搜索/评分 API    │
+│  │ MarketplacePage.tsx              │  市场浏览 + 分类筛选        │
+│  │ MarketplaceDetailPage.tsx        │  详情页（技能/工作流/本能）  │
+│  │ InstallModal                     │  输入 Claw URL+Token 安装   │
+│  └──────────────┬───────────────────┘                           │
+│                 │ GET /api/v1/marketplace/items                  │
+│                 │ GET /api/v1/marketplace/items/:id              │
+│  ┌──────────────▼───────────────────┐                           │
+│  │ Claw (starclaw.me / 用户自部署)   │                           │
+│  │ CommunityList() — 代理 Queen API │  避免 CORS，后端代理       │
+│  │ CommunityGet()  — 代理详情 API   │                           │
+│  │ InstallRemote() — 安装到本地     │  创建 Agent + source_id    │
+│  │ MarketplacePage.tsx              │  统一市场浏览/安装/卸载     │
+│  │ MarketplaceDetailPage.tsx        │  详情页 + 已安装状态检测    │
+│  │ AgentsPage.tsx                   │  source_id → "已安装" badge │
+│  └──────────────────────────────────┘                           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**两条安装路径：**
+
+| 路径 | 入口 | 流程 | CORS 处理 |
+|------|------|------|----------|
+| **路径 1：Claw 市场** | Claw Web `/marketplace` | 前端 → Claw 后端代理 → Queen API → 本地安装 | 后端代理，无 CORS 问题 |
+| **路径 2：Queen 门户** | Queen Web `/marketplace` | InstallModal → 直接 fetch 用户 Claw API | Claw CORS 白名单 `starclaw.net` |
+
+**种子数据（`seed_marketplace.go`）：**
+- 16 个官方 Agent 模板（全栈开发/翻译/写作/数据分析/音乐/视频/客服/教育/法律/健康/营销/Shell/游戏/科研/心理/美食）
+- 每个模板包含：name, description, icon, tags, system_prompt, tools, config
+- 启动时 Upsert，通过 `author_id = systemUserID` 标记为官方
 
 **市场运营（闭源 Queen 侧）：**
-- 审核 & 上架
+- 审核 & 上架（status: pending → approved → published）
 - 下载量 & 评分排行
-- 开发者分成（如果是付费插件）
+- 开发者分成（如果是付费插件，待实现）
 
 **本地安装（开源 Claw 侧）：**
-- `GET /api/v1/plugins` — 查看已安装插件列表
-- `POST /api/v1/plugins/install` — 从市场安装插件
-- `DELETE /api/v1/plugins/:id` — 卸载插件
-- 也可手动放入 `plugins/` 目录
+- `GET /v1/templates/community` — 代理 Queen 市场列表
+- `GET /v1/templates/community/:id` — 代理 Queen 市场详情
+- `POST /v1/templates/install-remote` — 从市场安装到本地
+- 已安装模板通过 `source_id` 关联，AgentsPage 显示"已安装" badge
 
 ### 7.8 孵化进化 Hatchery → Lair → Hive — 节点角色升级
 
@@ -1924,27 +1994,30 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 
 | 虫族机制 | 英文 | StarClaw 映射 | 位置 | 状态 |
 |---------|------|-------------|------|:----:|
-| 菌毯 | Creep | 共享智能网络 | 全网数据层 | 规划中 |
-| 领主 | Overlord | 资源配额 + 监控 + 企业管理 | `overlord/` | ✅ |
+| 菌毯 | Creep | 共享智能网络（市场统一分发已实现，P2P 传播待实现） | 全网数据层 | 部分✅ |
+| 领主 | Overlord | 资源配额 + 监控 + 企业管理 + 10 页控制台 | `overlord/` | ✅ |
 | 脊刺/孢子 | Spine/Spore | 节点认证 + API 安全 | 全节点 | 部分 |
-| 坑道虫 | Nydus | P2P 节点互联（Ed25519 + Gossip + DHT + NAT穿透） | `node/` + 全网 | ✅ |
+| 坑道虫 | Nydus | P2P 节点互联（Ed25519 + Gossip + NAT穿透 + Relay） | `node/` + 全网 | ✅ |
 | 坑道虫·DHT | Nydus DHT | Kademlia 去中心化节点发现 | `node/dht/` | 规划中 |
-| 坑道虫·穿透 | Nydus NAT | STUN 探测 + UDP 打洞 + Relay 兜底 | `node/nydus_*.go` | ✅ v2026.0312 |
+| 坑道虫·穿透 | Nydus NAT | STUN 探测 + UDP 打洞 + Relay 兜底 + NydusManager | `node/nydus_*.go` | ✅ v2026.0312 |
 | 坑道虫·中继 | Nydus Relay | P2P HTTP 中继转发（NAT 穿透失败兜底） | `node/nydus_relay.go` | ✅ v2026.0312 |
+| 坑道虫·CI/CD | Nydus Worm | 代码分发系统（git push → 自动部署 4 target） | `nydus/` | ✅ v2026.0314 |
 | 失控 | Feral | 断连独立运行（DHT 保证去中心化发现不中断） | 全节点 | ✅ |
-| 进化腔 | Evolution | 能力市场 | Queen + Claw | 规划中 |
+| 进化腔 | Evolution | 统一市场（Queen 种子 → Claw 代理安装 + 详情页） | Queen + Claw | ✅ v2026.0316 |
 | 孵化进化 | Hatch→Lair→Hive | 节点角色升级 | 全节点 | 规划中 |
 | 蜕皮 | Molt | OTA 自动更新 | §3.7 | 基础✅ |
 | 虫群 | Swarm | 全网节点注册 + claw: 地址解析 | `queen/swarm/` | ✅ |
 | 虫巢 | Brood | 企业级节点注册 + claw: 地址解析 | `overlord/` | ✅ |
 | 提取器 | Extractor | AI 算力提取（LLM 路由 + 媒体算力 + 算力市场） | `router/` | ✅ |
 | 虫群意志 | Hivemind | 分布式信任共识（投票/评价/仲裁） | §7.6 | 规划中 |
-| 脑虫 | Cerebrate | 跨会话记忆（用户画像 + 技能经验） | §7.10 | ✅ v2026.0313 |
+| 脑虫 | Cerebrate | 跨会话记忆（5 类自动提取 + 对话注入 + CRUD） | §7.10 | ✅ v2026.0313 |
+| 星能 | Star Energy | 内部货币（Queen 账本 + Ed25519 签名转账 + HP 血量） | §3.9 | ✅ v2026.0313 |
+| 推理挖矿 | Mining | 有用工作证明（算力贡献 + 信任评分 + 90/10 结算） | §3.10 | ✅ v2026.0313 |
 | 生命周期 | Lifecycle | 孵化→在线→离线→休眠→死亡→复活→繁殖 | §7.11 | 规划中 |
 | 繁殖 | Breed | 轻量部署 + 分裂繁殖 + 批量孵化 | §7.12 | 规划中 |
 | 适应 | Adaptation | 自主进化（模型选择/Prompt/工作流优化） | §7.13 | 规划中 |
 | 触手 | Tentacle | 多平台通信整合（飞书/钉钉/企微/Slack/Discord/TG） | `tool/*_tool.go` | ✅ v2026.0311 |
-| 本能 | Instinct | 主动行为系统（活动/关怀/定时任务） | §7.15 | ✅ v2026.0315 |
+| 本能 | Instinct | 主动行为系统（Engine + 8 内置活动 + Cron + API） | §7.15 | ✅ v2026.0315 |
 | 幼虫 | Larva (别名 Kernel) | 最小 Claw 内核（8MB，IoT/嵌入式） | §7.12 体型 | 规划中 |
 | 小狗 | Zergling (别名 Nano) | 轻量 Claw（64MB，手机/树莓派/边缘） | §7.12 体型 | 规划中 |
 | 刺蛇 | Hydralisk (别名 Standard) | 标准 Claw（256MB，PC/服务器，当前版本） | §7.12 体型 | ✅ |
@@ -1957,33 +2030,66 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 
 虫群必须有视野才能作战——可观测性是 StarClaw 的「侦察网络」。
 
-#### 7.9.1 Metrics 指标
+#### 7.9.1 Metrics 指标（已实现）
 
 ```
 每个服务暴露 GET /metrics（Prometheus 格式）：
 
-Claw API (:8080/metrics):
-  - starclaw_agent_tasks_total{status}        # Agent 任务计数
-  - starclaw_agent_latency_seconds{model}     # 模型响应延迟
-  - starclaw_tool_calls_total{tool}           # Tool 调用计数
-  - starclaw_workflow_runs_total{status}       # 工作流执行计数
-  - starclaw_gossip_peers_count               # Gossip 已知节点数
-  - starclaw_resolve_total{source,status}     # 地址解析计数（按来源）
+Claw API (:8080/metrics) — namespace: starclaw_
+  - starclaw_http_requests_total{method,path,status}      # HTTP 请求计数
+  - starclaw_http_request_duration_seconds{method,path}    # HTTP 请求延迟直方图
+  - starclaw_http_requests_in_flight                       # 正在处理的请求数
+  - starclaw_websocket_connections_active                  # WebSocket/SSE 活跃连接
+  - starclaw_agent_tasks_total{status}                     # Agent 任务计数 (ok/error)
+  - starclaw_chat_requests_total{provider,model,status}    # Chat 请求计数
+  - starclaw_chat_latency_seconds{provider,model}          # Chat 延迟直方图
+  - starclaw_tokens_used_total{provider,model,type}        # Token 消耗 (prompt/completion)
+  - starclaw_tool_calls_total{tool,status}                 # Tool 调用计数
+  - starclaw_tool_call_latency_seconds{tool}               # Tool 调用延迟直方图
+  - starclaw_star_energy_balance                           # 星能余额（⚡）
+  - starclaw_star_energy_hp_percent                        # HP 百分比
+  - starclaw_inference_tasks_total{model,status}           # 推理挖矿任务计数
 
-Queen Swarm (:8090/metrics):
-  - starclaw_swarm_nodes_total{status,role}   # 注册节点数
-  - starclaw_swarm_heartbeat_lag_seconds      # 心跳延迟分布
-  - starclaw_swarm_resolve_total{status}      # 解析请求计数
-
-Overlord Manager (:8095/metrics):
-  - starclaw_brood_claws_total{status,team}   # 虫巢节点数
-  - starclaw_brood_tasks_assigned_total       # 任务分配计数
-  - starclaw_brood_quota_usage_ratio{team}    # 配额使用率
+Queen API (:8085/metrics) — namespace: queen_
+  - queen_http_requests_total{method,path,status}          # HTTP 请求计数
+  - queen_http_request_duration_seconds{method,path}       # HTTP 请求延迟直方图
+  - queen_http_requests_in_flight                          # 正在处理的请求数
+  - queen_swarm_online_nodes                               # 在线节点数
+  - queen_swarm_heartbeats_total                           # 心跳总数
+  - queen_billing_recharges_total{status,pay_method}       # 充值订单计数
+  - queen_billing_recharge_amount_cents                    # 充值金额（分）
+  - queen_credit_grants_total                              # 星能发放次数
+  - queen_credit_grant_amount_units                        # 星能发放量（内部单位）
+  - queen_credit_consumes_total                            # 星能消耗次数
+  - queen_credit_consume_amount_units                      # 星能消耗量
+  - queen_credit_transfers_total                           # 星能转账次数
+  - queen_credit_active_accounts                           # 活跃星能账户数
+  - queen_node_bindings_active                             # 活跃节点绑定数
 ```
 
-- **采集**：Prometheus server 拉取所有服务的 /metrics
-- **聚合**：Claw → Overlord（本地 Prometheus）→ Queen（联邦 Prometheus）
-- **展示**：Grafana Dashboard（预置 Claw/Swarm/Brood 面板）
+**监控基础设施（`queen/monitoring/`）：**
+
+| 组件 | 配置文件 | Docker 服务 | 端口 | 状态 |
+|------|---------|------------|------|:----:|
+| Prometheus | `monitoring/prometheus.yml` | `prometheus` (v2.53) | :9090 | ✅ 已配置 |
+| Grafana | `monitoring/grafana/` | `grafana` (v11.1) | :3000 | ✅ 已配置 |
+| 告警规则 | `monitoring/alerts.yml` | Prometheus 内置 | — | ✅ 已配置 |
+| Dashboard | `monitoring/grafana/dashboards/starclaw.json` | Grafana 自动加载 | — | ✅ 20 面板 |
+
+**Grafana Dashboard 面板（StarClaw Overview）：**
+- **顶部**：服务状态（UP/DOWN）+ 虫群在线节点 + 心跳率 + 星能发放率 + 活跃账户
+- **Queen HTTP**：请求速率 + 5xx 错误率 + P95 延迟 + In-Flight 请求
+- **星能经济**：发放/消耗速率曲线 + 充值订单柱状图
+- **Claw Chat**：Chat 请求速率（按 Provider） + P95 延迟
+- **Claw 业务**：Token 用量 + Tool 调用 + 星能余额仪表盘 + HP 仪表盘 + WebSocket 连接 + Agent 任务
+- **系统**：进程内存 RSS + Go Goroutines
+
+**告警规则（5 组 10 条）：**
+- `service_health`：ServiceDown / HighErrorRate / HighLatency
+- `router_inference`：RouterHighErrorRate / InferenceBillingErrors / InferenceHighLatency
+- `claw_nodes`：ClawHighErrorRate / ClawStarEnergyLow / ClawStarEnergyDepleted
+- `star_energy`：CreditGrantSpikeAnomaly / CreditConsumeDropoff
+- `billing`：NoRechargesReceived / PaymentFailureSpike
 
 #### 7.9.2 Logs 日志
 
@@ -2045,12 +2151,12 @@ Overlord Manager (:8095/metrics):
 
 ### 7.10 虫脑 Cerebrate — 跨会话记忆
 
-> ⚠️ **当前状态：规划中。**
+> ✅ **已实现（v2026.0313）。** `memory/cerebrate.go` — LLM 自动提取 5 类记忆（preference/fact/skill/habit/relationship），对话结束自动写入，新对话自动注入相关记忆。CRUD API + 前端管理。
 
 星际争霸中，脑虫（Cerebrate）是虫后意志的延伸，负责管理虫群的局部记忆和经验。
 StarClaw 的脑虫是 **Claw 的持久化记忆层**——让小龙虾拥有跨会话、跨任务的长期记忆能力。
 
-**核心问题：** 当前 Claw 的每次对话都是"失忆"的，上一次聊过什么、做过什么，下次全忘。
+**核心问题：** 当前 Claw 的每次对话都是"失忆"的，上一次聊过什么、做过什么，下次全忘。——脑虫解决了这个问题。
 
 #### 7.10.1 记忆分层
 
@@ -2775,46 +2881,83 @@ services:
   manager:        # 领主管理（:8095）— 注册/心跳/配额/调度/审计/解析
 ```
 
-### 9.2 生产环境（starclaw.me）
+### 9.2 生产环境（四服务器架构）
 
 ```
-                         ┌──────────────────────────────────────┐
-                         │            Nginx (主机)                │
-                         │  starclaw.me     → queen/site/        │
-                         │  app.starclaw.me → web:8081           │
-                         │  api.starclaw.me → api:8080           │
-                         └───────────┬──────────────────────────┘
-                                     │
-         ┌───────────────────────────┼──────────────────────┐
-         │                           │                      │
-   ┌─────┴──────┐             ┌──────┴──────┐        ┌──────┴──────┐
-   │  api:8080   │◄──queen-net──│ swarm:8090 │        │  site 静态  │
-   │ Claw API    │             │ Queen Swarm │        │  (HTML)     │
-   │ (Go + Gin)  │             └──────┬──────┘        └─────────────┘
-   └──┬──────┬──┘                     │
-      │      │               ┌────────┼──────────┬──────────┬──────────┐
-      │      │               │        │          │          │          │
- ┌────┴──┐ ┌─┴────┐   ┌─────┴──┐ ┌───┴────┐ ┌───┴────┐ ┌──┴─────┐ ┌──┴─────┐
- │MySQL  │ │Redis │   │core    │ │bounty  │ │forum   │ │arena   │ │mysql-  │
- │:3306  │ │:6379 │   │:8091   │ │:8092   │ │:8093   │ │:8094   │ │queen   │
- └───────┘ └──────┘   └────────┘ └────────┘ └────────┘ └────────┘ │:3307   │
-  starclaw-net                     starqueen 网络                   └────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        StarClaw 生产环境拓扑                               │
+│                                                                          │
+│  Server A: starclaw.me ─── Claw 官方实例                                  │
+│  ┌────────────────────────────────────────┐                              │
+│  │  Nginx                                 │                              │
+│  │  starclaw.me     → web:8081 (React)   │                              │
+│  │  api.starclaw.me → api:8080 (Go+Gin)  │                              │
+│  │                                        │                              │
+│  │  ┌──────────┐ ┌───────┐ ┌───────┐    │                              │
+│  │  │ api:8080 │ │MySQL  │ │Redis  │    │                              │
+│  │  │ Claw API │ │:3306  │ │:6379  │    │                              │
+│  │  └──────────┘ └───────┘ └───────┘    │                              │
+│  │  starclaw-net                         │                              │
+│  └────────────────────────────────────────┘                              │
+│        │ HTTPS (Swarm 心跳/注册/解析)                                     │
+│        ▼                                                                 │
+│  Server C: starclaw.net (43.106.158.26) ─── Queen + Nydus CI/CD         │
+│  ┌────────────────────────────────────────────────────────────┐         │
+│  │  Nginx                                                     │         │
+│  │  starclaw.net       → queen-web:8086 (React SPA)          │         │
+│  │  swarm.starclaw.net → swarm:8090                          │         │
+│  │  nydus.starclaw.net → nydus-web:80 / nydus-api:8095      │         │
+│  │                                                            │         │
+│  │  ┌──────────┐ ┌────────┐ ┌────────┐ ┌────────┐           │         │
+│  │  │queen-api │ │swarm   │ │bounty  │ │forum   │           │         │
+│  │  │:8085     │ │:8090   │ │:8092   │ │:8093   │           │         │
+│  │  ├──────────┤ ├────────┤ ├────────┤ ├────────┤           │         │
+│  │  │queen-web │ │arena   │ │core    │ │mysql-  │           │         │
+│  │  │:8086     │ │:8094   │ │:8091   │ │queen   │           │         │
+│  │  ├──────────┤ ├────────┤ ├────────┤ │:3307   │           │         │
+│  │  │nydus-api │ │nydus-  │ │nydus-  │ └────────┘           │         │
+│  │  │:8095     │ │web:80  │ │worm    │                       │         │
+│  │  └──────────┘ └────────┘ │:8096   │                       │         │
+│  │  starqueen 网络           └────────┘                       │         │
+│  └────────────────────────────────────────────────────────────┘         │
+│        │ SSH (Nydus deploy)                                              │
+│        ▼                                                                 │
+│  Server B: star-ai.net (47.103.51.32) ─── Router (AI 算力网关)           │
+│  ┌────────────────────────────────────────┐                              │
+│  │  star-ai.net/v1/* → gateway:8080      │                              │
+│  │  OpenAI 兼容 API 代理 + 按量计费        │                              │
+│  └────────────────────────────────────────┘                              │
+│                                                                          │
+│  Server D: proxy.starclaw.net (47.237.11.193) ─── 海外中转               │
+│  ┌────────────────────────────────────────┐                              │
+│  │  反向代理 → Server B / Server C         │                              │
+│  │  解决国内用户访问海外 API 延迟问题        │                              │
+│  └────────────────────────────────────────┘                              │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Docker 网络互联：**
-- Claw API 通过 `queen-net`（外部网络 → `starqueen`）访问 Queen Swarm 服务
-- 环境变量 `STARCLAW_SWARM_QUEEN_URL=http://starclaw-queen-swarm:8090`
+**Claw→Queen 通信：**
+- Claw 通过公网 HTTPS 访问 Queen Swarm：`STARCLAW_SWARM_QUEEN_URL=https://swarm.starclaw.net`
 - 节点地址通过 `STARCLAW_NODE_ADDRESS` 配置（如 `https://starclaw.me`）
 - 身份持久化通过 `NODE_KEY_PATH` + Docker volume 挂载
+- 市场 API 代理：Claw 后端 → `https://starclaw.net/api/v1/marketplace/items`
+
+**同机部署场景（starclaw.me 早期）：**
+- 早期 Claw 和 Queen 曾部署在同一台机器上，通过 Docker `queen-net` 互联
+- 现已分离到独立服务器，通过公网 HTTPS 通信
 
 ### 9.3 域名规划
 
-| 域名 | 服务 | 说明 |
-|------|------|------|
-| `starclaw.me` | site/ | 官网落地页 |
-| `app.starclaw.me` | web/ | Web 应用 |
-| `api.starclaw.me` | api/ | API 接口 |
-| `m.starclaw.me` | mobile/ | 移动端（未来） |
+| 域名 | 服务器 | 服务 | 说明 |
+|------|--------|------|------|
+| `starclaw.me` | Server A | Claw Web + API | 官方 Claw 实例 + Demo |
+| `api.starclaw.me` | Server A | Claw API | Claw REST API |
+| `starclaw.net` | Server C | Queen Web | 生态平台（市场/社区/赏金） |
+| `swarm.starclaw.net` | Server C | Queen Swarm | 虫群注册/心跳/解析 |
+| `nydus.starclaw.net` | Server C | Nydus Dashboard | CI/CD 管理面板 |
+| `star-ai.net` | Server B | Router Gateway | AI 算力网关（OpenAI 兼容） |
+| `proxy.starclaw.net` | Server D | Proxy | 海外中转代理 |
+| `m.starclaw.me` | — | mobile/ | 移动端（未来） |
 
 ### 9.4 Queen API 网关架构
 
@@ -3143,9 +3286,10 @@ starclaw.net                       star-ai.net/v1/*           starclaw.me
 
 | Target | 子目录 | 部署服务器 | 方式 |
 |--------|--------|-----------|------|
-| queen-server-c | `queen/` | Server C | 本地 Worm (Docker) |
-| gateway-server-b | `queen/api/` | Server B | SSH + 远程 Worm |
+| queen-server-c | `queen/` | Server C (43.106.158.26) | 本地 Worm (Docker) |
+| gateway-server-b | `queen/api/` | Server B (47.103.51.32) | SSH + 远程 Worm |
 | claw-starclaw-me | `claw/` | starclaw.me | SSH direct（无 Worm） |
+| claw-dgp | `claw/` | 43.106.114.174 | SSH direct（无 Worm） |
 
 **两种远程部署模式：**
 - **Worm 模式**：`worm_url` 已配置 → git archive 同步代码 + SSH 调用远程 Worm API
@@ -3185,9 +3329,10 @@ git push nydus master
 推送后 Nydus 自动执行：
 1. **Queen** — Worm 同步 `queen/` → Server C → `docker compose up -d --build`
 2. **Gateway** — SSH 同步 `queen/api/` → Server B → `docker compose up -d --build`
-3. **Claw** — SSH 同步 `claw/` → starclaw.me → `docker compose -f docker-compose.prod.yml up -d --build`
+3. **Claw (starclaw.me)** — SSH 同步 `claw/` → starclaw.me → `docker compose -f docker-compose.prod.yml up -d --build`
+4. **Claw (dgp)** — SSH 同步 `claw/` → 43.106.114.174 → `docker compose -f docker-compose.prod.yml up -d --build`
 
-三路并行，全程无需 SSH 登录服务器。
+四路并行，全程无需 SSH 登录服务器。
 
 **Windows 额外说明：**
 - Git for Windows 自带 SSH，`~/.ssh/config` 对应 `C:\Users\<用户名>\.ssh\config`
@@ -3291,24 +3436,36 @@ Bounty 测试场景:
 
 | 文档描述 | 实际情况 | 差距 |
 |---------|---------|------|
-| §4.5 赏金资金流依赖 `billing/` 冻结/释放 | billing 已实现在 `queen/api/`（非独立服务），冻结/释放待集成 | Bounty 资金流待对接 |
-| §7.2 "实现：Prometheus + Grafana" | Claw/Queen/Router 已有 /metrics + 告警规则 | Grafana 面板待配置 |
-| §7.3 Spine 使用 "mTLS + 注册 Token" | 实际仅有 Ed25519 P2P 签名 | 安全级别低于设计 |
-| §3.7 Molt "Queen 监听 GitHub Webhook" | 仅有基础版本检查 | 更新链路未打通 |
+| §4.5 赏金资金流依赖 `billing/` 冻结/释放 | ✅ billing_internal.go 已实现 Freeze/Unfreeze/Settle | **已解决** |
+| §7.2 "实现：Prometheus + Grafana" | ✅ Claw 13 指标 + Queen 14 指标 + Prometheus + Grafana 20 面板 + 10 条告警 | **已解决**（`queen/monitoring/`） |
+| §7.3 Spine 使用 "mTLS + 注册 Token" | Ed25519 签名覆盖 5 场景（身份/握手/转账/Gossip/Swarm），mTLS 作为 P2 | **已明确**（§7.3 安全路线图） |
+| §3.7 Molt "Queen 监听 GitHub Webhook" | 仅有基础版本检查 + Nydus CI/CD 部署 | Molt OTA 灰度/回滚未实现 |
 | §7.5 Queen 容灾 "主从热备，故障转移 < 30s" | 实际单点部署 | 容灾能力为零 |
+| §7.7 Evolution 能力市场 "规划中" | ✅ Agent 模板市场已实现，Claw 代理安装 + 详情页 | **部分解决**（Tool 插件市场待实现） |
+| §7.10 Cerebrate "规划中" | ✅ LLM 自动提取 5 类记忆 + 对话注入 + CRUD | **已解决** |
+| §9.2 starclaw.me 域名拓扑 | ✅ 已重写为四服务器架构（Server A/B/C/D）+ 8 域名映射 | **已解决** |
+| §13 CI/CD "Nydus 虫道" | ✅ 4 target 自动部署已上线（queen-server-c + gateway-server-b + claw-starclaw-me + claw-dgp） | **已解决** |
 
 ### 14.2 模块完成度矩阵
 
 ```
 ██████████ 100%  Claw Agent 引擎（agent/workflow/tool/rag/provider/mcp）
-██████████ 100%  P2P 身份（node/identity Ed25519 + claw: 地址派生）
+██████████ 100%  P2P 身份（node/identity Ed25519 + claw: 地址派生 + BIP-39 HD 钱包 + 多签）
 ██████████ 100%  单用户 Owner 模式（Setup + Owner Token + 可选密码 + 前端 SetupPage）
+██████████ 100%  Nydus CI/CD 虫道（git push → 自动部署 4 target + Worm Agent + Web Dashboard）
+██████████ 100%  星能经济（Queen Credit Ledger + Ed25519 签名转账 + HP 血量 + Claw CreditClient + CLI）
+██████████ 100%  推理挖矿（ContributorService + 信任体系 TrustScore + 1% SpotCheck + 90/10 结算）
+██████████ 100%  脑虫记忆 Cerebrate（LLM 自动提取 5 类记忆 + 对话注入 + CRUD API）
+██████████ 100%  NAT 穿透（STUN 双服务器探测 + UDP 打洞 + Relay 兜底 + NydusManager 编排）
+██████████ 100%  本能系统 Instinct（Engine + Activity 模型 + 8 内置活动 + Cron 调度 + REST API + 前端 UI）
+██████████ 100%  触手 Tentacle 六平台（飞书/钉钉/企微/Slack/Discord/TG Tool + IntegrationsPage）
 █████████░  90%  Claw→Queen 心跳 goroutine（指数退避 + 抖动 + Feral 模式检测 ✅，离线缓存同步 ❌）
 █████████░  90%  Queen Core 管理后台（10 页 React 前端 + 完整 Admin API ✅，WebSocket 实时推送 ❌）
+█████████░  90%  统一市场 Marketplace（Queen 种子数据 + 列表/详情 API + Claw 代理 + 安装/卸载 + 详情页 ✅，付费交易 ❌）
 ████████░░  80%  P2P Gossip & 解析（gossip + swarm/overlord 客户端 ✅，mDNS ❌）
 ████████░░  80%  Queen Swarm（注册/心跳/解析 ✅，配置下发/负载均衡 ❌）
-████████░░  80%  Overlord Brood（注册/心跳/调度/审计 ✅，Console UI ❌）
-████████░░  80%  社区服务（bounty/forum/arena 后端 + queen/web 9 页前端 ✅，深度集成 ❌）
+████████░░  80%  Overlord Brood（注册/心跳/调度/审计 + Console 10 页 UI ✅，SSO/LDAP ❌）
+████████░░  80%  社区服务（bounty/forum/arena 后端 + queen/web 12 页前端 ✅，深度集成 ❌）
 ████████░░  80%  Billing 计费（充值/扣费/支付宝/微信 + 冻结/释放/结算 ✅，账单导出 ❌）
 ███████░░░  70%  Claw↔Queen 用户关联（Queen NodeBinding API + Claw queen.go + 前端 ✅，OAuth 绑定 ❌）
 ██████░░░░  60%  Queen 用户认证（User/JWT/auth/phone + OAuth 路由 ✅，第三方 OAuth 对接 ❌）
@@ -3316,12 +3473,8 @@ Bounty 测试场景:
 ████░░░░░░  40%  Molt 更新（基础版本检查 ✅，灰度/回滚/Webhook ❌）
 ██░░░░░░░░  20%  安全体系（JWT/RBAC ✅，mTLS/异常检测/DDoS ❌）
 ░░░░░░░░░░   0%  DHT 去中心化发现（Kademlia 协议）
-░░░░░░░░░░   0%  NAT 穿透（STUN + UDP 打洞 + QUIC）
-░░░░░░░░░░   0%  Queen Relay 中继（NAT 穿透失败兜底）
 ░░░░░░░░░░   0%  Creep 菌毯（共享智能网络）
-░░░░░░░░░░   0%  Evolution 能力市场
 ░░░░░░░░░░   0%  Hivemind 共识
-░░░░░░░░░░   0%  CI/CD 自动化
 ```
 
 ### 14.3 最小可运营闭环（MVP 差距分析）
@@ -3349,11 +3502,23 @@ Bounty 测试场景:
   ✅ Swarm 注册/心跳/解析（+ Feral 失控模式检测）
   ✅ claw: 地址解析全链路
   ✅ Gossip P2P 发现
+  ✅ NAT 穿透（STUN + UDP 打洞 + Relay 兜底 + NydusManager 编排）
   ❌ 任务中继实际执行（relay 端点已定义，逻辑待实现）
+  → 闭环 3 基本打通（缺任务中继）
+
+闭环 5：统一市场 → 浏览 → 安装 → 使用
+  ✅ Queen Marketplace 种子数据（seed_marketplace.go，16 个官方 Agent 模板）
+  ✅ Queen Marketplace API（列表/详情/搜索/评分，marketplace.go）
+  ✅ Queen Web 市场（MarketplacePage + MarketplaceDetailPage + 安装到 Claw）
+  ✅ Claw 代理 Queen 市场 API（CommunityList/CommunityGet，避免 CORS）
+  ✅ Claw 市场前端（MarketplacePage + MarketplaceDetailPage + 安装/卸载）
+  ✅ Claw 我的智能体已安装标识（source_id → "已安装" badge）
+  ❌ 付费模板交易（星能支付 + 开发者分成）
+  → 闭环 5 免费部分已打通 ✅
 
 闭环 4：社区运营 → 内容沉淀 → 生态增长
   ✅ Forum/Arena 后端 API
-  ✅ Forum/Arena/Bounty 前端界面（queen/web 9 页）
+  ✅ Forum/Arena/Bounty 前端界面（queen/web 12 页）
   ✅ Queen 用户认证（注册/登录/phone/OAuth 路由）
   ✅ 内容审核/举报机制（ReportHandler + Admin 审核 API）
   → 闭环 4 已打通 ✅
@@ -3720,7 +3885,7 @@ StarClaw:  Claw 自愿加入虫群 → 匿名心跳 → Queen 全网态势感知
 - [x] Swarm 配置集成 — `config.yaml` swarm 段（enabled/queen_url/node_name/region/heartbeat_interval）
 - [x] 计费模块 — 充值/扣费/支付宝+微信支付 V3（实现在 `queen/api/` 内，非独立服务）
 - [x] `queen/api/` 管理端点 — 用户管理（列表/角色/封禁）+ 内容审核（举报/审核/处理）+ 服务代理（bounty/forum/arena）
-- [x] `queen/web/` 用户门户 — 9 页（首页/注册/仪表盘/商城/文档/社区/竞技/赏金/充值）
+- [x] `queen/web/` 用户门户 — 12 页（首页/注册/仪表盘/商城/商城详情/文档/社区/竞技/赏金/充值/开发者/Claw登录）
 - [x] `queen/mobile/` Flutter 客户端 — 8 屏（登录/首页/赏金/社区/充值/个人中心）
 - [ ] Molt 蜕皮更新 — 灰度发布、版本管理（通过 swarm 推送，Overlord 级已实现）
 - [ ] 节点自动发现 & 负载均衡
@@ -3798,9 +3963,9 @@ StarClaw:  Claw 自愿加入虫群 → 匿名心跳 → Queen 全网态势感知
 - [x] Queen API 网关 — 统一鉴权 + AdminRequired 中间件 + 全局/写入/认证三级限流 + 标准错误码
 - [x] `queen/api/` 计费模块 — UserBalance/RechargeOrder/BalanceTransaction 模型、支付宝+微信支付 V3、充值/扣费/查询 API + 内部冻结/解冻/结算 API
 - [x] 内容审核/举报机制 — ContentReport 模型、用户举报、admin 审核（reviewed/resolved/dismissed）、admin 操作（hide/delete/ban_author）
-- [x] Forum/Arena/Bounty 前端界面 — `queen/web/` 9 页（含 ForumPage/ArenaPage/BountyPage/BillingPage）
+- [x] Forum/Arena/Bounty 前端界面 — `queen/web/` 12 页（含 ForumPage/ArenaPage/BountyPage/BillingPage/MarketplacePage/MarketplaceDetailPage/DeveloperPage/DocsPage/ClawLoginPage）
 - [ ] Node Token 签名认证 — Ed25519 签名替代明文 Token（X-Claw-ID + X-Claw-Signature）
-- [ ] Billing ↔ Bounty 资金集成 — 发布赏金时冻结余额、验收后释放给完成者
+- [x] Billing ↔ Bounty 资金集成 — billing_internal.go Freeze/Unfreeze/Settle
 - [ ] 可观测性基础 — Prometheus /metrics 端点、JSON 结构化日志、Grafana 面板（见 §7.9）
 - [ ] Queen 容灾 — MySQL 主从复制、Redis Sentinel、自动故障转移
 - [ ] CI/CD 流水线 — GitHub Actions lint→test→build→push→deploy（见 §13.1）
@@ -3813,8 +3978,8 @@ StarClaw:  Claw 自愿加入虫群 → 匿名心跳 → Queen 全网态势感知
 - [ ] 节点生命状态 — heartbeat 新增 status/uptime/born_at 字段，Queen 标记 Online/Offline/Dormant/Dead
 - [ ] 休眠模式 — 无任务 > 1h 自动降频心跳，降低资源消耗
 - [ ] 软死亡 & 复活 — 心跳丢失 > 24h 标记 Dead，重启自动 Respawn + 数据同步
-- [ ] Cerebrate 记忆层 — L1 用户画像（KV 存储） + L2 技能经验（向量库），跨会话持久化
-- [ ] 记忆读写集成 — Agent 启动时自动加载 L1/L2，任务结束后自动写入新记忆
+- [x] Cerebrate 记忆层 — LLM 自动提取 5 类记忆（preference/fact/skill/habit/relationship），`memory/cerebrate.go`
+- [x] 记忆读写集成 — 对话结束自动写入，新对话自动注入相关记忆，CRUD API + 前端管理
 - [ ] 记忆传播 — L2 技能经验脱敏上传菌毯，经 Hivemind 共识后全网传播
 - [ ] 一行命令部署 — `curl -fsSL https://get.starclaw.me | bash` 全自动孵化脚本
 - [ ] 分裂繁殖 — `claw export` 导出基因包 + `claw spawn --from` 克隆新 Claw（不含身份和隐私数据）
@@ -3823,11 +3988,10 @@ StarClaw:  Claw 自愿加入虫群 → 匿名心跳 → Queen 全网态势感知
 - [ ] 虫族军队分级 — Zergling（轻量）/ Hydralisk（标准）/ Lurker（专精）/ Mutalisk（P2P 枢纽）/ Ultralisk（企业集群）
 - [ ] Adaptation 自主进化引擎 — 执行→观察→归纳→假设→验证→固化 循环，写入 L2 技能经验
 - [ ] Adaptation 进化日志 — 每次策略调整记录原因，用户可查看/回滚
-- [ ] Tentacle 触手框架 — TentacleAdapter 统一接口（OnMessage/SendMessage/GetCapabilities）
-- [ ] Tentacle 微信适配器 — 企业微信 API，文字/图片/文件/群聊
-- [ ] Tentacle Telegram 适配器 — Bot API，文字/图片/Inline/群组
-- [ ] Instinct 本能引擎 — Activity 模型（trigger/condition/action/channel/cooldown），Cron 调度器
-- [ ] Instinct 内置活动 — 生日祝福、早报推送、周报生成、日程提醒、节日问候
+- [x] Tentacle 六平台 Tool — 飞书/钉钉/企微/Slack/Discord/Telegram（v2026.0311），`*_tool.go` + IntegrationsPage
+- [ ] Tentacle 微信个人号适配器 — 个人微信消息收发（需逆向协议）
+- [x] Instinct 本能引擎 — Engine + Activity 模型 + Cron 调度 + 事件触发 + REST API + 前端 UI（v2026.0315）
+- [x] Instinct 内置活动 — 8 个模板（生日/早报/周报/日程/灵感/巡检/日报/节日）+ `instinct/builtin.go`
 - [ ] Instinct 自定义活动 — 用户自然语言描述 → Agent 自动编排为 Activity
 
 ---
@@ -4194,6 +4358,10 @@ providers:
 | Phase 10 | 星能经济 Claw 集成（CreditClient + HP 血量监控 + CLI balance/transfer/transactions） | `swarm/credit_client.go`, `system.go` | v2026.0313 | 2026-03-13 |
 | Phase 11 | 脑虫记忆 Cerebrate（LLM 自动提取 5 类记忆 + 对话注入 + CRUD API） | `memory/cerebrate.go`, `model/memory.go` | v2026.0313 | 2026-03-13 |
 | Phase 12 | star-ai.net API Gateway（OpenAI 兼容代理 + Anthropic 转换 + 按量计费 + API Key 管理） | `handler/gateway.go`, `provider/starai.go` | v2026.0313 | 2026-03-13 |
+| Phase 13 | 本能系统 Instinct（Engine + Activity 模型 + 8 内置活动 + Cron + REST API + 前端 ActivityPage） | `instinct/engine.go`, `builtin.go`, `model/activity.go` | v2026.0315 | 2026-03-15 |
+| Phase 14 | Nydus CI/CD 虫道（API + Worm Agent + Web Dashboard + post-receive hook + 4 target 自动部署） | `nydus/api/`, `nydus/web/` | v2026.0314 | 2026-03-14 |
+| Phase 15 | 统一市场 — Queen 种子数据（16 Agent 模板）+ Marketplace API + Queen Web 市场页面 | `seed_marketplace.go`, `marketplace.go`, `queen/web/MarketplacePage.tsx` | v2026.0316 | 2026-03-16 |
+| Phase 16 | 统一市场 — Claw 代理安装 + 市场详情页 + 图标渲染 + 分类筛选 + 已安装标识 | `template.go`, `claw/web/Marketplace*.tsx`, `queen/web/Marketplace*.tsx` | v2026.0316 | 2026-03-16 |
 
 **Queen 侧已完成（闭源）：**
 
@@ -4202,11 +4370,21 @@ providers:
 | 认证 | 邮箱/手机/OAuth(Google/GitHub) + JWT | `handler/auth.go` |
 | 计费 | 支付宝/微信支付 + 套餐 + 余额 + 订单 | `handler/billing.go` |
 | 星能账本 | 余额/Ed25519 签名转账/冻结/解冻/结算/推理结算/定价 | `handler/credit.go` |
-| 商城 | Agent 模板上架/搜索 | `handler/marketplace.go` |
+| 商城 | Agent 模板上架/搜索/详情/安装 + 16 个官方种子模板 | `handler/marketplace.go`, `seed_marketplace.go` |
 | 节点绑定 | claw: 地址 ↔ Queen 用户关联 | `handler/node_binding.go` |
 | 管理后台 | 用户/计费/内容审核/节点/Molt/赏金/社区 | `handler/admin_*.go`, `dashboard.go` |
 | Swarm | 全网节点注册/心跳/解析/Molt 发布 | `queen/swarm/` |
+| Web 门户 | 12 页 SPA（Landing/Auth/Dashboard/Marketplace/MarketplaceDetail/Billing/Bounty/Forum/Arena/Developer/Docs/ClawLogin） | `queen/web/src/pages/` |
 
-**测试统计（截至 2026-03-13）：**
+**Claw 侧已完成（开源）：**
+
+| 模块 | 内容 | 关键文件 |
+|------|------|---------|
+| 市场代理 | Queen 市场 API 代理（CommunityList/CommunityGet）+ 远程安装（InstallRemote） | `api/v1/template.go` |
+| 市场前端 | MarketplacePage（统一 Queen 市场浏览/安装/卸载）+ MarketplaceDetailPage（详情页） | `web/src/pages/Marketplace*.tsx` |
+| 我的智能体 | AgentsPage（source_id → "已安装" badge + 导出/编辑/删除） | `web/src/pages/AgentsPage.tsx` |
+
+**测试统计（截至 2026-03-16）：**
 - Claw: 50 tests pass（inference 16 + middleware 5 + node/nydus 12 + swarm/credit 9 + memory 8）
 - Queen: 线上运行，API 全部就绪
+- TypeScript: Queen Web + Claw Web 编译零错误
