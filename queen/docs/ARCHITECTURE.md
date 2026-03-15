@@ -2020,6 +2020,7 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 | 本能 | Instinct | 主动行为系统（Engine + 8 内置活动 + Cron + API） | §7.15 | ✅ v2026.0315 |
 | 幼虫 | Larva (别名 Kernel) | 最小 Claw 内核（8MB，IoT/嵌入式） | §7.12 体型 | 规划中 |
 | 小狗 | Zergling (别名 Nano) | 轻量 Claw（64MB，手机/树莓派/边缘） | §7.12 体型 | 规划中 |
+| 监察王 | Overseer | 技术监控面板（5 页 Dashboard + Prometheus 集成 + 告警） | `queen/overseer/` | ✅ v2026.0316 |
 | 刺蛇 | Hydralisk (别名 Standard) | 标准 Claw（256MB，PC/服务器，当前版本） | §7.12 体型 | ✅ |
 | 雷兽 | Ultralisk (别名 Full) | 完整 Claw（4GB+，GPU 服务器 + 本地模型） | §7.12 体型 | 规划中 |
 | 飞龙 | Mutalisk (别名 Embodied) | 具身 Claw（128MB+，机器人/无人机/智能车） | §7.12 体型 | 规划中 |
@@ -2090,6 +2091,89 @@ Queen API (:8085/metrics) — namespace: queen_
 - `claw_nodes`：ClawHighErrorRate / ClawStarEnergyLow / ClawStarEnergyDepleted
 - `star_energy`：CreditGrantSpikeAnomaly / CreditConsumeDropoff
 - `billing`：NoRechargesReceived / PaymentFailureSpike
+
+#### 7.9.1b 监察王 Overseer — 自研监控面板（已实现）
+
+> 命名：星际争霸中 Overseer（监察王）是 Overlord 的进化体，负责侦察和探测。
+
+**定位对比：**
+
+| | **Core**（`core.starclaw.net`） | **Overseer**（`overseer.starclaw.net`） |
+|---|---|---|
+| **角色** | 运营管理后台 | 技术监控面板 |
+| **面向** | 运营/管理员 — 管人、管钱、管内容 | 开发/运维 — 看系统、看指标、看告警 |
+| **操作性** | 可写（封禁、调余额、审核） | 只读（聚合查看） |
+| **页面** | 11 页（用户/订单/余额/套餐/计费/审核/举报…） | 5 页（Dashboard/Nodes/Services/Energy/Alerts） |
+| **技术栈** | React + TS + Vite | React + TS + Vite + Tailwind + Recharts |
+
+**Overseer 架构：**
+
+```
+                        ┌──────────────────────────┐
+                        │  overseer.starclaw.net    │
+                        │  (React SPA + Nginx)      │
+                        │                           │
+                        │  /v1/* → queen-api:8085   │  ← Nginx 内部代理
+                        │  /*    → static dist/     │
+                        └────────────┬──────────────┘
+                                     │ Admin JWT Auth
+                        ┌────────────▼──────────────┐
+                        │  Queen API (:8085)         │
+                        │  /v1/admin/overseer/*      │
+                        │                           │
+                        │  ├── /dashboard  → DB 聚合 │
+                        │  ├── /nodes      → Swarm   │
+                        │  ├── /services   → 健康检查 │
+                        │  ├── /energy     → Credit   │
+                        │  ├── /alerts     → Prom API │
+                        │  └── /metrics/*  → Prom API │
+                        └───────────────────────────┘
+                              │              │
+                    ┌─────────▼──┐    ┌──────▼───────┐
+                    │  MySQL DB  │    │ Prometheus   │
+                    │ (直查聚合)  │    │ (:9090)      │
+                    └────────────┘    └──────────────┘
+```
+
+**API 端点（8 个，均需 Admin JWT）：**
+
+| 端点 | 数据来源 | 说明 |
+|------|---------|------|
+| `GET /v1/admin/overseer/dashboard` | MySQL + Swarm | 聚合概览（节点/用户/星能/市场） |
+| `GET /v1/admin/overseer/nodes` | Swarm API | 节点列表（在线/离线/心跳/版本/算力） |
+| `GET /v1/admin/overseer/nodes/:id` | Swarm API | 单节点详情 |
+| `GET /v1/admin/overseer/services` | HTTP 健康检查 | 6 服务并行探测（queen-api/swarm/bounty/forum/arena/prometheus） |
+| `GET /v1/admin/overseer/energy` | MySQL | 星能经济（Top 账户/交易流水/HP 分布/类型统计） |
+| `GET /v1/admin/overseer/alerts` | Prometheus API | 活跃告警（firing/pending/inactive） |
+| `GET /v1/admin/overseer/metrics/query` | Prometheus API | 即时指标查询代理 |
+| `GET /v1/admin/overseer/metrics/query_range` | Prometheus API | 范围指标查询代理 |
+
+**前端页面（5 页）：**
+- **Dashboard** — 统计卡片（节点/用户/星能/市场） + 服务状态网格 + 星能流通摘要 + 告警预览
+- **Nodes** — 节点表格（状态筛选、心跳时间、算力标记）
+- **Services** — 6 服务健康卡片（UP/DOWN + 延迟 ms + 进度条）
+- **Energy** — HP 分布饼图 + 交易类型柱状图 + Top 20 账户表 + 最近交易流水
+- **Alerts** — Prometheus 告警分组（firing → pending → inactive）
+
+**文件结构：**
+```
+queen/overseer/
+├── src/
+│   ├── lib/api.ts           # API 客户端（8 端点 + 登录）
+│   ├── components/
+│   │   ├── Layout.tsx        # 侧边栏导航 + 路由出口
+│   │   └── StatCard.tsx      # 统计卡片组件
+│   └── pages/
+│       ├── LoginPage.tsx     # Admin JWT 登录
+│       ├── DashboardPage.tsx # 概览仪表盘
+│       ├── NodesPage.tsx     # 节点管理
+│       ├── ServicesPage.tsx  # 服务健康
+│       ├── EnergyPage.tsx    # 星能经济
+│       └── AlertsPage.tsx    # 告警中心
+├── nginx.conf                # /v1/* → queen-api 代理
+├── Dockerfile                # node:20 build + nginx:alpine
+└── package.json              # react 19 + tailwind + recharts + lucide
+```
 
 #### 7.9.2 Logs 日志
 
@@ -2904,21 +2988,26 @@ services:
 │  Server C: starclaw.net (43.106.158.26) ─── Queen + Nydus CI/CD         │
 │  ┌────────────────────────────────────────────────────────────┐         │
 │  │  Nginx                                                     │         │
-│  │  starclaw.net       → queen-web:8086 (React SPA)          │         │
-│  │  swarm.starclaw.net → swarm:8090                          │         │
-│  │  nydus.starclaw.net → nydus-web:80 / nydus-api:8095      │         │
+│  │  starclaw.net          → queen-web:8086 (React SPA)       │         │
+│  │  swarm.starclaw.net    → swarm:8090                       │         │
+│  │  overseer.starclaw.net → overseer:8087 (监察王)            │         │
+│  │  grafana.starclaw.net  → grafana:3000                     │         │
+│  │  nydus.starclaw.net    → nydus-web:80 / nydus-api:8095   │         │
 │  │                                                            │         │
 │  │  ┌──────────┐ ┌────────┐ ┌────────┐ ┌────────┐           │         │
 │  │  │queen-api │ │swarm   │ │bounty  │ │forum   │           │         │
 │  │  │:8085     │ │:8090   │ │:8092   │ │:8093   │           │         │
 │  │  ├──────────┤ ├────────┤ ├────────┤ ├────────┤           │         │
-│  │  │queen-web │ │arena   │ │core    │ │mysql-  │           │         │
-│  │  │:8086     │ │:8094   │ │:8091   │ │queen   │           │         │
-│  │  ├──────────┤ ├────────┤ ├────────┤ │:3307   │           │         │
-│  │  │nydus-api │ │nydus-  │ │nydus-  │ └────────┘           │         │
-│  │  │:8095     │ │web:80  │ │worm    │                       │         │
-│  │  └──────────┘ └────────┘ │:8096   │                       │         │
-│  │  starqueen 网络           └────────┘                       │         │
+│  │  │queen-web │ │arena   │ │core    │ │overseer│           │         │
+│  │  │:8086     │ │:8094   │ │:8091   │ │:8087   │           │         │
+│  │  ├──────────┤ ├────────┤ ├────────┤ ├────────┤           │         │
+│  │  │nydus-api │ │nydus-  │ │nydus-  │ │mysql-  │           │         │
+│  │  │:8095     │ │web:80  │ │worm    │ │queen   │           │         │
+│  │  ├──────────┤ └────────┘ │:8096   │ │:3307   │           │         │
+│  │  │prometheu │ ┌────────┐ └────────┘ └────────┘           │         │
+│  │  │s :9090   │ │grafana │                                  │         │
+│  │  └──────────┘ │:3000   │                                  │         │
+│  │  starqueen 网络└────────┘                                  │         │
 │  └────────────────────────────────────────────────────────────┘         │
 │        │ SSH (Nydus deploy)                                              │
 │        ▼                                                                 │
@@ -2954,6 +3043,8 @@ services:
 | `api.starclaw.me` | Server A | Claw API | Claw REST API |
 | `starclaw.net` | Server C | Queen Web | 生态平台（市场/社区/赏金） |
 | `swarm.starclaw.net` | Server C | Queen Swarm | 虫群注册/心跳/解析 |
+| `overseer.starclaw.net` | Server C | Overseer | 监察王 — 技术监控面板 |
+| `grafana.starclaw.net` | Server C | Grafana | Prometheus 可视化（备用） |
 | `nydus.starclaw.net` | Server C | Nydus Dashboard | CI/CD 管理面板 |
 | `star-ai.net` | Server B | Router Gateway | AI 算力网关（OpenAI 兼容） |
 | `proxy.starclaw.net` | Server D | Proxy | 海外中转代理 |
@@ -3898,7 +3989,7 @@ StarClaw:  Claw 自愿加入虫群 → 匿名心跳 → Queen 全网态势感知
 - [x] `queen/arena/` 龙虾社区 — ArenaAgent/ArenaThread/ArenaReply 模型、Claw 注册/ELO 评分/排行榜、4 种帖子类型（discussion/bid/showcase/collab）、人类只读、Dockerfile、:8094
 - [x] `queen/api/` Marketplace — 插件/模板市场 CRUD + 用户发布/搜索/统计
 - [x] `queen/api/` 内容举报 — ContentReport 模型、用户举报/审核/处理（隐藏/删除/封禁）、统计
-- [x] Queen Docker Compose 完整 — mysql-queen + swarm:8090 + core:8091 + bounty:8092 + forum:8093 + arena:8094 + queen-api:8085 + queen-web:8086
+- [x] Queen Docker Compose 完整 — mysql-queen + swarm:8090 + core:8091 + bounty:8092 + forum:8093 + arena:8094 + queen-api:8085 + queen-web:8086 + overseer:8087 + prometheus:9090 + grafana:3000
 - [ ] Plugin Marketplace 前端 — 第三方工具插件市场（进化腔 Evolution）
 - [ ] Agent 竞技对战系统
 
