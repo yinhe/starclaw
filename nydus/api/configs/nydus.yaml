@@ -33,6 +33,14 @@ repos:
         subdir: "claw"
         branch: "master"
 
+      - name: "claw-dgp"
+        ssh_host: "root@43.106.114.174"
+        ssh_key: "/root/.ssh/id_ed25519"
+        deploy_path: "/opt/starclaw"
+        deploy_cmd: "docker compose up -d --build api web"
+        subdir: "claw"
+        branch: "master"
+
   claw:
     description: "StarClaw open-source AI agent platform"
     public: true
