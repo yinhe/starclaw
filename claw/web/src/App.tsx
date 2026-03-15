@@ -32,6 +32,7 @@ import VideosPage from './pages/VideosPage'
 import ResourcesPage from './pages/ResourcesPage'
 import BillingPage from './pages/BillingPage'
 import WalletPage from './pages/WalletPage'
+import MiningPage from './pages/MiningPage'
 import IntegrationsPage from './pages/IntegrationsPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -111,6 +112,7 @@ export default function App() {
         <Route path="visualization" element={<VisualizationPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="wallet" element={<WalletPage />} />
+        <Route path="mining" element={<MiningPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

@@ -88,6 +88,11 @@ func main() {
 	r.POST("/auth/register", authHandler.Register)
 	r.POST("/auth/login", authHandler.Login)
 
+	// ── Claw address auth (MetaMask-style, same as Queen community) ──
+	clawAuth := handler.NewClawAuthHandler(db, cfg.JWT.Secret, cfg.JWT.ExpireHours)
+	r.POST("/auth/claw/challenge", clawAuth.Challenge)
+	r.POST("/auth/claw/verify", clawAuth.Verify)
+
 	// ── Dashboard routes (JWT auth) ──
 	dash := r.Group("/dash")
 	dash.Use(middleware.JWTAuth(cfg.JWT.Secret))

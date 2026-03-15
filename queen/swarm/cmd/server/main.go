@@ -27,6 +27,10 @@ func main() {
 	// Start offline detector (mark nodes offline if heartbeat missed)
 	go offlineDetector(db)
 
+	// Start mining reward worker (rewards online contributors every 10 min)
+	miningWorker := handler.NewMiningRewardWorker(db)
+	miningWorker.Start()
+
 	// Router
 	mode := getEnv("GIN_MODE", "debug")
 	if mode == "release" {
@@ -58,6 +62,7 @@ func main() {
 		swarm.POST("/update/notify", h.NotifyUpdate)
 		swarm.GET("/stats", h.Stats)
 		swarm.GET("/resolve", h.Resolve)
+		swarm.GET("/mining/stats", h.MiningStats)
 
 		// Molt — version update management
 		molt := handler.NewMoltHandler(db)

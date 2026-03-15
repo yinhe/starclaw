@@ -20,6 +20,7 @@ interface EditForm {
 }
 
 const PROVIDERS = [
+  { value: 'star-ai', label: 'Star AI', desc: '聚合 OpenAI / Claude / Gemini / DeepSeek / Qwen 等 60+ 模型，Claw 身份免密', icon: '⚡', base_url: 'https://star-ai.net/v1' },
   { value: 'qwen', label: '通义千问 (Qwen)', desc: '阿里云百炼，180+ 模型，文本/图像/视频/语音全覆盖', icon: '🤖', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
   { value: 'openai', label: 'OpenAI', desc: 'GPT-4o, o1, DALL-E 等', icon: '🟢', base_url: 'https://api.openai.com/v1' },
   { value: 'anthropic', label: 'Anthropic', desc: 'Claude 4, Claude 3.5 Sonnet 等', icon: '🟠', base_url: 'https://api.anthropic.com' },
@@ -42,6 +43,7 @@ const QWEN_REGIONS = [
 ]
 
 const PROVIDER_LABELS: Record<string, string> = {
+  'star-ai': 'Star AI',
   qwen: '通义千问 (Qwen)',
   openai: 'OpenAI',
   anthropic: 'Anthropic',
@@ -95,7 +97,7 @@ export default function ModelsPage() {
     try {
       await modelAPI.create({
         provider: form.provider,
-        api_key: form.api_key,
+        api_key: form.provider === 'star-ai' ? 'claw-identity' : form.api_key,
         base_url: form.base_url,
       })
       setShowModal(false)
@@ -133,7 +135,8 @@ export default function ModelsPage() {
     } catch { /* ignore */ }
   }
 
-  const needsCustomUrl = !['qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
+  const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
+  const isStarAI = form.provider === 'star-ai'
 
   return (
     <div className="h-full overflow-y-auto">
@@ -318,7 +321,7 @@ export default function ModelsPage() {
                       onClick={() => setForm({
                         ...form,
                         provider: p.value,
-                        base_url: p.value === 'qwen' ? QWEN_REGIONS[0].value : '',
+                        base_url: p.value === 'qwen' ? QWEN_REGIONS[0].value : (p.base_url || ''),
                       })}
                       className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
                         form.provider === p.value
@@ -337,16 +340,22 @@ export default function ModelsPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-                <input
-                  type="password"
-                  value={form.api_key}
-                  onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder={form.provider === 'qwen' ? 'sk-...' : 'sk-...'}
-                />
-              </div>
+              {isStarAI ? (
+                <div className="bg-emerald-50 rounded-lg px-4 py-3 text-xs text-emerald-700">
+                  Star AI 使用 Claw 节点身份认证，无需 API Key。添加后即可直接使用 60+ 模型。
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    value={form.api_key}
+                    onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="sk-..."
+                  />
+                </div>
+              )}
 
               {form.provider === 'qwen' ? (
                 <div>
@@ -390,7 +399,7 @@ export default function ModelsPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!form.api_key}
+                disabled={!isStarAI && !form.api_key}
                 className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 添加提供商

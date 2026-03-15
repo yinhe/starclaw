@@ -311,6 +311,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		contributorSvc := inference.NewContributorService(contributorCfg, identity, providerRegistry, peerPublicHandler.PeerAddresses, nydusManager)
 		contributorSvc.Start()
 
+		// Wire contributor info into swarm heartbeat for mining reporting
+		if len(swarmClient) > 0 && swarmClient[0] != nil {
+			sc := swarmClient[0]
+			sc.ContributorInfoFunc = func() *swarm.ContributorInfo {
+				isC, models, gpu := contributorSvc.GetContributorInfo()
+				if !isC {
+					return nil
+				}
+				return &swarm.ContributorInfo{
+					IsContributor: true,
+					Models:        models,
+					GPUInfo:       gpu,
+				}
+			}
+		}
+
 		// A2A (Agent-to-Agent) protocol endpoints (public)
 		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
 		apiV1.POST("/a2a", a2aHandler.HandleRPC)
@@ -859,6 +875,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/credits/transfer", systemHandler.TransferCredits)
 			protected.GET("/system/credits/transactions", systemHandler.ListCreditTransactions)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
+			protected.GET("/system/mining", systemHandler.GetMiningStatus)
+			protected.POST("/system/mining/toggle", systemHandler.ToggleMining)
 
 			// Device Management
 			deviceHandler := v1.NewDeviceHandler(db)

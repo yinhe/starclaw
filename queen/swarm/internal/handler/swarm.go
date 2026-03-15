@@ -53,7 +53,7 @@ func fetchCreditBalance(clawID string) map[string]interface{} {
 	return nil
 }
 
-// grantWelcomeBonus calls Queen API to grant 100 ⭐ to a new claw node
+// grantWelcomeBonus calls Queen API to grant 100 ⚡ to a new claw node
 func grantWelcomeBonus(clawID string) {
 	queenAPI := os.Getenv("QUEEN_API_URL")
 	if queenAPI == "" {
@@ -68,7 +68,7 @@ func grantWelcomeBonus(clawID string) {
 		"claw_id": clawID,
 		"amount":  100 * 10000, // 100 Stars × 10000 units/Star
 		"type":    "grant",
-		"remark":  "新手礼包 100 ⭐ Welcome bonus",
+		"remark":  "新手礼包 100 ⚡ Welcome bonus",
 	})
 
 	req, err := http.NewRequest("POST", queenAPI+"/internal/credits/grant", bytes.NewReader(body))
@@ -88,7 +88,7 @@ func grantWelcomeBonus(clawID string) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 200 {
-		log.Printf("[swarm] granted 100 ⭐ welcome bonus to %s", clawID)
+		log.Printf("[swarm] granted 100 ⚡ welcome bonus to %s", clawID)
 	} else {
 		log.Printf("[swarm] grant bonus to %s returned status %d", clawID, resp.StatusCode)
 	}
@@ -170,7 +170,7 @@ func (h *SwarmHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Grant 100 ⭐ welcome bonus for new claw nodes
+	// Grant 100 ⚡ welcome bonus for new claw nodes
 	if req.ClawID != "" {
 		go grantWelcomeBonus(req.ClawID)
 	}
@@ -196,6 +196,10 @@ type HeartbeatRequest struct {
 	TasksQueued  int     `json:"tasks_queued"`
 	TokensUsed   int64   `json:"tokens_used_30d"`
 	ErrorRate    float64 `json:"error_rate"`
+	// Compute contribution (mining)
+	IsContributor     bool     `json:"is_contributor"`
+	ContributorModels []string `json:"contributor_models"`
+	GPUInfo           string   `json:"gpu_info"`
 }
 
 func (h *SwarmHandler) Heartbeat(c *gin.Context) {
@@ -229,6 +233,24 @@ func (h *SwarmHandler) Heartbeat(c *gin.Context) {
 	}
 	if req.Address != "" {
 		updates["address"] = req.Address
+	}
+
+	// Update contributor status
+	if req.IsContributor {
+		updates["is_contributor"] = true
+		if len(req.ContributorModels) > 0 {
+			if modelsJSON, err := json.Marshal(req.ContributorModels); err == nil {
+				updates["contributor_models"] = string(modelsJSON)
+			}
+		}
+		if req.GPUInfo != "" {
+			updates["gpu_info"] = req.GPUInfo
+		}
+		// Increment online minutes (heartbeat interval ~60s)
+		updates["online_minutes_today"] = gorm.Expr("online_minutes_today + 1")
+		updates["total_online_minutes"] = gorm.Expr("total_online_minutes + 1")
+	} else {
+		updates["is_contributor"] = false
 	}
 
 	h.db.Model(&node).Updates(updates)
@@ -488,6 +510,52 @@ func (h *SwarmHandler) checkMoltForNode(nodeID, currentVersion, role string) map
 		"changelog":        release.Changelog,
 		"mandatory":        release.Mandatory,
 	}
+}
+
+// ---------- GET /swarm/mining/stats ----------
+
+func (h *SwarmHandler) MiningStats(c *gin.Context) {
+	// Total contributors online now
+	var onlineCount int64
+	h.db.Model(&model.Node{}).Where("is_contributor = ? AND status = ?", true, model.StatusOnline).Count(&onlineCount)
+
+	// Total contributors ever
+	var totalContributors int64
+	h.db.Model(&model.Node{}).Where("is_contributor = ?", true).Count(&totalContributors)
+
+	// Aggregate stats
+	var stats struct {
+		TotalOnlineMinutes int64 `gorm:"column:total_minutes"`
+		TotalEarnings      int64 `gorm:"column:total_earnings"`
+	}
+	h.db.Model(&model.Node{}).Where("is_contributor = ?", true).
+		Select("COALESCE(SUM(total_online_minutes),0) as total_minutes, COALESCE(SUM(mining_earnings),0) as total_earnings").
+		Scan(&stats)
+
+	// Top contributors (by earnings)
+	var top []model.Node
+	h.db.Where("is_contributor = ? AND mining_earnings > 0", true).
+		Order("mining_earnings DESC").Limit(20).Find(&top)
+
+	topList := make([]gin.H, 0, len(top))
+	for _, n := range top {
+		topList = append(topList, gin.H{
+			"node_id":              n.ID,
+			"claw_id":              n.ClawID,
+			"gpu_info":             n.GPUInfo,
+			"total_online_minutes": n.TotalOnlineMinutes,
+			"mining_earnings":      n.MiningEarnings,
+			"status":               n.Status,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"online_contributors":  onlineCount,
+		"total_contributors":   totalContributors,
+		"total_online_minutes": stats.TotalOnlineMinutes,
+		"total_earnings":       stats.TotalEarnings,
+		"top_contributors":     topList,
+	})
 }
 
 // ---------- helpers ----------

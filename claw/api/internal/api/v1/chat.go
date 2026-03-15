@@ -189,6 +189,13 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		if fileContext != "" {
 			systemPrompt += "\n\n" + fileContext
 		}
+
+		// Extract images and video frames from file attachments for vision analysis
+		visionURLs := extractVisionFromFiles(req.Files, 4)
+		if len(visionURLs) > 0 {
+			req.Images = append(req.Images, visionURLs...)
+			log.Printf("[vision] injected %d image/video-frame URLs from %d file attachments", len(visionURLs), len(req.Files))
+		}
 	}
 
 	// Cerebrate: inject cross-session memories into system prompt
@@ -714,6 +721,17 @@ func buildFileContext(files []FileAttachment) string {
 	parts = append(parts, "用户附带了以下文件：")
 	for i, f := range files {
 		sizeStr := formatFileSize(f.Size)
+		mime := strings.ToLower(f.Mime)
+
+		if strings.HasPrefix(mime, "image/") {
+			parts = append(parts, fmt.Sprintf("%d. 📷 %s (%s, %s) — 图片已注入到视觉消息中，你可以直接看到并分析图片内容", i+1, f.Filename, f.Mime, sizeStr))
+			continue
+		}
+		if strings.HasPrefix(mime, "video/") {
+			parts = append(parts, fmt.Sprintf("%d. 🎬 %s (%s, %s) — 已从视频中提取关键帧注入到视觉消息中，你可以看到视频画面并分析内容", i+1, f.Filename, f.Mime, sizeStr))
+			continue
+		}
+
 		parts = append(parts, fmt.Sprintf("%d. %s (%s, %s, %s)", i+1, f.Filename, f.Category, f.Mime, sizeStr))
 
 		// For text-readable files, try to read and include content

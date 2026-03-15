@@ -69,6 +69,8 @@ export const systemAPI = {
   getOverlord: () => api.get('/system/overlord'),
   joinOverlord: (data: { overlord_url: string; node_name?: string; region?: string }) => api.post('/system/overlord/join', data),
   leaveOverlord: () => api.post('/system/overlord/leave'),
+  getMining: () => api.get('/system/mining'),
+  toggleMining: (enabled: boolean) => api.post('/system/mining/toggle', { enabled }),
 }
 
 // Node Identity & Peer Networking

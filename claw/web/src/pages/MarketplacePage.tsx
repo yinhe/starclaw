@@ -270,7 +270,7 @@ export default function MarketplacePage() {
                     <div className="flex items-center justify-between mt-3">
                       <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">starclaw.net</span>
                       <div className="flex items-center gap-2 text-xs text-gray-400">
-                        {item.rating > 0 && <span>⭐ {item.rating.toFixed(1)}</span>}
+                        {item.rating > 0 && <span>⚡ {item.rating.toFixed(1)}</span>}
                         <span>⬇ {item.downloads}</span>
                       </div>
                     </div>

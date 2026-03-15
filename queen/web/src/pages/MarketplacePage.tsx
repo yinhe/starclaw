@@ -261,7 +261,7 @@ export function MarketplacePage() {
                     )}
                     <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
                       <span>⬇ {item.downloads}</span>
-                      {item.rating > 0 && <span>⭐ {item.rating.toFixed(1)}</span>}
+                      {item.rating > 0 && <span>⚡ {item.rating.toFixed(1)}</span>}
                     </div>
                   </div>
                 ))}

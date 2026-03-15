@@ -46,6 +46,15 @@ type Node struct {
 	TokensUsed30d int64   `json:"tokens_used_30d" gorm:"default:0"`
 	ErrorRate     float64 `json:"error_rate" gorm:"default:0"`
 
+	// Mining / Compute Contribution
+	IsContributor      bool       `json:"is_contributor" gorm:"default:false"`   // opted-in to share compute
+	ContributorModels  string     `json:"contributor_models" gorm:"type:text"`   // JSON array of model names
+	GPUInfo            string     `json:"gpu_info" gorm:"type:varchar(200)"`     // e.g. "RTX 4090"
+	OnlineMinutesToday int        `json:"online_minutes_today" gorm:"default:0"` // reset daily by reward worker
+	TotalOnlineMinutes int64      `json:"total_online_minutes" gorm:"default:0"` // lifetime
+	MiningEarnings     int64      `json:"mining_earnings" gorm:"default:0"`      // lifetime star energy earned from mining
+	LastRewardAt       *time.Time `json:"last_reward_at"`                        // last time this node received mining reward
+
 	LastHeartbeat time.Time      `json:"last_heartbeat"`
 	RegisteredAt  time.Time      `json:"registered_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`

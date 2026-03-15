@@ -38,7 +38,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
-// Auth
+// Auth (legacy email/phone)
 export const auth = {
   register: (data: { email?: string; phone?: string; password: string; name?: string }) =>
     request<{ token: string; user: { id: string; email: string; phone: string; name: string }; api_key: { key: string; key_prefix: string } }>(
@@ -49,6 +49,25 @@ export const auth = {
       'POST', '/auth/login', data
     ),
 };
+
+// Sign-In with Claw (MetaMask-style Ed25519 address auth)
+export const clawAuth = {
+  challenge: () =>
+    request<{ challenge: string; expires_in: number }>('POST', '/auth/claw/challenge'),
+  verify: (body: { challenge: string; node_id: string; public_key: string; signature: string }) =>
+    request<{ token: string; user: { id: string; email: string; phone: string; name: string; claw_id: string } }>(
+      'POST', '/auth/claw/verify', body
+    ),
+};
+
+// Helper: call a Claw node's API (cross-origin)
+export async function clawNodeRequest<T>(clawUrl: string, path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...options?.headers as Record<string, string> };
+  const res = await fetch(`${clawUrl}${path}`, { ...options, headers });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '连接 Claw 节点失败');
+  return data as T;
+}
 
 // Dashboard (JWT)
 export const dash = {

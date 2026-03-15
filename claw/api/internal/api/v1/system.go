@@ -474,6 +474,64 @@ func (h *SystemHandler) LeaveOverlord(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已退出领主监控"})
 }
 
+// --- Mining (算力共享) ---
+
+// GetMiningStatus returns the current node's compute contribution status
+func (h *SystemHandler) GetMiningStatus(c *gin.Context) {
+	result := gin.H{
+		"enabled":   h.cfg.Contributor.Enabled,
+		"connected": false,
+	}
+
+	// Get contributor info from swarm client callback
+	if h.swarmClient != nil && h.swarmClient.ContributorInfoFunc != nil {
+		if info := h.swarmClient.ContributorInfoFunc(); info != nil && info.IsContributor {
+			result["connected"] = h.swarmClient.Connected()
+			result["is_contributing"] = true
+			result["models"] = info.Models
+			result["gpu_info"] = info.GPUInfo
+		}
+	}
+
+	// Get cached credit balance for earnings display
+	if h.swarmClient != nil {
+		if cb := h.swarmClient.Credits(); cb != nil {
+			result["balance"] = cb.Balance
+			result["balance_energy"] = cb.BalanceEnergy
+			result["hp_status"] = cb.HPStatus
+		}
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// ToggleMining enables or disables compute contribution
+func (h *SystemHandler) ToggleMining(c *gin.Context) {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.cfg.Contributor.Enabled = req.Enabled
+	viper.Set("contributor.enabled", req.Enabled)
+	if err := viper.WriteConfig(); err != nil {
+		log.Printf("[mining] failed to save config: %v", err)
+	}
+
+	status := "已关闭"
+	if req.Enabled {
+		status = "已开启（重启后生效）"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"enabled": req.Enabled,
+		"message": "算力共享" + status,
+	})
+}
+
 // execOnHost sends a shell command to the MCP Bridge with proper JSON escaping.
 func execOnHost(client *mcp.Client, command string) (string, error) {
 	args, _ := json.Marshal(map[string]string{"command": command})

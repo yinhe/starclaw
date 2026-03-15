@@ -28,7 +28,7 @@ type CreditHandler struct{}
 
 const (
 	EnergyUnit       = 10000                // 1 Star = 10000 internal units (4 decimal precision)
-	NewClawBonus     = 100 * EnergyUnit     // 100 ⭐ welcome bonus
+	NewClawBonus     = 100 * EnergyUnit     // 100 ⚡ welcome bonus
 	MaxTransferNoFee = int64(math.MaxInt64) // no fee on transfers currently
 )
 
@@ -793,21 +793,21 @@ func (h *CreditHandler) InternalInferenceSettle(c *gin.Context) {
 func calculateStarCost(resourceType string, quantity int64) int64 {
 	switch resourceType {
 	case "input_tokens":
-		// 0.5 ⭐ per 1K tokens = 5000 units per 1K = 5 units per token
+		// 0.5 ⚡ per 1K tokens = 5000 units per 1K = 5 units per token
 		return quantity * 5
 	case "output_tokens":
-		// 1 ⭐ per 1K tokens = 10000 units per 1K = 10 units per token
+		// 1 ⚡ per 1K tokens = 10000 units per 1K = 10 units per token
 		return quantity * 10
 	case "image":
-		return quantity * 5 * int64(EnergyUnit) // 5 ⭐ per image
+		return quantity * 5 * int64(EnergyUnit) // 5 ⚡ per image
 	case "image_hd":
-		return quantity * 10 * int64(EnergyUnit) // 10 ⭐ per HD image
+		return quantity * 10 * int64(EnergyUnit) // 10 ⚡ per HD image
 	case "video_short":
-		return quantity * 50 * int64(EnergyUnit) // 50 ⭐ per short video
+		return quantity * 50 * int64(EnergyUnit) // 50 ⚡ per short video
 	case "video_long":
-		return quantity * 200 * int64(EnergyUnit) // 200 ⭐ per long video
+		return quantity * 200 * int64(EnergyUnit) // 200 ⚡ per long video
 	case "sandbox_min":
-		return quantity * 1 * int64(EnergyUnit) // 1 ⭐ per minute
+		return quantity * 1 * int64(EnergyUnit) // 1 ⚡ per minute
 	default:
 		return quantity // raw units
 	}

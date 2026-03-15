@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText, Link2, Brain } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText, Brain } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -32,6 +32,7 @@ interface NavGroup { group: string; items: NavItem[] }
 function getNavGroups(isHosted: boolean): NavGroup[] {
   const systemItems: NavItem[] = [
     { to: '/wallet', icon: Zap, label: '星能' },
+    { to: '/mining', icon: Cpu, label: '算力共享' },
     { to: '/settings', icon: Settings, label: '设置' },
   ]
   if (isHosted) {
@@ -39,38 +40,40 @@ function getNavGroups(isHosted: boolean): NavGroup[] {
   }
   return [
     {
-      group: '核心',
+      group: '',
       items: [
         { to: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
         { to: '/chat', icon: MessageSquare, label: '对话' },
       ],
     },
     {
-      group: '代理',
+      group: '虫群',
       items: [
-        { to: '/agents', icon: Bot, label: 'Agents' },
+        { to: '/agents', icon: Bot, label: '智能体' },
         { to: '/marketplace', icon: Store, label: '市场' },
       ],
     },
     {
-      group: '技能 / 工具',
+      group: '能力',
       items: [
-        { to: '/skills', icon: Zap, label: '技能管理' },
         { to: '/models', icon: Cpu, label: '模型' },
         { to: '/knowledge', icon: BookOpen, label: '知识库' },
-        { to: '/mcp', icon: Plug, label: 'MCP 工具' },
-        { to: '/integrations', icon: Link2, label: '通讯集成' },
+        { to: '/skills', icon: Plug, label: '技能 & MCP' },
       ],
     },
     {
-      group: '工作流 / 任务',
+      group: '自动化',
       items: [
         { to: '/workflows', icon: GitBranch, label: '工作流' },
         { to: '/tasks', icon: ListTodo, label: '自主任务' },
         { to: '/activities', icon: Brain, label: '本能系统' },
-        { to: '/resources', icon: FolderOpen, label: '资源中心' },
+      ],
+    },
+    {
+      group: '创作',
+      items: [
         { to: '/videos', icon: Film, label: '视频画廊' },
-        { to: '/visualization', icon: Radar, label: '可视化' },
+        { to: '/resources', icon: FolderOpen, label: '资源中心' },
       ],
     },
     {
@@ -270,11 +273,13 @@ export default function Layout() {
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navGroups.map(({ group, items }, gi) => (
-            <div key={group}>
+            <div key={group || `g${gi}`}>
               {gi > 0 && <div className="my-2 mx-3 border-t border-gray-700/60" />}
-              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                {group}
-              </div>
+              {group && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  {group}
+                </div>
+              )}
               {items.map(({ to, icon: Icon, label }) => (
                 <NavLink
                   key={to}

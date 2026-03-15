@@ -60,6 +60,16 @@ type Client struct {
 	creditClient     *CreditClient // star energy operations client
 	moltUpdating     bool          // prevents concurrent molt updates
 	UpdateFunc       func() error  // set by system handler to perform Docker update
+
+	// Mining: set by inference contributor service to report contributor status
+	ContributorInfoFunc func() *ContributorInfo
+}
+
+// ContributorInfo holds compute contribution status for heartbeat reporting
+type ContributorInfo struct {
+	IsContributor bool     `json:"is_contributor"`
+	Models        []string `json:"contributor_models"`
+	GPUInfo       string   `json:"gpu_info"`
 }
 
 // NormalizeQueenURL converts claw:// protocol to https:// (or http:// for local addresses).
@@ -413,6 +423,15 @@ func (c *Client) heartbeat() error {
 		"tasks_running": 0,
 		"tasks_queued":  0,
 		"error_rate":    0,
+	}
+
+	// Inject contributor info if available
+	if c.ContributorInfoFunc != nil {
+		if info := c.ContributorInfoFunc(); info != nil && info.IsContributor {
+			body["is_contributor"] = true
+			body["contributor_models"] = info.Models
+			body["gpu_info"] = info.GPUInfo
+		}
 	}
 
 	resp, err := c.post("/swarm/heartbeat", body)

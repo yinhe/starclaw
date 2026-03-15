@@ -18,7 +18,8 @@ type User struct {
 	FreeQuota    int64          `json:"free_quota" gorm:"default:1000000"` // free tokens for new users
 	IsAdmin      bool           `json:"is_admin" gorm:"default:false"`
 	Status       string         `json:"status" gorm:"type:varchar(20);default:'active'"`
-	QueenUID     string         `json:"queen_uid" gorm:"type:varchar(36);index"` // linked Queen user ID
+	ClawID       string         `json:"claw_id" gorm:"type:varchar(60);uniqueIndex"` // claw:xxxx address (Ed25519 identity)
+	QueenUID     string         `json:"queen_uid" gorm:"type:varchar(36);index"`     // linked Queen user ID
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
