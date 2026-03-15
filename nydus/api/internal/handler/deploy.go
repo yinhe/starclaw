@@ -131,6 +131,12 @@ func deployToTargets(repo, branch, rev string, targets []config.TargetConfig) []
 }
 
 func callWorm(t config.TargetConfig, repo, branch, rev string) (string, string) {
+	// Safety guard: customer Claw targets (name starts with "claw-") must NOT deploy queen code
+	if strings.HasPrefix(t.Name, "claw-") && (t.Subdir == "" || strings.Contains(t.Subdir, "queen")) {
+		log.Printf("[nydus] BLOCKED: customer target %s attempted to deploy queen code (subdir=%s)", t.Name, t.Subdir)
+		return "blocked", "customer Claw targets can only deploy claw/ subdir"
+	}
+
 	payload := fmt.Sprintf(`{"repo":"%s","branch":"%s","rev":"%s","deploy_path":"%s","deploy_cmd":"%s","subdir":"%s","repo_url":"/data/nydus/repos/%s.git"}`,
 		repo, branch, rev, t.DeployPath, t.DeployCmd, t.Subdir, repo)
 

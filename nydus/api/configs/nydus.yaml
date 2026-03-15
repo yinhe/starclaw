@@ -9,6 +9,9 @@ repos:
     description: "StarClaw monorepo"
     public: false
     targets:
+      # ========== INTERNAL (Queen 服务端 — 仅限我们自己的服务器) ==========
+      # queen/ 代码绝不部署到客户服务器
+
       - name: "queen-server-c"
         worm_url: "http://nydus-worm:8096"
         deploy_path: "/opt/starclaw-queen"
@@ -25,6 +28,8 @@ repos:
         subdir: "queen/api"
         branch: "master"
 
+      # ========== OUR CLAW (我们自己的 Claw 演示实例) ==========
+
       - name: "claw-starclaw-me"
         ssh_host: "root@starclaw.me"
         ssh_key: "/root/.ssh/id_ed25519"
@@ -32,6 +37,10 @@ repos:
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api web"
         subdir: "claw"
         branch: "master"
+
+      # ========== CUSTOMER CLAWS (客户 Claw — 仅部署 claw/ 开源代码) ==========
+      # 客户 Claw 通过 swarm.starclaw.net 加入远程 Queen 生态
+      # subdir 必须为 "claw"，绝不允许部署 queen/ 代码
 
       - name: "claw-dgp"
         ssh_host: "root@43.106.114.174"
