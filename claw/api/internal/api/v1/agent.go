@@ -535,30 +535,7 @@ func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 		created = true
 	}
 
-	// Ensure all built-in specialist agents
-	for _, def := range builtinAgents {
-		var existing model.Agent
-		if err := h.db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, def.Name).First(&existing).Error; err == nil {
-			h.db.Model(&existing).Updates(map[string]interface{}{
-				"system_prompt": def.Prompt,
-				"tools":         def.Tools,
-				"description":   def.Description,
-				"is_builtin":    true,
-			})
-		} else {
-			specialist := model.Agent{
-				UserID:       ownerID,
-				Name:         def.Name,
-				Description:  def.Description,
-				Tools:        def.Tools,
-				Config:       `{"temperature":0.3,"max_tokens":8192}`,
-				IsPublic:     true,
-				IsBuiltin:    true,
-				SystemPrompt: def.Prompt,
-			}
-			h.db.Create(&specialist)
-		}
-	}
+	// Specialist agents are now installed from Queen marketplace, not seeded locally.
 
 	if created {
 		c.JSON(http.StatusCreated, gin.H{"agent": superAgent, "created": true})
@@ -571,11 +548,11 @@ func (h *AgentHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	userID := c.GetString("user_id")
 
-	// Prevent deletion of built-in agents
+	// Only protect the SuperAgent (全能助手) from deletion
 	var agent model.Agent
 	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&agent).Error; err == nil {
-		if agent.IsBuiltin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "内置官方 Agent 不可删除"})
+		if agent.IsBuiltin && agent.Name == "全能助手" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "全能助手不可卸载"})
 			return
 		}
 	}
@@ -587,4 +564,83 @@ func (h *AgentHandler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "agent deleted"})
+}
+
+// InstalledSourceIDs returns the list of marketplace source_ids that the user has installed
+func (h *AgentHandler) InstalledSourceIDs(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var ids []string
+	h.db.Model(&model.Agent{}).
+		Where("user_id = ? AND source_id != '' AND source_id IS NOT NULL", userID).
+		Pluck("source_id", &ids)
+
+	c.JSON(http.StatusOK, gin.H{"source_ids": ids})
+}
+
+// InstallFromMarketplace creates an agent from a Queen marketplace item config
+func (h *AgentHandler) InstallFromMarketplace(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var req struct {
+		SourceID     string `json:"source_id" binding:"required"` // marketplace item ID
+		Name         string `json:"name" binding:"required"`
+		Description  string `json:"description"`
+		SystemPrompt string `json:"system_prompt"`
+		Tools        string `json:"tools"`
+		Config       string `json:"config"`
+		Icon         string `json:"icon"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if already installed
+	var exists int64
+	h.db.Model(&model.Agent{}).Where("user_id = ? AND source_id = ?", userID, req.SourceID).Count(&exists)
+	if exists > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "该智能体已安装"})
+		return
+	}
+
+	tools := req.Tools
+	if tools == "" {
+		tools = "[]"
+	}
+	config := req.Config
+	if config == "" {
+		config = `{"temperature":0.3,"max_tokens":8192}`
+	}
+
+	agent := model.Agent{
+		UserID:       userID,
+		Name:         req.Name,
+		Description:  req.Description,
+		SystemPrompt: req.SystemPrompt,
+		Tools:        tools,
+		Config:       config,
+		IsPublic:     true,
+		SourceID:     req.SourceID,
+	}
+	if err := h.db.Create(&agent).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "安装失败"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+}
+
+// UninstallBySourceID removes an agent installed from marketplace by source_id
+func (h *AgentHandler) UninstallBySourceID(c *gin.Context) {
+	userID := c.GetString("user_id")
+	sourceID := c.Param("source_id")
+
+	result := h.db.Where("user_id = ? AND source_id = ?", userID, sourceID).Delete(&model.Agent{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "未找到该智能体"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "已卸载"})
 }

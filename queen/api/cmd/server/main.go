@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/yinhe/starclaw-queen/api/internal/config"
 	"github.com/yinhe/starclaw-queen/api/internal/database"
+	"github.com/yinhe/starclaw-queen/api/internal/handler"
 	"github.com/yinhe/starclaw-queen/api/internal/model"
 	"github.com/yinhe/starclaw-queen/api/internal/router"
 	"golang.org/x/crypto/bcrypt"
@@ -71,6 +72,7 @@ func main() {
 	)
 
 	seedAdmin()
+	handler.SeedOfficialAgents()
 
 	r := router.Setup()
 

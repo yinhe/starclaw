@@ -642,6 +642,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/agents/import", agentHandler.Import)
 			protected.POST("/agents/:id/share", agentHandler.Share)
 			protected.POST("/agents/super-agent", agentHandler.EnsureSuperAgent)
+			protected.GET("/agents/installed-source-ids", agentHandler.InstalledSourceIDs)
+			protected.POST("/agents/install-marketplace", agentHandler.InstallFromMarketplace)
+			protected.DELETE("/agents/uninstall/:source_id", agentHandler.UninstallBySourceID)
 
 			// Agent Templates (Creep Marketplace)
 			tplHandler := v1.NewTemplateHandler(db)

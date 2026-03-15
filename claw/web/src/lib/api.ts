@@ -100,6 +100,9 @@ export const agentAPI = {
   import: (data: Record<string, unknown>) => api.post('/agents/import', data),
   marketplace: () => api.get('/agents/marketplace'),
   clone: (id: string) => api.post(`/agents/${id}/clone`),
+  installedSourceIDs: () => api.get('/agents/installed-source-ids'),
+  installFromMarketplace: (data: Record<string, unknown>) => api.post('/agents/install-marketplace', data),
+  uninstallBySourceID: (sourceId: string) => api.delete(`/agents/uninstall/${sourceId}`),
 }
 
 // Chat

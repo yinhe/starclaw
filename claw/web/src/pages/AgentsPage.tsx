@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bot, Plus, Pencil, Trash2, X, Wrench, Sparkles, Download, Upload } from 'lucide-react'
-import { agentAPI, modelAPI, toolAPI, knowledgeBaseAPI, superAgentAPI } from '../lib/api'
+import { Bot, Plus, Pencil, Trash2, X, Wrench, Sparkles, Download, Upload, Store, Check, Loader2, Search } from 'lucide-react'
+import { agentAPI, modelAPI, toolAPI, knowledgeBaseAPI, superAgentAPI, queenMarketplaceAPI } from '../lib/api'
 
 interface Agent {
   id: string
@@ -13,6 +13,7 @@ interface Agent {
   knowledge_base_id: string
   is_public: boolean
   is_builtin: boolean
+  source_id: string
   created_at: string
 }
 
@@ -28,11 +29,16 @@ interface ModelConfig {
   display_name: string
 }
 
-interface TeamAgentCard {
+interface MarketplaceItem {
   id: string
   name: string
   description: string
-  is_builtin: boolean
+  icon: string
+  tags: string
+  config: string
+  downloads: number
+  rating: number
+  status: string
 }
 
 export default function AgentsPage() {
@@ -54,32 +60,40 @@ export default function AgentsPage() {
   })
   const [selectedTools, setSelectedTools] = useState<string[]>([])
 
-  const builtInTeamAgents: TeamAgentCard[] = [
-    {
-      id: 'team-devops-rnd',
-      name: '研发DevOps团队',
-      description: '团队编排：产品需求拆解、前后端研发、自动构建部署、上线验证与回滚协同。',
-      is_builtin: true,
-    },
-  ]
-
-  const singleAgents = agents.filter((agent) => !agent.name.includes('团队'))
-  const teamAgents = builtInTeamAgents
+  // Marketplace state
+  const [marketItems, setMarketItems] = useState<MarketplaceItem[]>([])
+  const [installedSourceIDs, setInstalledSourceIDs] = useState<Set<string>>(new Set())
+  const [installingID, setInstallingID] = useState<string | null>(null)
+  const [marketSearch, setMarketSearch] = useState('')
+  const [marketLoading, setMarketLoading] = useState(false)
 
   useEffect(() => {
     loadAgents()
     loadModels()
     loadTools()
     loadKBs()
+    loadMarketplace()
   }, [])
 
   const loadAgents = async () => {
     try {
-      // Ensure built-in agents (SuperAgent + specialists) exist
       try { await superAgentAPI.ensure() } catch { /* ignore */ }
-      const res = await agentAPI.list()
-      setAgents(res.data.agents || [])
+      const [agentsRes, idsRes] = await Promise.all([
+        agentAPI.list(),
+        agentAPI.installedSourceIDs(),
+      ])
+      setAgents(agentsRes.data.agents || [])
+      setInstalledSourceIDs(new Set(idsRes.data.source_ids || []))
     } catch { /* ignore */ }
+  }
+
+  const loadMarketplace = async (q?: string) => {
+    setMarketLoading(true)
+    try {
+      const res = await queenMarketplaceAPI.list({ q: q || undefined })
+      setMarketItems(res.data.items || [])
+    } catch { /* ignore */ }
+    setMarketLoading(false)
   }
 
   const loadModels = async () => {
@@ -137,23 +151,59 @@ export default function AgentsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个 Agent 吗？')) return
+    if (!confirm('确定要删除/卸载这个智能体吗？')) return
     try {
       await agentAPI.delete(id)
       loadAgents()
     } catch { /* ignore */ }
   }
 
+  const handleInstall = async (item: MarketplaceItem) => {
+    setInstallingID(item.id)
+    try {
+      let cfg: { system_prompt?: string; tools?: string; config?: string } = {}
+      try { cfg = JSON.parse(item.config) } catch { /* ignore */ }
+      await agentAPI.installFromMarketplace({
+        source_id: item.id,
+        name: item.name,
+        description: item.description,
+        system_prompt: cfg.system_prompt || '',
+        tools: cfg.tools || '[]',
+        config: cfg.config || '{}',
+        icon: item.icon,
+      })
+      // Refresh
+      const idsRes = await agentAPI.installedSourceIDs()
+      setInstalledSourceIDs(new Set(idsRes.data.source_ids || []))
+      loadAgents()
+    } catch { /* ignore */ }
+    setInstallingID(null)
+  }
+
+  const handleUninstall = async (sourceId: string) => {
+    if (!confirm('确定要卸载这个智能体吗？')) return
+    try {
+      await agentAPI.uninstallBySourceID(sourceId)
+      const idsRes = await agentAPI.installedSourceIDs()
+      setInstalledSourceIDs(new Set(idsRes.data.source_ids || []))
+      loadAgents()
+    } catch { /* ignore */ }
+  }
+
+  const superAgent = agents.find(a => a.name === '全能助手' && a.is_builtin)
+  const myAgents = agents.filter(a => !(a.name === '全能助手' && a.is_builtin))
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto p-8">
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Agents</h1>
-            <p className="text-gray-500 text-sm mt-1">创建和管理你的 AI 智能体</p>
+            <h1 className="text-2xl font-bold text-gray-900">智能体</h1>
+            <p className="text-gray-500 text-sm mt-1">安装社区智能体或创建自己的 AI 智能体</p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+            <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors cursor-pointer">
               <Upload className="w-4 h-4" />
               导入
               <input
@@ -183,25 +233,49 @@ export default function AgentsPage() {
               className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
-              创建 Agent
+              创建智能体
             </button>
           </div>
         </div>
 
-        {singleAgents.length === 0 && teamAgents.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <Bot className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>还没有 Agent，点击上方按钮创建第一个</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
+        <div className="space-y-10">
+          {/* ── 全能助手（置顶） ── */}
+          {superAgent && (
             <section>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-900">单个代理</h2>
-                <span className="text-xs text-gray-500">{singleAgents.length} 个</span>
+              <div
+                className="bg-gradient-to-r from-primary-50 to-orange-50 border border-primary-200 rounded-xl p-5 cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => navigate(`/agents/${superAgent.id}`)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-orange-500 rounded-xl flex items-center justify-center shadow-sm">
+                    <Sparkles className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-gray-900 text-lg">{superAgent.name}</h3>
+                      <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-[10px] font-medium rounded">内置</span>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">{superAgent.description}</p>
+                  </div>
+                </div>
               </div>
+            </section>
+          )}
+
+          {/* ── 我的智能体 ── */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-900">我的智能体</h2>
+              <span className="text-xs text-gray-500">{myAgents.length} 个</span>
+            </div>
+            {myAgents.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl">
+                <Bot className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">还没有智能体，从下方市场安装或自行创建</p>
+              </div>
+            ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {singleAgents.map((agent) => (
+                {myAgents.map((agent) => (
                   <div
                     key={agent.id}
                     className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer group"
@@ -212,6 +286,9 @@ export default function AgentsPage() {
                         <Bot className="w-5 h-5 text-primary-600" />
                       </div>
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        {agent.source_id && (
+                          <span className="px-1.5 py-0.5 bg-green-50 text-green-600 text-[10px] font-medium rounded mr-1">已安装</span>
+                        )}
                         {agent.is_builtin && (
                           <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-medium rounded mr-1">官方</span>
                         )}
@@ -239,10 +316,11 @@ export default function AgentsPage() {
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        {!agent.is_builtin && (
+                        {!(agent.is_builtin && agent.name === '全能助手') && (
                           <button
-                            onClick={() => handleDelete(agent.id)}
+                            onClick={() => agent.source_id ? handleUninstall(agent.source_id) : handleDelete(agent.id)}
                             className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50"
+                            title={agent.source_id ? '卸载' : '删除'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -253,59 +331,103 @@ export default function AgentsPage() {
                     <p className="text-sm text-gray-500 mt-1 line-clamp-2">
                       {agent.description || '暂无描述'}
                     </p>
-                    {agent.is_public && (
-                      <span className="inline-block mt-2 px-2 py-0.5 bg-green-50 text-green-600 text-xs rounded-full">
-                        公开
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>
-            </section>
+            )}
+          </section>
 
-            <section>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-900">团队代理</h2>
-                <span className="text-xs text-gray-500">{teamAgents.length} 个</span>
+          {/* ── 智能体市场 ── */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Store className="w-4 h-4 text-primary-600" />
+                <h2 className="text-sm font-semibold text-gray-900">智能体市场</h2>
+                <span className="text-xs text-gray-400">来自 StarClaw 社区</span>
               </div>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={marketSearch}
+                  onChange={(e) => setMarketSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && loadMarketplace(marketSearch)}
+                  placeholder="搜索智能体..."
+                  className="pl-9 pr-3 py-1.5 border rounded-lg text-xs w-48 outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+            {marketLoading ? (
+              <div className="text-center py-10 text-gray-400">
+                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
+                <p className="text-sm">加载中...</p>
+              </div>
+            ) : marketItems.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl">
+                <Store className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">暂无社区智能体</p>
+              </div>
+            ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {teamAgents.map((team) => (
-                  <div
-                    key={team.id}
-                    className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => navigate(`/teams/${team.id}`)}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                        <Bot className="w-5 h-5 text-purple-600" />
+                {marketItems.map((item) => {
+                  const isInstalled = installedSourceIDs.has(item.id)
+                  const isInstalling = installingID === item.id
+                  return (
+                    <div key={item.id} className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg flex items-center justify-center">
+                          <Bot className="w-5 h-5 text-indigo-600" />
+                        </div>
+                        <div>
+                          {isInstalled ? (
+                            <button
+                              onClick={() => handleUninstall(item.id)}
+                              className="flex items-center gap-1 px-3 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-red-50 hover:text-red-600 transition-colors group"
+                            >
+                              <Check className="w-3.5 h-3.5 group-hover:hidden" />
+                              <Trash2 className="w-3.5 h-3.5 hidden group-hover:block" />
+                              <span className="group-hover:hidden">已安装</span>
+                              <span className="hidden group-hover:inline">卸载</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleInstall(item)}
+                              disabled={isInstalling}
+                              className="flex items-center gap-1 px-3 py-1 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                            >
+                              {isInstalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                              安装
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        {team.is_builtin && (
-                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-medium rounded mr-1">官方</span>
-                        )}
-                        <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] font-medium rounded">团队</span>
-                      </div>
+                      <h3 className="font-semibold text-gray-900">{item.name}</h3>
+                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{item.description}</p>
+                      {item.tags && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {item.tags.split(',').slice(0, 3).map((tag) => (
+                            <span key={tag} className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] rounded">{tag.trim()}</span>
+                          ))}
+                        </div>
+                      )}
+                      {item.downloads > 0 && (
+                        <span className="text-[10px] text-gray-400 mt-2 inline-block">{item.downloads} 次安装</span>
+                      )}
                     </div>
-                    <h3 className="font-semibold text-gray-900">{team.name}</h3>
-                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">{team.description}</p>
-                    <span className="inline-block mt-2 px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">
-                      即将支持
-                    </span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
-            </section>
-          </div>
-        )}
+            )}
+          </section>
+        </div>
       </div>
 
-      {/* Modal */}
+      {/* Create/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-lg mx-4 p-6">
+          <div className="bg-white rounded-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold">
-                {editingAgent ? '编辑 Agent' : '创建 Agent'}
+                {editingAgent ? '编辑智能体' : '创建智能体'}
               </h2>
               <button
                 onClick={() => setShowModal(false)}
