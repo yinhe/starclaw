@@ -225,6 +225,7 @@ func SeedOfficialAgents() {
 		}
 		cfgJSON, _ := json.Marshal(cfg)
 
+		now := time.Now()
 		item := model.MarketplaceItem{
 			ID:           uuid.New().String(),
 			UserID:       systemUserID,
@@ -237,6 +238,8 @@ func SeedOfficialAgents() {
 			Config:       string(cfgJSON),
 			Status:       model.ItemStatusApproved,
 			ReviewStatus: "approved",
+			ReviewerID:   systemUserID,
+			ReviewedAt:   &now,
 		}
 		if err := database.DB.Create(&item).Error; err != nil {
 			log.Printf("[seed-marketplace] failed to create %s: %v", a.Name, err)
