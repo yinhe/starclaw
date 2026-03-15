@@ -866,15 +866,20 @@ export default function ChatPage() {
 
     // Build display content for user message
     let displayContent = userMessage
-    if (images.length > 0) displayContent += `\n\n[${images.length} 张图片]`
     if (files.length > 0) displayContent += `\n\n[${files.length} 个文件: ${files.map(f => f.filename).join(', ')}]`
+
+    // Combine images and files into attachments for persistence and rendering
+    const allAttachments: any[] = [
+      ...images.map((url, i) => ({ id: `img-${i}`, filename: attachedImages[i]?.name || 'image.jpg', url, size: 0, mime: 'image/jpeg', category: 'image' })),
+      ...files,
+    ]
 
     addMessage({
       id: Date.now().toString(),
       role: 'user',
       content: displayContent,
       created_at: new Date().toISOString(),
-      attachments: files.length > 0 ? JSON.stringify(files) : undefined,
+      attachments: allAttachments.length > 0 ? JSON.stringify(allAttachments) : undefined,
     })
 
     try {
@@ -1480,27 +1485,36 @@ export default function ChatPage() {
                           <div className="whitespace-pre-wrap">{msg.content}</div>
                           {msg.attachments && msg.attachments !== '[]' && (() => {
                             try {
-                              const files = JSON.parse(msg.attachments) as { filename: string; url: string; size: number; category: string }[]
-                              if (!files.length) return null
+                              const atts = JSON.parse(msg.attachments) as { filename: string; url: string; size: number; category: string; mime?: string }[]
+                              if (!atts.length) return null
+                              const imageAtts = atts.filter(a => a.category === 'image' || a.mime?.startsWith('image/'))
+                              const fileAtts = atts.filter(a => a.category !== 'image' && !a.mime?.startsWith('image/'))
                               return (
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {files.map((f, i) => {
-                                    const Icon = getFileIcon(f.category)
-                                    return (
-                                      <a
-                                        key={i}
-                                        href={f.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1.5 px-2 py-1 bg-white/20 rounded-lg text-xs hover:bg-white/30 transition-colors"
-                                      >
-                                        <Icon className="w-3.5 h-3.5" />
-                                        <span className="max-w-[100px] truncate">{f.filename}</span>
-                                        <span className="opacity-70">{formatSize(f.size)}</span>
-                                      </a>
-                                    )
-                                  })}
-                                </div>
+                                <>
+                                  {imageAtts.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {imageAtts.map((img, i) => (
+                                        <a key={`img-${i}`} href={img.url} target="_blank" rel="noopener noreferrer" className="block w-20 h-20 rounded-lg overflow-hidden border border-white/20 hover:opacity-80 transition-opacity">
+                                          <img src={img.url} alt={img.filename} className="w-full h-full object-cover" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {fileAtts.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {fileAtts.map((f, i) => {
+                                        const Icon = getFileIcon(f.category)
+                                        return (
+                                          <a key={`file-${i}`} href={f.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 bg-white/20 rounded-lg text-xs hover:bg-white/30 transition-colors">
+                                            <Icon className="w-3.5 h-3.5" />
+                                            <span className="max-w-[100px] truncate">{f.filename}</span>
+                                            <span className="opacity-70">{formatSize(f.size)}</span>
+                                          </a>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+                                </>
                               )
                             } catch { return null }
                           })()}

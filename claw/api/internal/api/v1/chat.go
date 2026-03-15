@@ -234,6 +234,14 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
+	// Auto-switch to a vision model when images are present
+	if len(req.Images) > 0 && !isVisionModel(chatModel) {
+		if vm := pickVisionModel(p.Models(), modelCfg.Provider); vm != "" {
+			log.Printf("[Chat] Images detected — switching from %q to vision model %q", chatModel, vm)
+			chatModel = vm
+		}
+	}
+
 	maxTok := modelCfg.MaxTokens
 	if maxTok < 16384 {
 		maxTok = 16384
@@ -783,6 +791,60 @@ func formatFileSize(size int64) string {
 		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
 	}
 	return fmt.Sprintf("%.1f GB", float64(size)/(1024*1024*1024))
+}
+
+// isVisionModel returns true if the model name indicates vision capability
+func isVisionModel(model string) bool {
+	m := strings.ToLower(model)
+	// Models with explicit vision naming
+	if strings.Contains(m, "-vl") || strings.Contains(m, "vl-") || strings.Contains(m, "vision") {
+		return true
+	}
+	// Models known to support vision natively
+	visionModels := []string{
+		"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+		"chatgpt-4o-latest",
+		"claude-sonnet-4", "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-opus",
+		"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash",
+		"o3", "o3-mini", "o4-mini", "o1", "o1-mini",
+	}
+	for _, vm := range visionModels {
+		if strings.HasPrefix(m, vm) {
+			return true
+		}
+	}
+	return false
+}
+
+// pickVisionModel selects the best vision model from the provider's available models
+func pickVisionModel(available []string, providerName string) string {
+	// Provider-specific preferred vision models (best first)
+	preferred := map[string][]string{
+		"star-ai":   {"qwen-vl-max", "qwen-vl-plus", "gpt-4o", "gemini-2.0-flash"},
+		"qwen":      {"qwen-vl-max", "qwen-vl-plus", "qwen3-vl-plus", "qwen3-vl-flash"},
+		"openai":    {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo"},
+		"google":    {"gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"},
+		"anthropic": {"claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022"},
+	}
+
+	// Try preferred models first
+	if prefs, ok := preferred[providerName]; ok {
+		for _, pref := range prefs {
+			for _, avail := range available {
+				if strings.HasPrefix(strings.ToLower(avail), strings.ToLower(pref)) {
+					return avail
+				}
+			}
+		}
+	}
+
+	// Fallback: any vision model from available list
+	for _, avail := range available {
+		if isVisionModel(avail) {
+			return avail
+		}
+	}
+	return ""
 }
 
 func truncate(s string, maxLen int) string {
