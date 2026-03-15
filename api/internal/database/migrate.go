@@ -35,6 +35,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.AgentTemplate{},
 		&model.AuthorizedDevice{},
 		&model.Integration{},
+		&model.WorkspaceFolder{},
 	); err != nil {
 		return err
 	}

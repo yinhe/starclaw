@@ -212,6 +212,16 @@ export const documentAPI = {
   getURL: (workspace: string, filepath: string) => `/v1/documents/${workspace}/${filepath}`,
 }
 
+// Document Folders (tree browsing)
+export const docFolderAPI = {
+  listFolders: () => api.get('/doc-folders'),
+  listFiles: (convId: string, page = 1, pageSize = 50) =>
+    api.get(`/doc-folders/${convId}`, { params: { page, page_size: pageSize } }),
+  deleteFolder: (convId: string) => api.delete(`/doc-folders/${convId}`),
+  lockFolder: (convId: string) => api.post(`/doc-folders/${convId}/lock`),
+  unlockFolder: (convId: string) => api.post(`/doc-folders/${convId}/unlock`),
+}
+
 // Knowledge Bases
 export const knowledgeBaseAPI = {
   list: () => api.get('/knowledge-bases'),
