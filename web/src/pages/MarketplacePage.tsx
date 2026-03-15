@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Bot, Download, Search, User, Star, Code2, PenTool, BarChart3, Palette, Server, BookOpen, Briefcase, Sparkles, Filter } from 'lucide-react'
-import { templateAPI } from '../lib/api'
+import { templateAPI, queenMarketplaceAPI } from '../lib/api'
 
 interface AgentTemplate {
   id: string
@@ -31,8 +31,23 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Bot, Code2, PenTool, BarChart3, Palette, Server, BookOpen, Briefcase,
 }
 
+interface CommunityItem {
+  id: string
+  name: string
+  description: string
+  icon: string
+  tags: string
+  config: string
+  downloads: number
+  rating: number
+  rating_count: number
+  author?: { nickname?: string; email?: string }
+}
+
 export default function MarketplacePage() {
+  const [tab, setTab] = useState<'local' | 'community'>('local')
   const [templates, setTemplates] = useState<AgentTemplate[]>([])
+  const [communityItems, setCommunityItems] = useState<CommunityItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState('')
@@ -65,7 +80,27 @@ export default function MarketplacePage() {
 
   const handleSearch = (val: string) => {
     setSearch(val)
-    loadTemplates(activeCategory, val)
+    if (tab === 'community') loadCommunity(val)
+    else loadTemplates(activeCategory, val)
+  }
+
+  const loadCommunity = async (q?: string) => {
+    setLoading(true)
+    try {
+      const res = await queenMarketplaceAPI.list({ q: q || undefined })
+      setCommunityItems(res.data.items || [])
+    } catch {
+      setCommunityItems([])
+    }
+    setLoading(false)
+  }
+
+  const handleTabChange = (t: 'local' | 'community') => {
+    setTab(t)
+    setSearch('')
+    setActiveCategory('')
+    if (t === 'community') loadCommunity()
+    else loadTemplates()
   }
 
   const handleInstall = async (id: string) => {
@@ -74,6 +109,28 @@ export default function MarketplacePage() {
       await templateAPI.install(id)
       setToast('已安装到我的 Agent')
       setTemplates(prev => prev.map(t => t.id === id ? { ...t, install_count: t.install_count + 1 } : t))
+      setTimeout(() => setToast(''), 2500)
+    } catch {
+      setToast('安装失败')
+      setTimeout(() => setToast(''), 2500)
+    }
+    setInstalling(null)
+  }
+
+  const handleInstallCommunity = async (item: CommunityItem) => {
+    setInstalling(item.id)
+    try {
+      const cfg = item.config ? JSON.parse(item.config) : {}
+      await templateAPI.installRemote({
+        name: item.name,
+        description: item.description,
+        system_prompt: cfg.system_prompt || '',
+        tools: cfg.tools || '[]',
+        config: cfg.config || '{}',
+        source: 'starclaw.net',
+        source_id: item.id,
+      })
+      setToast(`已安装「${item.name}」到我的 Agent`)
       setTimeout(() => setToast(''), 2500)
     } catch {
       setToast('安装失败')
@@ -107,6 +164,10 @@ export default function MarketplacePage() {
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Agent 模板市场</h1>
               <p className="text-gray-500 dark:text-gray-400 text-sm">Creep 菌毯 — 发现、安装和分享 AI Agent 模板</p>
             </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => handleTabChange('local')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'local' ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>本地模板</button>
+            <button onClick={() => handleTabChange('community')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'community' ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>🌐 社区市场</button>
           </div>
         </div>
 
@@ -186,8 +247,48 @@ export default function MarketplacePage() {
           </div>
         ) : (
           <>
-            {/* Featured */}
-            {featured.length > 0 && !activeCategory && !search && (
+            {/* Community items */}
+            {tab === 'community' && communityItems.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                {communityItems.map(item => (
+                  <div key={item.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center text-lg">
+                        {item.icon || '🤖'}
+                      </div>
+                      <button
+                        onClick={() => handleInstallCommunity(item)}
+                        disabled={installing === item.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        {installing === item.id ? '...' : '安装到本地'}
+                      </button>
+                    </div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">{item.name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description || '暂无描述'}</p>
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">starclaw.net</span>
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        {item.rating > 0 && <span>⭐ {item.rating.toFixed(1)}</span>}
+                        <span>⬇ {item.downloads}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {tab === 'community' && communityItems.length === 0 && !loading && (
+              <div className="text-center py-20 text-gray-400">
+                <Bot className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>社区暂无已发布的 Agent 模板</p>
+                <p className="text-xs mt-2">在 <a href="https://starclaw.net" target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline">starclaw.net</a> 发布你的 Agent</p>
+              </div>
+            )}
+
+            {/* Featured (local tab only) */}
+            {tab === 'local' && featured.length > 0 && !activeCategory && !search && (
               <div className="mb-8">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                   <Star className="w-5 h-5 text-yellow-500" />
@@ -234,8 +335,8 @@ export default function MarketplacePage() {
               </div>
             )}
 
-            {/* All templates */}
-            <div>
+            {/* All templates (local tab only) */}
+            {tab === 'local' && <div>
               {featured.length > 0 && !activeCategory && !search && (
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">全部模板</h2>
               )}
@@ -285,7 +386,7 @@ export default function MarketplacePage() {
                   )
                 })}
               </div>
-            </div>
+            </div>}
           </>
         )}
       </div>

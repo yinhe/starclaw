@@ -62,6 +62,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		corsConfig.AllowOrigins = []string{
 			"https://starclaw.me", "https://app.starclaw.me",
 			"https://api.starclaw.me", "https://www.starclaw.me",
+			"https://starclaw.net", "https://www.starclaw.net",
 			"http://localhost:5173", "http://localhost:3000",
 		}
 	} else {
@@ -633,6 +634,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/templates/:id", tplHandler.Get)
 			protected.POST("/templates", tplHandler.Publish)
 			protected.POST("/templates/:id/install", tplHandler.Install)
+			protected.POST("/templates/install-remote", tplHandler.InstallRemote)
+			protected.GET("/templates/community", tplHandler.CommunityList)
+			protected.GET("/templates/community/:id", tplHandler.CommunityGet)
 			protected.POST("/templates/:id/rate", tplHandler.Rate)
 
 			// Inference (user-facing: route to contributors)

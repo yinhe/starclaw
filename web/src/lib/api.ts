@@ -334,7 +334,17 @@ export const templateAPI = {
   publish: (data: { agent_id: string; category?: string; tags?: string; icon?: string; description?: string }) =>
     api.post('/templates', data),
   install: (id: string) => api.post(`/templates/${id}/install`),
+  installRemote: (data: { name: string; description?: string; system_prompt?: string; tools?: string; config?: string; source?: string; source_id?: string }) =>
+    api.post('/templates/install-remote', data),
   rate: (id: string, rating: number) => api.post(`/templates/${id}/rate`, { rating }),
+}
+
+// Community Marketplace (proxied through local Claw backend to avoid CORS)
+export const queenMarketplaceAPI = {
+  list: (params?: { q?: string }) =>
+    api.get('/templates/community', { params }),
+  get: (id: string) =>
+    api.get(`/templates/community/${id}`),
 }
 
 // Schedules (Cron)

@@ -1,13 +1,19 @@
 package v1
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/yinhe/starclaw/internal/model"
 	"gorm.io/gorm"
 )
+
+const queenMarketplaceURL = "https://starclaw.net/api/v1/marketplace"
 
 type TemplateHandler struct {
 	db *gorm.DB
@@ -141,6 +147,100 @@ func (h *TemplateHandler) Install(c *gin.Context) {
 	h.db.Model(&tpl).UpdateColumn("install_count", gorm.Expr("install_count + 1"))
 
 	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+}
+
+// InstallRemote creates an agent from a remote marketplace template (e.g. from Queen/starclaw.net)
+func (h *TemplateHandler) InstallRemote(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var req struct {
+		Name         string `json:"name" binding:"required"`
+		Description  string `json:"description"`
+		SystemPrompt string `json:"system_prompt"`
+		Tools        string `json:"tools"`
+		Config       string `json:"config"`
+		Icon         string `json:"icon"`
+		Source       string `json:"source"` // e.g. "starclaw.net"
+		SourceID     string `json:"source_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	agent := model.Agent{
+		UserID:       userID,
+		Name:         req.Name,
+		Description:  req.Description,
+		SystemPrompt: req.SystemPrompt,
+		Tools:        req.Tools,
+		Config:       req.Config,
+	}
+	if err := h.db.Create(&agent).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to install"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+}
+
+// CommunityList proxies the Queen marketplace API to avoid CORS issues
+func (h *TemplateHandler) CommunityList(c *gin.Context) {
+	q := c.Query("q")
+	url := fmt.Sprintf("%s/items?type=agent", queenMarketplaceURL)
+	if q != "" {
+		url += "&q=" + q
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach community marketplace"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response"})
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid response"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// CommunityGet proxies a single item from Queen marketplace
+func (h *TemplateHandler) CommunityGet(c *gin.Context) {
+	id := c.Param("id")
+	url := fmt.Sprintf("%s/items/%s", queenMarketplaceURL, id)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach community marketplace"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response"})
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid response"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // Rate adds a rating to a template
