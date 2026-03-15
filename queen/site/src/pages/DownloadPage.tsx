@@ -4,14 +4,9 @@ import { Layout } from '../components/Layout'
 import { CopyBlock } from '../components/CopyBlock'
 import { useI18n } from '../i18n'
 
-const QUICK_CMD = `git clone https://github.com/yinhe/starclaw.git && cd starclaw
-cp .env.example .env
-docker compose up -d`
+const QUICK_CMD = `curl -fsSL https://starclaw.me/install.sh | bash`
 
-const NYDUS_CMD = `curl -L https://nydus.starclaw.net/releases/source.tar.gz | tar xz
-cd starclaw
-cp .env.example .env
-docker compose up -d`
+const NYDUS_CMD = `curl -fsSL https://starclaw.me/install-cn.sh | bash`
 
 const DOCKER_CMD = `git clone https://github.com/yinhe/starclaw.git
 cd starclaw

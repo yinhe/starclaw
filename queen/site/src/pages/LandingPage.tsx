@@ -82,7 +82,7 @@ export function LandingPage() {
               GitHub
             </a>
             <a
-              href="https://star-ai.net"
+              href="https://starclaw.net"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-claw-500/30 bg-claw-500/10 px-6 py-3 text-sm font-semibold text-claw-400 hover:bg-claw-500/20 transition-colors"
@@ -94,7 +94,7 @@ export function LandingPage() {
 
           {/* Quick install */}
           <div className="mt-12 max-w-2xl mx-auto">
-            <CopyBlock text="git clone https://github.com/yinhe/starclaw && cd starclaw && docker compose up -d" />
+            <CopyBlock text="curl -fsSL https://starclaw.me/install.sh | bash" />
           </div>
         </div>
       </section>
