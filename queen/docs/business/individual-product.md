@@ -1,4 +1,4 @@
-# star-ai.net — 个人 AI 助手平台
+# star-ai.net — 个人 AI 智能体
 
 > 对外文档 — 面向个人用户和开发者的产品介绍
 
@@ -6,7 +6,7 @@
 
 ## 你的私人 AI，不止于聊天
 
-star-ai.net 是 StarClaw 面向个人用户和开发者的 AI 平台。
+star-ai.net 是 StarClaw 面向个人用户和开发者的 AI 智能体。
 一个账号，接入 20+ 主流 AI 模型，按需使用，按量付费。
 
 ---
@@ -161,4 +161,4 @@ curl https://api.star-ai.net/v1/chat/completions \
 
 ---
 
-*star-ai.net — 一个账号，所有 AI*
+*star-ai.net — 你的私人 AI 智能体*

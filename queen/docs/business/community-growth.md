@@ -70,7 +70,7 @@
 
 | 平台 | 方法 | 预期效果 |
 |------|------|---------|
-| **Hacker News** | Show HN 帖子，标题格式 "Show HN: StarClaw – Open-source enterprise AI platform with team isolation and audit" | 首页 → 500-2000 Stars |
+| **Hacker News** | Show HN 帖子，标题格式 "Show HN: StarClaw – Open-source enterprise AI agent with team isolation and audit" | 首页 → 500-2000 Stars |
 | **Product Hunt** | 完整 Launch（Logo + 截图 + 视频 + Maker Comment） | Top 5 → 300-800 Stars |
 | **Reddit** | r/selfhosted, r/opensource, r/artificial | 100-300 Stars |
 | **V2EX** | 发在 /t/share 板块 | 50-200 Stars |
@@ -100,11 +100,11 @@
 | 类型 | 示例标题 | 目标读者 |
 |------|---------|---------|
 | **教程** | "5 分钟用 StarClaw 搭建企业知识库" | 开发者 |
-| **对比** | "StarClaw vs Dify：企业级 AI 平台怎么选" | 技术决策者 |
+| **对比** | "StarClaw vs Dify：企业级 AI 智能体怎么选" | 技术决策者 |
 | **架构** | "我们如何用 P2P 实现百万节点 AI 集群" | 架构师 |
-| **实践** | "制造业如何用 AI 平台管理 200 个 AI 工位" | 行业用户 |
+| **实践** | "制造业如何用 AI 智能体管理 200 个 AI 工位" | 行业用户 |
 | **开源** | "一个人如何把开源项目做到 5000 Stars" | 开源社区 |
-| **创业** | "从虫族世界观到企业 AI 平台的创业故事" | 泛科技 |
+| **创业** | "从虫族世界观到企业 AI 智能体的创业故事" | 泛科技 |
 
 ---
 

@@ -98,7 +98,7 @@
 
 | 条款 | 要点 |
 |------|------|
-| 服务内容 | Overlord 企业 AI 平台订阅服务 |
+| 服务内容 | Overlord 企业 AI 智能体订阅服务 |
 | 套餐与定价 | 引用 `pricing.md` 标准定价 |
 | 付款方式 | 月付/年付，到期自动续费（提前 30 天通知取消） |
 | SLA | Community/Starter: 无 SLA；Pro: 99.5%；Enterprise+: 99.9% |
