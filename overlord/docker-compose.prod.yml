@@ -26,6 +26,7 @@ services:
     environment:
       OVERLORD_DSN: "root:${OVERLORD_MYSQL_PASSWORD:-starclaw_prod_secret}@tcp(mysql-overlord:3306)/starclaw_overlord?charset=utf8mb4&parseTime=True&loc=Local"
       OVERLORD_PORT: "8095"
+      OVERLORD_MAX_NODES: "${OVERLORD_MAX_NODES:-10}"
       OVERLORD_ADMIN_PASSWORD: ${OVERLORD_ADMIN_PASSWORD:-admin123}
       GIN_MODE: release
     depends_on:

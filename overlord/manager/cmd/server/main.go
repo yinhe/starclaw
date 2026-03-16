@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -51,6 +52,7 @@ func main() {
 
 	// Handlers
 	regH := handler.NewRegistryHandler(db)
+	regH.MaxNodes = getEnvInt("OVERLORD_MAX_NODES", 10) // Community=10; 0=unlimited
 	teamH := handler.NewTeamHandler(db)
 	nydusH := handler.NewNydusHandler(db)
 	moltH := handler.NewMoltHandler(db)
@@ -245,6 +247,15 @@ func offlineDetector(db *gorm.DB, dispatcher *handler.WebhookHandler) {
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

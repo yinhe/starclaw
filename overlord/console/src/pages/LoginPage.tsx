@@ -93,8 +93,17 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
           </button>
         </form>
 
-        <p className="text-center text-[10px] text-gray-700 mt-6">
-          StarClaw Overlord &middot; Enterprise Brood Manager
+        <p className="text-center text-[10px] text-gray-600 mt-6">
+          Powered by{' '}
+          <a
+            href="https://starclaw.net?ref=overlord"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-overlord-400 hover:text-overlord-300 transition"
+          >
+            StarClaw
+          </a>
+          {' '}&middot; 免费获取您自己的 AI 智能体
         </p>
       </div>
     </div>

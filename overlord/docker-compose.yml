@@ -23,6 +23,7 @@ services:
     environment:
       OVERLORD_DSN: "root:starclaw@tcp(mysql-overlord:3306)/starclaw_overlord?charset=utf8mb4&parseTime=True&loc=Local"
       OVERLORD_PORT: "8095"
+      OVERLORD_MAX_NODES: "10"  # Community=10, Starter=20, Pro=100, Enterprise=500, 0=unlimited
       GIN_MODE: release
     ports:
       - "8095:8095"

@@ -98,6 +98,19 @@ export default function App() {
             <LogOut className="w-4 h-4" />
             退出登录
           </button>
+          <div className="mt-2 px-3 py-1.5 text-center">
+            <span className="text-[9px] text-gray-700">
+              Powered by{' '}
+              <a
+                href="https://starclaw.net?ref=overlord"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-overlord-400/60 hover:text-overlord-300 transition"
+              >
+                StarClaw
+              </a>
+            </span>
+          </div>
         </div>
       </aside>
 

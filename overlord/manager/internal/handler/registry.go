@@ -19,6 +19,7 @@ type WebhookDispatcher interface {
 
 type RegistryHandler struct {
 	db         *gorm.DB
+	MaxNodes   int // Instance-wide node limit; 0 = unlimited
 	Dispatcher WebhookDispatcher
 }
 
@@ -42,6 +43,21 @@ func (h *RegistryHandler) Register(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Enforce instance-wide node limit (Community=10, configurable via env)
+	if h.MaxNodes > 0 {
+		var count int64
+		h.db.Model(&model.ClawNode{}).Count(&count)
+		if count >= int64(h.MaxNodes) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":     "node limit reached",
+				"max_nodes": h.MaxNodes,
+				"current":   count,
+				"upgrade":   "https://starclaw.net/pricing?ref=overlord-limit",
+			})
+			return
+		}
 	}
 
 	token := generateToken(32)
