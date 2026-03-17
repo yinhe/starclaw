@@ -113,6 +113,7 @@ export function DownloadPage() {
                       <>
                         <a
                           href={pkg.sporeUrl}
+                          download
                           className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-3"
                         >
                           <Download size={16} />
@@ -121,6 +122,7 @@ export function DownloadPage() {
                         </a>
                         <a
                           href={pkg.runtimeUrl}
+                          download
                           className="inline-flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-white/10 hover:border-claw-500/30 text-gray-300 hover:text-white text-xs transition-colors mb-4"
                         >
                           <Download size={12} />
