@@ -51,6 +51,10 @@ const DOCKER_CMD = `git clone https://github.com/yinhe/starclaw.git
 cd starclaw && cp .env.example .env
 docker compose up -d`
 
+const DOCKER_CMD_MIRROR = `git clone https://nydus.starclaw.net/git/starclaw.git
+cd starclaw && cp .env.example .env
+docker compose up -d`
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
@@ -158,7 +162,16 @@ export function DownloadPage() {
                 <p className="text-sm text-gray-400">{t('dl.docker.desc')}</p>
               </div>
             </div>
-            <CopyBlock text={DOCKER_CMD} />
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-green-400 mb-1">⚡ 国内镜像（推荐）</div>
+                <CopyBlock text={DOCKER_CMD_MIRROR} />
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 mb-1">GitHub</div>
+                <CopyBlock text={DOCKER_CMD} />
+              </div>
+            </div>
             <p className="mt-3 text-sm text-gray-500">{t('dl.docker.note')}</p>
           </div>
 
