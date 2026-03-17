@@ -12,6 +12,10 @@ RUN go mod download
 
 COPY . .
 
+# Ensure embedded web dist exists (placeholder for go:embed if web not pre-built)
+RUN mkdir -p internal/web/dist && \
+    [ -z "$(ls -A internal/web/dist 2>/dev/null)" ] && echo "placeholder" > internal/web/dist/.keep || true
+
 # ── CI quality gate: vet + test ──
 RUN go vet ./... && \
     go test ./internal/security/... ./internal/agent/... ./internal/webhook/... ./internal/inference/... ./internal/middleware/... -count=1 -timeout=60s && \
