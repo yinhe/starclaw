@@ -201,7 +201,7 @@ export default function WalletPage() {
               </div>
               {nodeInfo?.node_id && (
                 <a
-                  href={`https://starclaw.net/billing?claw_id=${encodeURIComponent(nodeInfo.node_id)}`}
+                  href={`https://star-ai.net/billing?claw_id=${encodeURIComponent(nodeInfo.node_id)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-bold hover:from-amber-500 hover:to-orange-600 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105"

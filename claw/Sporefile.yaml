@@ -8,7 +8,7 @@ description: "StarClaw AI Agent Node — 智能体平台节点"
 build:
   command: |
     CGO_ENABLED=0 GOOS=${TARGET_OS} GOARCH=${TARGET_ARCH} \
-    go build -ldflags="-s -w -X main.version=${VERSION}" \
+    go build -ldflags="-s -w -X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" \
     -o bin/claw-${TARGET_OS}-${TARGET_ARCH} ./api/cmd/server
 
   pre_build:
