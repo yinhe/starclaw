@@ -8,16 +8,37 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"time"
 )
 
 const (
-	version    = "1.0.0"
-	nydusBase  = "https://nydus.starclaw.net/spore/releases"
-	sporeURL   = nydusBase + "/spore-windows-amd64.exe"
-	clawURL    = nydusBase + "/claw-v1.0.0-windows-amd64.spore"
+	version   = "1.0.0"
+	nydusBase = "https://nydus.starclaw.net/spore/releases"
 )
+
+func getSporeURL() string {
+	switch goruntime.GOOS {
+	case "windows":
+		return nydusBase + "/spore-windows-amd64.exe"
+	case "darwin":
+		return nydusBase + "/spore-darwin-" + goruntime.GOARCH
+	default:
+		return nydusBase + "/spore-linux-amd64"
+	}
+}
+
+func getClawURL() string {
+	switch goruntime.GOOS {
+	case "windows":
+		return nydusBase + "/claw-v1.0.0-windows-amd64.spore"
+	case "darwin":
+		return nydusBase + "/claw-v1.0.0-darwin-" + goruntime.GOARCH + ".spore"
+	default:
+		return nydusBase + "/claw-v1.0.0-linux-amd64.spore"
+	}
+}
 
 func main() {
 	cls()
@@ -37,29 +58,41 @@ func main() {
 	fmt.Println()
 
 	// Setup paths
-	installDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "StarClaw")
-	binDir := filepath.Join(installDir, "bin")
+	var installDir, binDir, sporePath string
+	if goruntime.GOOS == "windows" {
+		installDir = filepath.Join(os.Getenv("LOCALAPPDATA"), "StarClaw")
+		binDir = filepath.Join(installDir, "bin")
+		sporePath = filepath.Join(binDir, "spore.exe")
+	} else {
+		home, _ := os.UserHomeDir()
+		installDir = filepath.Join(home, ".local")
+		binDir = filepath.Join(installDir, "bin")
+		sporePath = filepath.Join(binDir, "spore")
+	}
 	os.MkdirAll(binDir, 0755)
-
-	sporePath := filepath.Join(binDir, "spore.exe")
 	tmpSpore := filepath.Join(os.TempDir(), fmt.Sprintf("claw-%d.spore", time.Now().UnixNano()))
 
 	// Step 1: Download Spore runtime
-	fmt.Printf(green+"  [1/5]"+reset+" Downloading Spore runtime (6 MB)...\n")
-	if err := downloadFile(sporePath, sporeURL); err != nil {
+	fmt.Printf(green + "  [1/5]" + reset + " Downloading Spore runtime (6 MB)...\n")
+	if err := downloadFile(sporePath, getSporeURL()); err != nil {
 		fail("Download Spore failed: %v", err)
 	}
-	fmt.Printf(green+"  [1/5]"+reset+" Spore runtime ✓\n")
+	fmt.Printf(green + "  [1/5]" + reset + " Spore runtime ✓\n")
+
+	// Make spore executable on Unix
+	if goruntime.GOOS != "windows" {
+		os.Chmod(sporePath, 0755)
+	}
 
 	// Step 2: Download Claw package
-	fmt.Printf(green+"  [2/5]"+reset+" Downloading Claw package (12 MB)...\n")
-	if err := downloadFile(tmpSpore, clawURL); err != nil {
+	fmt.Printf(green + "  [2/5]" + reset + " Downloading Claw package (12 MB)...\n")
+	if err := downloadFile(tmpSpore, getClawURL()); err != nil {
 		fail("Download Claw failed: %v", err)
 	}
-	fmt.Printf(green+"  [2/5]"+reset+" Claw package ✓\n")
+	fmt.Printf(green + "  [2/5]" + reset + " Claw package ✓\n")
 
 	// Step 3: Install
-	fmt.Printf(green+"  [3/5]"+reset+" Installing Claw...\n")
+	fmt.Printf(green + "  [3/5]" + reset + " Installing Claw...\n")
 	cmd := exec.Command(sporePath, "install", tmpSpore)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -67,7 +100,7 @@ func main() {
 		fail("Install failed: %v", err)
 	}
 	os.Remove(tmpSpore)
-	fmt.Printf(green+"  [3/5]"+reset+" Claw installed ✓\n")
+	fmt.Printf(green + "  [3/5]" + reset + " Claw installed ✓\n")
 
 	// Step 4: Configuration
 	fmt.Println()
@@ -89,7 +122,8 @@ func main() {
 	port := prompt(reader, "  Server port", "8080")
 
 	// Write config
-	sporeHome := filepath.Join(os.Getenv("USERPROFILE"), ".spore")
+	homeDir, _ := os.UserHomeDir()
+	sporeHome := filepath.Join(homeDir, ".spore")
 	configDir := filepath.Join(sporeHome, "installed", "claw", "current", "config")
 	os.MkdirAll(configDir, 0755)
 
@@ -119,13 +153,13 @@ jwt:
 	envDir := filepath.Join(sporeHome, "installed", "claw", "current")
 	os.WriteFile(filepath.Join(envDir, ".env"), []byte(envContent), 0644)
 
-	fmt.Printf(green+"  [4/5]"+reset+" Configuration saved ✓\n")
+	fmt.Printf(green + "  [4/5]" + reset + " Configuration saved ✓\n")
 
 	// Add to PATH
 	addToPath(binDir)
 
 	// Step 5: Start
-	fmt.Printf(green+"  [5/5]"+reset+" Starting Claw...\n")
+	fmt.Printf(green + "  [5/5]" + reset + " Starting Claw...\n")
 	startCmd := exec.Command(sporePath, "start", "claw")
 	startCmd.Stdout = os.Stdout
 	startCmd.Stderr = os.Stderr
@@ -133,7 +167,7 @@ jwt:
 		fmt.Printf(yellow+"  Warning: Start failed: %v\n"+reset, err)
 		fmt.Println(yellow + "  You can start manually later: spore start claw" + reset)
 	} else {
-		fmt.Printf(green+"  [5/5]"+reset+" Claw started ✓\n")
+		fmt.Printf(green + "  [5/5]" + reset + " Claw started ✓\n")
 	}
 
 	// Done
@@ -153,7 +187,7 @@ jwt:
 	fmt.Println()
 
 	// Try to open browser
-	exec.Command("cmd", "/c", "start", fmt.Sprintf("http://localhost:%s", port)).Start()
+	openBrowser(fmt.Sprintf("http://localhost:%s", port))
 
 	fmt.Println("  Press Enter to close this window...")
 	reader.ReadString('\n')
@@ -220,18 +254,44 @@ func downloadFile(filepath string, url string) error {
 }
 
 func addToPath(dir string) {
-	// Add to user PATH via registry
-	cmd := exec.Command("powershell", "-NoProfile", "-Command",
-		fmt.Sprintf(`$p = [Environment]::GetEnvironmentVariable('Path','User'); if ($p -notlike '*%s*') { [Environment]::SetEnvironmentVariable('Path', "$p;%s", 'User') }`, dir, dir))
-	cmd.Run()
+	if goruntime.GOOS == "windows" {
+		exec.Command("powershell", "-NoProfile", "-Command",
+			fmt.Sprintf(`$p = [Environment]::GetEnvironmentVariable('Path','User'); if ($p -notlike '*%s*') { [Environment]::SetEnvironmentVariable('Path', "$p;%s", 'User') }`, dir, dir)).Run()
+	} else {
+		// Add to shell profile
+		shellRC := filepath.Join(os.Getenv("HOME"), ".bashrc")
+		if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".zshrc")); err == nil {
+			shellRC = filepath.Join(os.Getenv("HOME"), ".zshrc")
+		}
+		line := fmt.Sprintf("\nexport PATH=\"%s:$PATH\"\n", dir)
+		f, err := os.OpenFile(shellRC, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			f.WriteString(line)
+			f.Close()
+		}
+	}
+}
+
+func openBrowser(url string) {
+	switch goruntime.GOOS {
+	case "windows":
+		exec.Command("cmd", "/c", "start", url).Start()
+	case "darwin":
+		exec.Command("open", url).Start()
+	default:
+		exec.Command("xdg-open", url).Start()
+	}
 }
 
 func cls() {
-	cmd := exec.Command("cmd", "/c", "cls")
-	cmd.Stdout = os.Stdout
-	cmd.Run()
-	// Enable ANSI colors on Windows
-	exec.Command("cmd", "/c", "chcp 65001 >nul 2>&1").Run()
+	if goruntime.GOOS == "windows" {
+		cmd := exec.Command("cmd", "/c", "cls")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+		exec.Command("cmd", "/c", "chcp 65001 >nul 2>&1").Run()
+	} else {
+		fmt.Print("\033[H\033[2J")
+	}
 }
 
 func fail(format string, args ...interface{}) {

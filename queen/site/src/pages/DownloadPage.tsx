@@ -22,25 +22,24 @@ const PACKAGES = [
   {
     platform: 'Linux',
     icon: Terminal,
-    setupUrl: '',
-    setupSize: '18 MB',
+    setupUrl: `${NYDUS_BASE}/StarClaw-Setup-linux-amd64`,
+    setupSize: '5.5 MB',
     arch: 'x86_64',
-    setupLabel: '',
-    note: 'One command, auto-install',
+    setupLabel: 'StarClaw-Setup',
+    note: 'Download → chmod +x → Run',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Bash',
   },
   {
     platform: 'macOS',
     icon: Apple,
-    setupUrl: '',
-    setupSize: '',
-    arch: 'Apple Silicon / Intel',
-    setupLabel: '',
-    note: 'One command, auto-install',
+    setupUrl: `${NYDUS_BASE}/StarClaw-Setup-darwin-arm64`,
+    setupSize: '5.3 MB',
+    arch: 'Apple Silicon',
+    setupLabel: 'StarClaw-Setup',
+    note: 'Download → chmod +x → Run',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Terminal',
-    comingSoon: true,
   },
 ]
 
@@ -95,11 +94,7 @@ export function DownloadPage() {
                 return (
                   <div
                     key={pkg.platform}
-                    className={`rounded-xl border p-6 flex flex-col ${
-                      pkg.comingSoon
-                        ? 'border-white/5 bg-white/[0.02] opacity-50'
-                        : 'border-white/10 bg-white/[0.03] hover:border-claw-500/30 transition-colors'
-                    }`}
+                    className="rounded-xl border p-6 flex flex-col border-white/10 bg-white/[0.03] hover:border-claw-500/30 transition-colors"
                   >
                     <div className="flex items-center gap-2 mb-4">
                       <Icon size={20} className="text-gray-400" />
@@ -107,9 +102,7 @@ export function DownloadPage() {
                       <span className="text-xs text-gray-500">{pkg.arch}</span>
                     </div>
 
-                    {pkg.comingSoon ? (
-                      <div className="text-sm text-gray-500 mb-4 flex-1">Coming Soon</div>
-                    ) : pkg.setupUrl ? (
+                    {pkg.setupUrl ? (
                       <>
                         <a
                           href={pkg.setupUrl}
@@ -132,7 +125,7 @@ export function DownloadPage() {
                         <code className="text-xs text-gray-400 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                           {pkg.scriptCmd}
                         </code>
-                        {!pkg.comingSoon && <CopyButton text={pkg.scriptCmd} />}
+                        <CopyButton text={pkg.scriptCmd} />
                       </div>
                     </div>
                   </div>
