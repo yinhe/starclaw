@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
-	"strings"
+	"sync"
 	"time"
 )
 
@@ -72,27 +73,35 @@ func main() {
 	os.MkdirAll(binDir, 0755)
 	tmpSpore := filepath.Join(os.TempDir(), fmt.Sprintf("claw-%d.spore", time.Now().UnixNano()))
 
-	// Step 1: Download Spore runtime
-	fmt.Printf(green + "  [1/5]" + reset + " Downloading Spore runtime (6 MB)...\n")
-	if err := downloadFile(sporePath, getSporeURL()); err != nil {
-		fail("Download Spore failed: %v", err)
+	// Step 1: Parallel download Spore + Claw
+	fmt.Printf(green + "  [1/4]" + reset + " Downloading Spore + Claw (parallel)...\n")
+	var wg sync.WaitGroup
+	var errSpore, errClaw error
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errSpore = downloadFile(sporePath, getSporeURL(), "  Spore  ")
+	}()
+	go func() {
+		defer wg.Done()
+		errClaw = downloadFile(tmpSpore, getClawURL(), "  Claw   ")
+	}()
+	wg.Wait()
+	fmt.Println()
+	if errSpore != nil {
+		fail("Download Spore failed: %v", errSpore)
 	}
-	fmt.Printf(green + "  [1/5]" + reset + " Spore runtime ✓\n")
-
+	if errClaw != nil {
+		fail("Download Claw failed: %v", errClaw)
+	}
 	// Make spore executable on Unix
 	if goruntime.GOOS != "windows" {
 		os.Chmod(sporePath, 0755)
 	}
+	fmt.Printf(green + "  [1/4]" + reset + " Download complete ✓\n")
 
-	// Step 2: Download Claw package
-	fmt.Printf(green + "  [2/5]" + reset + " Downloading Claw package (12 MB)...\n")
-	if err := downloadFile(tmpSpore, getClawURL()); err != nil {
-		fail("Download Claw failed: %v", err)
-	}
-	fmt.Printf(green + "  [2/5]" + reset + " Claw package ✓\n")
-
-	// Step 3: Install
-	fmt.Printf(green + "  [3/5]" + reset + " Installing Claw...\n")
+	// Step 2: Install
+	fmt.Printf(green + "  [2/4]" + reset + " Installing Claw...\n")
 	cmd := exec.Command(sporePath, "install", tmpSpore)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -100,35 +109,24 @@ func main() {
 		fail("Install failed: %v", err)
 	}
 	os.Remove(tmpSpore)
-	fmt.Printf(green + "  [3/5]" + reset + " Claw installed ✓\n")
+	fmt.Printf(green + "  [2/4]" + reset + " Claw installed ✓\n")
 
-	// Step 4: Configuration
-	fmt.Println()
-	fmt.Println(yellow + "  ─── Configuration ───" + reset)
-	fmt.Println()
-
-	reader := bufio.NewReader(os.Stdin)
-
-	provider := prompt(reader, "  AI Provider [openai/deepseek/qwen/ollama]", "openai")
-	var apiKey, apiURL string
-	if provider == "ollama" {
-		apiURL = prompt(reader, "  Ollama URL", "http://localhost:11434")
-	} else {
-		apiKey = prompt(reader, "  API Key", "")
-		if apiKey == "" {
-			fmt.Println(yellow + "  (You can add the API key later in the config file)" + reset)
+	// Step 3: Auto-configure (no user input needed)
+	port := "80"
+	if !isPortAvailable(port) {
+		port = "8080"
+		if !isPortAvailable(port) {
+			port = "8888"
 		}
+		fmt.Printf(yellow+"  Port 80 is in use, using port %s instead\n"+reset, port)
 	}
-	port := prompt(reader, "  Server port", "8080")
 
-	// Write config
 	homeDir, _ := os.UserHomeDir()
 	sporeHome := filepath.Join(homeDir, ".spore")
 	configDir := filepath.Join(sporeHome, "installed", "claw", "current", "config")
 	os.MkdirAll(configDir, 0755)
 
 	jwtSecret := fmt.Sprintf("sc-%d-%d", time.Now().UnixNano(), os.Getpid())
-
 	config := fmt.Sprintf(`server:
   host: 0.0.0.0
   port: %s
@@ -142,24 +140,16 @@ jwt:
 `, port, jwtSecret)
 	os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte(config), 0644)
 
-	// Write .env
-	envContent := fmt.Sprintf("GIN_MODE=release\nCLAW_DATA_DIR=./data\nCLAW_PORT=%s\n", port)
-	if apiKey != "" {
-		envContent += fmt.Sprintf("%s_API_KEY=%s\n", strings.ToUpper(provider), apiKey)
-	}
-	if apiURL != "" {
-		envContent += fmt.Sprintf("OLLAMA_URL=%s\n", apiURL)
-	}
+	envContent := fmt.Sprintf("GIN_MODE=release\nCLAW_DATA_DIR=./data\nCLAW_PORT=%s\nDEFAULT_PROVIDER=qwen\n", port)
 	envDir := filepath.Join(sporeHome, "installed", "claw", "current")
 	os.WriteFile(filepath.Join(envDir, ".env"), []byte(envContent), 0644)
 
-	fmt.Printf(green + "  [4/5]" + reset + " Configuration saved ✓\n")
-
 	// Add to PATH
 	addToPath(binDir)
+	fmt.Printf(green+"  [3/4]"+reset+" Configuration saved (port %s, default: Qwen) ✓\n", port)
 
-	// Step 5: Start
-	fmt.Printf(green + "  [5/5]" + reset + " Starting Claw...\n")
+	// Step 4: Start + Desktop shortcut
+	fmt.Printf(green + "  [4/4]" + reset + " Starting Claw...\n")
 	startCmd := exec.Command(sporePath, "start", "claw")
 	startCmd.Stdout = os.Stdout
 	startCmd.Stderr = os.Stderr
@@ -167,8 +157,15 @@ jwt:
 		fmt.Printf(yellow+"  Warning: Start failed: %v\n"+reset, err)
 		fmt.Println(yellow + "  You can start manually later: spore start claw" + reset)
 	} else {
-		fmt.Printf(green + "  [5/5]" + reset + " Claw started ✓\n")
+		fmt.Printf(green + "  [4/4]" + reset + " Claw started ✓\n")
 	}
+
+	// Create desktop shortcut
+	url := fmt.Sprintf("http://localhost:%s", port)
+	if port == "80" {
+		url = "http://localhost"
+	}
+	createDesktopShortcut(url, sporePath)
 
 	// Done
 	fmt.Println()
@@ -176,38 +173,80 @@ jwt:
 	fmt.Println(green + "  ✅ Installation Complete!" + reset)
 	fmt.Println(green + "  ══════════════════════════════════════════════" + reset)
 	fmt.Println()
-	fmt.Printf("  🌐 Open in browser: "+cyan+"http://localhost:%s"+reset+"\n", port)
+	fmt.Printf("  🌐 Open in browser: "+cyan+"%s"+reset+"\n", url)
+	fmt.Println("  🖥️  Desktop shortcut: StarClaw")
+	fmt.Println()
+	fmt.Println("  Default AI: " + cyan + "Qwen (通义千问)" + reset)
+	fmt.Println("  Config: " + configDir + "/config.yaml")
 	fmt.Println()
 	fmt.Println("  Commands:")
 	fmt.Println("    spore status        — Check status")
 	fmt.Println("    spore logs claw     — View logs")
 	fmt.Println("    spore stop claw     — Stop")
 	fmt.Println("    spore restart claw  — Restart")
-	fmt.Println("    spore update claw   — Update to latest")
 	fmt.Println()
 
-	// Try to open browser
-	openBrowser(fmt.Sprintf("http://localhost:%s", port))
+	// Open browser
+	openBrowser(url)
 
 	fmt.Println("  Press Enter to close this window...")
-	reader.ReadString('\n')
+	bufio.NewReader(os.Stdin).ReadString('\n')
 }
 
-func prompt(reader *bufio.Reader, label, defaultVal string) string {
-	if defaultVal != "" {
-		fmt.Printf("  %s (default: %s): ", label, defaultVal)
-	} else {
-		fmt.Printf("  %s: ", label)
+// isPortAvailable checks if a TCP port is free
+func isPortAvailable(port string) bool {
+	ln, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		return false
 	}
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return defaultVal
-	}
-	return input
+	ln.Close()
+	return true
 }
 
-func downloadFile(filepath string, url string) error {
+// createDesktopShortcut creates a clickable shortcut on the desktop
+func createDesktopShortcut(url, sporePath string) {
+	homeDir, _ := os.UserHomeDir()
+	desktop := filepath.Join(homeDir, "Desktop")
+	if _, err := os.Stat(desktop); os.IsNotExist(err) {
+		// Try localized desktop folder name
+		desktop = filepath.Join(homeDir, "桌面")
+		if _, err := os.Stat(desktop); os.IsNotExist(err) {
+			return
+		}
+	}
+
+	switch goruntime.GOOS {
+	case "windows":
+		// Create a .url shortcut (simplest, works everywhere)
+		content := fmt.Sprintf("[InternetShortcut]\nURL=%s\nIconIndex=0\n", url)
+		os.WriteFile(filepath.Join(desktop, "StarClaw.url"), []byte(content), 0644)
+
+		// Also create a .bat to start + open browser
+		batContent := fmt.Sprintf("@echo off\r\nstart \"\" \"%s\" start claw 2>nul\r\ntimeout /t 2 /nobreak >nul\r\nstart %s\r\n", sporePath, url)
+		os.WriteFile(filepath.Join(desktop, "StarClaw-Start.bat"), []byte(batContent), 0644)
+
+	case "darwin":
+		// Create a .command file
+		content := fmt.Sprintf("#!/bin/sh\n%s start claw 2>/dev/null\nsleep 1\nopen \"%s\"\n", sporePath, url)
+		path := filepath.Join(desktop, "StarClaw.command")
+		os.WriteFile(path, []byte(content), 0755)
+
+	default:
+		// Create a .desktop file
+		content := fmt.Sprintf(`[Desktop Entry]
+Type=Application
+Name=StarClaw
+Comment=AI Agent Platform
+Exec=sh -c '%s start claw; sleep 1; xdg-open %s'
+Terminal=false
+Categories=Development;
+`, sporePath, url)
+		path := filepath.Join(desktop, "StarClaw.desktop")
+		os.WriteFile(path, []byte(content), 0755)
+	}
+}
+
+func downloadFile(dest string, url string, label string) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -218,7 +257,7 @@ func downloadFile(filepath string, url string) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	out, err := os.Create(filepath)
+	out, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
@@ -226,7 +265,7 @@ func downloadFile(filepath string, url string) error {
 
 	size := resp.ContentLength
 	written := int64(0)
-	buf := make([]byte, 32*1024)
+	buf := make([]byte, 64*1024) // 64KB buffer for speed
 	lastPct := -1
 
 	for {
@@ -236,8 +275,8 @@ func downloadFile(filepath string, url string) error {
 			written += int64(n)
 			if size > 0 {
 				pct := int(written * 100 / size)
-				if pct != lastPct && pct%10 == 0 {
-					fmt.Printf("\r         %d%%", pct)
+				if pct != lastPct && pct%5 == 0 {
+					fmt.Printf("\r  %s %3d%% (%d/%d MB)", label, pct, written/(1024*1024), size/(1024*1024))
 					lastPct = pct
 				}
 			}
@@ -249,7 +288,7 @@ func downloadFile(filepath string, url string) error {
 			return err
 		}
 	}
-	fmt.Print("\r")
+	fmt.Printf("\r  %s 100%% ✓                    \n", label)
 	return nil
 }
 
@@ -258,7 +297,6 @@ func addToPath(dir string) {
 		exec.Command("powershell", "-NoProfile", "-Command",
 			fmt.Sprintf(`$p = [Environment]::GetEnvironmentVariable('Path','User'); if ($p -notlike '*%s*') { [Environment]::SetEnvironmentVariable('Path', "$p;%s", 'User') }`, dir, dir)).Run()
 	} else {
-		// Add to shell profile
 		shellRC := filepath.Join(os.Getenv("HOME"), ".bashrc")
 		if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".zshrc")); err == nil {
 			shellRC = filepath.Join(os.Getenv("HOME"), ".zshrc")
