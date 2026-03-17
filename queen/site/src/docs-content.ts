@@ -8,9 +8,56 @@ export interface DocSectionContent {
 type DocsMap = Record<string, DocSectionContent>
 
 const en: DocsMap = {
+  install: {
+    title: 'One-Click Install',
+    content: `## One-Click Install via Spore
+
+The fastest way to deploy StarClaw — no Docker required, just one command.
+
+### Linux / macOS
+
+\`\`\`bash
+curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh
+\`\`\`
+
+### Windows (PowerShell)
+
+\`\`\`powershell
+irm https://nydus.starclaw.net/spore/install.ps1 | iex
+\`\`\`
+
+The installer will:
+1. Download **Spore** runtime (~6 MB)
+2. Download **Claw** package (~12 MB)
+3. Guide you through configuration (AI provider, API key, port)
+4. Start the service automatically
+
+### After Installation
+
+\`\`\`bash
+spore status          # Check status
+spore logs claw       # View logs
+spore stop claw       # Stop
+spore restart claw    # Restart
+spore update claw     # Update to latest
+\`\`\`
+
+### What is Spore?
+
+Spore is StarClaw's ultra-lightweight deployment system — a Docker alternative that's only 6 MB, supports Linux/macOS/Windows, and uses delta updates (~2 MB per update).
+
+| | Docker | Spore |
+|---|---|---|
+| Runtime size | ~200 MB | ~6 MB |
+| Startup | Seconds | Milliseconds |
+| Platforms | Linux | Linux / macOS / Windows |
+| Updates | Full image pull | Delta patch (~2 MB) |`,
+  },
   quickstart: {
-    title: 'Quick Start',
-    content: `## Quick Start
+    title: 'Docker Install',
+    content: `## Docker Install
+
+Alternative deployment using Docker Compose.
 
 ### 1. Clone the repository
 
@@ -211,9 +258,56 @@ StarClaw runs entirely on your own infrastructure:
 }
 
 const zh: DocsMap = {
+  install: {
+    title: '一键安装',
+    content: `## 一键安装（Spore）
+
+最快的部署方式 — 无需 Docker，一行命令搞定。
+
+### Linux / macOS
+
+\`\`\`bash
+curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh
+\`\`\`
+
+### Windows (PowerShell)
+
+\`\`\`powershell
+irm https://nydus.starclaw.net/spore/install.ps1 | iex
+\`\`\`
+
+安装脚本会自动：
+1. 下载 **Spore** 运行时（~6 MB）
+2. 下载 **Claw** 安装包（~12 MB）
+3. 引导你配置（AI 服务商、API Key、端口）
+4. 自动启动服务
+
+### 安装后常用命令
+
+\`\`\`bash
+spore status          # 查看状态
+spore logs claw       # 查看日志
+spore stop claw       # 停止
+spore restart claw    # 重启
+spore update claw     # 更新到最新版
+\`\`\`
+
+### 什么是 Spore？
+
+Spore（孢子）是 StarClaw 的超轻量部署系统 — Docker 的替代方案，仅 6 MB，支持 Linux/macOS/Windows，差量更新仅需 ~2 MB。
+
+| | Docker | Spore |
+|---|---|---|
+| 运行时大小 | ~200 MB | ~6 MB |
+| 启动速度 | 秒级 | 毫秒级 |
+| 支持平台 | Linux | Linux / macOS / Windows |
+| 更新方式 | 拉全新镜像 | 差量更新（~2 MB） |`,
+  },
   quickstart: {
-    title: '快速开始',
-    content: `## 快速开始
+    title: 'Docker 安装',
+    content: `## Docker 安装
+
+使用 Docker Compose 的部署方式。
 
 ### 1. 克隆仓库
 
@@ -414,9 +508,45 @@ StarClaw 完全运行在你自己的基础设施上：
 }
 
 const ja: DocsMap = {
+  install: {
+    title: 'ワンクリックインストール',
+    content: `## ワンクリックインストール（Spore）
+
+最速のデプロイ方法 — Docker 不要、コマンド一行で完了。
+
+### Linux / macOS
+
+\`\`\`bash
+curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh
+\`\`\`
+
+### Windows (PowerShell)
+
+\`\`\`powershell
+irm https://nydus.starclaw.net/spore/install.ps1 | iex
+\`\`\`
+
+インストーラーが自動的に：
+1. **Spore** ランタイムをダウンロード（~6 MB）
+2. **Claw** パッケージをダウンロード（~12 MB）
+3. 設定をガイド（AI プロバイダー、API キー、ポート）
+4. サービスを自動起動
+
+### インストール後のコマンド
+
+\`\`\`bash
+spore status          # ステータス確認
+spore logs claw       # ログ表示
+spore stop claw       # 停止
+spore restart claw    # 再起動
+spore update claw     # 最新版に更新
+\`\`\``,
+  },
   quickstart: {
-    title: 'クイックスタート',
-    content: `## クイックスタート
+    title: 'Docker インストール',
+    content: `## Docker インストール
+
+Docker Compose を使ったデプロイ方法。
 
 ### 1. リポジトリをクローン
 
@@ -617,9 +747,45 @@ StarClaw は完全に自分のインフラで動作：
 }
 
 const ko: DocsMap = {
+  install: {
+    title: '원클릭 설치',
+    content: `## 원클릭 설치 (Spore)
+
+가장 빠른 배포 방법 — Docker 불필요, 명령어 한 줄로 완료.
+
+### Linux / macOS
+
+\`\`\`bash
+curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh
+\`\`\`
+
+### Windows (PowerShell)
+
+\`\`\`powershell
+irm https://nydus.starclaw.net/spore/install.ps1 | iex
+\`\`\`
+
+설치 스크립트가 자동으로:
+1. **Spore** 런타임 다운로드 (~6 MB)
+2. **Claw** 패키지 다운로드 (~12 MB)
+3. 설정 안내 (AI 프로바이더, API 키, 포트)
+4. 서비스 자동 시작
+
+### 설치 후 명령어
+
+\`\`\`bash
+spore status          # 상태 확인
+spore logs claw       # 로그 보기
+spore stop claw       # 중지
+spore restart claw    # 재시작
+spore update claw     # 최신 버전으로 업데이트
+\`\`\``,
+  },
   quickstart: {
-    title: '빠른 시작',
-    content: `## 빠른 시작
+    title: 'Docker 설치',
+    content: `## Docker 설치
+
+Docker Compose를 사용한 배포 방법.
 
 ### 1. 저장소 클론
 
@@ -825,4 +991,4 @@ export function getDocsContent(locale: Locale): DocsMap {
   return allDocs[locale] ?? en
 }
 
-export const SECTION_IDS = ['quickstart', 'configuration', 'models', 'tools', 'update', 'security'] as const
+export const SECTION_IDS = ['install', 'quickstart', 'configuration', 'models', 'tools', 'update', 'security'] as const
