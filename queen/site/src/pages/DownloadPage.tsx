@@ -1,32 +1,65 @@
-import { Terminal, Apple, Monitor, Container, ArrowRight, Globe } from 'lucide-react'
+import { Terminal, Apple, Monitor, Container, ArrowRight, Download, Zap, Copy, Check } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { CopyBlock } from '../components/CopyBlock'
 import { useI18n } from '../i18n'
 
-const QUICK_CMD = `curl -fsSL https://starclaw.me/install.sh | bash`
+const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases'
 
-const NYDUS_CMD = `curl -fsSL https://starclaw.me/install-cn.sh | bash`
+const PACKAGES = [
+  {
+    platform: 'Windows',
+    icon: Monitor,
+    sporeUrl: `${NYDUS_BASE}/claw-v1.0.0-windows-amd64.spore`,
+    runtimeUrl: `${NYDUS_BASE}/spore-windows-amd64.exe`,
+    size: '11.5 MB',
+    runtimeSize: '6.0 MB',
+    arch: 'x86_64',
+    scriptCmd: 'irm https://nydus.starclaw.net/spore/install.ps1 | iex',
+    scriptLabel: 'PowerShell',
+  },
+  {
+    platform: 'Linux',
+    icon: Terminal,
+    sporeUrl: `${NYDUS_BASE}/claw-v1.0.0-linux-amd64.spore`,
+    runtimeUrl: `${NYDUS_BASE}/spore-linux-amd64`,
+    size: '12.2 MB',
+    runtimeSize: '5.8 MB',
+    arch: 'x86_64',
+    scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
+    scriptLabel: 'Bash',
+  },
+  {
+    platform: 'macOS',
+    icon: Apple,
+    sporeUrl: '',
+    runtimeUrl: '',
+    size: '',
+    runtimeSize: '',
+    arch: 'Apple Silicon / Intel',
+    scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
+    scriptLabel: 'Terminal',
+    comingSoon: true,
+  },
+]
 
 const DOCKER_CMD = `git clone https://github.com/yinhe/starclaw.git
-cd starclaw
-cp .env.example .env
+cd starclaw && cp .env.example .env
 docker compose up -d`
 
-const SOURCE_CMD = `git clone https://github.com/yinhe/starclaw.git
-cd starclaw
-# API
-cd api && go run ./cmd/server
-# Web (new terminal)
-cd web && npm install && npm run dev`
-
-const REQUIREMENTS = [
-  { label: 'Docker', value: '24.0+' },
-  { label: 'Docker Compose', value: 'v2.20+' },
-  { label: 'RAM', value: '2 GB minimum' },
-  { label: 'Disk', value: '5 GB free' },
-  { label: 'OS', value: 'Linux / macOS / Windows' },
-]
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-gray-400 hover:text-white transition-colors"
+    >
+      {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
 
 export function DownloadPage() {
   const { t } = useI18n()
@@ -44,14 +77,75 @@ export function DownloadPage() {
             </p>
           </div>
 
-          {/* Quick Start */}
-          <div className="rounded-xl border border-claw-500/30 bg-claw-500/[0.05] p-8 mb-12">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-              <Container size={20} className="text-claw-400" />
-              {t('dl.quick')}
-            </h2>
-            <CopyBlock text={QUICK_CMD} />
-            <p className="mt-3 text-sm text-gray-500">{t('dl.docker.note')}</p>
+          {/* Spore One-Click — Hero */}
+          <div className="rounded-2xl border-2 border-claw-500/40 bg-gradient-to-br from-claw-500/[0.08] to-transparent p-8 md:p-10 mb-12">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-claw-500/20 text-claw-400">
+                <Zap size={24} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-white">Spore — {t('dl.quick')}</h2>
+                <p className="text-sm text-gray-400">{t('dl.spore.tagline')}</p>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-4">
+              {PACKAGES.map((pkg) => {
+                const Icon = pkg.icon
+                return (
+                  <div
+                    key={pkg.platform}
+                    className={`rounded-xl border p-6 flex flex-col ${
+                      pkg.comingSoon
+                        ? 'border-white/5 bg-white/[0.02] opacity-50'
+                        : 'border-white/10 bg-white/[0.03] hover:border-claw-500/30 transition-colors'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-4">
+                      <Icon size={20} className="text-gray-400" />
+                      <span className="font-semibold text-white">{pkg.platform}</span>
+                      <span className="text-xs text-gray-500">{pkg.arch}</span>
+                    </div>
+
+                    {pkg.comingSoon ? (
+                      <div className="text-sm text-gray-500 mb-4 flex-1">Coming Soon</div>
+                    ) : (
+                      <>
+                        <a
+                          href={pkg.sporeUrl}
+                          className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-3"
+                        >
+                          <Download size={16} />
+                          Claw v1.0.0
+                          <span className="text-claw-200 text-xs">({pkg.size})</span>
+                        </a>
+                        <a
+                          href={pkg.runtimeUrl}
+                          className="inline-flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-white/10 hover:border-claw-500/30 text-gray-300 hover:text-white text-xs transition-colors mb-4"
+                        >
+                          <Download size={12} />
+                          Spore Runtime ({pkg.runtimeSize})
+                        </a>
+                      </>
+                    )}
+
+                    <div className="mt-auto">
+                      <div className="text-xs text-gray-500 mb-1.5">{pkg.scriptLabel}</div>
+                      <div className="flex items-center gap-2 rounded-lg bg-gray-900/80 px-3 py-2">
+                        <code className="text-xs text-gray-400 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                          {pkg.scriptCmd}
+                        </code>
+                        {!pkg.comingSoon && <CopyButton text={pkg.scriptCmd} />}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <p className="mt-4 text-xs text-gray-500 text-center">
+              Spore: ~18 MB total · No Docker required · Delta updates ~2 MB
+            </p>
           </div>
 
           {/* Docker Method */}
@@ -69,75 +163,19 @@ export function DownloadPage() {
             <p className="mt-3 text-sm text-gray-500">{t('dl.docker.note')}</p>
           </div>
 
-          {/* Nydus Mirror */}
-          <div className="rounded-xl border border-orange-500/30 bg-orange-500/[0.03] p-8 mb-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-orange-500/10 text-orange-400">
-                <Globe size={20} />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white">{t('dl.nydus')}</h3>
-                <p className="text-sm text-gray-400">{t('dl.nydus.desc')}</p>
-              </div>
-            </div>
-            <CopyBlock text={NYDUS_CMD} />
-            <p className="mt-3 text-sm text-gray-500">
-              {t('dl.nydus.note')}{' '}
-              <a
-                href="https://nydus.starclaw.net"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-orange-400 hover:underline"
-              >
-                nydus.starclaw.net
-              </a>
-            </p>
-          </div>
-
-          {/* From Source */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 mb-16">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-claw-500/10 text-claw-400">
-                <Terminal size={20} />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white">{t('dl.source')}</h3>
-                <p className="text-sm text-gray-400">{t('dl.source.desc')}</p>
-              </div>
-            </div>
-            <CopyBlock text={SOURCE_CMD} />
-            <p className="mt-3 text-sm text-gray-500">{t('dl.source.note')}</p>
-          </div>
-
           {/* Requirements */}
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 mb-16">
             <h2 className="text-xl font-semibold text-white mb-6">{t('dl.reqs')}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {REQUIREMENTS.map((r) => (
-                <div key={r.label} className="text-sm">
-                  <div className="text-gray-500 mb-1">{r.label}</div>
-                  <div className="text-white font-medium">{r.value}</div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div><div className="text-gray-500 mb-1">RAM</div><div className="text-white font-medium">2 GB+</div></div>
+              <div><div className="text-gray-500 mb-1">Disk</div><div className="text-white font-medium">500 MB</div></div>
+              <div><div className="text-gray-500 mb-1">OS</div><div className="text-white font-medium">Linux / macOS / Win</div></div>
+              <div><div className="text-gray-500 mb-1">Docker (optional)</div><div className="text-white font-medium">24.0+</div></div>
             </div>
           </div>
 
-          {/* Platform Icons */}
+          {/* CTA */}
           <div className="text-center">
-            <div className="flex items-center justify-center gap-8 text-gray-500 mb-6">
-              <div className="flex flex-col items-center gap-2">
-                <Terminal size={28} />
-                <span className="text-xs">Linux</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Apple size={28} />
-                <span className="text-xs">macOS</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Monitor size={28} />
-                <span className="text-xs">Windows</span>
-              </div>
-            </div>
             <Link
               to="/docs"
               className="inline-flex items-center gap-2 text-sm text-claw-400 hover:text-claw-300 transition-colors"

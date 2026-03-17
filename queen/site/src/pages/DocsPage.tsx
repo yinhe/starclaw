@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Book, Settings, Cpu, Plug, GitBranch, Shield, ChevronRight } from 'lucide-react'
+import { Book, Settings, Cpu, Plug, GitBranch, Shield, ChevronRight, Download } from 'lucide-react'
 import { Layout } from '../components/Layout'
 import { useI18n } from '../i18n'
 import { getDocsContent, SECTION_IDS } from '../docs-content'
 
 const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
+  install: Download,
   quickstart: Book,
   configuration: Settings,
   models: Cpu,
@@ -79,7 +80,7 @@ function renderMarkdown(md: string) {
 }
 
 export function DocsPage() {
-  const [active, setActive] = useState('quickstart')
+  const [active, setActive] = useState('install')
   const { t, locale } = useI18n()
   const docs = getDocsContent(locale)
   const section = docs[active]
