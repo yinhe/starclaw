@@ -11,7 +11,7 @@ export function AuthPage() {
   const logged = isLoggedIn();
 
   // Claw node login state
-  const [clawUrl, setClawUrl] = useState('http://localhost:8080');
+  const [clawUrl, setClawUrl] = useState('');
   const [clawStep, setClawStep] = useState<'input' | 'connecting' | 'waiting' | 'verifying' | 'done' | 'error'>('input');
   const [clawNodeInfo, setClawNodeInfo] = useState<{ node_id: string; public_key: string } | null>(null);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
@@ -137,7 +137,7 @@ export function AuthPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Claw 节点地址</label>
                       <input type="url" value={clawUrl} onChange={e => setClawUrl(e.target.value)}
-                        className={INPUT} placeholder="http://localhost:8080"
+                        className={INPUT} placeholder="请输入你的 Claw 节点地址"
                         onKeyDown={e => e.key === 'Enter' && handleClawLogin()} />
                     </div>
 

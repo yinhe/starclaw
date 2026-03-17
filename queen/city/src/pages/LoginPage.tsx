@@ -6,7 +6,7 @@ type Step = 'input' | 'connecting' | 'waiting' | 'verifying' | 'done' | 'error'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const [clawUrl, setClawUrl] = useState('http://localhost:8080')
+  const [clawUrl, setClawUrl] = useState('')
   const [step, setStep] = useState<Step>('input')
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -86,7 +86,7 @@ export default function LoginPage() {
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">Claw 节点地址</label>
                 <input type="url" value={clawUrl} onChange={e => setClawUrl(e.target.value)}
-                  className={INPUT} placeholder="http://localhost:8080"
+                  className={INPUT} placeholder="请输入你的 Claw 节点地址"
                   onKeyDown={e => e.key === 'Enter' && handleClawLogin()} />
               </div>
               {msg && <p className={`text-sm ${msg.error ? 'text-red-400' : 'text-green-400'}`}>{msg.text}</p>}
