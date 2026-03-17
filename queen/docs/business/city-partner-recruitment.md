@@ -309,7 +309,7 @@ StarClaw 提供三种合作等级，按年签约：
 
 ### 在线申请
 
-访问 **https://starclaw.net/partner** 填写申请表，1 个工作日内审核通过。
+访问 **https://starclaw.net/partners** 填写申请表，1 个工作日内审核通过。
 
 ### 联系我们
 

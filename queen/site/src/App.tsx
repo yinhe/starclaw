@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { I18nProvider } from './i18n'
 import { LandingPage } from './pages/LandingPage'
 import { DocsPage } from './pages/DocsPage'
@@ -21,6 +21,7 @@ export default function App() {
           <Route path="/enterprise" element={<EnterprisePage />} />
           <Route path="/star-ai" element={<StarAIPage />} />
           <Route path="/partners" element={<PartnersPage />} />
+          <Route path="/partner" element={<Navigate to="/partners" replace />} />
           <Route path="/about" element={<AboutPage />} />
         </Routes>
       </BrowserRouter>
