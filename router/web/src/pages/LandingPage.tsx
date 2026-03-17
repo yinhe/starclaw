@@ -62,6 +62,7 @@ export default function LandingPage() {
             <a href="#features" className="text-sm text-gray-400 hover:text-white px-3 py-2 transition-colors">特性</a>
             <a href="#pricing" className="text-sm text-gray-400 hover:text-white px-3 py-2 transition-colors">定价</a>
             <a href="#partner" className="text-sm text-gray-400 hover:text-white px-3 py-2 transition-colors">合作</a>
+            <Link to="/download" className="text-sm text-gray-400 hover:text-white px-3 py-2 transition-colors">下载</Link>
             <Link to="/login" className="text-sm text-gray-300 hover:text-white px-3 py-2 transition-colors">登录</Link>
             <Link to="/register" className="text-sm bg-amber-500 hover:bg-amber-400 text-gray-900 font-medium px-4 py-2 rounded-lg transition-colors">
               开始使用

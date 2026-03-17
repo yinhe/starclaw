@@ -34,6 +34,7 @@ export default function App() {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/pay/result" element={<PayResultPage />} />
+        <Route path="/download" element={<DownloadPage />} />
         <Route
           element={
             <ProtectedRoute>
@@ -47,7 +48,6 @@ export default function App() {
           <Route path="/usage" element={<UsagePage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/billing" element={<BillingPage />} />
-          <Route path="/download" element={<DownloadPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
