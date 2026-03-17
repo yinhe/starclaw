@@ -11,33 +11,33 @@ const PACKAGES = [
   {
     platform: 'Windows',
     icon: Monitor,
-    sporeUrl: `${NYDUS_BASE}/claw-v1.0.0-windows-amd64.spore`,
-    runtimeUrl: `${NYDUS_BASE}/spore-windows-amd64.exe`,
-    size: '11.5 MB',
-    runtimeSize: '6.0 MB',
+    setupUrl: `${NYDUS_BASE}/StarClaw-Setup.exe`,
+    setupSize: '5.6 MB',
     arch: 'x86_64',
+    setupLabel: 'StarClaw-Setup.exe',
+    note: 'Download → Double-click → Done',
     scriptCmd: 'irm https://nydus.starclaw.net/spore/install.ps1 | iex',
     scriptLabel: 'PowerShell',
   },
   {
     platform: 'Linux',
     icon: Terminal,
-    sporeUrl: `${NYDUS_BASE}/claw-v1.0.0-linux-amd64.spore`,
-    runtimeUrl: `${NYDUS_BASE}/spore-linux-amd64`,
-    size: '12.2 MB',
-    runtimeSize: '5.8 MB',
+    setupUrl: '',
+    setupSize: '18 MB',
     arch: 'x86_64',
+    setupLabel: '',
+    note: 'One command, auto-install',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Bash',
   },
   {
     platform: 'macOS',
     icon: Apple,
-    sporeUrl: '',
-    runtimeUrl: '',
-    size: '',
-    runtimeSize: '',
+    setupUrl: '',
+    setupSize: '',
     arch: 'Apple Silicon / Intel',
+    setupLabel: '',
+    note: 'One command, auto-install',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Terminal',
     comingSoon: true,
@@ -109,26 +109,21 @@ export function DownloadPage() {
 
                     {pkg.comingSoon ? (
                       <div className="text-sm text-gray-500 mb-4 flex-1">Coming Soon</div>
-                    ) : (
+                    ) : pkg.setupUrl ? (
                       <>
                         <a
-                          href={pkg.sporeUrl}
+                          href={pkg.setupUrl}
                           download
-                          className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-3"
+                          className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-2"
                         >
                           <Download size={16} />
-                          Claw v1.0.0
-                          <span className="text-claw-200 text-xs">({pkg.size})</span>
+                          {pkg.setupLabel}
+                          <span className="text-claw-200 text-xs">({pkg.setupSize})</span>
                         </a>
-                        <a
-                          href={pkg.runtimeUrl}
-                          download
-                          className="inline-flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-white/10 hover:border-claw-500/30 text-gray-300 hover:text-white text-xs transition-colors mb-4"
-                        >
-                          <Download size={12} />
-                          Spore Runtime ({pkg.runtimeSize})
-                        </a>
+                        <p className="text-xs text-gray-500 text-center mb-4">{pkg.note}</p>
                       </>
+                    ) : (
+                      <p className="text-xs text-gray-500 mb-4">{pkg.note}</p>
                     )}
 
                     <div className="mt-auto">
