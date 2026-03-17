@@ -1,11 +1,40 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, Component, type ReactNode } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Text, Html, Line } from '@react-three/drei'
-import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { squadAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 import { Eye, LayoutGrid, Clock, ArrowLeft, RefreshCw, GitBranch, Wifi, MessageSquare, Send } from 'lucide-react'
+
+// Lazy-load postprocessing to handle version incompatibility gracefully
+let EffectComposer: any = null
+let Bloom: any = null
+try {
+  const pp = require('@react-three/postprocessing')
+  EffectComposer = pp.EffectComposer
+  Bloom = pp.Bloom
+} catch { /* postprocessing unavailable */ }
+
+// Error boundary for 3D canvas crashes
+class CanvasErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err: any) { console.error('[HiveMind] 3D render error:', err) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-full bg-black text-gray-400">
+          <div className="text-center">
+            <p className="text-lg mb-2">3D 渲染出错</p>
+            <p className="text-sm text-gray-600">WebGL 或 postprocessing 不可用</p>
+            <button onClick={() => this.setState({ hasError: false })} className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm">重试</button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // ═══════════════════════════════════════════════
 //  Types
@@ -460,15 +489,17 @@ function HiveScene({ nodes, sprint, selectedNode, onSelectNode, bursts }: {
       {/* Event-driven burst effects */}
       <EventEffects bursts={bursts} />
 
-      {/* Bloom post-processing */}
-      <EffectComposer>
-        <Bloom
-          luminanceThreshold={0.2}
-          luminanceSmoothing={0.9}
-          intensity={1.5}
-          mipmapBlur
-        />
-      </EffectComposer>
+      {/* Bloom post-processing (safe: skipped if library incompatible) */}
+      {EffectComposer && Bloom && (
+        <EffectComposer>
+          <Bloom
+            luminanceThreshold={0.2}
+            luminanceSmoothing={0.9}
+            intensity={1.5}
+            mipmapBlur
+          />
+        </EffectComposer>
+      )}
 
       {/* Camera controls */}
       <OrbitControls
@@ -1247,20 +1278,22 @@ export default function HiveMindPage() {
       <StatusBar mission={mission} sprint={currentSprint || null} />
 
       {/* 3D Canvas */}
-      <Canvas
-        camera={{ position: [0, 12, 12], fov: 50 }}
-        style={{ background: '#0a0a1a' }}
-        gl={{ antialias: true, alpha: false }}
-      >
-        <fog attach="fog" args={['#0a0a1a', 15, 35]} />
-        <HiveScene
-          nodes={nodes}
-          sprint={currentSprint || null}
-          selectedNode={selectedNode}
-          onSelectNode={setSelectedNode}
-          bursts={bursts}
-        />
-      </Canvas>
+      <CanvasErrorBoundary>
+        <Canvas
+          camera={{ position: [0, 12, 12], fov: 50 }}
+          style={{ background: '#0a0a1a' }}
+          gl={{ antialias: true, alpha: false }}
+        >
+          <fog attach="fog" args={['#0a0a1a', 15, 35]} />
+          <HiveScene
+            nodes={nodes}
+            sprint={currentSprint || null}
+            selectedNode={selectedNode}
+            onSelectNode={setSelectedNode}
+            bursts={bursts}
+          />
+        </Canvas>
+      </CanvasErrorBoundary>
 
       {/* Node detail panel */}
       {selectedNodeData && view === 'hive' && (

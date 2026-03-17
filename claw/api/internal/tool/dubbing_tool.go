@@ -233,10 +233,12 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 		mixInputs += fmt.Sprintf("[a%d]", i)
 	}
 
-	filterParts = append(filterParts, fmt.Sprintf("%samix=inputs=%d:duration=first[narration]", mixInputs, len(segments)+1))
+	filterParts = append(filterParts, fmt.Sprintf("%samix=inputs=%d:duration=first:normalize=0[narration_raw]", mixInputs, len(segments)+1))
+	// Boost narration volume (normalize=0 keeps original levels, but we add a safety boost)
+	filterParts = append(filterParts, "[narration_raw]volume=1.8[narration]")
 
 	if hasAudio {
-		filterParts = append(filterParts, "[0:a][narration]amix=inputs=2:duration=first:weights=0.3 1.0[finalaudio]")
+		filterParts = append(filterParts, "[0:a]volume=0.25[bgaudio];[bgaudio][narration]amix=inputs=2:duration=first:normalize=0[finalaudio]")
 	} else {
 		filterParts = append(filterParts, "[narration]acopy[finalaudio]")
 	}

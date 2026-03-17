@@ -273,7 +273,7 @@ export default function Layout() {
           {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
         <CrawfishIcon className="w-6 h-6 text-red-400" />
-        <span className="text-white font-bold">StarClaw</span>
+        <span className="text-white font-bold" translate="no">StarClaw</span>
       </div>
 
       {/* Overlay */}
@@ -286,9 +286,9 @@ export default function Layout() {
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <CrawfishIcon className="w-7 h-7 text-red-400" />
-            <span className="text-xl font-bold">StarClaw</span>
+            <span className="text-xl font-bold" translate="no">StarClaw</span>
           </div>
-          <p className="text-xs text-gray-400 mt-1">AI Agent Platform</p>
+          <p className="text-xs text-gray-400 mt-1">{t('app.subtitle')}</p>
         </div>
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">

@@ -127,6 +127,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'login.go_register': '注册',
     // ── Dashboard ──
     'dashboard.title': '仪表盘',
+    'app.subtitle': 'AI智能体平台',
     'dashboard.subtitle': 'StarClaw AI Agent Platform 总览',
     'dashboard.tokens_30d': '近 30 天 Token 用量',
     'dashboard.messages_today': '今日消息',
@@ -346,6 +347,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'login.go_register': 'Sign up',
     // ── Dashboard ──
     'dashboard.title': 'Dashboard',
+    'app.subtitle': 'AI Agent Platform',
     'dashboard.subtitle': 'StarClaw AI Agent Platform Overview',
     'dashboard.tokens_30d': '30-Day Token Usage',
     'dashboard.messages_today': 'Messages Today',
