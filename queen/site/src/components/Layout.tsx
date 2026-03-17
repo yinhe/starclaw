@@ -15,6 +15,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { label: t('nav.enterprise'), to: '/enterprise' },
     { label: t('nav.star_ai'), to: '/star-ai' },
     { label: t('nav.pricing'), to: '/pricing' },
+    { label: t('nav.download'), to: '/download' },
     { label: t('nav.docs'), to: '/docs' },
   ]
 
