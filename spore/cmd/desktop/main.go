@@ -1,0 +1,62 @@
+package main
+
+import (
+	"fmt"
+	"io/fs"
+	"log"
+	"os/exec"
+	"runtime"
+
+	"github.com/yinhe/starclaw-spore/desktop"
+	"github.com/yinhe/starclaw-spore/desktop/api"
+	"github.com/yinhe/starclaw-spore/pkg/platform"
+	sporeRuntime "github.com/yinhe/starclaw-spore/pkg/runtime"
+)
+
+const defaultAddr = "127.0.0.1:7890"
+
+func main() {
+	info := platform.Detect()
+	mgr := sporeRuntime.NewManager(info.SporeHome)
+
+	// Get embedded web assets
+	var webFS fs.FS
+	if desktop.HasAssets() {
+		subFS, err := fs.Sub(desktop.Assets, "web/dist")
+		if err == nil {
+			webFS = subFS
+		}
+	}
+
+	srv := api.NewServer(mgr, webFS)
+
+	// Auto-open browser
+	go func() {
+		url := fmt.Sprintf("http://%s", defaultAddr)
+		log.Printf("[spore-desktop] Opening %s in browser...", url)
+		openBrowser(url)
+	}()
+
+	fmt.Println("╔══════════════════════════════════════════╗")
+	fmt.Println("║         Spore Desktop v0.1.0             ║")
+	fmt.Println("║   http://127.0.0.1:7890                  ║")
+	fmt.Println("║   Press Ctrl+C to quit                   ║")
+	fmt.Println("╚══════════════════════════════════════════╝")
+
+	if err := srv.ListenAndServe(defaultAddr); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+}
+
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	_ = cmd.Start()
+}

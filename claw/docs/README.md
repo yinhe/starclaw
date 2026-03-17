@@ -46,8 +46,11 @@ claw/
 ├── scripts/            # 工具脚本
 └── docs/               # ← 本目录
     ├── README.md       # 项目概览（本文件）
+    ├── API.md          # API 接口文档（核心）
+    ├── API_P8_P10.md   # API 接口文档（P8-P10 扩展，97 个新接口）
+    ├── USER_GUIDE.md   # 用户手册
     ├── DEPLOY.md       # 部署指南
-    └── API.md          # API 接口文档
+    └── SKILL_DEVELOPMENT.md  # 技能开发指南
 ```
 
 ## 快速开始

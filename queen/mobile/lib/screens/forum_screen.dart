@@ -140,7 +140,7 @@ class _ForumScreenState extends State<ForumScreen> {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    color: AppTheme.primaryColor.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(

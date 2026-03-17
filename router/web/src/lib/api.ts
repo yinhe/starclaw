@@ -69,6 +69,21 @@ export async function clawNodeRequest<T>(clawUrl: string, path: string, options?
   return data as T;
 }
 
+// Models (public, uses API key or JWT)
+export interface ModelInfo {
+  id: string;
+  object: string;
+  owned_by: string;
+  type?: string;
+  context_length?: number;
+  input_price?: number;
+  output_price?: number;
+}
+
+export const models = {
+  list: () => request<{ object: string; data: ModelInfo[] }>('GET', '/v1/models'),
+};
+
 // Dashboard (JWT)
 export const dash = {
   profile: () => request<{ user: { id: string; email: string; name: string; balance: number; free_quota: number; status: string; created_at: string }; api_key_count: number }>('GET', '/dash/profile'),
@@ -79,7 +94,7 @@ export const dash = {
   balance: () => request<{ balance_cents: number; free_quota: number }>('GET', '/dash/balance'),
   packages: () => request<{ packages: { id: string; name: string; amount_cents: number; bonus_cents: number; total_cents: number }[] }>('GET', '/dash/pay/packages'),
   payAlipay: (packageId: string) => request<{ order_no: string; pay_url: string }>('POST', '/dash/pay/alipay', { package_id: packageId }),
-  payWechat: (packageId: string) => request<{ order_no: string }>('POST', '/dash/pay/wechat', { package_id: packageId }),
+  payWechat: (packageId: string) => request<{ order_no: string; code_url: string; amount: string }>('POST', '/dash/pay/wechat', { package_id: packageId }),
   orders: () => request<{ orders: { id: string; order_no: string; channel: string; amount_cents: number; bonus_cents: number; total_cents: number; status: string; created_at: string; paid_at: string | null }[] }>('GET', '/dash/pay/orders'),
   updateProfile: (data: { name?: string; email?: string }) => request<{ message: string }>('PUT', '/dash/profile', data),
   changePassword: (oldPassword: string, newPassword: string) => request<{ message: string }>('POST', '/dash/password', { old_password: oldPassword, new_password: newPassword }),

@@ -8,8 +8,10 @@ import DashboardPage from './pages/DashboardPage';
 import KeysPage from './pages/KeysPage';
 import UsagePage from './pages/UsagePage';
 import BillingPage from './pages/BillingPage';
+import ModelsPage from './pages/ModelsPage';
 import LogsPage from './pages/LogsPage';
 import AccountPage from './pages/AccountPage';
+import PayResultPage from './pages/PayResultPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 
@@ -30,6 +32,7 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/pay/result" element={<PayResultPage />} />
         <Route
           element={
             <ProtectedRoute>
@@ -39,6 +42,7 @@ export default function App() {
         >
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/keys" element={<KeysPage />} />
+          <Route path="/models" element={<ModelsPage />} />
           <Route path="/usage" element={<UsagePage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/billing" element={<BillingPage />} />

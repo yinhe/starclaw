@@ -1,7 +1,12 @@
 package database
 
 import (
+	agentpkg "github.com/yinhe/starclaw/internal/agent"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/observe"
+	"github.com/yinhe/starclaw/internal/rag"
+	"github.com/yinhe/starclaw/internal/security"
+	"github.com/yinhe/starclaw/internal/webhook"
 	"gorm.io/gorm"
 )
 
@@ -36,6 +41,33 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.AuthorizedDevice{},
 		&model.Integration{},
 		&model.WorkspaceFolder{},
+		&model.AgentListing{},
+		&model.AgentPurchase{},
+		&model.CreatorRevenue{},
+		&model.AgentRating{},
+		&model.AgentVersion{},
+		&model.CreatorProfile{},
+		&observe.TraceSpan{},
+		&observe.AlertRule{},
+		&observe.AlertHistory{},
+		&observe.LogEntry{},
+		&rag.KGNode{},
+		&rag.KGEdge{},
+		&webhook.EventRule{},
+		&webhook.EventLog{},
+		&model.PluginListing{},
+		&model.PluginInstall{},
+		&model.PluginRating{},
+		&model.PlaygroundRequest{},
+		&security.AuditChainEntry{},
+		&agentpkg.Goal{},
+		&agentpkg.GoalStep{},
+		&agentpkg.Collaboration{},
+		&agentpkg.CollaborationMember{},
+		&agentpkg.CollaborationMessage{},
+		&agentpkg.LoRAAdapter{},
+		&agentpkg.TrainingSample{},
+		&agentpkg.DistillationJob{},
 	); err != nil {
 		return err
 	}

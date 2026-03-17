@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CreditCard, ExternalLink, Clock } from 'lucide-react';
+import { CreditCard, ExternalLink, Clock, X, QrCode } from 'lucide-react';
 import { dash } from '../lib/api';
 
 interface Package {
@@ -27,7 +27,9 @@ export default function BillingPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [balance, setBalance] = useState({ balance_cents: 0, free_quota: 0 });
   const [loading, setLoading] = useState('');
+  const [wxLoading, setWxLoading] = useState('');
   const [error, setError] = useState('');
+  const [qrCode, setQrCode] = useState<{ orderNo: string; codeUrl: string; amount: string } | null>(null);
 
   useEffect(() => {
     dash.packages().then(r => setPackages(r.packages)).catch(console.error);
@@ -49,6 +51,38 @@ export default function BillingPage() {
       setLoading('');
     }
   };
+
+  const payWechat = async (pkgId: string) => {
+    setWxLoading(pkgId);
+    setError('');
+    try {
+      const res = await dash.payWechat(pkgId);
+      if (res.code_url) {
+        setQrCode({ orderNo: res.order_no, codeUrl: res.code_url, amount: res.amount });
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'WeChat Pay failed');
+    } finally {
+      setWxLoading('');
+    }
+  };
+
+  // Poll order status when QR modal is open
+  useEffect(() => {
+    if (!qrCode) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await dash.orders();
+        const order = (res.orders || []).find((o: Order) => o.order_no === qrCode.orderNo);
+        if (order?.status === 'paid') {
+          setQrCode(null);
+          dash.balance().then(setBalance).catch(console.error);
+          dash.orders().then(r => setOrders(r.orders || [])).catch(console.error);
+        }
+      } catch { /* ignore */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [qrCode]);
 
   const statusMap: Record<string, { text: string; color: string }> = {
     pending: { text: '待支付', color: 'text-yellow-400' },
@@ -104,10 +138,11 @@ export default function BillingPage() {
                   {loading === pkg.id ? '...' : <>支付宝 <ExternalLink className="w-3 h-3" /></>}
                 </button>
                 <button
-                  disabled
-                  className="flex-1 bg-green-600 opacity-50 text-white font-medium py-2 rounded-lg text-sm flex items-center justify-center gap-1.5 cursor-not-allowed"
+                  onClick={() => payWechat(pkg.id)}
+                  disabled={wxLoading === pkg.id}
+                  className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-medium py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  微信支付
+                  {wxLoading === pkg.id ? '...' : <>微信支付 <QrCode className="w-3 h-3" /></>}
                 </button>
               </div>
             </div>
@@ -155,6 +190,31 @@ export default function BillingPage() {
           </table>
         </div>
       </div>
+      {/* WeChat QR Code Modal */}
+      {qrCode && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setQrCode(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">微信扫码支付</h3>
+              <button onClick={() => setQrCode(null)} className="text-gray-500 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-center space-y-3">
+              <div className="text-2xl font-bold text-green-400">¥{qrCode.amount}</div>
+              <div className="bg-white rounded-xl p-4 inline-block">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode.codeUrl)}`}
+                  alt="WeChat Pay QR Code"
+                  className="w-48 h-48"
+                />
+              </div>
+              <p className="text-gray-400 text-sm">请用微信扫描二维码完成支付</p>
+              <p className="text-gray-500 text-xs">支付成功后页面会自动刷新</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Key, BarChart3, CreditCard, LogOut, Zap, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, Key, BarChart3, CreditCard, LogOut, Zap, FileText, Settings, Cpu } from 'lucide-react';
 import { clearToken } from '../lib/api';
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/models', icon: Cpu, label: '模型' },
   { to: '/keys', icon: Key, label: 'API Keys' },
   { to: '/usage', icon: BarChart3, label: '用量' },
   { to: '/logs', icon: FileText, label: '日志' },

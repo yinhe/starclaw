@@ -4,8 +4,9 @@ import 'services/auth_service.dart';
 import 'theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/bounty_screen.dart';
-import 'screens/forum_screen.dart';
+import 'screens/chat_screen.dart';
+import 'screens/agents_screen.dart';
+import 'screens/workflow_screen.dart';
 import 'screens/billing_screen.dart';
 import 'screens/profile_screen.dart';
 
@@ -55,8 +56,9 @@ class _MainShellState extends State<MainShell> {
 
   final List<Widget> _screens = const [
     HomeScreen(),
-    BountyScreen(),
-    ForumScreen(),
+    ChatScreen(),
+    AgentsScreen(),
+    WorkflowScreen(),
     BillingScreen(),
     ProfileScreen(),
   ];
@@ -71,10 +73,17 @@ class _MainShellState extends State<MainShell> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '首页'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.emoji_events_rounded),
-            label: '赏金',
+            icon: Icon(Icons.auto_awesome),
+            label: 'AI 对话',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.forum_rounded), label: '社区'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.smart_toy_rounded),
+            label: 'Agent',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_tree_rounded),
+            label: '工作流',
+          ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_balance_wallet_rounded),
             label: '钱包',

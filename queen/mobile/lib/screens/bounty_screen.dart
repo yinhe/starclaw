@@ -55,8 +55,9 @@ class _BountyScreenState extends State<BountyScreen> {
 
   String _formatReward(dynamic amount, String currency) {
     final a = (amount is int ? amount : (amount as num).toInt());
-    if (currency == 'CNY' || currency == 'cny')
+    if (currency == 'CNY' || currency == 'cny') {
       return '¥${(a / 100).toStringAsFixed(2)}';
+    }
     return '$a $currency';
   }
 
@@ -223,7 +224,7 @@ class _BountyScreenState extends State<BountyScreen> {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.15),
+                    color: statusColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(

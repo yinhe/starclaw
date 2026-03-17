@@ -152,7 +152,7 @@ func (w *TaskWorker) claimTask() (*model.Task, error) {
 	silent := w.db.Session(&gorm.Session{Logger: logger.Discard})
 	err := silent.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("status = ?", model.TaskStatusPending).
-			Order("FIELD(priority, 'urgent', 'high', 'normal', 'low'), created_at ASC").
+			Order("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END, created_at ASC").
 			First(&task).Error; err != nil {
 			return err
 		}
@@ -219,11 +219,23 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 		}
 	}
 
-	// Look up model config
+	// Look up model config (fallback to user's first available model if agent has none)
 	var modelCfg model.ModelConfig
-	if err := w.db.Where("id = ?", agent.ModelID).First(&modelCfg).Error; err != nil {
-		w.failTask(task, fmt.Sprintf("model config not found: %s", agent.ModelID))
-		return
+	if agent.ModelID != "" {
+		if err := w.db.Where("id = ?", agent.ModelID).First(&modelCfg).Error; err != nil {
+			log.Printf("[TaskWorker] Agent model %s not found, trying user's default model", agent.ModelID)
+			agent.ModelID = "" // trigger fallback
+		}
+	}
+	if agent.ModelID == "" {
+		if err := w.db.Where("user_id = ? AND is_enabled = ?", task.UserID, true).Order("created_at ASC").First(&modelCfg).Error; err != nil {
+			// Last resort: try any enabled model in the system
+			if err := w.db.Where("is_enabled = ?", true).Order("created_at ASC").First(&modelCfg).Error; err != nil {
+				w.failTask(task, "no model config available — please add a model in Settings → Models")
+				return
+			}
+		}
+		log.Printf("[TaskWorker] Using fallback model: %s (%s)", modelCfg.ModelName, modelCfg.ID)
 	}
 
 	// Create provider and runtime

@@ -18,10 +18,10 @@ services:
       timeout: 5s
       retries: 5
 
-  manager:
+  api:
     build:
-      context: ./manager
-    container_name: starclaw-overlord-manager
+      context: ./api
+    container_name: starclaw-overlord-api
     restart: always
     environment:
       OVERLORD_DSN: "root:${OVERLORD_MYSQL_PASSWORD:-starclaw_prod_secret}@tcp(mysql-overlord:3306)/starclaw_overlord?charset=utf8mb4&parseTime=True&loc=Local"
@@ -29,6 +29,13 @@ services:
       OVERLORD_MAX_NODES: "${OVERLORD_MAX_NODES:-10}"
       OVERLORD_ADMIN_PASSWORD: ${OVERLORD_ADMIN_PASSWORD:-admin123}
       GIN_MODE: release
+    ports:
+      - "${OVERLORD_API_PORT:-8095}:8095"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8095/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       mysql-overlord:
         condition: service_healthy
@@ -43,7 +50,19 @@ services:
     ports:
       - "${OVERLORD_CONSOLE_PORT:-3095}:80"
     depends_on:
-      - manager
+      - api
+    networks:
+      - overlord
+
+  web:
+    build:
+      context: ./web
+    container_name: starclaw-overlord-web
+    restart: always
+    ports:
+      - "${OVERLORD_WEB_PORT:-3096}:80"
+    depends_on:
+      - api
     networks:
       - overlord
 

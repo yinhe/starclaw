@@ -185,6 +185,86 @@ export interface WebhookLog {
   created_at: string
 }
 
+// --- Billing ---
+export interface Plan {
+  id: string
+  name: string
+  display_name: string
+  price_monthly: number
+  price_yearly: number
+  max_nodes: number
+  max_teams: number
+  max_tokens_day: number
+  features: string
+  sort_order: number
+  active: boolean
+}
+
+export interface Subscription {
+  id: string
+  team_id: string
+  plan_id: string
+  plan_name: string
+  status: string
+  billing_cycle: string
+  current_period_start: string
+  current_period_end: string
+  cancelled_at: string | null
+  created_at: string
+}
+
+export interface UsageDailySummary {
+  id: number
+  team_id: string
+  date: string
+  total_requests: number
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  total_cost_cents: number
+  total_star_energy: number
+  unique_users: number
+  unique_models: number
+  avg_latency_ms: number
+}
+
+export interface BillingOverview {
+  subscription: Subscription
+  plan: Plan
+  month_usage: { total_requests: number; total_tokens: number; total_cost_cents: number }
+  today_usage: { total_requests: number; total_tokens: number; total_cost_cents: number }
+  active_alerts: number
+}
+
+export interface ModelUsage {
+  model_name: string
+  total_requests: number
+  total_tokens: number
+  total_cost_cents: number
+  avg_latency_ms: number
+}
+
+export interface UserUsage {
+  user_id: string
+  total_requests: number
+  total_tokens: number
+  total_cost_cents: number
+}
+
+export interface BudgetAlert {
+  id: string
+  team_id: string
+  name: string
+  metric_type: string
+  threshold_value: number
+  period: string
+  notify_email: string
+  notify_webhook: string
+  enabled: boolean
+  last_triggered: string | null
+  created_at: string
+}
+
 export const broodAPI = {
   stats: () => request<BroodStats>('/stats'),
 
@@ -266,4 +346,229 @@ export const broodAPI = {
     request(`/webhooks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteWebhook: (id: string) => request(`/webhooks/${id}`, { method: 'DELETE' }),
   testWebhook: (id: string) => request<{ success: boolean; status_code: number; error?: string }>(`/webhooks/${id}/test`, { method: 'POST' }),
+
+  // --- Billing ---
+  billingOverview: (teamId?: string) => {
+    const q = teamId ? `?team_id=${teamId}` : ''
+    return request<BillingOverview>(`/billing/overview${q}`)
+  },
+  listPlans: () => request<Plan[]>('/billing/plans?active_only=true'),
+  listSubscriptions: (params?: { team_id?: string; status?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.team_id) q.set('team_id', params.team_id)
+    if (params?.status) q.set('status', params.status)
+    const qs = q.toString()
+    return request<Subscription[]>(`/billing/subscriptions${qs ? '?' + qs : ''}`)
+  },
+  createSubscription: (data: { team_id?: string; plan_id: string; billing_cycle?: string }) =>
+    request<Subscription>('/billing/subscriptions', { method: 'POST', body: JSON.stringify(data) }),
+  cancelSubscription: (id: string) =>
+    request<Subscription>(`/billing/subscriptions/${id}/cancel`, { method: 'POST' }),
+
+  // --- Usage Analytics ---
+  usageStats: (params?: { team_id?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.team_id) q.set('team_id', params.team_id)
+    if (params?.from) q.set('from', params.from)
+    if (params?.to) q.set('to', params.to)
+    return request<{ from: string; to: string; totals: { total_requests: number; total_tokens: number; input_tokens: number; output_tokens: number; total_cost_cents: number; total_star_energy: number }; daily: UsageDailySummary[] }>(`/billing/usage/stats?${q}`)
+  },
+  usageByModel: (params?: { team_id?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.team_id) q.set('team_id', params.team_id)
+    if (params?.from) q.set('from', params.from)
+    if (params?.to) q.set('to', params.to)
+    return request<{ models: ModelUsage[] }>(`/billing/usage/by-model?${q}`)
+  },
+  usageByUser: (params?: { team_id?: string; from?: string; to?: string; limit?: number }) => {
+    const q = new URLSearchParams()
+    if (params?.team_id) q.set('team_id', params.team_id)
+    if (params?.from) q.set('from', params.from)
+    if (params?.to) q.set('to', params.to)
+    if (params?.limit) q.set('limit', String(params.limit))
+    return request<{ users: UserUsage[] }>(`/billing/usage/by-user?${q}`)
+  },
+
+  // --- Budget Alerts ---
+  listAlerts: (teamId?: string) => {
+    const q = teamId ? `?team_id=${teamId}` : ''
+    return request<BudgetAlert[]>(`/billing/alerts${q}`)
+  },
+  createAlert: (data: Partial<BudgetAlert>) =>
+    request<BudgetAlert>('/billing/alerts', { method: 'POST', body: JSON.stringify(data) }),
+  updateAlert: (id: string, data: Partial<BudgetAlert>) =>
+    request<BudgetAlert>(`/billing/alerts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAlert: (id: string) =>
+    request(`/billing/alerts/${id}`, { method: 'DELETE' }),
+
+  // --- Brand / White-Label ---
+  getBrand: () => request<{ brand: BrandConfig }>('/brand'),
+  updateBrand: (data: Partial<BrandConfig>) =>
+    request<{ brand: BrandConfig }>('/brand/config', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // --- License ---
+  getLicense: () => request<{ license: LicenseKeyInfo | null; tier: string; limits: TierLimits }>('/license'),
+  activateLicense: (key: string, fingerprint?: string) =>
+    request<{ license: LicenseKeyInfo; tier: string; limits: TierLimits; message: string }>(
+      '/license/activate', { method: 'POST', body: JSON.stringify({ key, fingerprint }) }),
+  createLicense: (data: Partial<LicenseKeyInfo>) =>
+    request<{ license: LicenseKeyInfo }>('/license', { method: 'POST', body: JSON.stringify(data) }),
+  revokeLicense: (id: string) =>
+    request('/license/' + id + '/revoke', { method: 'POST' }),
+
+  // --- Features ---
+  listFeatures: () => request<{ features: FeatureWithAccess[]; current_tier: string }>('/features'),
+  updateFeature: (id: string, data: { enabled?: boolean; min_tier?: string }) =>
+    request<{ feature: FeatureToggle }>(`/features/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // --- Compliance ---
+  complianceStats: () => request<ComplianceStats>('/compliance/stats'),
+  complianceLogs: (params?: { event_type?: string; severity?: string; from?: string; to?: string; resolved?: string; page?: number; size?: number }) => {
+    const q = new URLSearchParams()
+    if (params?.event_type) q.set('event_type', params.event_type)
+    if (params?.severity) q.set('severity', params.severity)
+    if (params?.from) q.set('from', params.from)
+    if (params?.to) q.set('to', params.to)
+    if (params?.resolved) q.set('resolved', params.resolved)
+    if (params?.page) q.set('page', String(params.page))
+    if (params?.size) q.set('size', String(params.size))
+    const qs = q.toString()
+    return request<{ logs: ComplianceLogEntry[]; total: number }>(`/compliance/logs${qs ? '?' + qs : ''}`)
+  },
+  resolveComplianceLog: (id: string) =>
+    request(`/compliance/logs/${id}/resolve`, { method: 'POST' }),
+  exportComplianceLogs: (from?: string, to?: string) => {
+    const q = new URLSearchParams()
+    if (from) q.set('from', from)
+    if (to) q.set('to', to)
+    return request<{ logs: ComplianceLogEntry[]; exported_by: string; exported_at: string }>(`/compliance/export?${q}`)
+  },
+
+  // Sensitive words
+  listSensitiveWords: (category?: string) => {
+    const q = category ? `?category=${category}` : ''
+    return request<{ rules: SensitiveWordRule[]; total: number }>(`/compliance/words${q}`)
+  },
+  createSensitiveWord: (data: Partial<SensitiveWordRule>) =>
+    request<{ rule: SensitiveWordRule }>('/compliance/words', { method: 'POST', body: JSON.stringify(data) }),
+  updateSensitiveWord: (id: string, data: Partial<SensitiveWordRule>) =>
+    request<{ rule: SensitiveWordRule }>(`/compliance/words/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSensitiveWord: (id: string) =>
+    request(`/compliance/words/${id}`, { method: 'DELETE' }),
+
+  // Data flows
+  listDataFlows: () => request<{ flows: DataFlowRecord[]; total: number }>('/compliance/flows'),
+  createDataFlow: (data: Partial<DataFlowRecord>) =>
+    request<{ flow: DataFlowRecord }>('/compliance/flows', { method: 'POST', body: JSON.stringify(data) }),
+  updateDataFlow: (id: string, data: Partial<DataFlowRecord>) =>
+    request<{ flow: DataFlowRecord }>(`/compliance/flows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDataFlow: (id: string) =>
+    request(`/compliance/flows/${id}`, { method: 'DELETE' }),
+}
+
+// --- P4 Types ---
+
+export interface BrandConfig {
+  id: string
+  brand_name: string
+  logo_url: string
+  favicon_url: string
+  primary_color: string
+  secondary_color: string
+  bg_color: string
+  accent_color: string
+  domain: string
+  login_title: string
+  login_subtitle: string
+  copyright_text: string
+  icp_number: string
+  support_email: string
+  custom_css: string
+  powered_by: boolean
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface LicenseKeyInfo {
+  id: string
+  key: string
+  tier: string
+  holder: string
+  email: string
+  max_nodes: number
+  max_teams: number
+  issued_at: string
+  expires_at: string | null
+  status: string
+  fingerprint: string
+  created_at: string
+}
+
+export interface TierLimits {
+  MaxNodes: number
+  MaxTeams: number
+  SSOEnabled: boolean
+  AuditDays: number
+  AdvancedUsage: boolean
+  Compliance: boolean
+  BrandCustom: boolean
+  FeatureToggle: boolean
+}
+
+export interface FeatureToggle {
+  id: string
+  key: string
+  name: string
+  description: string
+  category: string
+  min_tier: string
+  enabled: boolean
+  sort_order: number
+}
+
+export interface FeatureWithAccess extends FeatureToggle {
+  has_access: boolean
+}
+
+export interface ComplianceStats {
+  total: number
+  unresolved: number
+  critical: number
+  by_type: { event_type: string; count: number }[]
+  by_severity: { severity: string; count: number }[]
+  daily_7d: { date: string; count: number }[]
+}
+
+export interface ComplianceLogEntry {
+  id: string
+  team_id: string
+  actor: string
+  event_type: string
+  severity: string
+  resource: string
+  detail: string
+  ip_address: string
+  resolved: boolean
+  created_at: string
+}
+
+export interface SensitiveWordRule {
+  id: string
+  word: string
+  category: string
+  action: string
+  enabled: boolean
+  created_at: string
+}
+
+export interface DataFlowRecord {
+  id: string
+  source: string
+  destination: string
+  data_type: string
+  encryption: string
+  region: string
+  cross_border: boolean
+  description: string
 }

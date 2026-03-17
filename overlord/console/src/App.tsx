@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield } from 'lucide-react'
+import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield, CreditCard, BarChart3, Paintbrush, ShieldCheck } from 'lucide-react'
 import { getStoredToken, getStoredUser, clearAuth } from './api/brood'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -12,6 +12,10 @@ import TeamsPage from './pages/TeamsPage'
 import TunnelsPage from './pages/TunnelsPage'
 import MoltPage from './pages/MoltPage'
 import WebhooksPage from './pages/WebhooksPage'
+import BillingPage from './pages/BillingPage'
+import AnalyticsPage from './pages/AnalyticsPage'
+import BrandPage from './pages/BrandPage'
+import CompliancePage from './pages/CompliancePage'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '总览' },
@@ -20,7 +24,11 @@ const navItems = [
   { to: '/tunnels', icon: Network, label: 'Nydus 隧道' },
   { to: '/molt', icon: Package, label: 'Molt 更新' },
   { to: '/webhooks', icon: Bell, label: 'Webhook' },
+  { to: '/billing', icon: CreditCard, label: '计费管理' },
+  { to: '/analytics', icon: BarChart3, label: '用量分析' },
   { to: '/audit', icon: ScrollText, label: '审计日志' },
+  { to: '/brand', icon: Paintbrush, label: '白牌 & 许可证' },
+  { to: '/compliance', icon: ShieldCheck, label: '合规中心' },
   { to: '/resolve', icon: Search, label: '地址解析' },
 ]
 
@@ -124,7 +132,11 @@ export default function App() {
           <Route path="/tunnels" element={<TunnelsPage />} />
           <Route path="/molt" element={<MoltPage />} />
           <Route path="/webhooks" element={<WebhooksPage />} />
+          <Route path="/billing" element={<BillingPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/brand" element={<BrandPage />} />
+          <Route path="/compliance" element={<CompliancePage />} />
           <Route path="/resolve" element={<ResolvePage />} />
         </Routes>
       </main>

@@ -15,10 +15,10 @@ services:
     networks:
       - overlord
 
-  manager:
+  api:
     build:
-      context: ./manager
-    container_name: starclaw-overlord-manager
+      context: ./api
+    container_name: starclaw-overlord-api
     restart: unless-stopped
     environment:
       OVERLORD_DSN: "root:starclaw@tcp(mysql-overlord:3306)/starclaw_overlord?charset=utf8mb4&parseTime=True&loc=Local"
@@ -40,7 +40,19 @@ services:
     ports:
       - "3095:80"
     depends_on:
-      - manager
+      - api
+    networks:
+      - overlord
+
+  web:
+    build:
+      context: ./web
+    container_name: starclaw-overlord-web
+    restart: unless-stopped
+    ports:
+      - "3096:80"
+    depends_on:
+      - api
     networks:
       - overlord
 

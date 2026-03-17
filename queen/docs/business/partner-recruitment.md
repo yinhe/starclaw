@@ -1,4 +1,14 @@
-# StarClaw 核心合伙人招募书
+# ⚠️ 本文件已拆分，请查看以下文档：
+
+- **核心合伙人招募书** → [core-partner-recruitment.md](core-partner-recruitment.md)
+- **城市合伙人招募书** → [city-partner-recruitment.md](city-partner-recruitment.md)
+- **城市合伙人提成制度** → [city-partner-commission.md](city-partner-commission.md)
+
+---
+
+> 以下为原始内容（已归档，以新文件为准）
+
+# StarClaw 核心合伙人招募书（已归档）
 
 > 不是招员工，是找合伙人 — 与创始人并肩，共建下一代企业 AI 智能体
 

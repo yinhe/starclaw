@@ -1,0 +1,39 @@
+{
+  "name": "claw",
+  "version": "0.2.0",
+  "description": "StarClaw AI Agent Node (Standalone)",
+  "platform": {
+    "os": "windows",
+    "arch": "amd64"
+  },
+  "binary": "bin/claw.exe",
+  "args": ["serve"],
+  "resources": {
+    "min_memory_mb": 256,
+    "min_disk_mb": 100,
+    "recommended_memory_mb": 1024
+  },
+  "network": {
+    "ports": [
+      {"port": 8090, "protocol": "tcp", "description": "API Server"}
+    ]
+  },
+  "health": {
+    "endpoint": "http://localhost:8090/health",
+    "interval_seconds": 30,
+    "timeout_seconds": 5
+  },
+  "update": {
+    "channel": "stable",
+    "auto_update": false,
+    "delta_enabled": true
+  },
+  "env": {
+    "STARCLAW_SERVER_PORT": "8090",
+    "STARCLAW_DATABASE_DRIVER": "sqlite",
+    "STARCLAW_DATABASE_SQLITE_PATH": "./data/claw.db",
+    "STARCLAW_REDIS_ENABLED": "false"
+  },
+  "built_at": "2026-03-17T01:10:00Z",
+  "built_by": "hatchery/0.1.0"
+}

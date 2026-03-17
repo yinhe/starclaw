@@ -152,6 +152,34 @@ services:
     networks:
       - starqueen
 
+  # ===================== City Partner Portal =====================
+
+  city:
+    build:
+      context: ./city
+    container_name: starclaw-queen-city
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8089:80"
+    depends_on:
+      - queen-api
+    networks:
+      - starqueen
+
+  # ===================== Partner Portal =====================
+
+  partner:
+    build:
+      context: ./partner
+    container_name: starclaw-queen-partner
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:80"
+    depends_on:
+      - queen-api
+    networks:
+      - starqueen
+
   # ===================== Monitoring =====================
 
   prometheus:
@@ -170,30 +198,8 @@ services:
     networks:
       - starqueen
 
-  grafana:
-    image: grafana/grafana:11.1.0
-    container_name: starclaw-queen-grafana
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-starclaw2026}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: "https://grafana.starclaw.net"
-      GF_SERVER_DOMAIN: "grafana.starclaw.net"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on:
-      - prometheus
-    networks:
-      - starqueen
-
 volumes:
   prometheus_data:
-  grafana_data:
 
 networks:
   starqueen:

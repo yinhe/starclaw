@@ -129,6 +129,30 @@ services:
     networks:
       - starqueen
 
+  city:
+    build:
+      context: ./city
+    container_name: starclaw-queen-city
+    restart: unless-stopped
+    ports:
+      - "8087:80"
+    depends_on:
+      - queen-api
+    networks:
+      - starqueen
+
+  partner:
+    build:
+      context: ./partner
+    container_name: starclaw-queen-partner
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+    depends_on:
+      - queen-api
+    networks:
+      - starqueen
+
 networks:
   starqueen:
     name: starqueen

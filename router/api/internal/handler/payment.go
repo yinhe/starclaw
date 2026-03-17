@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ type PaymentHandler struct {
 	aliCfg    config.AlipayConfig
 	wxCfg     config.WechatConfig
 	aliClient *alipay.Client
+	wxClient  *WechatPayClient
 }
 
 func NewPaymentHandler(db *gorm.DB, aliCfg config.AlipayConfig, wxCfg config.WechatConfig) *PaymentHandler {
@@ -59,6 +61,11 @@ func NewPaymentHandler(db *gorm.DB, aliCfg config.AlipayConfig, wxCfg config.Wec
 				log.Printf("[star-ai] Alipay client initialized (appID=%s, production=%v)", aliCfg.AppID, aliCfg.IsProduction)
 			}
 		}
+	}
+
+	// Initialize WeChat Pay client if configured
+	if wxCfg.MchID != "" && wxCfg.PrivateKeyPath != "" {
+		h.wxClient = NewWechatPayClient(wxCfg)
 	}
 
 	return h
@@ -141,7 +148,7 @@ func (h *PaymentHandler) CreateAlipay(c *gin.Context) {
 
 // CreateWechat creates a WeChat Pay Native order (QR code)
 func (h *PaymentHandler) CreateWechat(c *gin.Context) {
-	if h.wxCfg.MchID == "" {
+	if h.wxClient == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WeChat Pay not configured"})
 		return
 	}
@@ -178,25 +185,24 @@ func (h *PaymentHandler) CreateWechat(c *gin.Context) {
 		return
 	}
 
-	// WeChat Pay Native (扫码支付) via V3 API — manual HTTP call
-	// For now return order info; full WeChat integration requires apiclient_key.pem loading
+	// Create WeChat Pay Native order (V3 API)
 	amountYuan := fmt.Sprintf("%.2f", float64(pkg.AmountCents)/100.0)
+	description := fmt.Sprintf("Star-AI 充值 %s", pkg.Name)
 
-	// Read private key
-	_, err := os.ReadFile(h.wxCfg.PrivateKeyPath)
+	codeURL, err := h.wxClient.CreateNativeOrder(description, orderNo, int(pkg.AmountCents))
 	if err != nil {
-		log.Printf("[star-ai] WeChat Pay private key not found: %v", err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WeChat Pay certificate not configured"})
+		log.Printf("[star-ai] WeChat Pay create order error: %v", err)
+		// Mark order as failed
+		h.db.Model(&order).Update("status", "failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create WeChat payment"})
 		return
 	}
 
-	// TODO: Full WeChat Pay V3 Native integration
-	// For now, return order info for manual testing
 	c.JSON(http.StatusOK, gin.H{
 		"order_no": orderNo,
 		"channel":  "wechat",
 		"amount":   amountYuan,
-		"message":  "WeChat Pay Native order created, QR code generation pending full integration",
+		"code_url": codeURL,
 	})
 }
 
@@ -241,10 +247,51 @@ func (h *PaymentHandler) CallbackAlipay(c *gin.Context) {
 	c.String(http.StatusOK, "success")
 }
 
-// CallbackWechat handles WeChat Pay async notification
+// CallbackWechat handles WeChat Pay V3 async notification (no auth — called by WeChat servers)
 func (h *PaymentHandler) CallbackWechat(c *gin.Context) {
-	// TODO: Full WeChat Pay V3 callback verification
-	// For now, placeholder
+	if h.wxClient == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "WeChat Pay not configured"})
+		return
+	}
+
+	// Read callback headers and body
+	timestamp := c.GetHeader("Wechatpay-Timestamp")
+	nonce := c.GetHeader("Wechatpay-Nonce")
+	signature := c.GetHeader("Wechatpay-Signature")
+
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Printf("[star-ai] WeChat callback read body error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"code": "FAIL", "message": "read body failed"})
+		return
+	}
+
+	log.Printf("[star-ai] WeChat callback received: ts=%s nonce=%s body_len=%d", timestamp, nonce, len(bodyBytes))
+
+	// Verify signature and decrypt
+	result, err := h.wxClient.VerifyAndDecryptCallback(timestamp, nonce, string(bodyBytes), signature)
+	if err != nil {
+		log.Printf("[star-ai] WeChat callback verify/decrypt error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"code": "FAIL", "message": "verification failed"})
+		return
+	}
+
+	log.Printf("[star-ai] WeChat callback: order=%s state=%s transaction=%s",
+		result.OutTradeNo, result.TradeState, result.TransactionID)
+
+	// Only process successful payments
+	if result.TradeState != "SUCCESS" {
+		c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "OK"})
+		return
+	}
+
+	// Credit balance
+	if err := h.creditOrder(result.OutTradeNo, result.TransactionID); err != nil {
+		log.Printf("[star-ai] WeChat credit error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "credit failed"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "OK"})
 }
 

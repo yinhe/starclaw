@@ -87,10 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 2),
                       Text(
                         '欢迎回到 StarClaw',
-                        style: TextStyle(
-                          color: Colors.grey[400],
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
                       ),
                     ],
                   ),
@@ -113,8 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.account_balance_wallet_rounded,
                 iconColor: AppTheme.accentColor,
                 title: '账户余额',
-                value: '¥${((_balance?['balance'] ?? 0) / 100).toStringAsFixed(2)}',
-                subtitle: '冻结: ¥${((_balance?['frozen'] ?? 0) / 100).toStringAsFixed(2)}',
+                value:
+                    '¥${((_balance?['balance'] ?? 0) / 100).toStringAsFixed(2)}',
+                subtitle:
+                    '冻结: ¥${((_balance?['frozen'] ?? 0) / 100).toStringAsFixed(2)}',
               ),
               const SizedBox(height: 12),
 
@@ -204,7 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.15),
+              color: iconColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: iconColor, size: 22),
@@ -214,13 +213,26 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                Text(
+                  title,
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                ),
                 const SizedBox(height: 4),
-                Text(value, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 if (subtitle != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: Text(subtitle, style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+                    child: Text(
+                      subtitle,
+                      style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                    ),
                   ),
               ],
             ),
@@ -239,7 +251,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 11)),
         ],
@@ -265,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 20),
@@ -275,9 +294,19 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(sub, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                Text(
+                  sub,
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
               ],
             ),
           ),

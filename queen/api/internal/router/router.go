@@ -191,6 +191,78 @@ func Setup() *gin.Engine {
 	admin.GET("/overseer/metrics/query_range", overseer.MetricsQueryRange)
 	admin.GET("/overseer/alerts", overseer.Alerts)
 
+	// ---- Core Partner Hub ----
+	ph := &handler.PartnerHandler{}
+
+	// Partner portal (core partners only)
+	partnerPortal := v1.Group("/partner")
+	partnerPortal.Use(middleware.AuthRequired(), handler.CorePartnerRequired())
+	{
+		partnerPortal.GET("/dashboard", ph.Dashboard)
+		partnerPortal.GET("/deals", ph.ListDeals)
+		partnerPortal.POST("/deals", writeRL.UserRateLimit(), ph.CreateDeal)
+		partnerPortal.GET("/deals/:id", ph.GetDeal)
+		partnerPortal.PUT("/deals/:id", writeRL.UserRateLimit(), ph.UpdateDeal)
+		partnerPortal.GET("/city-partners", ph.ListCityPartners)
+		partnerPortal.PUT("/city-partners/:id", writeRL.UserRateLimit(), ph.ReviewCityPartner)
+		partnerPortal.GET("/commissions", ph.ListCommissions)
+		partnerPortal.GET("/equity", ph.GetEquity)
+		partnerPortal.GET("/deployments", ph.ListDeployments)
+		partnerPortal.POST("/deployments", writeRL.UserRateLimit(), ph.CreateDeployment)
+		partnerPortal.GET("/deployments/:id", ph.GetDeployment)
+		partnerPortal.POST("/deployments/:id/stop", writeRL.UserRateLimit(), ph.StopDeployment)
+	}
+
+	// Admin: core partner management
+	admin.GET("/partners", ph.AdminListPartners)
+	admin.POST("/partners", ph.AdminCreatePartner)
+	admin.PUT("/partners/:id", ph.AdminUpdatePartner)
+	admin.POST("/partners/:id/equity", ph.AdminGrantEquity)
+
+	// ---- City Partner Portal ----
+	city := &handler.CityHandler{}
+
+	// Apply to become a partner (any authenticated user)
+	authed.POST("/city/apply", writeRL.UserRateLimit(), city.Apply)
+
+	// City partner portal (approved partners only)
+	cityPortal := v1.Group("/city")
+	cityPortal.Use(middleware.AuthRequired(), handler.CityPartnerRequired())
+	{
+		cityPortal.GET("/dashboard", city.Dashboard)
+		cityPortal.GET("/clients", city.ListClients)
+		cityPortal.POST("/clients", writeRL.UserRateLimit(), city.AddClient)
+		cityPortal.PUT("/clients/:id", writeRL.UserRateLimit(), city.UpdateClient)
+		cityPortal.GET("/commissions", city.ListCommissions)
+		cityPortal.GET("/payouts", city.ListPayouts)
+		cityPortal.GET("/materials", city.ListMaterials)
+		cityPortal.GET("/ref-link", city.RefLink)
+	}
+
+	// Admin: city partner management
+	admin.GET("/city/partners", city.AdminListPartners)
+	admin.PUT("/city/partners/:id", city.AdminReviewPartner)
+	admin.GET("/city/commissions", city.AdminListCommissions)
+	admin.PUT("/city/commissions/:id", city.AdminApproveCommission)
+	admin.POST("/city/materials", city.AdminCreateMaterial)
+
+	// ---- Settlement Engine ----
+	settle := &handler.SettlementHandler{}
+	admin.POST("/settlement/generate", settle.GenerateBills)
+	admin.GET("/settlement/bills", settle.ListBills)
+	admin.GET("/settlement/bills/:id", settle.GetBill)
+	admin.POST("/settlement/bills/:id/approve", settle.ApproveBill)
+	admin.POST("/settlement/bills/:id/reject", settle.RejectBill)
+	admin.POST("/settlement/bills/:id/pay", settle.MarkPaid)
+	admin.DELETE("/settlement/bills/:id", settle.DeleteBill)
+	admin.GET("/settlement/stats", settle.SettlementStats)
+
+	// ---- Admin Analytics (GMV/MRR/ARR) ----
+	analytics := &handler.AdminAnalyticsHandler{}
+	admin.GET("/analytics", analytics.QueenAnalytics)
+	admin.GET("/clients", analytics.AdminListAllClients)
+	admin.GET("/partners/performance", analytics.AdminPartnerPerformance)
+
 	// ---- API Gateway (star-ai.net) ----
 	gw := handler.NewGatewayHandler()
 

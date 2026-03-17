@@ -25,13 +25,13 @@ jwt:
 
 alipay:
   app_id: ""
-  private_key: "./certs/private_key.pem"
+  private_key_path: "./certs/private_key.pem"
   app_cert_path: "./certs/appCertPublicKey_2021004192620828.crt"
   root_cert_path: "./certs/alipayRootCert.crt"
   ali_cert_path: "./certs/alipayCertPublicKey_RSA2.crt"
   notify_url: "https://api.star-ai.net/pay/callback/alipay"
   return_url: "https://star-ai.net/pay/result"
-  is_production: false
+  is_production: true
 
 wechat:
   app_id: ""

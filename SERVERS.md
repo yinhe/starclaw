@@ -31,7 +31,10 @@
       ├── bounty.starclaw.net  → bounty (:8092)
       ├── forum.starclaw.net   → forum (:8093)
       ├── arena.starclaw.net   → arena (:8094)
-      ├── nydus.starclaw.net   → nydus-server (:8095)  ← Claw 更新备源
+      ├── overseer.starclaw.net → overseer (:8087)       ← 监控面板
+      ├── partner.starclaw.net  → partner (:8088)        ← 城市合伙人招募
+      ├── city.starclaw.net    → city (:8089)           ← 城市合伙人 CRM
+      ├── nydus.starclaw.net   → nydus-server (:8095)   ← Claw 更新备源
       └── proxy.starclaw.net   → proxy (:8000)          ← AI API 中转
 ```
 
@@ -113,20 +116,22 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 | Bounty | starclaw-queen-bounty | 8092 | bounty.starclaw.net | 赏金市场 |
 | Forum | starclaw-queen-forum | 8093 | forum.starclaw.net | 社区论坛 |
 | Arena | starclaw-queen-arena | 8094 | arena.starclaw.net | 机器人竞技场 |
+| Overseer | starclaw-queen-overseer | 8087 | overseer.starclaw.net | 监控面板 (Prometheus 可视化) |
+| Partner | starclaw-queen-partner | 8088 | partner.starclaw.net | 城市合伙人招募页 |
+| City | starclaw-queen-city | 8089 | city.starclaw.net | 城市合伙人 CRM |
 | **Proxy** | **starclaw-queen-proxy** | **8000** | **proxy.starclaw.net** | **AI API 中转 (OpenAI/Grok/Fal/Runway)** |
 | **Redis** | **starclaw-queen-redis** | **6379** | — | **Proxy 队列** |
 | Nydus Server | nydus-server | 8095 | nydus.starclaw.net | Git 仓库 + 部署调度 + Claw 更新备源 |
 | Nydus Worm | nydus-worm | 8096 | — | 部署执行 Agent |
 | MySQL | starclaw-queen-mysql | 3306 | — | 数据库 (starclaw_queen) |
-| Prometheus | starclaw-queen-prometheus | 9090 | — | 监控指标 |
-| Grafana | starclaw-queen-grafana | 3000 | — | 监控面板 |
+| Prometheus | starclaw-queen-prometheus | 9090 | — | 监控指标 (内网) |
 
 **代码目录：** `queen/` (含 `queen/proxy/`) + `nydus/`
 **部署路径：** `/opt/starclaw-queen/` (Queen+Proxy) + `/opt/nydus/` (Nydus)
 **部署：** `docker-compose.prod.yml` (Queen+Proxy+Redis) + Nydus (裸进程)
-**nginx：** `/etc/nginx/sites-enabled/queen` + `nydus` + `proxy`
-**SSL：** Let's Encrypt — `*.starclaw.net` + `nydus.starclaw.net` + `proxy.starclaw.net`
-**状态：** ✅ 14 个容器运行中
+**nginx：** `/etc/nginx/sites-enabled/queen` — 单文件统一管理所有子域名
+**SSL：** Let's Encrypt 通配符证书 `*.starclaw.net`（DNS-01 验证）
+**状态：** ✅ 容器运行中
 
 ### Nydus 虫道部署系统
 

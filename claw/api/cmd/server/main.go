@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
@@ -80,10 +81,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize database
-	db, err := database.InitMySQL(cfg)
+	// Initialize database (MySQL or SQLite based on config)
+	db, err := database.InitDB(cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to MySQL: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
 	// Auto migrate database schemas
@@ -91,15 +92,25 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
+	// Create composite indexes for query performance
+	database.EnsureIndexes(db)
+
 	// Seed system-level built-in agents (visible to all users)
 	v1.SeedBuiltinAgents(db)
 
-	// Initialize Redis
-	rdb, err := database.InitRedis(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	// Initialize Redis (optional — nil means in-memory fallback)
+	var rdb *redis.Client
+	if cfg.Redis.Enabled {
+		rdb, err = database.InitRedis(cfg)
+		if err != nil {
+			log.Printf("[warning] Redis unavailable, using in-memory cache: %v", err)
+			rdb = nil
+		} else {
+			defer rdb.Close()
+		}
+	} else {
+		log.Println("[info] Redis disabled, using in-memory cache")
 	}
-	defer rdb.Close()
 
 	// Start Molt version checker
 	molt.StartChecker()
@@ -211,7 +222,7 @@ func cmdGetToken() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := database.InitMySQL(cfg)
+	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -233,7 +244,7 @@ func cmdResetToken() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := database.InitMySQL(cfg)
+	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -266,7 +277,7 @@ func cmdDevices() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := database.InitMySQL(cfg)
+	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -315,7 +326,7 @@ func cmdApproveDevice() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := database.InitMySQL(cfg)
+	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -356,7 +367,7 @@ func cmdRejectDevice() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := database.InitMySQL(cfg)
+	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -701,7 +712,7 @@ func cmdResetPassword() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := database.InitMySQL(cfg)
+	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}

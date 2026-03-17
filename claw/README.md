@@ -139,7 +139,11 @@ server:
 
 ## 🤝 Contributing
 
-Issues and PRs are welcome!
+We welcome contributions of all kinds! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+- 🐛 [Report a bug](https://github.com/yinhe/starclaw/issues)
+- 💡 [Suggest a feature](https://github.com/yinhe/starclaw/discussions)
+- 🔧 [Submit a PR](https://github.com/yinhe/starclaw/pulls)
 
 ## 📄 License
 

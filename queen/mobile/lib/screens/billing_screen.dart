@@ -40,9 +40,17 @@ class _BillingScreenState extends State<BillingScreen> {
       ]);
       if (mounted) {
         setState(() {
-          _balance = results[0].data is Map ? results[0].data as Map<String, dynamic> : null;
-          _transactions = (results[1].data is Map ? results[1].data['transactions'] : null) ?? [];
-          _packages = (results[2].data is Map ? results[2].data['packages'] : null) ?? [];
+          _balance = results[0].data is Map
+              ? results[0].data as Map<String, dynamic>
+              : null;
+          _transactions =
+              (results[1].data is Map
+                  ? results[1].data['transactions']
+                  : null) ??
+              [];
+          _packages =
+              (results[2].data is Map ? results[2].data['packages'] : null) ??
+              [];
           _loading = false;
         });
       }
@@ -65,15 +73,29 @@ class _BillingScreenState extends State<BillingScreen> {
                   Row(
                     children: [
                       Container(
-                        width: 36, height: 36,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [AppTheme.warningColor, Color(0xFFF97316)]),
+                          gradient: const LinearGradient(
+                            colors: [AppTheme.warningColor, Color(0xFFF97316)],
+                          ),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 18),
+                        child: const Icon(
+                          Icons.account_balance_wallet_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
                       ),
                       const SizedBox(width: 10),
-                      const Text('我的钱包', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                      const Text(
+                        '我的钱包',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -83,7 +105,10 @@ class _BillingScreenState extends State<BillingScreen> {
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+                        colors: [
+                          AppTheme.primaryColor,
+                          AppTheme.secondaryColor,
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -92,16 +117,26 @@ class _BillingScreenState extends State<BillingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('可用余额', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                        const Text(
+                          '可用余额',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           '¥${((_balance?['balance'] ?? 0) / 100).toStringAsFixed(2)}',
-                          style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           '冻结: ¥${((_balance?['frozen'] ?? 0) / 100).toStringAsFixed(2)}',
-                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -109,7 +144,14 @@ class _BillingScreenState extends State<BillingScreen> {
                   const SizedBox(height: 24),
 
                   // Recharge packages
-                  const Text('充值套餐', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                  const Text(
+                    '充值套餐',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   if (_packages.isNotEmpty)
                     Wrap(
@@ -126,21 +168,42 @@ class _BillingScreenState extends State<BillingScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF1E293B),
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: const Color(0xFF334155)),
+                              border: Border.all(
+                                color: const Color(0xFF334155),
+                              ),
                             ),
                             child: Column(
                               children: [
-                                Text('¥${amount.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                                Text(
+                                  '¥${amount.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 if (bonus > 0)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 4),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.warningColor.withOpacity(0.15),
+                                        color: AppTheme.warningColor.withValues(
+                                          alpha: 0.15,
+                                        ),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
-                                      child: Text('送$bonus%', style: const TextStyle(color: AppTheme.warningColor, fontSize: 10, fontWeight: FontWeight.w600)),
+                                      child: Text(
+                                        '送$bonus%',
+                                        style: const TextStyle(
+                                          color: AppTheme.warningColor,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                     ),
                                   ),
                               ],
@@ -152,7 +215,14 @@ class _BillingScreenState extends State<BillingScreen> {
                   const SizedBox(height: 28),
 
                   // Transactions
-                  const Text('账单明细', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                  const Text(
+                    '账单明细',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   if (_transactions.isEmpty)
                     Container(
@@ -161,7 +231,15 @@ class _BillingScreenState extends State<BillingScreen> {
                         color: const Color(0xFF1E293B),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Center(child: Text('暂无交易记录', style: TextStyle(color: Colors.grey[500], fontSize: 13))),
+                      child: Center(
+                        child: Text(
+                          '暂无交易记录',
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
                     )
                   else
                     ..._transactions.take(20).map((tx) => _buildTxRow(tx)),
@@ -175,7 +253,11 @@ class _BillingScreenState extends State<BillingScreen> {
     final type = tx['type'] ?? '';
     final label = _txTypeLabels[type] ?? type;
     final amount = (tx['amount'] ?? 0) / 100;
-    final isPositive = type == 'recharge' || type == 'refund' || type == 'bounty_unfreeze' || type == 'admin_adjust';
+    final isPositive =
+        type == 'recharge' ||
+        type == 'refund' ||
+        type == 'bounty_unfreeze' ||
+        type == 'admin_adjust';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -187,13 +269,17 @@ class _BillingScreenState extends State<BillingScreen> {
       child: Row(
         children: [
           Container(
-            width: 36, height: 36,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: (isPositive ? AppTheme.successColor : AppTheme.errorColor).withOpacity(0.12),
+              color: (isPositive ? AppTheme.successColor : AppTheme.errorColor)
+                  .withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
-              isPositive ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+              isPositive
+                  ? Icons.arrow_downward_rounded
+                  : Icons.arrow_upward_rounded,
               color: isPositive ? AppTheme.successColor : AppTheme.errorColor,
               size: 18,
             ),
@@ -203,9 +289,20 @@ class _BillingScreenState extends State<BillingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
                 if (tx['description'] != null)
-                  Text(tx['description'], style: TextStyle(color: Colors.grey[600], fontSize: 11), maxLines: 1),
+                  Text(
+                    tx['description'],
+                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                    maxLines: 1,
+                  ),
               ],
             ),
           ),
@@ -236,16 +333,23 @@ class _BillingScreenState extends State<BillingScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('充值 ¥${amount.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(
+                '充值 ¥${amount.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('支付功能即将上线')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('支付功能即将上线')));
                   },
                   icon: const Icon(Icons.payment_rounded),
                   label: const Text('支付宝支付'),
@@ -257,16 +361,24 @@ class _BillingScreenState extends State<BillingScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('支付功能即将上线')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('支付功能即将上线')));
                   },
-                  icon: const Icon(Icons.chat_rounded, color: AppTheme.successColor),
-                  label: const Text('微信支付', style: TextStyle(color: AppTheme.successColor)),
+                  icon: const Icon(
+                    Icons.chat_rounded,
+                    color: AppTheme.successColor,
+                  ),
+                  label: const Text(
+                    '微信支付',
+                    style: TextStyle(color: AppTheme.successColor),
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: AppTheme.successColor),
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),

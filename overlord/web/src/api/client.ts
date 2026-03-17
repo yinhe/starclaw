@@ -1,0 +1,56 @@
+const API_BASE = '/brood'
+
+let _token = localStorage.getItem('web_token') || ''
+let _user: { username: string; role: string; team_id: string } | null = null
+
+try {
+  const raw = localStorage.getItem('web_user')
+  if (raw) _user = JSON.parse(raw)
+} catch {}
+
+export function getToken() { return _token }
+export function getUser() { return _user }
+
+export function setAuth(token: string, user: any) {
+  _token = token
+  _user = user
+  localStorage.setItem('web_token', token)
+  localStorage.setItem('web_user', JSON.stringify(user))
+}
+
+export function clearAuth() {
+  _token = ''
+  _user = null
+  localStorage.removeItem('web_token')
+  localStorage.removeItem('web_user')
+}
+
+async function request(method: string, path: string, body?: any) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (_token) headers['X-Admin-Token'] = _token
+
+  const res = await fetch(API_BASE + path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+  return data
+}
+
+export const api = {
+  login: (username: string, password: string) =>
+    request('POST', '/auth/login', { username, password }),
+
+  // Claws (for task routing)
+  listClaws: (team?: string) =>
+    request('GET', '/claws' + (team ? `?team=${team}` : '')),
+  assignTask: (taskId: string, team?: string) =>
+    request('POST', '/task/assign', { task_id: taskId, team }),
+  resolve: (clawId: string) =>
+    request('GET', `/resolve?claw_id=${clawId}`),
+
+  // Stats
+  stats: () => request('GET', '/stats'),
+}

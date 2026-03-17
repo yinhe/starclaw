@@ -45,8 +45,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # proxy:
-      #   condition: service_started
+      proxy:
+        condition: service_started
     restart: unless-stopped
 
   # 🌏 海外中转：代理 OpenAI / Anthropic / Grok / fal.ai / RunwayML

@@ -5,15 +5,19 @@
 ## 一、架构
 
 ```
-starclaw.net             → Queen Web Dashboard (:8086)
-api.starclaw.net         → Queen API (:8085)
-swarm.starclaw.net       → Swarm 节点管理 (:8090)
-core.starclaw.net        → Core API (:8091)
-bounty.starclaw.net      → 赏金市场 (:8092)
-forum.starclaw.net       → 社区 (:8093)
-arena.starclaw.net       → 竞技场 (:8094)
-:9090 (内网)              → Prometheus
-:3000 (内网)              → Grafana
+starclaw.net               → Queen Web Dashboard (:8086)
+api.starclaw.net           → Queen API (:8085)
+swarm.starclaw.net         → Swarm 节点管理 (:8090)
+core.starclaw.net          → Core 管理面板 (:8091)
+bounty.starclaw.net        → 赏金市场 (:8092)
+forum.starclaw.net         → 社区 (:8093)
+arena.starclaw.net         → 竞技场 (:8094)
+overseer.starclaw.net      → 监控面板 (:8087)
+partner.starclaw.net       → 城市合伙人招募 (:8088)
+city.starclaw.net          → 城市合伙人 CRM (:8089)
+nydus.starclaw.net         → Nydus 更新备源 (:8095)
+proxy.starclaw.net         → AI API 中转 (:8000)
+:9090 (内网)                → Prometheus
 ```
 
 ## 二、服务器要求
@@ -25,7 +29,7 @@ arena.starclaw.net       → 竞技场 (:8094)
 | 硬盘 | 80 GB SSD | 200 GB SSD |
 | 系统 | Ubuntu 22.04 LTS | Ubuntu 22.04 LTS |
 
-> Queen 运行 7 个 Go 服务 + MySQL + Prometheus + Grafana，建议 8G 以上。
+> Queen 运行多个 Go 服务 + 前端 + MySQL + Prometheus，建议 8G 以上。
 
 ## 三、安装依赖
 
@@ -102,33 +106,57 @@ curl http://127.0.0.1:3000/api/health
 
 ### 1. DNS 解析
 
-在域名商处添加 A 记录，全部指向 Queen 服务器 IP：
+在域名商处添加 A 记录，全部指向 Queen 服务器 IP (43.106.158.26)：
 ```
-starclaw.net          → <IP>
-api.starclaw.net      → <IP>
-swarm.starclaw.net    → <IP>
-core.starclaw.net     → <IP>
-bounty.starclaw.net   → <IP>
-forum.starclaw.net    → <IP>
-arena.starclaw.net    → <IP>
+starclaw.net            → <IP>
+*.starclaw.net          → <IP>   ← 通配符记录，覆盖所有子域名
+```
+
+或者逐个添加：
+```
+starclaw.net            → <IP>
+api.starclaw.net        → <IP>
+swarm.starclaw.net      → <IP>
+core.starclaw.net       → <IP>
+bounty.starclaw.net     → <IP>
+forum.starclaw.net      → <IP>
+arena.starclaw.net      → <IP>
+overseer.starclaw.net   → <IP>
+partner.starclaw.net    → <IP>
+city.starclaw.net       → <IP>
+nydus.starclaw.net      → <IP>
+proxy.starclaw.net      → <IP>
 ```
 
 ### 2. 申请 SSL 证书
 
+**必须用通配符证书**（覆盖所有子域名，无需每次加新域名都重新签发）：
+
 ```bash
-# 通配符证书（需要 DNS 验证）
+# 通配符证书（DNS-01 验证，不能用 --nginx）
 sudo certbot certonly --manual --preferred-challenges dns \
   -d starclaw.net -d '*.starclaw.net'
+# ↑ certbot 会要求你添加 _acme-challenge.starclaw.net TXT 记录
+```
 
-# 或逐个申请
-sudo certbot certonly --nginx \
-  -d starclaw.net \
-  -d api.starclaw.net \
-  -d swarm.starclaw.net \
-  -d core.starclaw.net \
-  -d bounty.starclaw.net \
-  -d forum.starclaw.net \
-  -d arena.starclaw.net
+推荐用 Cloudflare DNS 插件实现自动续期：
+
+```bash
+sudo apt install python3-certbot-dns-cloudflare
+cat > /etc/letsencrypt/cloudflare.ini << 'EOF'
+dns_cloudflare_api_token = YOUR_CLOUDFLARE_API_TOKEN
+EOF
+sudo chmod 600 /etc/letsencrypt/cloudflare.ini
+sudo certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
+  -d starclaw.net -d '*.starclaw.net'
+```
+
+**验证证书覆盖范围：**
+```bash
+sudo openssl x509 -in /etc/letsencrypt/live/starclaw.net/fullchain.pem \
+  -text -noout | grep -A1 "Subject Alternative Name"
+# 必须显示：DNS:starclaw.net, DNS:*.starclaw.net
 ```
 
 ### 3. 配置 Nginx
@@ -136,7 +164,10 @@ sudo certbot certonly --nginx \
 ```bash
 sudo cp /opt/starclaw/queen/deploy/nginx-queen.conf /etc/nginx/sites-available/queen
 sudo ln -sf /etc/nginx/sites-available/queen /etc/nginx/sites-enabled/
+# 删除旧的独立配置文件（已合并到 queen）
 sudo rm -f /etc/nginx/sites-enabled/default
+sudo rm -f /etc/nginx/sites-enabled/nydus
+sudo rm -f /etc/nginx/sites-enabled/proxy
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -185,38 +216,26 @@ docker compose -f docker-compose.prod.yml restart queen-api    # 单个
 ### 监控
 
 - **Prometheus**: http://127.0.0.1:9090 （仅内网）
-- **Grafana**: http://127.0.0.1:3000 （仅内网）
-  - 默认账号: `admin` / `$GRAFANA_PASSWORD`
-  - 预配置 Dashboard: StarClaw Overview
-
-如需外部访问 Grafana，在 nginx 中添加：
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name grafana.starclaw.net;
-    ssl_certificate     /etc/letsencrypt/live/starclaw.net/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/starclaw.net/privkey.pem;
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-    }
-}
-```
+- **Overseer**: https://overseer.starclaw.net （Prometheus 可视化面板）
 
 ## 七、服务端口速查
 
-| 服务 | 容器名 | 端口 |
-|------|--------|------|
-| MySQL | starclaw-queen-mysql | 3306 (内网) |
-| Queen API | starclaw-queen-api | 8085 |
-| Queen Web | starclaw-queen-web | 8086 |
-| Swarm | starclaw-queen-swarm | 8090 |
-| Core | starclaw-queen-core | 8091 |
-| Bounty | starclaw-queen-bounty | 8092 |
-| Forum | starclaw-queen-forum | 8093 |
-| Arena | starclaw-queen-arena | 8094 |
-| Prometheus | starclaw-queen-prometheus | 9090 |
-| Grafana | starclaw-queen-grafana | 3000 |
+| 服务 | 容器名 | 端口 | 域名 |
+|------|--------|------|------|
+| MySQL | starclaw-queen-mysql | 3306 | 内网 |
+| Queen API | starclaw-queen-api | 8085 | api.starclaw.net |
+| Queen Web | starclaw-queen-web | 8086 | starclaw.net |
+| Overseer | starclaw-queen-overseer | 8087 | overseer.starclaw.net |
+| Partner | starclaw-queen-partner | 8088 | partner.starclaw.net |
+| City | starclaw-queen-city | 8089 | city.starclaw.net |
+| Swarm | starclaw-queen-swarm | 8090 | swarm.starclaw.net |
+| Core | starclaw-queen-core | 8091 | core.starclaw.net |
+| Bounty | starclaw-queen-bounty | 8092 | bounty.starclaw.net |
+| Forum | starclaw-queen-forum | 8093 | forum.starclaw.net |
+| Arena | starclaw-queen-arena | 8094 | arena.starclaw.net |
+| Nydus | nydus-server | 8095 | nydus.starclaw.net |
+| Proxy | starclaw-queen-proxy | 8000 | proxy.starclaw.net |
+| Prometheus | starclaw-queen-prometheus | 9090 | 内网 |
 
 ## 八、常见问题
 

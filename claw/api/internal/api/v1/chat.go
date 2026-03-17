@@ -292,9 +292,11 @@ func (h *ChatHandler) handleSyncWithTools(c *gin.Context, rt *agentpkg.Runtime, 
 	}
 	h.db.Create(&assistantMsg)
 
-	// Cerebrate: async extract memories from this conversation turn
+	// Cerebrate: async extract memories + summary from this conversation turn
 	if h.cerebrate != nil {
-		go h.cerebrate.ExtractAndStore(context.Background(), c.GetString("user_id"), c.GetString("agent_id_for_cerebrate"), result.Messages)
+		uid, aid := c.GetString("user_id"), c.GetString("agent_id_for_cerebrate")
+		go h.cerebrate.ExtractAndStore(context.Background(), uid, aid, result.Messages, convID)
+		go h.cerebrate.GenerateSummary(context.Background(), uid, aid, convID, result.Messages)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -474,9 +476,11 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				h.db.Create(&assistantMsg)
 				saved = true
 
-				// Cerebrate: async extract memories from this conversation
+				// Cerebrate: async extract memories + summary from this conversation
 				if h.cerebrate != nil {
-					go h.cerebrate.ExtractAndStore(context.Background(), userID, c.GetString("agent_id_for_cerebrate"), req.Messages)
+					aid := c.GetString("agent_id_for_cerebrate")
+					go h.cerebrate.ExtractAndStore(context.Background(), userID, aid, req.Messages, convID)
+					go h.cerebrate.GenerateSummary(context.Background(), userID, aid, convID, req.Messages)
 				}
 
 				// Long-running conversation notification (>30s)

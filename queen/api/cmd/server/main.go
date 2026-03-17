@@ -69,6 +69,22 @@ func main() {
 		&model.CreditFreeze{},
 		// Gateway (star-ai.net)
 		&model.GatewayUsageLog{},
+		// City Partner Portal
+		&model.CityPartner{},
+		&model.CityClient{},
+		&model.Commission{},
+		&model.Payout{},
+		&model.MarketingMaterial{},
+		// Core Partner Hub
+		&model.CorePartner{},
+		&model.CRMDeal{},
+		&model.PartnerCommission{},
+		&model.EquityGrant{},
+		&model.Deployment{},
+		// Settlement Engine
+		&model.SettlementBill{},
+		&model.SettlementLineItem{},
+		&model.SettlementConfig{},
 	)
 
 	seedAdmin()

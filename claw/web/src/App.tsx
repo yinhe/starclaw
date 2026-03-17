@@ -35,6 +35,15 @@ import BillingPage from './pages/BillingPage'
 import WalletPage from './pages/WalletPage'
 import MiningPage from './pages/MiningPage'
 import IntegrationsPage from './pages/IntegrationsPage'
+import SquadPage from './pages/SquadPage'
+import MemoryPage from './pages/MemoryPage'
+import ObservePage from './pages/ObservePage'
+import WebhooksPage from './pages/WebhooksPage'
+import DeveloperPage from './pages/DeveloperPage'
+import SecurityPage from './pages/SecurityPage'
+import GoalsPage from './pages/GoalsPage'
+import FineTunePage from './pages/FineTunePage'
+import HiveMindPage from './pages/HiveMindPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -116,6 +125,15 @@ export default function App() {
         <Route path="wallet" element={<WalletPage />} />
         <Route path="mining" element={<MiningPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
+        <Route path="squads" element={<SquadPage />} />
+        <Route path="hivemind" element={<HiveMindPage />} />
+        <Route path="memories" element={<MemoryPage />} />
+        <Route path="observe" element={<ObservePage />} />
+        <Route path="webhooks" element={<WebhooksPage />} />
+        <Route path="developer" element={<DeveloperPage />} />
+        <Route path="security" element={<SecurityPage />} />
+        <Route path="goals" element={<GoalsPage />} />
+        <Route path="finetune" element={<FineTunePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

@@ -12,7 +12,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const NAV = [
     { label: t('nav.home'), to: '/' },
-    { label: t('nav.download'), to: '/download' },
+    { label: t('nav.enterprise'), to: '/enterprise' },
+    { label: t('nav.star_ai'), to: '/star-ai' },
+    { label: t('nav.pricing'), to: '/pricing' },
     { label: t('nav.docs'), to: '/docs' },
   ]
 
@@ -145,16 +147,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <h3 className="text-sm font-semibold text-white mb-3">{t('footer.product')}</h3>
               <ul className="space-y-2 text-sm text-gray-400">
+                <li><Link to="/enterprise" className="hover:text-white transition-colors">{t('nav.enterprise')}</Link></li>
+                <li><Link to="/star-ai" className="hover:text-white transition-colors">{t('nav.star_ai')}</Link></li>
+                <li><Link to="/pricing" className="hover:text-white transition-colors">{t('nav.pricing')}</Link></li>
                 <li><Link to="/download" className="hover:text-white transition-colors">{t('nav.download')}</Link></li>
-                <li><a href="https://app.starclaw.me" className="hover:text-white transition-colors">{t('nav.demo')}</a></li>
-                <li><Link to="/docs" className="hover:text-white transition-colors">{t('nav.docs')}</Link></li>
               </ul>
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white mb-3">{t('footer.community')}</h3>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li><a href="https://github.com/yinhe/starclaw" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a></li>
-                <li><a href="https://starclaw.net" className="hover:text-white transition-colors">Forum</a></li>
+                <li><Link to="/docs" className="hover:text-white transition-colors">{t('nav.docs')}</Link></li>
+                <li><Link to="/partners" className="hover:text-white transition-colors">{t('nav.partners')}</Link></li>
               </ul>
             </div>
             <div>
@@ -162,12 +166,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ul className="space-y-2 text-sm text-gray-400">
                 <li><a href="https://starclaw.net" className="hover:text-white transition-colors">{t('footer.portal')}</a></li>
                 <li><a href="https://star-ai.net" className="hover:text-white transition-colors">Star AI</a></li>
+                <li><a href="https://app.starclaw.me" className="hover:text-white transition-colors">{t('nav.demo')}</a></li>
               </ul>
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white mb-3">{t('footer.legal')}</h3>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li><span className="cursor-default">MIT License</span></li>
+                <li><Link to="/about" className="hover:text-white transition-colors">{t('nav.about')}</Link></li>
               </ul>
             </div>
           </div>

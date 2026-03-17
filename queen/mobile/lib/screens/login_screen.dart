@@ -85,10 +85,11 @@ class _LoginScreenState extends State<LoginScreen>
         _error = _isRegister ? '注册失败，邮箱可能已被注册' : '登录失败，请检查邮箱和密码';
       });
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
         });
+      }
     }
   }
 
@@ -119,10 +120,11 @@ class _LoginScreenState extends State<LoginScreen>
         _error = _isRegister ? '注册失败，手机号可能已被注册' : '登录失败，请检查手机号和密码';
       });
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
         });
+      }
     }
   }
 

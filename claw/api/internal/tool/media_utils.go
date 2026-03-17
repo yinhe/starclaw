@@ -53,6 +53,62 @@ func GetFalAPIKey(db *gorm.DB, userID string) string {
 	return cfg.APIKey
 }
 
+// ── File Path Resolution ──
+
+// ResolveClipToLocal resolves a video URL to a local file path.
+// Handles: local /v1/videos/merged/ paths, absolute paths, and remote HTTP URLs.
+// For remote URLs it downloads to dest. Returns the usable local path.
+func ResolveClipToLocal(videoURL, dest string) (string, error) {
+	if strings.HasPrefix(videoURL, "/v1/videos/merged/") {
+		fn := strings.TrimPrefix(videoURL, "/v1/videos/merged/")
+		localPath := filepath.Join("/app/merged_videos", fn)
+		if _, err := os.Stat(localPath); err == nil {
+			return localPath, nil
+		}
+		// local file missing, fall through to download
+	}
+	if strings.HasPrefix(videoURL, "/app/") || strings.HasPrefix(videoURL, "/tmp/") {
+		if _, err := os.Stat(videoURL); err == nil {
+			return videoURL, nil
+		}
+		return "", fmt.Errorf("local file not found: %s", videoURL)
+	}
+	if !strings.HasPrefix(videoURL, "http://") && !strings.HasPrefix(videoURL, "https://") {
+		return "", fmt.Errorf("unsupported URL scheme: %s", videoURL)
+	}
+	if err := DownloadFile(videoURL, dest); err != nil {
+		return "", fmt.Errorf("download failed: %v", err)
+	}
+	return dest, nil
+}
+
+// SaveClipLocally downloads a remote URL to /app/merged_videos/ and returns the local serving path.
+// If already local, returns the existing path. Used to persist clips for reliable merging.
+func SaveClipLocally(remoteURL string) (string, error) {
+	if strings.HasPrefix(remoteURL, "/v1/videos/merged/") {
+		return remoteURL, nil // already local
+	}
+	if !strings.HasPrefix(remoteURL, "http://") && !strings.HasPrefix(remoteURL, "https://") {
+		return remoteURL, nil // not a remote URL
+	}
+	outputDir := "/app/merged_videos"
+	os.MkdirAll(outputDir, 0755)
+	localFile := fmt.Sprintf("clip_%s.mp4", generateShortID())
+	localPath := filepath.Join(outputDir, localFile)
+	if err := DownloadFile(remoteURL, localPath); err != nil {
+		return remoteURL, err // return original URL on failure
+	}
+	return fmt.Sprintf("/v1/videos/merged/%s", localFile), nil
+}
+
+func generateShortID() string {
+	b := make([]byte, 4)
+	if _, err := io.ReadFull(strings.NewReader(fmt.Sprintf("%d", time.Now().UnixNano())), b); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano()%100000000)
+	}
+	return fmt.Sprintf("%d", time.Now().UnixNano()%100000000)
+}
+
 // ── File Download ──
 
 // DownloadFile downloads a URL to a local file path

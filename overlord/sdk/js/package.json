@@ -1,0 +1,18 @@
+{
+  "name": "@starclaw/sdk",
+  "version": "0.1.0",
+  "description": "StarClaw JavaScript/TypeScript SDK — AI Agent chat, streaming, and embeddable widget",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["starclaw", "ai", "agent", "chat", "sdk", "web-component"],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

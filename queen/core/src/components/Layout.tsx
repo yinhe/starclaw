@@ -12,6 +12,10 @@ import {
   ShoppingBag,
   Layers,
   LogOut,
+  Handshake,
+  Building2,
+  Calculator,
+  Activity,
 } from 'lucide-react'
 
 const navItems = [
@@ -25,6 +29,10 @@ const navItems = [
   { to: '/orders', icon: Receipt, label: '订单管理' },
   { to: '/balances', icon: Wallet, label: '用户余额' },
   { to: '/packages', icon: Package, label: '套餐管理' },
+  { to: '/partners', icon: Handshake, label: '合伙人管理' },
+  { to: '/clients', icon: Building2, label: '客户总览' },
+  { to: '/settlement', icon: Calculator, label: '结算管理' },
+  { to: '/overseer', icon: Activity, label: 'Overseer 监控' },
 ]
 
 export default function Layout() {

@@ -581,6 +581,9 @@ func (h *BillingHandler) completeOrder(orderNo, tradeNo, callbackRaw string) {
 		log.Printf("[billing] Order %s completed: amount=%d, bonus=%d, user=%s, claw=%s, balance=%d",
 			orderNo, order.Amount, order.BonusAmount, order.UserID, order.ClawID, bal.Balance)
 
+		// ── City Partner Commission (referral attribution) ──
+		generateCityCommission(tx, order.UserID, order.OrderNo, order.Amount)
+
 		return nil
 	})
 

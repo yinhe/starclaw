@@ -233,7 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             height: 40,
             decoration: BoxDecoration(
               color: (isOnline ? AppTheme.successColor : Colors.grey)
-                  .withOpacity(0.12),
+                  .withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
@@ -265,7 +265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: (isOnline ? AppTheme.successColor : Colors.grey)
-                            .withOpacity(0.15),
+                            .withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -360,15 +360,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       bio: bioCtrl.text.trim(),
                     );
                     _load();
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(const SnackBar(content: Text('资料已更新')));
+                    }
                   } catch (_) {
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(const SnackBar(content: Text('更新失败')));
+                    }
                   }
                 },
                 child: const Text('保存'),
@@ -433,15 +435,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       oldCtrl.text,
                       newCtrl.text,
                     );
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(const SnackBar(content: Text('密码已修改')));
+                    }
                   } catch (_) {
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('修改失败，请检查旧密码')),
                       );
+                    }
                   }
                 },
                 child: const Text('确认修改'),
@@ -511,8 +515,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ElevatedButton(
                 onPressed: () async {
                   if (nodeIdCtrl.text.trim().isEmpty ||
-                      localUserCtrl.text.trim().isEmpty)
+                      localUserCtrl.text.trim().isEmpty) {
                     return;
+                  }
                   Navigator.pop(ctx);
                   try {
                     await ApiService().bindNode(
@@ -523,15 +528,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           : null,
                     );
                     _load();
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(const SnackBar(content: Text('节点绑定成功')));
+                    }
                   } catch (_) {
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(const SnackBar(content: Text('绑定失败')));
+                    }
                   }
                 },
                 child: const Text('确认绑定'),

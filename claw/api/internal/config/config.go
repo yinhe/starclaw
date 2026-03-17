@@ -74,14 +74,17 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	DBName   string `mapstructure:"dbname"`
+	Driver     string `mapstructure:"driver"`      // mysql or sqlite (default: mysql)
+	SQLitePath string `mapstructure:"sqlite_path"` // path for sqlite db file
+	Host       string `mapstructure:"host"`
+	Port       int    `mapstructure:"port"`
+	User       string `mapstructure:"user"`
+	Password   string `mapstructure:"password"`
+	DBName     string `mapstructure:"dbname"`
 }
 
 type RedisConfig struct {
+	Enabled  bool   `mapstructure:"enabled"` // false = use in-memory cache
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	Password string `mapstructure:"password"`
@@ -113,11 +116,14 @@ func Load() (*Config, error) {
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.mode", "debug")
 	viper.SetDefault("server.deploy_mode", "opensource")
+	viper.SetDefault("database.driver", "mysql")
+	viper.SetDefault("database.sqlite_path", "./data/claw.db")
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", 3306)
 	viper.SetDefault("database.user", "root")
 	viper.SetDefault("database.password", "starclaw")
 	viper.SetDefault("database.dbname", "starclaw")
+	viper.SetDefault("redis.enabled", true)
 	viper.SetDefault("redis.host", "localhost")
 	viper.SetDefault("redis.port", 6379)
 	viper.SetDefault("redis.password", "")

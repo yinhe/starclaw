@@ -26,6 +26,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Phone    string `json:"phone"`
 		Nickname string `json:"nickname" binding:"required"`
 		Password string `json:"password" binding:"required,min=6"`
+		RefCode  string `json:"ref_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请填写昵称和密码（至少 6 位）"})
@@ -64,6 +65,23 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err := database.DB.Create(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败"})
 		return
+	}
+
+	// Referral attribution: link user to city partner
+	if req.RefCode != "" {
+		var partner model.CityPartner
+		if err := database.DB.Where("ref_code = ? AND status = ?", req.RefCode, "approved").First(&partner).Error; err == nil {
+			client := model.CityClient{
+				ID:          uuid.New().String(),
+				PartnerID:   partner.ID,
+				ClientName:  req.Nickname,
+				ContactInfo: req.Email + " " + req.Phone,
+				Status:      "lead",
+				RefSource:   req.RefCode,
+			}
+			database.DB.Create(&client)
+			database.DB.Model(&partner).UpdateColumn("total_clients", partner.TotalClients+1)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "注册成功", "user_id": user.ID})

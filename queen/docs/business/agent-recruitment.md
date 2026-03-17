@@ -1,4 +1,13 @@
-# StarClaw 城市合伙人招募书
+# ⚠️ 本文件已归档，请查看最新版本：
+
+- **城市合伙人招募书（最新）** → [city-partner-recruitment.md](city-partner-recruitment.md)
+- **城市合伙人提成制度** → [city-partner-commission.md](city-partner-commission.md)
+
+---
+
+> 以下为原始内容（已归档，以新文件为准）
+
+# StarClaw 城市合伙人招募书（已归档）
 
 > 城市合伙人计划 — 零技术门槛，佣金透明
 

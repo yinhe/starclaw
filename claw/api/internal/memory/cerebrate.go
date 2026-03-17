@@ -28,32 +28,50 @@ func NewCerebrate(db *gorm.DB, pr *provider.Registry) *Cerebrate {
 // ─── Memory Retrieval (injection before conversation) ───
 
 // Retrieve returns relevant memories for a user+agent, sorted by relevance to the query.
+// It fetches: 1) instruct memories (agent + global), 2) global memories, 3) agent keyword-matched memories.
 // Returns at most maxResults memories.
 func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]model.Memory, error) {
 	if maxResults <= 0 {
 		maxResults = 10
 	}
 
-	var memories []model.Memory
+	seen := map[string]bool{}
+	var result []model.Memory
 
-	// Strategy: keyword match + recency + importance weighted
-	// For now, use simple keyword overlap; future: embedding similarity
-	tx := c.db.Where("user_id = ? AND agent_id = ?", userID, agentID)
-
-	// Prefer instruct memories (always relevant)
-	var instructs []model.Memory
-	c.db.Where("user_id = ? AND agent_id = ? AND category = ?", userID, agentID, model.MemCatInstruct).
-		Order("importance DESC, updated_at DESC").Limit(5).Find(&instructs)
-
-	// Then get keyword-relevant memories from other categories
-	keywords := extractKeywords(query)
-	remaining := maxResults - len(instructs)
-	if remaining <= 0 {
-		remaining = 5
+	addUnique := func(mems []model.Memory) {
+		for _, m := range mems {
+			if !seen[m.ID] {
+				seen[m.ID] = true
+				result = append(result, m)
+			}
+		}
 	}
 
+	// 1. Instruct memories: agent-specific + global (always injected, highest priority)
+	var instructs []model.Memory
+	c.db.Where("user_id = ? AND category = ? AND (agent_id = ? OR scope = ?)",
+		userID, model.MemCatInstruct, agentID, model.MemScopeGlobal).
+		Order("importance DESC, updated_at DESC").Limit(5).Find(&instructs)
+	addUnique(instructs)
+
+	// 2. Global non-instruct memories (cross-agent knowledge)
+	var globals []model.Memory
+	c.db.Where("user_id = ? AND scope = ? AND category != ?",
+		userID, model.MemScopeGlobal, model.MemCatInstruct).
+		Order("importance DESC, updated_at DESC").Limit(5).Find(&globals)
+	addUnique(globals)
+
+	// 3. Agent-specific keyword-matched memories
+	remaining := maxResults - len(result)
+	if remaining <= 0 {
+		remaining = 3
+	}
+
+	keywords := extractKeywords(query)
+	tx := c.db.Where("user_id = ? AND agent_id = ? AND category NOT IN ?",
+		userID, agentID, []string{model.MemCatInstruct})
+
 	if len(keywords) > 0 {
-		// Build LIKE conditions for keyword matching
 		var conditions []string
 		var args []interface{}
 		for _, kw := range keywords {
@@ -65,20 +83,16 @@ func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]m
 		}
 		if len(conditions) > 0 {
 			whereClause := strings.Join(conditions, " OR ")
-			tx = tx.Where("category != ?", model.MemCatInstruct).
-				Where(whereClause, args...)
+			tx = tx.Where(whereClause, args...)
 		}
-	} else {
-		tx = tx.Where("category != ?", model.MemCatInstruct)
 	}
 
+	var agentMems []model.Memory
 	tx.Order("importance DESC, access_count DESC, updated_at DESC").
-		Limit(remaining).Find(&memories)
+		Limit(remaining).Find(&agentMems)
+	addUnique(agentMems)
 
-	// Merge: instructs first, then relevant memories
-	result := append(instructs, memories...)
-
-	// Update access count for retrieved memories
+	// Update access count for all retrieved memories
 	if len(result) > 0 {
 		var ids []string
 		for _, m := range result {
@@ -164,7 +178,12 @@ const extractionPrompt = `你是一个记忆提取助手。分析以下对话，
 
 // ExtractAndStore extracts memories from a conversation and stores them.
 // This should be called asynchronously after a conversation turn.
-func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string, messages []provider.ChatMessage) {
+// conversationID is optional; pass "" if unavailable.
+func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string, messages []provider.ChatMessage, conversationID ...string) {
+	convID := ""
+	if len(conversationID) > 0 {
+		convID = conversationID[0]
+	}
 	if len(messages) < 2 {
 		return
 	}
@@ -240,31 +259,44 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 			e.Importance = 0.5
 		}
 
+		// Auto-detect scope: fact/preference/instruct are cross-agent (global), others are agent-specific
+		scope := model.MemScopeAgent
+		if e.Category == model.MemCatFact || e.Category == model.MemCatPreference || e.Category == model.MemCatInstruct {
+			scope = model.MemScopeGlobal
+		}
+
 		// Upsert: update if same key+user+agent exists, otherwise create
 		var existing model.Memory
 		err := c.db.Where("user_id = ? AND agent_id = ? AND key = ?", userID, agentID, e.Key).First(&existing).Error
 		if err == nil {
 			// Update existing memory
-			c.db.Model(&existing).Updates(map[string]interface{}{
+			updates := map[string]interface{}{
 				"content":    e.Content,
 				"category":   e.Category,
 				"importance": e.Importance,
 				"source":     "auto_extract",
-			})
+				"scope":      scope,
+			}
+			if convID != "" {
+				updates["conversation_id"] = convID
+			}
+			c.db.Model(&existing).Updates(updates)
 			log.Printf("[cerebrate] updated memory: %s = %s", e.Key, truncate(e.Content, 60))
 		} else {
 			// Create new memory
 			mem := model.Memory{
-				UserID:     userID,
-				AgentID:    agentID,
-				Key:        e.Key,
-				Content:    e.Content,
-				Category:   e.Category,
-				Source:     "auto_extract",
-				Importance: e.Importance,
+				UserID:         userID,
+				AgentID:        agentID,
+				Key:            e.Key,
+				Content:        e.Content,
+				Category:       e.Category,
+				Source:         "auto_extract",
+				Scope:          scope,
+				ConversationID: convID,
+				Importance:     e.Importance,
 			}
 			c.db.Create(&mem)
-			log.Printf("[cerebrate] new memory: [%s] %s = %s", e.Category, e.Key, truncate(e.Content, 60))
+			log.Printf("[cerebrate] new memory: [%s/%s] %s = %s", e.Category, scope, e.Key, truncate(e.Content, 60))
 		}
 		stored++
 	}
@@ -272,6 +304,88 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 	if stored > 0 {
 		log.Printf("[cerebrate] extracted %d memories from conversation (user=%s)", stored, userID)
 	}
+}
+
+// ─── Conversation Summary Memory ───
+
+const summaryPrompt = `你是一个会话摘要助手。用1-2句话总结以下对话的核心内容，重点记录：
+- 讨论了什么主题
+- 达成了什么结论或完成了什么任务
+- 有哪些待办事项
+
+要求简洁精炼，中文回复，不超过100字。只返回摘要文本，不要其他内容。`
+
+// GenerateSummary creates a conversation summary memory.
+// Should be called after conversations with ≥ 5 user messages.
+func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conversationID string, messages []provider.ChatMessage) {
+	// Count user messages
+	userMsgCount := 0
+	for _, m := range messages {
+		if m.Role == "user" {
+			userMsgCount++
+		}
+	}
+	if userMsgCount < 5 {
+		return
+	}
+
+	p := c.getExtractionProvider(userID)
+	if p == nil {
+		return
+	}
+
+	convText := buildConversationText(messages, 2000)
+	if len(convText) < 50 {
+		return
+	}
+
+	result, err := p.ChatSync(ctx, &provider.ChatRequest{
+		Model: "",
+		Messages: []provider.ChatMessage{
+			{Role: "system", Content: summaryPrompt},
+			{Role: "user", Content: convText},
+		},
+		Temperature: 0.2,
+		MaxTokens:   200,
+	})
+	if err != nil {
+		log.Printf("[cerebrate] summary generation failed: %v", err)
+		return
+	}
+
+	summary := strings.TrimSpace(result.Content)
+	if len(summary) < 10 {
+		return
+	}
+
+	// Enforce max 20 summaries per agent — delete oldest if over
+	var count int64
+	c.db.Model(&model.Memory{}).Where("user_id = ? AND agent_id = ? AND category = ?",
+		userID, agentID, model.MemCatSummary).Count(&count)
+	if count >= 20 {
+		// Delete the oldest summary
+		var oldest model.Memory
+		c.db.Where("user_id = ? AND agent_id = ? AND category = ?",
+			userID, agentID, model.MemCatSummary).
+			Order("created_at ASC").First(&oldest)
+		if oldest.ID != "" {
+			c.db.Delete(&oldest)
+		}
+	}
+
+	mem := model.Memory{
+		UserID:         userID,
+		AgentID:        agentID,
+		Key:            "conv_summary_" + conversationID[:min(8, len(conversationID))],
+		Content:        summary,
+		Category:       model.MemCatSummary,
+		Source:         "auto_extract",
+		Scope:          model.MemScopeAgent,
+		ConversationID: conversationID,
+		Importance:     0.4,
+	}
+	c.db.Create(&mem)
+	log.Printf("[cerebrate] saved summary for conv %s: %s", conversationID[:min(16, len(conversationID))], truncate(summary, 60))
 }
 
 // ─── Helpers ───

@@ -18,10 +18,14 @@ var upgrader = websocket.Upgrader{
 
 // Event types pushed to clients
 const (
-	EventNotification = "notification"
-	EventTaskUpdate   = "task_update"
-	EventChatMessage  = "chat_message"
-	EventAgentStatus  = "agent_status"
+	EventNotification   = "notification"
+	EventTaskUpdate     = "task_update"
+	EventChatMessage    = "chat_message"
+	EventAgentStatus    = "agent_status"
+	EventHiveStatus     = "hive_status"
+	EventHiveDataFlow   = "hive_data_flow"
+	EventHiveSprint     = "hive_sprint"
+	EventHiveStepUpdate = "hive_step_update"
 )
 
 // Message is the envelope sent over WebSocket
