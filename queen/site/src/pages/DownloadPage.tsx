@@ -6,12 +6,14 @@ import { CopyBlock } from '../components/CopyBlock'
 import { useI18n } from '../i18n'
 
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases'
+const STARAI_BASE = 'https://star-ai.net/downloads'
 
 const PACKAGES = [
   {
     platform: 'Windows',
     icon: Monitor,
     setupUrl: `${NYDUS_BASE}/StarClaw-Setup.exe`,
+    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup.exe`,
     setupSize: '20 MB',
     arch: 'x86_64',
     setupLabel: 'StarClaw-Setup.exe',
@@ -23,6 +25,7 @@ const PACKAGES = [
     platform: 'Linux',
     icon: Terminal,
     setupUrl: `${NYDUS_BASE}/StarClaw-Setup-linux-amd64`,
+    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-linux-amd64`,
     setupSize: '21 MB',
     arch: 'x86_64',
     setupLabel: 'StarClaw-Setup',
@@ -34,6 +37,7 @@ const PACKAGES = [
     platform: 'macOS',
     icon: Apple,
     setupUrl: `${NYDUS_BASE}/StarClaw-Setup-darwin-arm64`,
+    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-darwin-arm64`,
     setupSize: '20 MB',
     arch: 'Apple Silicon',
     setupLabel: 'StarClaw-Setup',
@@ -105,14 +109,19 @@ export function DownloadPage() {
                     {pkg.setupUrl ? (
                       <>
                         <a
-                          href={pkg.setupUrl}
+                          href={pkg.mirrorUrl}
                           download
-                          className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-2"
+                          className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-1.5"
                         >
                           <Download size={16} />
                           {pkg.setupLabel}
                           <span className="text-claw-200 text-xs">({pkg.setupSize})</span>
                         </a>
+                        <div className="flex items-center justify-center gap-2 mb-3">
+                          <span className="text-[10px] text-green-400">⚡ 国内加速</span>
+                          <span className="text-[10px] text-gray-600">|</span>
+                          <a href={pkg.setupUrl} download className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">海外节点</a>
+                        </div>
                         <p className="text-xs text-gray-500 text-center mb-4">{pkg.note}</p>
                       </>
                     ) : (
