@@ -2,6 +2,15 @@ package provider
 
 import (
 	"context"
+	"net"
+	"time"
+)
+
+const (
+	// MiniMax domestic endpoint (China mainland)
+	miniMaxDomesticURL = "https://api.minimax.com/v1"
+	// MiniMax international endpoint
+	miniMaxGlobalURL = "https://api.minimax.io/v1"
 )
 
 // MiniMaxProvider wraps OpenAI-compatible API with MiniMax's endpoint
@@ -17,7 +26,7 @@ type MiniMaxConfig struct {
 func NewMiniMaxProvider(cfg MiniMaxConfig) *MiniMaxProvider {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
-		baseURL = "https://api.minimax.io/v1"
+		baseURL = detectMiniMaxEndpoint()
 	}
 	inner := NewOpenAIProvider(OpenAIConfig{
 		APIKey:  cfg.APIKey,
@@ -66,4 +75,16 @@ func (p *MiniMaxProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *C
 
 func (p *MiniMaxProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatChunk, error) {
 	return p.inner.ChatSync(ctx, req)
+}
+
+// detectMiniMaxEndpoint picks domestic or international endpoint by testing DNS reachability.
+// Domestic (api.minimax.com) is tried first since it's faster in China.
+func detectMiniMaxEndpoint() string {
+	// Quick DNS probe: if domestic resolves, use it
+	conn, err := net.DialTimeout("tcp", "api.minimax.com:443", 2*time.Second)
+	if err == nil {
+		conn.Close()
+		return miniMaxDomesticURL
+	}
+	return miniMaxGlobalURL
 }

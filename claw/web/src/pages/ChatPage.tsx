@@ -745,7 +745,18 @@ export default function ChatPage() {
                 navigate(`/chat/${data.conversation_id}`, { replace: true })
               }
 
-              if (data.done) {
+              if (data.error) {
+                addMessage({
+                  id: (Date.now() + 1).toString(),
+                  role: 'assistant',
+                  content: `⚠️ ${data.error}`,
+                  created_at: new Date().toISOString(),
+                })
+                setStreamingContent('')
+                setLoading(false)
+                setToolInteractions(prev => prev.map(t => t.status === 'calling' ? { ...t, status: 'error' as const } : t))
+                return
+              } else if (data.done) {
                 setAgentStep(null)
                 addMessage({
                   id: Date.now().toString(),
