@@ -191,6 +191,7 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 	// Get a model provider for extraction (use the first available)
 	p := c.getExtractionProvider(userID)
 	if p == nil {
+		log.Printf("[cerebrate] skipping memory extraction: no provider available (user=%s)", userID)
 		return
 	}
 
@@ -397,11 +398,13 @@ func (c *Cerebrate) getExtractionProvider(userID string) provider.ModelProvider 
 		Order("created_at ASC").First(&cfg).Error; err == nil {
 		return provider.CreateFromConfig(c.providerRegistry, cfg)
 	}
-	// Fallback to platform model
-	if err := c.db.Where("user_id = 'platform' AND is_enabled = ?", true).
+	// Fallback to platform model (shared key)
+	if err := c.db.Where("is_platform = ? AND is_enabled = ?", true, true).
 		Order("created_at ASC").First(&cfg).Error; err == nil {
+		log.Printf("[cerebrate] using platform model (%s) for user %s", cfg.Provider, userID)
 		return provider.CreateFromConfig(c.providerRegistry, cfg)
 	}
+	log.Printf("[cerebrate] no extraction provider found for user %s (no user or platform model config)", userID)
 	return nil
 }
 
