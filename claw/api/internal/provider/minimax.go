@@ -8,7 +8,7 @@ import (
 
 const (
 	// MiniMax domestic endpoint (China mainland)
-	miniMaxDomesticURL = "https://api.minimax.com/v1"
+	miniMaxDomesticURL = "https://api.minimaxi.com/v1"
 	// MiniMax international endpoint
 	miniMaxGlobalURL = "https://api.minimax.io/v1"
 )
@@ -81,7 +81,7 @@ func (p *MiniMaxProvider) ChatSync(ctx context.Context, req *ChatRequest) (*Chat
 // Domestic (api.minimax.com) is tried first since it's faster in China.
 func detectMiniMaxEndpoint() string {
 	// Quick DNS probe: if domestic resolves, use it
-	conn, err := net.DialTimeout("tcp", "api.minimax.com:443", 2*time.Second)
+	conn, err := net.DialTimeout("tcp", "api.minimaxi.com:443", 2*time.Second)
 	if err == nil {
 		conn.Close()
 		return miniMaxDomesticURL

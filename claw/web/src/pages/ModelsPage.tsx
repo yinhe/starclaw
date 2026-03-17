@@ -30,7 +30,7 @@ const PROVIDERS = [
   { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀', base_url: 'https://openrouter.ai/api/v1' },
   { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡', base_url: 'https://fal.run/fal-ai/any-llm/v1' },
   { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏', base_url: 'https://api.x.ai/v1' },
-  { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimax.io/v1' },
+  { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimaxi.com/v1' },
   { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
   { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙', base_url: 'https://api.moonshot.cn/v1' },
   { value: 'custom', label: '自定义 (OpenAI 兼容)', desc: '任何兼容 OpenAI API 的服务', icon: '⚙️', base_url: '' },
@@ -40,6 +40,11 @@ const QWEN_REGIONS = [
   { value: 'https://dashscope.aliyuncs.com/compatible-mode/v1', label: '华北2（北京）' },
   { value: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', label: '新加坡' },
   { value: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1', label: '美国（弗吉尼亚）' },
+]
+
+const MINIMAX_REGIONS = [
+  { value: 'https://api.minimaxi.com/v1', label: '国内（api.minimaxi.com）' },
+  { value: 'https://api.minimax.io/v1', label: '海外（api.minimax.io）' },
 ]
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -62,6 +67,8 @@ const REGION_LABELS: Record<string, string> = {
   'https://dashscope.aliyuncs.com/compatible-mode/v1': '北京',
   'https://dashscope-intl.aliyuncs.com/compatible-mode/v1': '新加坡',
   'https://dashscope-us.aliyuncs.com/compatible-mode/v1': '美国',
+  'https://api.minimaxi.com/v1': '国内',
+  'https://api.minimax.io/v1': '海外',
 }
 
 export default function ModelsPage() {
@@ -250,6 +257,20 @@ export default function ModelsPage() {
                                 </select>
                                 <p className="text-xs text-gray-400 mt-1">Base URL: {editForm.base_url}</p>
                               </>
+                            ) : m.provider === 'minimax' ? (
+                              <>
+                                <label className="block text-xs text-gray-500 mb-1">端点</label>
+                                <select
+                                  value={editForm.base_url}
+                                  onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value })}
+                                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                                >
+                                  {MINIMAX_REGIONS.map((r) => (
+                                    <option key={r.value} value={r.value}>{r.label}</option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-gray-400 mt-1">Base URL: {editForm.base_url}</p>
+                              </>
                             ) : (
                               <>
                                 <label className="block text-xs text-gray-500 mb-1">Base URL</label>
@@ -321,7 +342,7 @@ export default function ModelsPage() {
                       onClick={() => setForm({
                         ...form,
                         provider: p.value,
-                        base_url: p.value === 'qwen' ? QWEN_REGIONS[0].value : (p.base_url || ''),
+                        base_url: p.value === 'qwen' ? QWEN_REGIONS[0].value : p.value === 'minimax' ? MINIMAX_REGIONS[0].value : (p.base_url || ''),
                       })}
                       className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
                         form.provider === p.value
@@ -366,6 +387,20 @@ export default function ModelsPage() {
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
                   >
                     {QWEN_REGIONS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Base URL: {form.base_url}</p>
+                </div>
+              ) : form.provider === 'minimax' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">端点</label>
+                  <select
+                    value={form.base_url}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    {MINIMAX_REGIONS.map((r) => (
                       <option key={r.value} value={r.value}>{r.label}</option>
                     ))}
                   </select>
