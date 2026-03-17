@@ -11,6 +11,7 @@ import BillingPage from './pages/BillingPage';
 import ModelsPage from './pages/ModelsPage';
 import LogsPage from './pages/LogsPage';
 import AccountPage from './pages/AccountPage';
+import DownloadPage from './pages/DownloadPage';
 import PayResultPage from './pages/PayResultPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/usage" element={<UsagePage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/billing" element={<BillingPage />} />
+          <Route path="/download" element={<DownloadPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

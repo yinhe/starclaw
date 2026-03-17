@@ -25,6 +25,15 @@ var clawPkg []byte
 var iconData []byte
 
 func main() {
+	// Check for --uninstall flag
+	for _, arg := range os.Args[1:] {
+		if arg == "--uninstall" || arg == "-uninstall" || arg == "uninstall" {
+			cls()
+			uninstall()
+			return
+		}
+	}
+
 	cls()
 	cyan := "\033[36m"
 	green := "\033[32m"
@@ -42,19 +51,40 @@ func main() {
 
 	start := time.Now()
 
-	// Setup paths
-	var installDir, binDir, sporePath string
+	// Setup default paths
+	var defaultDir string
 	if goruntime.GOOS == "windows" {
-		installDir = filepath.Join(os.Getenv("LOCALAPPDATA"), "StarClaw")
-		binDir = filepath.Join(installDir, "bin")
-		sporePath = filepath.Join(binDir, "spore.exe")
+		defaultDir = filepath.Join(os.Getenv("LOCALAPPDATA"), "StarClaw")
 	} else {
 		home, _ := os.UserHomeDir()
-		installDir = filepath.Join(home, ".local")
-		binDir = filepath.Join(installDir, "bin")
+		defaultDir = filepath.Join(home, ".local", "starclaw")
+	}
+
+	// Ask user for install directory
+	fmt.Printf("  安装目录 (Install directory)\n")
+	fmt.Printf("  \u9ed8\u8ba4: "+cyan+"%s"+reset+"\n", defaultDir)
+	fmt.Printf("  输入新路径或直接回车使用默认: ")
+	reader := bufio.NewReader(os.Stdin)
+	inputDir, _ := reader.ReadString('\n')
+	inputDir = strings.TrimSpace(inputDir)
+
+	installDir := defaultDir
+	if inputDir != "" {
+		installDir = inputDir
+	}
+	fmt.Println()
+
+	var binDir, sporePath string
+	binDir = filepath.Join(installDir, "bin")
+	if goruntime.GOOS == "windows" {
+		sporePath = filepath.Join(binDir, "spore.exe")
+	} else {
 		sporePath = filepath.Join(binDir, "spore")
 	}
 	os.MkdirAll(binDir, 0755)
+
+	// Save install path for uninstall
+	saveInstallInfo(installDir)
 
 	// Step 1: Extract embedded Spore runtime (instant — no download)
 	fmt.Printf(green+"  [1/4]"+reset+" Extracting Spore runtime (%d MB)...", len(sporeBin)/(1024*1024))
@@ -71,7 +101,7 @@ func main() {
 	}
 	fmt.Println(" ✓")
 
-	fmt.Printf(green + "  [2/4]" + reset + " Installing Claw...")
+	fmt.Print(green + "  [2/4]" + reset + " Installing Claw...")
 	cmd := exec.Command(sporePath, "install", tmpSpore)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -124,7 +154,7 @@ jwt:
 	fmt.Printf(green+"  [3/4]"+reset+" Configuration saved (port %s, default: Qwen) ✓\n", port)
 
 	// Step 4: Start + Desktop shortcut
-	fmt.Printf(green + "  [4/4]" + reset + " Starting Claw...")
+	fmt.Print(green + "  [4/4]" + reset + " Starting Claw...")
 	startCmd := exec.Command(sporePath, "start", "claw")
 	startCmd.Stdout = os.Stdout
 	startCmd.Stderr = os.Stderr
@@ -160,6 +190,8 @@ jwt:
 	fmt.Println("    spore status        — Check status")
 	fmt.Println("    spore stop claw     — Stop")
 	fmt.Println("    spore start claw    — Start")
+	fmt.Printf("  Uninstall:\n")
+	fmt.Printf("    %s --uninstall\n", os.Args[0])
 	fmt.Println()
 
 	openBrowser(url)
@@ -299,4 +331,137 @@ func fail(format string, args ...interface{}) {
 	fmt.Println("\n  Press Enter to close...")
 	bufio.NewReader(os.Stdin).ReadString('\n')
 	os.Exit(1)
+}
+
+// installInfoPath returns the path to the install info file.
+func installInfoPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".starclaw_install")
+}
+
+// saveInstallInfo saves the install directory for later uninstall.
+func saveInstallInfo(installDir string) {
+	os.WriteFile(installInfoPath(), []byte(installDir), 0644)
+}
+
+// loadInstallInfo reads the saved install directory.
+func loadInstallInfo() string {
+	data, err := os.ReadFile(installInfoPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func uninstall() {
+	red := "\033[31m"
+	cyan := "\033[36m"
+	yellow := "\033[33m"
+	green := "\033[32m"
+	reset := "\033[0m"
+
+	fmt.Println()
+	fmt.Println(red + "  ╔════════════════════════════════════════════╗" + reset)
+	fmt.Println(red + "  ║     StarClaw — Uninstall                  ║" + reset)
+	fmt.Println(red + "  ╚════════════════════════════════════════════╝" + reset)
+	fmt.Println()
+
+	installDir := loadInstallInfo()
+	homeDir, _ := os.UserHomeDir()
+	sporeHome := filepath.Join(homeDir, ".spore")
+
+	if installDir == "" {
+		// Guess default
+		if goruntime.GOOS == "windows" {
+			installDir = filepath.Join(os.Getenv("LOCALAPPDATA"), "StarClaw")
+		} else {
+			installDir = filepath.Join(homeDir, ".local", "starclaw")
+		}
+	}
+
+	fmt.Println("  将删除以下内容 (The following will be removed):")
+	fmt.Println()
+	fmt.Printf("    "+cyan+"1."+reset+" 安装目录:   %s\n", installDir)
+	fmt.Printf("    "+cyan+"2."+reset+" Spore 数据: %s\n", sporeHome)
+	fmt.Println("    " + cyan + "3." + reset + " 桌面快捷方式")
+	fmt.Println("    " + cyan + "4." + reset + " PATH 环境变量条目")
+	fmt.Println()
+	fmt.Print(yellow + "  确认卸载？(y/N): " + reset)
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "y" && answer != "yes" {
+		fmt.Println("\n  取消卸载。")
+		fmt.Println("\n  Press Enter to close...")
+		reader.ReadString('\n')
+		return
+	}
+	fmt.Println()
+
+	// 1. Stop claw
+	fmt.Print("  [1/5] Stopping claw...")
+	sporePath := filepath.Join(installDir, "bin", "spore")
+	if goruntime.GOOS == "windows" {
+		sporePath += ".exe"
+	}
+	exec.Command(sporePath, "stop", "claw").Run()
+	fmt.Println(" ✓")
+
+	// 2. Remove desktop shortcuts
+	fmt.Print("  [2/5] Removing desktop shortcuts...")
+	name := appName()
+	desktop := filepath.Join(homeDir, "Desktop")
+	if _, err := os.Stat(desktop); os.IsNotExist(err) {
+		desktop = filepath.Join(homeDir, "桌面")
+	}
+	for _, ext := range []string{".url", " - Start.bat", ".command", ".desktop"} {
+		os.Remove(filepath.Join(desktop, name+ext))
+	}
+	fmt.Println(" ✓")
+
+	// 3. Remove spore data
+	fmt.Print("  [3/5] Removing Spore data...")
+	os.RemoveAll(sporeHome)
+	fmt.Println(" ✓")
+
+	// 4. Remove install directory
+	fmt.Print("  [4/5] Removing install directory...")
+	os.RemoveAll(installDir)
+	fmt.Println(" ✓")
+
+	// 5. Clean PATH
+	fmt.Print("  [5/5] Cleaning PATH...")
+	binDir := filepath.Join(installDir, "bin")
+	if goruntime.GOOS == "windows" {
+		exec.Command("powershell", "-NoProfile", "-Command",
+			fmt.Sprintf(`$p = [Environment]::GetEnvironmentVariable('Path','User'); $p2 = ($p -split ';' | Where-Object { $_ -ne '%s' }) -join ';'; [Environment]::SetEnvironmentVariable('Path', $p2, 'User')`, binDir)).Run()
+	} else {
+		// Remove PATH entries from shell rc files
+		for _, rc := range []string{".bashrc", ".zshrc"} {
+			rcPath := filepath.Join(homeDir, rc)
+			data, err := os.ReadFile(rcPath)
+			if err != nil {
+				continue
+			}
+			lines := strings.Split(string(data), "\n")
+			var cleaned []string
+			for _, line := range lines {
+				if !strings.Contains(line, binDir) {
+					cleaned = append(cleaned, line)
+				}
+			}
+			os.WriteFile(rcPath, []byte(strings.Join(cleaned, "\n")), 0644)
+		}
+	}
+	fmt.Println(" ✓")
+
+	// Remove install info file
+	os.Remove(installInfoPath())
+
+	fmt.Println()
+	fmt.Println(green + "  ✅ StarClaw 已完全卸载 (Uninstall complete)" + reset)
+	fmt.Println()
+	fmt.Println("  Press Enter to close...")
+	reader.ReadString('\n')
 }
