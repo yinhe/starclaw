@@ -4,19 +4,20 @@ import "time"
 
 // CorePartner represents an internal core partner (核心合伙人)
 type CorePartner struct {
-	ID           string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	UserID       string     `json:"user_id" gorm:"type:varchar(36);uniqueIndex"`
-	Name         string     `json:"name" gorm:"type:varchar(100)"`
-	Phone        string     `json:"phone" gorm:"type:varchar(20)"`
-	Email        string     `json:"email" gorm:"type:varchar(200)"`
-	Region       string     `json:"region" gorm:"type:varchar(100)"` // responsible region
-	Level        string     `json:"level" gorm:"type:varchar(20);default:partner"` // partner / senior / director
-	Status       string     `json:"status" gorm:"type:varchar(20);default:active"` // active / suspended / terminated
+	ID     string `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID string `json:"user_id" gorm:"type:varchar(36);index"`
+	ClawID string `json:"claw_id" gorm:"type:varchar(60);uniqueIndex"` // claw:xxxx node address
+	Name   string `json:"name" gorm:"type:varchar(100)"`
+	Phone  string `json:"phone" gorm:"type:varchar(20)"`
+	Email  string `json:"email" gorm:"type:varchar(200)"`
+	Region string `json:"region" gorm:"type:varchar(100)"`               // responsible region
+	Level  string `json:"level" gorm:"type:varchar(20);default:partner"` // partner / senior / director
+	Status string `json:"status" gorm:"type:varchar(20);default:active"` // active / suspended / terminated
 
 	// Dual-track compensation
-	BaseSalary      int64   `json:"base_salary" gorm:"default:0"`       // monthly base (分)
-	DirectCommRate  float64 `json:"direct_comm_rate" gorm:"default:0.30"` // direct-sign commission rate
-	ManageFeeRate   float64 `json:"manage_fee_rate" gorm:"default:0.05"` // management fee from city partners
+	BaseSalary     int64   `json:"base_salary" gorm:"default:0"`         // monthly base (分)
+	DirectCommRate float64 `json:"direct_comm_rate" gorm:"default:0.30"` // direct-sign commission rate
+	ManageFeeRate  float64 `json:"manage_fee_rate" gorm:"default:0.05"`  // management fee from city partners
 
 	// Stats
 	TotalRevenue    int64 `json:"total_revenue" gorm:"default:0"`    // lifetime revenue generated
@@ -73,10 +74,10 @@ type PartnerCommission struct {
 type EquityGrant struct {
 	ID            string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	PartnerID     string    `json:"partner_id" gorm:"type:varchar(36);index;not null"`
-	TotalShares   int64     `json:"total_shares"`                                  // total shares granted
-	VestedShares  int64     `json:"vested_shares" gorm:"default:0"`                // currently vested
-	CliffMonths   int       `json:"cliff_months" gorm:"default:12"`                // cliff period
-	VestingMonths int       `json:"vesting_months" gorm:"default:48"`              // total vesting period
+	TotalShares   int64     `json:"total_shares"`                     // total shares granted
+	VestedShares  int64     `json:"vested_shares" gorm:"default:0"`   // currently vested
+	CliffMonths   int       `json:"cliff_months" gorm:"default:12"`   // cliff period
+	VestingMonths int       `json:"vesting_months" gorm:"default:48"` // total vesting period
 	GrantDate     time.Time `json:"grant_date"`
 	CliffDate     time.Time `json:"cliff_date"`
 	FullVestDate  time.Time `json:"full_vest_date"`
@@ -89,19 +90,19 @@ type EquityGrant struct {
 
 // Deployment tracks one-click deployment instances for partner's clients
 type Deployment struct {
-	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	PartnerID   string     `json:"partner_id" gorm:"type:varchar(36);index"`
-	DealID      string     `json:"deal_id" gorm:"type:varchar(36);index"`
-	ClientName  string     `json:"client_name" gorm:"type:varchar(200)"`
-	Type        string     `json:"type" gorm:"type:varchar(20)"` // docker / k8s / cloud
-	Region      string     `json:"region" gorm:"type:varchar(50)"`
-	Domain      string     `json:"domain" gorm:"type:varchar(200)"`
-	AdminEmail  string     `json:"admin_email" gorm:"type:varchar(200)"`
-	Version     string     `json:"version" gorm:"type:varchar(20)"`
-	Status      string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / provisioning / running / stopped / failed
-	Config      string     `json:"config" gorm:"type:text"` // JSON config blob
-	HealthURL   string     `json:"health_url" gorm:"type:varchar(300)"`
-	StartedAt   *time.Time `json:"started_at"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID         string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	PartnerID  string     `json:"partner_id" gorm:"type:varchar(36);index"`
+	DealID     string     `json:"deal_id" gorm:"type:varchar(36);index"`
+	ClientName string     `json:"client_name" gorm:"type:varchar(200)"`
+	Type       string     `json:"type" gorm:"type:varchar(20)"` // docker / k8s / cloud
+	Region     string     `json:"region" gorm:"type:varchar(50)"`
+	Domain     string     `json:"domain" gorm:"type:varchar(200)"`
+	AdminEmail string     `json:"admin_email" gorm:"type:varchar(200)"`
+	Version    string     `json:"version" gorm:"type:varchar(20)"`
+	Status     string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / provisioning / running / stopped / failed
+	Config     string     `json:"config" gorm:"type:text"`                        // JSON config blob
+	HealthURL  string     `json:"health_url" gorm:"type:varchar(300)"`
+	StartedAt  *time.Time `json:"started_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }

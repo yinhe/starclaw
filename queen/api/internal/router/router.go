@@ -211,6 +211,8 @@ func Setup() *gin.Engine {
 		partnerPortal.POST("/deployments", writeRL.UserRateLimit(), ph.CreateDeployment)
 		partnerPortal.GET("/deployments/:id", ph.GetDeployment)
 		partnerPortal.POST("/deployments/:id/stop", writeRL.UserRateLimit(), ph.StopDeployment)
+		partnerPortal.POST("/city-partners/claw", writeRL.UserRateLimit(), ph.AddCityPartnerClaw)
+		partnerPortal.DELETE("/city-partners/:id/claw", writeRL.UserRateLimit(), ph.RemoveCityPartnerClaw)
 	}
 
 	// Admin: core partner management

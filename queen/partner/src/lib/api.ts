@@ -38,11 +38,24 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
-// Auth
-export const auth = {
-  login: (data: { email?: string; phone?: string; password: string }) =>
-    request<{ token: string; user: { id: string; role: string } }>('POST', '/auth/login', data),
+// Claw Auth
+export const clawAuth = {
+  challenge: () =>
+    request<{ challenge: string; expires_in: number }>('POST', '/auth/claw/challenge'),
+  verify: (body: { challenge: string; node_id: string; public_key: string; signature: string }) =>
+    request<{ token: string; user: { id: string; role: string; claw_id: string } }>(
+      'POST', '/auth/claw/verify', body
+    ),
 };
+
+// Helper: call a Claw node's API (cross-origin)
+export async function clawNodeRequest<T>(clawUrl: string, path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...options?.headers as Record<string, string> };
+  const res = await fetch(`${clawUrl}${path}`, { ...options, headers });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '连接 Claw 节点失败');
+  return data as T;
+}
 
 // Types
 export interface CorePartner {
@@ -148,4 +161,10 @@ export const partner = {
 
   stopDeployment: (id: string) =>
     request<{ message: string }>('POST', `/partner/deployments/${id}/stop`),
+
+  addCityPartnerClaw: (data: { claw_id: string; name: string; company?: string; city?: string; phone?: string; email?: string }) =>
+    request<{ city_partner: CityPartner }>('POST', '/partner/city-partners/claw', data),
+
+  removeCityPartnerClaw: (id: string) =>
+    request<{ message: string }>('DELETE', `/partner/city-partners/${id}/claw`),
 };

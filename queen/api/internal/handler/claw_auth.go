@@ -141,6 +141,10 @@ func (h *ClawAuthHandler) Verify(c *gin.Context) {
 		return
 	}
 
+	// 5b. Auto-link partner whitelist: if this claw_id is whitelisted as a
+	// core partner or city partner but not yet linked to a user, bind now.
+	h.autoLinkPartner(req.NodeID, user)
+
 	// 6. Issue JWT
 	token, err := middleware.GenerateToken(user.ID, user.Role)
 	if err != nil {
@@ -162,6 +166,39 @@ func (h *ClawAuthHandler) Verify(c *gin.Context) {
 			"claw_id":  req.NodeID,
 		},
 	})
+}
+
+// autoLinkPartner checks if the claw_id is whitelisted as a core partner or city partner.
+// If found and not yet linked to a user, it binds the user and updates their role.
+func (h *ClawAuthHandler) autoLinkPartner(clawID string, user *model.User) {
+	db := database.DB
+
+	// Check core partner whitelist
+	var cp model.CorePartner
+	if err := db.Where("claw_id = ? AND status = ?", clawID, "active").First(&cp).Error; err == nil {
+		if cp.UserID == "" || cp.UserID != user.ID {
+			db.Model(&cp).Updates(map[string]interface{}{"user_id": user.ID})
+		}
+		if user.Role != "partner" && user.Role != "admin" {
+			db.Model(user).Update("role", "partner")
+			user.Role = "partner"
+		}
+		log.Printf("[claw-auth] Auto-linked core partner %s → user %s", clawID, user.ID)
+		return
+	}
+
+	// Check city partner whitelist
+	var city model.CityPartner
+	if err := db.Where("claw_id = ? AND status = ?", clawID, "approved").First(&city).Error; err == nil {
+		if city.UserID == "" || city.UserID != user.ID {
+			db.Model(&city).Updates(map[string]interface{}{"user_id": user.ID})
+		}
+		if user.Role != "city" && user.Role != "partner" && user.Role != "admin" {
+			db.Model(user).Update("role", "city")
+			user.Role = "city"
+		}
+		log.Printf("[claw-auth] Auto-linked city partner %s → user %s", clawID, user.ID)
+	}
 }
 
 // findOrCreateClawUser finds a user by their Claw node binding, or creates a new one.

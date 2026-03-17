@@ -469,7 +469,8 @@ func (h *PartnerHandler) AdminListPartners(c *gin.Context) {
 
 func (h *PartnerHandler) AdminCreatePartner(c *gin.Context) {
 	var req struct {
-		UserID         string  `json:"user_id" binding:"required"`
+		UserID         string  `json:"user_id"`
+		ClawID         string  `json:"claw_id" binding:"required"`
 		Name           string  `json:"name" binding:"required"`
 		Phone          string  `json:"phone"`
 		Email          string  `json:"email"`
@@ -487,6 +488,7 @@ func (h *PartnerHandler) AdminCreatePartner(c *gin.Context) {
 	partner := model.CorePartner{
 		ID:             uuid.New().String(),
 		UserID:         req.UserID,
+		ClawID:         req.ClawID,
 		Name:           req.Name,
 		Phone:          req.Phone,
 		Email:          req.Email,
@@ -513,8 +515,10 @@ func (h *PartnerHandler) AdminCreatePartner(c *gin.Context) {
 		return
 	}
 
-	// Update user role to "partner"
-	database.DB.Model(&model.User{}).Where("id = ?", req.UserID).Update("role", "partner")
+	// Update user role to "partner" if user_id is provided
+	if req.UserID != "" {
+		database.DB.Model(&model.User{}).Where("id = ?", req.UserID).Update("role", "partner")
+	}
 
 	c.JSON(http.StatusCreated, gin.H{"partner": partner})
 }
@@ -606,4 +610,71 @@ func (h *PartnerHandler) AdminGrantEquity(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"grant": grant})
+}
+
+// ── Core Partner: manage city partner Claw whitelist ──
+
+func (h *PartnerHandler) AddCityPartnerClaw(c *gin.Context) {
+	partnerID := c.GetString("partner_id")
+
+	var req struct {
+		ClawID   string  `json:"claw_id" binding:"required"`
+		Name     string  `json:"name" binding:"required"`
+		Company  string  `json:"company"`
+		City     string  `json:"city"`
+		Phone    string  `json:"phone"`
+		Email    string  `json:"email"`
+		CommRate float64 `json:"comm_rate"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.Fail(c, http.StatusBadRequest, middleware.CodeBadRequest)
+		return
+	}
+
+	// Verify this core partner's region
+	var partner model.CorePartner
+	if err := database.DB.Where("id = ?", partnerID).First(&partner).Error; err != nil {
+		middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
+		return
+	}
+
+	commRate := req.CommRate
+	if commRate == 0 {
+		commRate = 0.20
+	}
+
+	refCode := fmt.Sprintf("city_%s", uuid.New().String()[:8])
+
+	cityPartner := model.CityPartner{
+		ID:       uuid.New().String(),
+		ClawID:   req.ClawID,
+		Name:     req.Name,
+		Company:  req.Company,
+		City:     req.City,
+		Phone:    req.Phone,
+		Email:    req.Email,
+		RefCode:  refCode,
+		CommRate: commRate,
+		Status:   "approved",
+	}
+
+	if err := database.DB.Create(&cityPartner).Error; err != nil {
+		middleware.Fail(c, http.StatusInternalServerError, middleware.CodeInternal)
+		return
+	}
+
+	log.Printf("[partner] Core partner %s added city partner claw %s (%s)", partnerID, req.ClawID, req.Name)
+	c.JSON(http.StatusCreated, gin.H{"city_partner": cityPartner})
+}
+
+func (h *PartnerHandler) RemoveCityPartnerClaw(c *gin.Context) {
+	cityPartnerID := c.Param("id")
+
+	if err := database.DB.Model(&model.CityPartner{}).Where("id = ?", cityPartnerID).
+		Update("status", "suspended").Error; err != nil {
+		middleware.Fail(c, http.StatusInternalServerError, middleware.CodeInternal)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "city partner suspended"})
 }
