@@ -1,7 +1,6 @@
 package router
 
 import (
-	"log"
 	"os"
 	"time"
 
@@ -329,7 +328,7 @@ func nodeTokenAuth() gin.HandlerFunc {
 		secret = config.C.JWT.Secret
 		src = "config.jwt.secret"
 	}
-	log.Printf("[api] nodeTokenAuth: using %s (len=%d, prefix=%s…)", src, len(secret), secret[:min(8, len(secret))])
+	_ = src // secret source logged at debug level only
 	return func(c *gin.Context) {
 		token := c.GetHeader("X-Node-Token")
 		if token == "" || token != secret {
