@@ -18,11 +18,11 @@ import (
 type HPStatus string
 
 const (
-	HPFull       HPStatus = "full"       // > 1000 ⭐
-	HPHealthy    HPStatus = "healthy"    // 100–1000 ⭐
-	HPLow        HPStatus = "low"        // 10–100 ⭐
-	HPCritical   HPStatus = "critical"   // 1–10 ⭐
-	HPHibernated HPStatus = "hibernated" // 0 ⭐
+	HPFull       HPStatus = "full"       // > 1000 ⚡
+	HPHealthy    HPStatus = "healthy"    // 100–1000 ⚡
+	HPLow        HPStatus = "low"        // 10–100 ⚡
+	HPCritical   HPStatus = "critical"   // 1–10 ⚡
+	HPHibernated HPStatus = "hibernated" // 0 ⚡
 	HPUnknown    HPStatus = "unknown"    // not yet queried
 )
 
@@ -346,16 +346,16 @@ func (cc *CreditClient) Stats() map[string]interface{} {
 func logHPChange(old, new HPStatus, stars float64) {
 	switch new {
 	case HPHibernated:
-		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⭐) — HIBERNATED: star energy depleted, recharge to restore full functionality", old, new, stars)
+		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⚡) — HIBERNATED: star energy depleted, recharge to restore full functionality", old, new, stars)
 	case HPCritical:
-		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⭐) — CRITICAL: only basic text chat available", old, new, stars)
+		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⚡) — CRITICAL: only basic text chat available", old, new, stars)
 	case HPLow:
-		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⭐) — LOW: high-cost operations (video/image) restricted", old, new, stars)
+		log.Printf("[credits] ⚠️  HP: %s → %s (%.1f ⚡) — LOW: high-cost operations (video/image) restricted", old, new, stars)
 	case HPHealthy:
-		log.Printf("[credits] HP: %s → %s (%.1f ⭐) — healthy", old, new, stars)
+		log.Printf("[credits] HP: %s → %s (%.1f ⚡) — healthy", old, new, stars)
 	case HPFull:
-		log.Printf("[credits] HP: %s → %s (%.1f ⭐) — full health", old, new, stars)
+		log.Printf("[credits] HP: %s → %s (%.1f ⚡) — full health", old, new, stars)
 	default:
-		log.Printf("[credits] HP: %s → %s (%.1f ⭐)", old, new, stars)
+		log.Printf("[credits] HP: %s → %s (%.1f ⚡)", old, new, stars)
 	}
 }

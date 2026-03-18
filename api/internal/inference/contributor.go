@@ -108,6 +108,25 @@ func (s *ContributorService) Stop() {
 	close(s.stopCh)
 }
 
+// GetContributorInfo returns current contributor status for swarm heartbeat reporting.
+func (s *ContributorService) GetContributorInfo() (isContributor bool, models []string, gpuInfo string) {
+	if !s.cfg.Enabled {
+		return false, nil, ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.models) == 0 {
+		return false, nil, ""
+	}
+	return true, append([]string{}, s.models...), detectGPUInfo()
+}
+
+// detectGPUInfo returns a simple GPU description string.
+func detectGPUInfo() string {
+	// TODO: detect real GPU info via nvidia-smi / rocm-smi / Metal
+	return ""
+}
+
 // Nydus returns the NAT traversal manager (may be nil).
 func (s *ContributorService) Nydus() *node.NydusManager {
 	return s.nydus

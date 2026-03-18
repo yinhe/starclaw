@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode, BookOpen } from 'lucide-react'
+import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode, BookOpen, Brain, Lightbulb, Star } from 'lucide-react'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -14,7 +14,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
   </svg>
 )
 import { useChatStore } from '../stores/chatStore'
-import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI, knowledgeBaseAPI } from '../lib/api'
+import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI, knowledgeBaseAPI, memoryAPI } from '../lib/api'
 import ReactMarkdown from 'react-markdown'
 import CodeBlock from '../components/CodeBlock'
 import Skeleton from '../components/Skeleton'
@@ -73,6 +73,7 @@ export default function ChatPage() {
   const [convContext, setConvContext] = useState<any>(null)
   const [contextLoading, setContextLoading] = useState(false)
   const [contextExpandedSection, setContextExpandedSection] = useState<string>('tasks')
+  const [contextMemories, setContextMemories] = useState<any[]>([])
   const [showMentionPopup, setShowMentionPopup] = useState(false)
   const [mentionFilter, setMentionFilter] = useState('')
   const [mentionIndex, setMentionIndex] = useState(0)
@@ -215,6 +216,14 @@ export default function ChatPage() {
     try {
       const res = await conversationAPI.context(convId)
       setConvContext(res.data)
+    } catch { /* ignore */ }
+    // Load memories for current agent
+    try {
+      const agentId = selectedAgentId || agents[0]?.id
+      if (agentId) {
+        const memRes = await memoryAPI.recall(agentId)
+        setContextMemories(memRes.data.memories || [])
+      }
     } catch { /* ignore */ }
     setContextLoading(false)
   }
@@ -736,7 +745,18 @@ export default function ChatPage() {
                 navigate(`/chat/${data.conversation_id}`, { replace: true })
               }
 
-              if (data.done) {
+              if (data.error) {
+                addMessage({
+                  id: (Date.now() + 1).toString(),
+                  role: 'assistant',
+                  content: `⚠️ ${data.error}`,
+                  created_at: new Date().toISOString(),
+                })
+                setStreamingContent('')
+                setLoading(false)
+                setToolInteractions(prev => prev.map(t => t.status === 'calling' ? { ...t, status: 'error' as const } : t))
+                return
+              } else if (data.done) {
                 setAgentStep(null)
                 addMessage({
                   id: Date.now().toString(),
@@ -866,15 +886,20 @@ export default function ChatPage() {
 
     // Build display content for user message
     let displayContent = userMessage
-    if (images.length > 0) displayContent += `\n\n[${images.length} 张图片]`
     if (files.length > 0) displayContent += `\n\n[${files.length} 个文件: ${files.map(f => f.filename).join(', ')}]`
+
+    // Combine images and files into attachments for persistence and rendering
+    const allAttachments: any[] = [
+      ...images.map((url, i) => ({ id: `img-${i}`, filename: attachedImages[i]?.name || 'image.jpg', url, size: 0, mime: 'image/jpeg', category: 'image' })),
+      ...files,
+    ]
 
     addMessage({
       id: Date.now().toString(),
       role: 'user',
       content: displayContent,
       created_at: new Date().toISOString(),
-      attachments: files.length > 0 ? JSON.stringify(files) : undefined,
+      attachments: allAttachments.length > 0 ? JSON.stringify(allAttachments) : undefined,
     })
 
     try {
@@ -1146,7 +1171,7 @@ export default function ChatPage() {
       )}
 
       {/* Conversation list */}
-      <div className={`${sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'} md:w-64 border-r bg-gray-50 dark:bg-gray-900 flex flex-col transition-all`}>
+      <div className={`${sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'} md:w-64 flex-shrink-0 border-r bg-gray-50 dark:bg-gray-900 flex flex-col transition-all`}>
         <div className="p-3 border-b space-y-2">
           <button
             onClick={() => {
@@ -1227,7 +1252,7 @@ export default function ChatPage() {
       </div>
 
       {/* Chat area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col">
         {/* Header */}
         <div className="px-6 py-3 border-b bg-white flex items-center gap-4">
           <h2 className="font-semibold text-gray-800">对话</h2>
@@ -1423,7 +1448,7 @@ export default function ChatPage() {
                     >
                       {msg.role === 'assistant' ? (
                         <>
-                          <div className="prose prose-sm max-w-none">
+                          <div className="prose prose-sm max-w-none break-words overflow-hidden">
                             <ReactMarkdown components={{
                               code({ className, children, ...props }) {
                                 const match = /language-(\w+)/.exec(className || '')
@@ -1477,30 +1502,39 @@ export default function ChatPage() {
                         </>
                       ) : (
                         <>
-                          <div className="whitespace-pre-wrap">{msg.content}</div>
+                          <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                           {msg.attachments && msg.attachments !== '[]' && (() => {
                             try {
-                              const files = JSON.parse(msg.attachments) as { filename: string; url: string; size: number; category: string }[]
-                              if (!files.length) return null
+                              const atts = JSON.parse(msg.attachments) as { filename: string; url: string; size: number; category: string; mime?: string }[]
+                              if (!atts.length) return null
+                              const imageAtts = atts.filter(a => a.category === 'image' || a.mime?.startsWith('image/'))
+                              const fileAtts = atts.filter(a => a.category !== 'image' && !a.mime?.startsWith('image/'))
                               return (
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {files.map((f, i) => {
-                                    const Icon = getFileIcon(f.category)
-                                    return (
-                                      <a
-                                        key={i}
-                                        href={f.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1.5 px-2 py-1 bg-white/20 rounded-lg text-xs hover:bg-white/30 transition-colors"
-                                      >
-                                        <Icon className="w-3.5 h-3.5" />
-                                        <span className="max-w-[100px] truncate">{f.filename}</span>
-                                        <span className="opacity-70">{formatSize(f.size)}</span>
-                                      </a>
-                                    )
-                                  })}
-                                </div>
+                                <>
+                                  {imageAtts.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {imageAtts.map((img, i) => (
+                                        <a key={`img-${i}`} href={img.url} target="_blank" rel="noopener noreferrer" className="block w-20 h-20 rounded-lg overflow-hidden border border-white/20 hover:opacity-80 transition-opacity">
+                                          <img src={img.url} alt={img.filename} className="w-full h-full object-cover" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {fileAtts.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {fileAtts.map((f, i) => {
+                                        const Icon = getFileIcon(f.category)
+                                        return (
+                                          <a key={`file-${i}`} href={f.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 bg-white/20 rounded-lg text-xs hover:bg-white/30 transition-colors">
+                                            <Icon className="w-3.5 h-3.5" />
+                                            <span className="max-w-[100px] truncate">{f.filename}</span>
+                                            <span className="opacity-70">{formatSize(f.size)}</span>
+                                          </a>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+                                </>
                               )
                             } catch { return null }
                           })()}
@@ -1533,7 +1567,7 @@ export default function ChatPage() {
                 <CrawfishIcon className="w-5 h-5 text-white" />
               </div>
               <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 text-gray-800 text-sm leading-relaxed">
-                <div className="prose prose-sm max-w-none">
+                <div className="prose prose-sm max-w-none break-words overflow-hidden">
                   <ReactMarkdown>{streamingContent}</ReactMarkdown>
                 </div>
               </div>
@@ -2072,6 +2106,50 @@ export default function ChatPage() {
                         </div>
                       </>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* Memory section */}
+              <div className="border-b">
+                <button
+                  onClick={() => setContextExpandedSection(contextExpandedSection === 'memories' ? '' : 'memories')}
+                  className="w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Brain className="w-4 h-4 text-violet-500" />
+                  <span>记忆</span>
+                  <span className="text-xs text-gray-400 ml-1">{contextMemories.length}</span>
+                  <div className="flex-1" />
+                  {contextExpandedSection === 'memories' ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                </button>
+                {contextExpandedSection === 'memories' && (
+                  <div className="px-3 pb-3 space-y-1.5">
+                    {contextMemories.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-2">暂无记忆</p>
+                    ) : (
+                      contextMemories.slice(0, 8).map((mem: any) => (
+                        <div key={mem.id} className="p-2 bg-white dark:bg-gray-800 rounded-lg border text-xs">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            {mem.category === 'instruct' && <Pin className="w-3 h-3 text-red-500" />}
+                            {mem.category === 'fact' && <FileText className="w-3 h-3 text-blue-500" />}
+                            {mem.category === 'preference' && <Lightbulb className="w-3 h-3 text-amber-500" />}
+                            {mem.category === 'skill' && <Wrench className="w-3 h-3 text-emerald-500" />}
+                            {mem.category === 'context' && <Brain className="w-3 h-3 text-violet-500" />}
+                            <span className="font-medium text-gray-700 dark:text-gray-200 truncate flex-1">{mem.key}</span>
+                            <span className="flex items-center">
+                              {[1,2,3].map(i => <Star key={i} className={`w-2 h-2 ${i <= Math.round(mem.importance * 3) ? 'text-amber-400 fill-amber-400' : 'text-gray-300'}`} />)}
+                            </span>
+                          </div>
+                          <p className="text-gray-500 dark:text-gray-400 truncate">{mem.content}</p>
+                        </div>
+                      ))
+                    )}
+                    <button
+                      onClick={() => navigate('/memories')}
+                      className="w-full text-center text-[10px] text-violet-500 hover:text-violet-700 py-1"
+                    >
+                      查看全部记忆 →
+                    </button>
                   </div>
                 )}
               </div>

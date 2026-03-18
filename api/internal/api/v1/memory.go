@@ -17,11 +17,12 @@ func NewMemoryHandler(db *gorm.DB) *MemoryHandler {
 	return &MemoryHandler{db: db}
 }
 
-// List returns memories for a specific agent, with optional category filter
+// List returns memories for a specific agent, with optional category and search filter
 func (h *MemoryHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
 	agentID := c.Query("agent_id")
 	category := c.Query("category")
+	search := c.Query("search")
 
 	q := h.db.Where("user_id = ?", userID)
 	if agentID != "" {
@@ -29,6 +30,9 @@ func (h *MemoryHandler) List(c *gin.Context) {
 	}
 	if category != "" {
 		q = q.Where("category = ?", category)
+	}
+	if search != "" {
+		q = q.Where("(key LIKE ? OR content LIKE ?)", "%"+search+"%", "%"+search+"%")
 	}
 
 	var total int64

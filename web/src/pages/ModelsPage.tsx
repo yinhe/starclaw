@@ -20,6 +20,7 @@ interface EditForm {
 }
 
 const PROVIDERS = [
+  { value: 'star-ai', label: 'StarAI', desc: '聚合 OpenAI / Claude / Gemini / DeepSeek / Qwen 等 100+ 模型，Claw 身份免密', icon: '⚡', base_url: 'https://api.star-ai.net/v1' },
   { value: 'qwen', label: '通义千问 (Qwen)', desc: '阿里云百炼，180+ 模型，文本/图像/视频/语音全覆盖', icon: '🤖', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
   { value: 'openai', label: 'OpenAI', desc: 'GPT-4o, o1, DALL-E 等', icon: '🟢', base_url: 'https://api.openai.com/v1' },
   { value: 'anthropic', label: 'Anthropic', desc: 'Claude 4, Claude 3.5 Sonnet 等', icon: '🟠', base_url: 'https://api.anthropic.com' },
@@ -29,7 +30,7 @@ const PROVIDERS = [
   { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀', base_url: 'https://openrouter.ai/api/v1' },
   { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡', base_url: 'https://fal.run/fal-ai/any-llm/v1' },
   { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏', base_url: 'https://api.x.ai/v1' },
-  { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimax.io/v1' },
+  { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimaxi.com/v1' },
   { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
   { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙', base_url: 'https://api.moonshot.cn/v1' },
   { value: 'custom', label: '自定义 (OpenAI 兼容)', desc: '任何兼容 OpenAI API 的服务', icon: '⚙️', base_url: '' },
@@ -41,7 +42,19 @@ const QWEN_REGIONS = [
   { value: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1', label: '美国（弗吉尼亚）' },
 ]
 
+const MINIMAX_REGIONS = [
+  { value: 'https://api.minimaxi.com/v1', label: '国内（api.minimaxi.com）' },
+]
+
+const normalizeMiniMaxBaseUrl = (provider: string, baseUrl: string) => {
+  if (provider === 'minimax') {
+    return 'https://api.minimaxi.com/v1'
+  }
+  return baseUrl
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
+  'star-ai': 'StarAI',
   qwen: '通义千问 (Qwen)',
   openai: 'OpenAI',
   anthropic: 'Anthropic',
@@ -60,6 +73,7 @@ const REGION_LABELS: Record<string, string> = {
   'https://dashscope.aliyuncs.com/compatible-mode/v1': '北京',
   'https://dashscope-intl.aliyuncs.com/compatible-mode/v1': '新加坡',
   'https://dashscope-us.aliyuncs.com/compatible-mode/v1': '美国',
+  'https://api.minimaxi.com/v1': '国内',
 }
 
 export default function ModelsPage() {
@@ -82,7 +96,10 @@ export default function ModelsPage() {
   const loadModels = async () => {
     try {
       const [listRes, availRes] = await Promise.all([modelAPI.list(), modelAPI.available()])
-      setModels(listRes.data.models || [])
+      setModels((listRes.data.models || []).map((m: ModelConfig) => ({
+        ...m,
+        base_url: normalizeMiniMaxBaseUrl(m.provider, m.base_url),
+      })))
       const avail: Record<string, string[]> = {}
       for (const p of availRes.data.providers || []) {
         avail[p.config_id] = p.models
@@ -95,8 +112,8 @@ export default function ModelsPage() {
     try {
       await modelAPI.create({
         provider: form.provider,
-        api_key: form.api_key,
-        base_url: form.base_url,
+        api_key: form.provider === 'star-ai' ? 'claw-identity' : form.api_key,
+        base_url: normalizeMiniMaxBaseUrl(form.provider, form.base_url),
       })
       setShowModal(false)
       setForm({ provider: 'qwen', api_key: '', base_url: QWEN_REGIONS[0].value })
@@ -114,7 +131,7 @@ export default function ModelsPage() {
 
   const startEdit = (m: ModelConfig) => {
     setEditingId(m.id)
-    setEditForm({ api_key: '', base_url: m.base_url })
+    setEditForm({ api_key: '', base_url: normalizeMiniMaxBaseUrl(m.provider, m.base_url) })
     setExpandedId(m.id)
   }
 
@@ -122,7 +139,7 @@ export default function ModelsPage() {
     try {
       const data: Record<string, unknown> = {
         provider,
-        base_url: editForm.base_url,
+        base_url: normalizeMiniMaxBaseUrl(provider, editForm.base_url),
       }
       if (editForm.api_key) {
         data.api_key = editForm.api_key
@@ -133,7 +150,8 @@ export default function ModelsPage() {
     } catch { /* ignore */ }
   }
 
-  const needsCustomUrl = !['qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
+  const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
+  const isStarAI = form.provider === 'star-ai'
 
   return (
     <div className="h-full overflow-y-auto">
@@ -247,6 +265,20 @@ export default function ModelsPage() {
                                 </select>
                                 <p className="text-xs text-gray-400 mt-1">Base URL: {editForm.base_url}</p>
                               </>
+                            ) : m.provider === 'minimax' ? (
+                              <>
+                                <label className="block text-xs text-gray-500 mb-1">端点</label>
+                                <select
+                                  value={editForm.base_url}
+                                  onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value })}
+                                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                                >
+                                  {MINIMAX_REGIONS.map((r) => (
+                                    <option key={r.value} value={r.value}>{r.label}</option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-gray-400 mt-1">Base URL: {editForm.base_url}</p>
+                              </>
                             ) : (
                               <>
                                 <label className="block text-xs text-gray-500 mb-1">Base URL</label>
@@ -318,7 +350,7 @@ export default function ModelsPage() {
                       onClick={() => setForm({
                         ...form,
                         provider: p.value,
-                        base_url: p.value === 'qwen' ? QWEN_REGIONS[0].value : '',
+                        base_url: p.value === 'qwen' ? QWEN_REGIONS[0].value : p.value === 'minimax' ? MINIMAX_REGIONS[0].value : (p.base_url || ''),
                       })}
                       className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
                         form.provider === p.value
@@ -337,16 +369,22 @@ export default function ModelsPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-                <input
-                  type="password"
-                  value={form.api_key}
-                  onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder={form.provider === 'qwen' ? 'sk-...' : 'sk-...'}
-                />
-              </div>
+              {isStarAI ? (
+                <div className="bg-emerald-50 rounded-lg px-4 py-3 text-xs text-emerald-700">
+                  StarAI 使用 Claw 节点身份认证，无需 API Key。添加后即可直接使用 100+ 模型。
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    value={form.api_key}
+                    onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="sk-..."
+                  />
+                </div>
+              )}
 
               {form.provider === 'qwen' ? (
                 <div>
@@ -357,6 +395,20 @@ export default function ModelsPage() {
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
                   >
                     {QWEN_REGIONS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Base URL: {form.base_url}</p>
+                </div>
+              ) : form.provider === 'minimax' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">端点</label>
+                  <select
+                    value={form.base_url}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    {MINIMAX_REGIONS.map((r) => (
                       <option key={r.value} value={r.value}>{r.label}</option>
                     ))}
                   </select>
@@ -390,7 +442,7 @@ export default function ModelsPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!form.api_key}
+                disabled={!isStarAI && !form.api_key}
                 className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 添加提供商

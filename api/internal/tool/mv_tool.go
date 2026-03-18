@@ -128,8 +128,11 @@ func (t *MVTool) composeMV(ctx context.Context, args mvArgs) (string, error) {
 	} else {
 		// Merge RAW clips from conversation (video_url, NOT narrated_url)
 		var clips []model.VideoRecord
-		t.db.Where("conversation_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded'", convID).
-			Order("scene ASC, created_at ASC").Find(&clips)
+		query := t.db.Where("conversation_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded'", convID)
+		if userID != "" {
+			query = query.Where("user_id = ?", userID)
+		}
+		query.Order("scene ASC, created_at ASC").Find(&clips)
 		if len(clips) == 0 {
 			return "", fmt.Errorf("no completed video clips found in this conversation")
 		}
@@ -138,10 +141,11 @@ func (t *MVTool) composeMV(ctx context.Context, args mvArgs) (string, error) {
 		var clipPaths []string
 		for i, clip := range clips {
 			clipPath := filepath.Join(tmpDir, fmt.Sprintf("clip_%03d.mp4", i))
-			if err := DownloadFile(clip.VideoURL, clipPath); err != nil {
-				return "", fmt.Errorf("failed to download clip %d: %v", i+1, err)
+			resolved, err := ResolveClipToLocal(clip.VideoURL, clipPath)
+			if err != nil {
+				return "", fmt.Errorf("failed to resolve clip %d: %v", i+1, err)
 			}
-			clipPaths = append(clipPaths, clipPath)
+			clipPaths = append(clipPaths, resolved)
 			totalDuration += clip.Duration
 		}
 

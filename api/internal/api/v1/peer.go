@@ -56,6 +56,11 @@ func (h *PeerHandler) Identity() *node.Identity {
 	return h.identity
 }
 
+// Gossip returns the gossip engine for use by P7 subsystems.
+func (h *PeerHandler) Gossip() *node.GossipEngine {
+	return h.gossip
+}
+
 func NewPeerHandler(db *gorm.DB, cfg *config.Config, opts ...interface{}) *PeerHandler {
 	identity := node.LoadOrCreateIdentity()
 
@@ -703,10 +708,18 @@ func (h *PeerHandler) syncGossipToDB(peers []node.PeerInfo) {
 		if h.db.Where("node_id = ?", p.NodeID).First(&dbPeer).Error != nil {
 			dbPeer = model.Peer{ID: uuid.New().String(), NodeID: p.NodeID}
 		}
-		dbPeer.Address = p.Address
-		dbPeer.Name = p.Name
-		dbPeer.Version = p.Version
-		dbPeer.Region = p.Region
+		if p.Address != "" {
+			dbPeer.Address = p.Address
+		}
+		if p.Name != "" {
+			dbPeer.Name = p.Name
+		}
+		if p.Version != "" {
+			dbPeer.Version = p.Version
+		}
+		if p.Region != "" {
+			dbPeer.Region = p.Region
+		}
 		dbPeer.PublicKey = p.PublicKey
 		dbPeer.Status = "online"
 		dbPeer.LastSeen = time.Unix(p.LastSeen, 0)

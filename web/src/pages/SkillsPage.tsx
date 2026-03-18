@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Zap, Box, Plug, Search, ChevronDown, ChevronUp } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Zap, Box, Plug, Search, ChevronDown, ChevronUp, Settings2 } from 'lucide-react'
 import { toolAPI } from '../lib/api'
 
 interface Skill {
@@ -33,6 +34,7 @@ const SKILL_ICONS: Record<string, string> = {
 }
 
 export default function SkillsPage() {
+  const navigate = useNavigate()
   const [skills, setSkills] = useState<Skill[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -76,14 +78,23 @@ export default function SkillsPage() {
     <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900">
       <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Zap className="w-6 h-6 text-blue-500" />
-            技能管理
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            管理 Agent 可以使用的所有技能，包括内置工具、插件和 MCP 外接服务
-          </p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Zap className="w-6 h-6 text-blue-500" />
+              技能 & MCP
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              管理 Agent 可以使用的所有技能，包括内置工具、插件和 MCP 外接服务
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/mcp')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800/40 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            管理 MCP 服务器
+          </button>
         </div>
 
         {/* Summary cards */}

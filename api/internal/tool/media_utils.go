@@ -53,6 +53,62 @@ func GetFalAPIKey(db *gorm.DB, userID string) string {
 	return cfg.APIKey
 }
 
+// ── File Path Resolution ──
+
+// ResolveClipToLocal resolves a video URL to a local file path.
+// Handles: local /v1/videos/merged/ paths, absolute paths, and remote HTTP URLs.
+// For remote URLs it downloads to dest. Returns the usable local path.
+func ResolveClipToLocal(videoURL, dest string) (string, error) {
+	if strings.HasPrefix(videoURL, "/v1/videos/merged/") {
+		fn := strings.TrimPrefix(videoURL, "/v1/videos/merged/")
+		localPath := filepath.Join("/app/merged_videos", fn)
+		if _, err := os.Stat(localPath); err == nil {
+			return localPath, nil
+		}
+		// local file missing, fall through to download
+	}
+	if strings.HasPrefix(videoURL, "/app/") || strings.HasPrefix(videoURL, "/tmp/") {
+		if _, err := os.Stat(videoURL); err == nil {
+			return videoURL, nil
+		}
+		return "", fmt.Errorf("local file not found: %s", videoURL)
+	}
+	if !strings.HasPrefix(videoURL, "http://") && !strings.HasPrefix(videoURL, "https://") {
+		return "", fmt.Errorf("unsupported URL scheme: %s", videoURL)
+	}
+	if err := DownloadFile(videoURL, dest); err != nil {
+		return "", fmt.Errorf("download failed: %v", err)
+	}
+	return dest, nil
+}
+
+// SaveClipLocally downloads a remote URL to /app/merged_videos/ and returns the local serving path.
+// If already local, returns the existing path. Used to persist clips for reliable merging.
+func SaveClipLocally(remoteURL string) (string, error) {
+	if strings.HasPrefix(remoteURL, "/v1/videos/merged/") {
+		return remoteURL, nil // already local
+	}
+	if !strings.HasPrefix(remoteURL, "http://") && !strings.HasPrefix(remoteURL, "https://") {
+		return remoteURL, nil // not a remote URL
+	}
+	outputDir := "/app/merged_videos"
+	os.MkdirAll(outputDir, 0755)
+	localFile := fmt.Sprintf("clip_%s.mp4", generateShortID())
+	localPath := filepath.Join(outputDir, localFile)
+	if err := DownloadFile(remoteURL, localPath); err != nil {
+		return remoteURL, err // return original URL on failure
+	}
+	return fmt.Sprintf("/v1/videos/merged/%s", localFile), nil
+}
+
+func generateShortID() string {
+	b := make([]byte, 4)
+	if _, err := io.ReadFull(strings.NewReader(fmt.Sprintf("%d", time.Now().UnixNano())), b); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano()%100000000)
+	}
+	return fmt.Sprintf("%d", time.Now().UnixNano()%100000000)
+}
+
 // ── File Download ──
 
 // DownloadFile downloads a URL to a local file path
@@ -241,6 +297,137 @@ func GenerateTTS(apiKey, text, voice, outputPath string) error {
 	}
 
 	return fmt.Errorf("TTS unexpected output: %s", outputStr)
+}
+
+// ── TTS Duration Fitting (professional dubbing sync) ──
+
+const (
+	maxTempoSpeedup  = 1.35 // max TTS speedup before intelligibility degrades
+	minSegmentGap    = 0.3  // minimum 300ms gap between consecutive segments
+	maxTempoSlowdown = 0.75 // max TTS slowdown for short segments
+)
+
+// FitTTSToWindow adjusts a TTS audio file to fit within a time window.
+// If TTS is longer than the window: speed up with atempo (max 1.35x), then hard-trim if needed.
+// If TTS is shorter: optionally slow down for very short segments.
+// Returns the adjusted audio path and the actual fitted duration.
+func FitTTSToWindow(inputAudio string, windowDuration float64, tmpDir string, index int) (string, float64, error) {
+	actualDur := ProbeDuration(inputAudio)
+	if actualDur <= 0 {
+		return inputAudio, windowDuration, fmt.Errorf("failed to probe TTS duration: %s", inputAudio)
+	}
+
+	// If TTS fits within window (with small tolerance), no adjustment needed
+	if actualDur <= windowDuration+0.1 {
+		// If window is much longer than TTS and TTS is very short, optionally slow down
+		if windowDuration > 0 && actualDur < windowDuration*0.5 && actualDur > 0.5 {
+			ratio := actualDur / windowDuration
+			if ratio < maxTempoSlowdown {
+				ratio = maxTempoSlowdown
+			}
+			outputPath := filepath.Join(tmpDir, fmt.Sprintf("fitted_%03d.mp3", index))
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", inputAudio,
+				"-af", fmt.Sprintf("atempo=%.4f", ratio),
+				"-c:a", "libmp3lame", "-q:a", "2", outputPath)
+			if _, err := cmd.CombinedOutput(); err != nil {
+				log.Printf("[DubbingFit] slowdown failed (ratio=%.2f), using original: %v", ratio, err)
+				return inputAudio, actualDur, nil
+			}
+			fittedDur := ProbeDuration(outputPath)
+			if fittedDur > 0 {
+				log.Printf("[DubbingFit] seg %d: slowed %.2fs→%.2fs (ratio=%.2f) to fill %.2fs window", index, actualDur, fittedDur, ratio, windowDuration)
+				return outputPath, fittedDur, nil
+			}
+		}
+		return inputAudio, actualDur, nil
+	}
+
+	// TTS is too long — need to speed up
+	ratio := actualDur / windowDuration // e.g., 7s / 5s = 1.4x speedup needed
+
+	outputPath := filepath.Join(tmpDir, fmt.Sprintf("fitted_%03d.mp3", index))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if ratio <= maxTempoSpeedup {
+		// Speed up within intelligibility limit
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", inputAudio,
+			"-af", fmt.Sprintf("atempo=%.4f", ratio),
+			"-c:a", "libmp3lame", "-q:a", "2", outputPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("[DubbingFit] atempo failed: %v\n%s", err, string(out))
+			return inputAudio, actualDur, nil // fallback to original
+		}
+		fittedDur := ProbeDuration(outputPath)
+		if fittedDur <= 0 {
+			fittedDur = windowDuration
+		}
+		log.Printf("[DubbingFit] seg %d: sped up %.2fs→%.2fs (atempo=%.2fx) for %.2fs window", index, actualDur, fittedDur, ratio, windowDuration)
+		return outputPath, fittedDur, nil
+	}
+
+	// Ratio too high for pure atempo — speed up at max rate then hard-trim
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", inputAudio,
+		"-af", fmt.Sprintf("atempo=%.4f", maxTempoSpeedup),
+		"-t", fmt.Sprintf("%.3f", windowDuration),
+		"-c:a", "libmp3lame", "-q:a", "2", outputPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("[DubbingFit] atempo+trim failed: %v\n%s", err, string(out))
+		return inputAudio, actualDur, nil
+	}
+	fittedDur := ProbeDuration(outputPath)
+	if fittedDur <= 0 {
+		fittedDur = windowDuration
+	}
+	log.Printf("[DubbingFit] seg %d: sped up+trimmed %.2fs→%.2fs (max atempo=%.2fx, trimmed to %.2fs)", index, actualDur, fittedDur, maxTempoSpeedup, windowDuration)
+	return outputPath, fittedDur, nil
+}
+
+// FitNarrationSegments adjusts narration segment timings based on actual TTS durations.
+// It enforces minimum gaps between segments and prevents overlaps.
+// Returns updated segments with corrected start/end times matching actual audio.
+func FitNarrationSegments(segments []NarrationSegment, audioDurations []float64, totalVideoDuration float64) []NarrationSegment {
+	if len(segments) == 0 || len(audioDurations) != len(segments) {
+		return segments
+	}
+
+	fitted := make([]NarrationSegment, len(segments))
+	copy(fitted, segments)
+
+	for i := range fitted {
+		actualDur := audioDurations[i]
+		windowDur := fitted[i].End - fitted[i].Start
+
+		// Use actual duration if it's shorter than window (natural pacing)
+		// Use window if audio was trimmed to fit
+		useDur := actualDur
+		if useDur > windowDur {
+			useDur = windowDur
+		}
+
+		fitted[i].End = fitted[i].Start + useDur
+
+		// Enforce minimum gap with next segment
+		if i < len(fitted)-1 {
+			nextStart := segments[i+1].Start
+			if fitted[i].End+minSegmentGap > nextStart {
+				// Shrink current segment end to maintain gap
+				maxEnd := nextStart - minSegmentGap
+				if maxEnd > fitted[i].Start+0.5 { // keep at least 0.5s
+					fitted[i].End = maxEnd
+				}
+			}
+		}
+
+		// Clamp to video duration
+		if fitted[i].End > totalVideoDuration {
+			fitted[i].End = totalVideoDuration
+		}
+	}
+
+	return fitted
 }
 
 // ── Subtitle Utilities ──

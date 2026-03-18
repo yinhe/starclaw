@@ -36,8 +36,17 @@ const trustConfig: Record<string, { label: string; color: string; border: string
 
 const ENERGY_UNIT = 10000
 
+function isChinese(): boolean {
+  const lang = navigator.language || ''
+  return lang.startsWith('zh')
+}
+
 function formatEnergy(units: number): string {
   const stars = units / ENERGY_UNIT
+  if (isChinese()) {
+    if (stars >= 10000) return `${(stars / 10000).toFixed(2)}万`
+    return stars.toFixed(2)
+  }
   if (stars >= 10000) return `${(stars / 1000).toFixed(1)}K`
   if (stars >= 1000) return `${(stars / 1000).toFixed(2)}K`
   return stars.toFixed(2)
@@ -132,10 +141,16 @@ export default function WalletPage() {
         {!connected && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3">
             <WifiOff className="w-5 h-5 text-red-500 shrink-0" />
-            <div>
+            <div className="flex-1">
               <p className="text-sm font-medium text-red-800 dark:text-red-300">未连接虫群</p>
-              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">星能余额通过虫群心跳同步，请先在设置中加入虫群。</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">星能余额通过虫群心跳同步，请先加入虫群。</p>
             </div>
+            <a
+              href="/settings"
+              className="shrink-0 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              加入虫群
+            </a>
           </div>
         )}
 
@@ -157,10 +172,7 @@ export default function WalletPage() {
                 <span className="text-5xl font-extrabold text-white tracking-tight">
                   {connected ? formatEnergy(credits?.balance ?? 0) : '—'}
                 </span>
-                <div className="flex items-center gap-1">
-                  <Zap className="w-5 h-5 text-amber-400" fill="currentColor" />
-                  <span className="text-sm font-bold text-amber-400">⚡</span>
-                </div>
+                <Zap className="w-5 h-5 text-amber-400" fill="currentColor" />
               </div>
               {connected && credits?.balance != null && (
                 <p className="text-xs text-gray-500 mt-1.5 font-mono">{credits.balance.toLocaleString()} 内部单位</p>
@@ -201,7 +213,7 @@ export default function WalletPage() {
               </div>
               {nodeInfo?.node_id && (
                 <a
-                  href={`https://starclaw.net/billing?claw_id=${encodeURIComponent(nodeInfo.node_id)}`}
+                  href={`https://star-ai.net/login?claw_url=${encodeURIComponent(window.location.origin)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-bold hover:from-amber-500 hover:to-orange-600 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105"

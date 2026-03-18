@@ -55,7 +55,9 @@ export default function HPBar() {
         <div className="flex items-center gap-1.5">
           <Zap className={`w-3.5 h-3.5 ${cfg.color} ${isLow ? 'animate-pulse' : ''}`} fill="currentColor" />
           <span className="text-xs font-semibold text-gray-200">
-            {stars >= 1000 ? `${(stars / 1000).toFixed(1)}K` : stars.toFixed(1)} ⚡
+            {navigator.language?.startsWith('zh')
+              ? (stars >= 10000 ? `${(stars / 10000).toFixed(2)}万` : stars.toFixed(1))
+              : (stars >= 1000 ? `${(stars / 1000).toFixed(1)}K` : stars.toFixed(1))}
           </span>
         </div>
         <span className={`text-[10px] font-medium ${cfg.color}`}>
@@ -71,7 +73,7 @@ export default function HPBar() {
       {data.frozen_energy != null && data.frozen_energy > 0 && (
         <div className="flex items-center gap-1 text-[10px] text-gray-500">
           <Snowflake className="w-2.5 h-2.5" />
-          <span>冻结 {data.frozen_energy.toFixed(1)} ⚡</span>
+          <span>冻结 {data.frozen_energy.toFixed(1)}</span>
         </div>
       )}
     </Link>

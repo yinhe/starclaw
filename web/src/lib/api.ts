@@ -69,6 +69,8 @@ export const systemAPI = {
   getOverlord: () => api.get('/system/overlord'),
   joinOverlord: (data: { overlord_url: string; node_name?: string; region?: string }) => api.post('/system/overlord/join', data),
   leaveOverlord: () => api.post('/system/overlord/leave'),
+  getMining: () => api.get('/system/mining'),
+  toggleMining: (enabled: boolean) => api.post('/system/mining/toggle', { enabled }),
 }
 
 // Node Identity & Peer Networking
@@ -98,6 +100,9 @@ export const agentAPI = {
   import: (data: Record<string, unknown>) => api.post('/agents/import', data),
   marketplace: () => api.get('/agents/marketplace'),
   clone: (id: string) => api.post(`/agents/${id}/clone`),
+  installedSourceIDs: () => api.get('/agents/installed-source-ids'),
+  installFromMarketplace: (data: Record<string, unknown>) => api.post('/agents/install-marketplace', data),
+  uninstallBySourceID: (sourceId: string) => api.delete(`/agents/uninstall/${sourceId}`),
 }
 
 // Chat
@@ -372,11 +377,14 @@ export const activityAPI = {
 
 // Long-term Memory
 export const memoryAPI = {
-  list: (agentId?: string) => api.get('/memories', { params: agentId ? { agent_id: agentId } : {} }),
+  list: (params?: { agent_id?: string; category?: string; search?: string }) =>
+    api.get('/memories', { params }),
   create: (data: { agent_id: string; key: string; content: string; category?: string; importance?: number }) =>
     api.post('/memories', data),
   update: (id: string, data: { content?: string; importance?: number }) => api.put(`/memories/${id}`, data),
   delete: (id: string) => api.delete(`/memories/${id}`),
+  clear: (agentId?: string) => api.delete('/memories', { params: agentId ? { agent_id: agentId } : {} }),
+  stats: () => api.get('/memories/stats'),
   recall: (agentId: string) => api.get(`/memories/recall/${agentId}`),
 }
 
@@ -477,6 +485,149 @@ export const notificationAPI = {
   list: (unread?: boolean) => api.get('/notifications', { params: unread ? { unread: 'true' } : {} }),
   markRead: (ids?: string[]) => api.post('/notifications/read', { ids }),
   unreadCount: () => api.get('/notifications/unread-count'),
+}
+
+// ── P8: Observability ──
+export const observeAPI = {
+  stats: () => api.get('/observe/stats'),
+  getTrace: (traceId: string) => api.get(`/observe/traces/${traceId}`),
+  querySpans: (params?: { service?: string; kind?: string; status?: string }) =>
+    api.get('/observe/spans', { params }),
+  queryLogs: (params?: { level?: string; service?: string; trace_id?: string; page?: number; page_size?: number }) =>
+    api.get('/observe/logs', { params }),
+  listAlertRules: () => api.get('/observe/alerts/rules'),
+  createAlertRule: (data: Record<string, unknown>) => api.post('/observe/alerts/rules', data),
+  updateAlertRule: (id: string, data: Record<string, unknown>) => api.put(`/observe/alerts/rules/${id}`, data),
+  toggleAlertRule: (id: string) => api.post(`/observe/alerts/rules/${id}/toggle`),
+  deleteAlertRule: (id: string) => api.delete(`/observe/alerts/rules/${id}`),
+  listAlertHistory: (params?: { rule_id?: string; resolved?: string }) =>
+    api.get('/observe/alerts/history', { params }),
+  resolveAlert: (id: string) => api.post(`/observe/alerts/history/${id}/resolve`),
+}
+
+// ── P8: Webhooks ──
+export const webhookAPI = {
+  listRules: () => api.get('/webhooks/rules'),
+  createRule: (data: Record<string, unknown>) => api.post('/webhooks/rules', data),
+  updateRule: (id: string, data: Record<string, unknown>) => api.put(`/webhooks/rules/${id}`, data),
+  toggleRule: (id: string) => api.post(`/webhooks/rules/${id}/toggle`),
+  deleteRule: (id: string) => api.delete(`/webhooks/rules/${id}`),
+  listLogs: (params?: { status?: string; event_type?: string; page?: number; page_size?: number }) =>
+    api.get('/webhooks/logs', { params }),
+  retryDeadLetter: (id: string) => api.post(`/webhooks/logs/${id}/retry`),
+  stats: () => api.get('/webhooks/stats'),
+  eventTypes: () => api.get('/webhooks/event-types'),
+  test: (data: { event_type: string; data?: Record<string, unknown> }) => api.post('/webhooks/test', data),
+}
+
+// ── P9: Developer Portal ──
+export const developerAPI = {
+  openApiSpec: () => api.get('/developer/openapi.json'),
+  listPlugins: (params?: { category?: string; q?: string; sort?: string; page?: number }) =>
+    api.get('/developer/plugins', { params }),
+  getPlugin: (id: string) => api.get(`/developer/plugins/${id}`),
+  publishPlugin: (data: Record<string, unknown>) => api.post('/developer/plugins', data),
+  myPlugins: () => api.get('/developer/plugins/mine'),
+  installPlugin: (id: string) => api.post(`/developer/plugins/${id}/install`),
+  uninstallPlugin: (id: string) => api.delete(`/developer/plugins/${id}/install`),
+  myInstalled: () => api.get('/developer/plugins/installed'),
+  ratePlugin: (id: string, data: { score: number; comment?: string }) =>
+    api.post(`/developer/plugins/${id}/rate`, data),
+  categories: () => api.get('/developer/plugins/categories'),
+  playgroundExecute: (data: { method: string; path: string; body?: string; headers?: Record<string, string> }) =>
+    api.post('/developer/playground/execute', data),
+  playgroundHistory: (limit?: number) => api.get('/developer/playground/history', { params: limit ? { limit } : {} }),
+  stats: () => api.get('/developer/stats'),
+}
+
+// ── P9: Security ──
+export const securityAPI = {
+  overview: () => api.get('/security/overview'),
+  encryption: () => api.get('/security/encryption'),
+  auditQuery: (params?: { action?: string; actor?: string; severity?: string; page?: number; page_size?: number }) =>
+    api.get('/security/audit', { params }),
+  auditVerify: () => api.get('/security/audit/verify'),
+  auditExport: (since?: string) => api.get('/security/audit/export', { params: since ? { since } : {}, responseType: 'blob' as const }),
+  auditStats: () => api.get('/security/audit/stats'),
+  gdprExport: () => api.get('/security/gdpr/export', { responseType: 'blob' as const }),
+  gdprDelete: (confirm: boolean) => api.post('/security/gdpr/delete', { confirm }),
+  gdprConsent: () => api.get('/security/gdpr/consent'),
+  compliance: (framework?: string) => api.get('/security/compliance', { params: framework ? { framework } : {} }),
+}
+
+// ── P10: Goals (Proactive Agent) ──
+export const goalAPI = {
+  list: (params?: { status?: string; page?: number; page_size?: number }) =>
+    api.get('/goals', { params }),
+  create: (data: Record<string, unknown>) => api.post('/goals', data),
+  get: (id: string) => api.get(`/goals/${id}`),
+  activate: (id: string) => api.post(`/goals/${id}/activate`),
+  cancel: (id: string) => api.post(`/goals/${id}/cancel`),
+  stats: () => api.get('/goals/stats'),
+  decompositionPrompt: () => api.get('/goals/decomposition-prompt'),
+}
+
+// ── P10: Collaboration ──
+export const collaborationAPI = {
+  list: () => api.get('/collaborations'),
+  create: (data: Record<string, unknown>) => api.post('/collaborations', data),
+  join: (id: string, data: { agent_id: string; role?: string; capabilities?: string }) =>
+    api.post(`/collaborations/${id}/join`, data),
+  members: (id: string) => api.get(`/collaborations/${id}/members`),
+  messages: (id: string) => api.get(`/collaborations/${id}/messages`),
+  sendMessage: (id: string, data: { agent_id: string; message_type: string; content: string }) =>
+    api.post(`/collaborations/${id}/messages`, data),
+  vote: (id: string, data: { agent_id: string; vote: string }) =>
+    api.post(`/collaborations/${id}/vote`, data),
+}
+
+// ── P10: Fine-tuning ──
+export const fineTuneAPI = {
+  listAdapters: (params?: { page?: number; page_size?: number }) =>
+    api.get('/finetune/adapters', { params }),
+  createAdapter: (data: Record<string, unknown>) => api.post('/finetune/adapters', data),
+  getAdapter: (id: string) => api.get(`/finetune/adapters/${id}`),
+  deleteAdapter: (id: string) => api.delete(`/finetune/adapters/${id}`),
+  startTraining: (id: string) => api.post(`/finetune/adapters/${id}/train`),
+  exportSamples: (id: string) => api.get(`/finetune/adapters/${id}/export`, { responseType: 'blob' as const }),
+  listSamples: (id: string, params?: { page?: number; page_size?: number }) =>
+    api.get(`/finetune/adapters/${id}/samples`, { params }),
+  addSample: (id: string, data: { input: string; output: string; system?: string }) =>
+    api.post(`/finetune/adapters/${id}/samples`, data),
+  addSamplesBatch: (id: string, samples: { input: string; output: string; system?: string }[]) =>
+    api.post(`/finetune/adapters/${id}/samples/batch`, { samples }),
+  deleteSample: (sampleId: string) => api.delete(`/finetune/samples/${sampleId}`),
+  listDistillation: (params?: { page?: number }) => api.get('/finetune/distillation', { params }),
+  createDistillation: (data: Record<string, unknown>) => api.post('/finetune/distillation', data),
+  getDistillation: (id: string) => api.get(`/finetune/distillation/${id}`),
+  cancelDistillation: (id: string) => api.post(`/finetune/distillation/${id}/cancel`),
+  distillationPrompt: () => api.get('/finetune/distillation/prompt'),
+  stats: () => api.get('/finetune/stats'),
+}
+
+// ── Squad (multi-node team collaboration) ──
+export const squadAPI = {
+  list: () => api.get('/squads'),
+  create: (data: { name: string; description?: string; max_members?: number; is_public?: boolean; tags?: string[] }) =>
+    api.post('/squads', data),
+  get: (id: string) => api.get(`/squads/${id}`),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/squads/${id}`, data),
+  delete: (id: string) => api.delete(`/squads/${id}`),
+  invite: (id: string, data: { node_id: string; specialty?: string }) =>
+    api.post(`/squads/${id}/invite`, data),
+  members: (id: string) => api.get(`/squads/${id}/members`),
+  removeMember: (id: string, nodeId: string) => api.delete(`/squads/${id}/members/${nodeId}`),
+  createMission: (id: string, data: { title: string; goal: string }) =>
+    api.post(`/squads/${id}/missions`, data),
+  listMissions: (id: string) => api.get(`/squads/${id}/missions`),
+  getMission: (id: string) => api.get(`/missions/${id}`),
+  startMission: (id: string) => api.post(`/missions/${id}/start`),
+  cancelMission: (id: string) => api.post(`/missions/${id}/cancel`),
+  missions: () => api.get('/missions'),
+  missionSteps: (missionId: string) => api.get(`/missions/${missionId}/steps`),
+  sprints: (missionId: string) => api.get(`/missions/${missionId}/sprints`),
+  submitFeedback: (missionId: string, feedback: string) => api.post(`/missions/${missionId}/feedback`, { feedback }),
+  reviews: (missionId: string) => api.get(`/missions/${missionId}/reviews`),
 }
 
 export default api

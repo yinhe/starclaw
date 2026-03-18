@@ -189,6 +189,13 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		if fileContext != "" {
 			systemPrompt += "\n\n" + fileContext
 		}
+
+		// Extract images and video frames from file attachments for vision analysis
+		visionURLs := extractVisionFromFiles(req.Files, 4)
+		if len(visionURLs) > 0 {
+			req.Images = append(req.Images, visionURLs...)
+			log.Printf("[vision] injected %d image/video-frame URLs from %d file attachments", len(visionURLs), len(req.Files))
+		}
 	}
 
 	// Cerebrate: inject cross-session memories into system prompt
@@ -224,6 +231,14 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		if models := p.Models(); len(models) > 0 {
 			chatModel = models[0]
 			log.Printf("[Chat] Auto-selected model %q for provider %s", chatModel, modelCfg.Provider)
+		}
+	}
+
+	// Auto-switch to a vision model when images are present
+	if len(req.Images) > 0 && !isVisionModel(chatModel) {
+		if vm := pickVisionModel(p.Models(), modelCfg.Provider); vm != "" {
+			log.Printf("[Chat] Images detected — switching from %q to vision model %q", chatModel, vm)
+			chatModel = vm
 		}
 	}
 
@@ -277,9 +292,11 @@ func (h *ChatHandler) handleSyncWithTools(c *gin.Context, rt *agentpkg.Runtime, 
 	}
 	h.db.Create(&assistantMsg)
 
-	// Cerebrate: async extract memories from this conversation turn
+	// Cerebrate: async extract memories + summary from this conversation turn
 	if h.cerebrate != nil {
-		go h.cerebrate.ExtractAndStore(context.Background(), c.GetString("user_id"), c.GetString("agent_id_for_cerebrate"), result.Messages)
+		uid, aid := c.GetString("user_id"), c.GetString("agent_id_for_cerebrate")
+		go h.cerebrate.ExtractAndStore(context.Background(), uid, aid, result.Messages, convID)
+		go h.cerebrate.GenerateSummary(context.Background(), uid, aid, convID, result.Messages)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -459,9 +476,11 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				h.db.Create(&assistantMsg)
 				saved = true
 
-				// Cerebrate: async extract memories from this conversation
+				// Cerebrate: async extract memories + summary from this conversation
 				if h.cerebrate != nil {
-					go h.cerebrate.ExtractAndStore(context.Background(), userID, c.GetString("agent_id_for_cerebrate"), req.Messages)
+					aid := c.GetString("agent_id_for_cerebrate")
+					go h.cerebrate.ExtractAndStore(context.Background(), userID, aid, req.Messages, convID)
+					go h.cerebrate.GenerateSummary(context.Background(), userID, aid, convID, req.Messages)
 				}
 
 				// Long-running conversation notification (>30s)
@@ -714,6 +733,17 @@ func buildFileContext(files []FileAttachment) string {
 	parts = append(parts, "用户附带了以下文件：")
 	for i, f := range files {
 		sizeStr := formatFileSize(f.Size)
+		mime := strings.ToLower(f.Mime)
+
+		if strings.HasPrefix(mime, "image/") {
+			parts = append(parts, fmt.Sprintf("%d. 📷 %s (%s, %s) — 图片已注入到视觉消息中，你可以直接看到并分析图片内容", i+1, f.Filename, f.Mime, sizeStr))
+			continue
+		}
+		if strings.HasPrefix(mime, "video/") {
+			parts = append(parts, fmt.Sprintf("%d. 🎬 %s (%s, %s) — 已从视频中提取关键帧注入到视觉消息中，你可以看到视频画面并分析内容", i+1, f.Filename, f.Mime, sizeStr))
+			continue
+		}
+
 		parts = append(parts, fmt.Sprintf("%d. %s (%s, %s, %s)", i+1, f.Filename, f.Category, f.Mime, sizeStr))
 
 		// For text-readable files, try to read and include content
@@ -765,6 +795,60 @@ func formatFileSize(size int64) string {
 		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
 	}
 	return fmt.Sprintf("%.1f GB", float64(size)/(1024*1024*1024))
+}
+
+// isVisionModel returns true if the model name indicates vision capability
+func isVisionModel(model string) bool {
+	m := strings.ToLower(model)
+	// Models with explicit vision naming
+	if strings.Contains(m, "-vl") || strings.Contains(m, "vl-") || strings.Contains(m, "vision") {
+		return true
+	}
+	// Models known to support vision natively
+	visionModels := []string{
+		"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+		"chatgpt-4o-latest",
+		"claude-sonnet-4", "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-opus",
+		"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash",
+		"o3", "o3-mini", "o4-mini", "o1", "o1-mini",
+	}
+	for _, vm := range visionModels {
+		if strings.HasPrefix(m, vm) {
+			return true
+		}
+	}
+	return false
+}
+
+// pickVisionModel selects the best vision model from the provider's available models
+func pickVisionModel(available []string, providerName string) string {
+	// Provider-specific preferred vision models (best first)
+	preferred := map[string][]string{
+		"star-ai":   {"qwen-vl-max", "qwen-vl-plus", "gpt-4o", "gemini-2.0-flash"},
+		"qwen":      {"qwen-vl-max", "qwen-vl-plus", "qwen3-vl-plus", "qwen3-vl-flash"},
+		"openai":    {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo"},
+		"google":    {"gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"},
+		"anthropic": {"claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022"},
+	}
+
+	// Try preferred models first
+	if prefs, ok := preferred[providerName]; ok {
+		for _, pref := range prefs {
+			for _, avail := range available {
+				if strings.HasPrefix(strings.ToLower(avail), strings.ToLower(pref)) {
+					return avail
+				}
+			}
+		}
+	}
+
+	// Fallback: any vision model from available list
+	for _, avail := range available {
+		if isVisionModel(avail) {
+			return avail
+		}
+	}
+	return ""
 }
 
 func truncate(s string, maxLen int) string {

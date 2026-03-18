@@ -180,7 +180,7 @@ func (t *VideoTool) extractLastFrame(ctx context.Context, args videoArgs) (strin
 	return toJSON(map[string]interface{}{
 		"action":    "extract_last_frame",
 		"frame_url": frameURL,
-		"message":   fmt.Sprintf("已提取视频最后一帧。可将此 URL 作为下一场景的 img_url 使用 wan2.6-i2v 模型实现场景衔接。"),
+		"message":   "已提取视频最后一帧。可将此 URL 作为下一场景的 img_url 使用 wan2.6-i2v 模型实现场景衔接。",
 	}), nil
 }
 
@@ -195,10 +195,14 @@ func (t *VideoTool) getLastFrameURL(recordOrTaskID string) (string, error) {
 	}
 
 	// Resolve video to local path
-	videoPath := rec.VideoURL
-	if strings.HasPrefix(videoPath, "/v1/videos/merged/") {
-		fn := strings.TrimPrefix(videoPath, "/v1/videos/merged/")
-		videoPath = filepath.Join("/app/merged_videos", fn)
+	tmpDir, tmpErr := os.MkdirTemp("", "lastframe-*")
+	if tmpErr != nil {
+		return "", tmpErr
+	}
+	defer os.RemoveAll(tmpDir)
+	videoPath, err := ResolveClipToLocal(rec.VideoURL, filepath.Join(tmpDir, "input.mp4"))
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve video: %v", err)
 	}
 
 	// Extract last frame using ffmpeg (seek to near-end)
@@ -301,12 +305,19 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{"status": "failed"})
 			return
 		}
+		// Save clip locally to prevent CDN URL expiration during merge
+		savedURL := videoURL
+		if localURL, err := SaveClipLocally(videoURL); err == nil {
+			savedURL = localURL
+		} else {
+			log.Printf("[VideoTool] Task %s: local save failed (will use CDN URL): %v", taskID, err)
+		}
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{
-			"video_url": videoURL, "status": "succeeded",
+			"video_url": savedURL, "status": "succeeded",
 		})
 		var rec model.VideoRecord
 		if t.db.Where("task_id = ?", taskID).First(&rec).Error == nil {
-			ExtractThumbnail(t.db, rec.ID, videoURL)
+			ExtractThumbnail(t.db, rec.ID, savedURL)
 		}
 		if convID != "" {
 			t.TryAutoMerge(userID, convID)
@@ -796,19 +807,11 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 		if rec.NarratedURL != "" {
 			dlURL = rec.NarratedURL
 		}
-		// Resolve local paths
-		if strings.HasPrefix(dlURL, "/v1/videos/merged/") {
-			fn := strings.TrimPrefix(dlURL, "/v1/videos/merged/")
-			localPath := filepath.Join("/app/merged_videos", fn)
-			if _, err := os.Stat(localPath); err == nil {
-				clipPaths = append(clipPaths, localPath)
-				continue
-			}
+		resolved, err := ResolveClipToLocal(dlURL, clipPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve clip %d: %v", i+1, err)
 		}
-		if err := DownloadFile(dlURL, clipPath); err != nil {
-			return "", fmt.Errorf("failed to download clip %d: %v", i+1, err)
-		}
-		clipPaths = append(clipPaths, clipPath)
+		clipPaths = append(clipPaths, resolved)
 	}
 
 	mergeID := uuid.New().String()
@@ -945,25 +948,27 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 	defer os.RemoveAll(tmpDir)
 
 	var clipPaths []string
+	var usedRecords []model.VideoRecord
 	for i, rec := range records {
 		clipPath := filepath.Join(tmpDir, fmt.Sprintf("clip_%03d.mp4", i))
 		dlURL := rec.VideoURL
 		if rec.NarratedURL != "" {
 			dlURL = rec.NarratedURL
 		}
-		if strings.HasPrefix(dlURL, "/v1/videos/merged/") {
-			fn := strings.TrimPrefix(dlURL, "/v1/videos/merged/")
-			localPath := filepath.Join("/app/merged_videos", fn)
-			if _, err := os.Stat(localPath); err == nil {
-				clipPaths = append(clipPaths, localPath)
-				continue
-			}
+		resolved, err := ResolveClipToLocal(dlURL, clipPath)
+		if err != nil {
+			log.Printf("[VideoTool] Auto-merge: resolve clip %d (%s) failed: %v, skipping", i+1, rec.Scene, err)
+			continue
 		}
-		if err := DownloadFile(dlURL, clipPath); err != nil {
-			log.Printf("[VideoTool] Auto-merge: download clip %d failed: %v", i+1, err)
-			return
-		}
-		clipPaths = append(clipPaths, clipPath)
+		clipPaths = append(clipPaths, resolved)
+		usedRecords = append(usedRecords, rec)
+	}
+	if len(clipPaths) < 2 {
+		log.Printf("[VideoTool] Auto-merge: only %d clips resolved (need ≥2), aborting", len(clipPaths))
+		return
+	}
+	if len(clipPaths) < len(records) {
+		log.Printf("[VideoTool] Auto-merge: %d/%d clips resolved (some skipped)", len(clipPaths), len(records))
 	}
 
 	mergeID := uuid.New().String()
@@ -978,22 +983,22 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 	}
 
 	downloadURL := fmt.Sprintf("/v1/videos/merged/%s.mp4", mergeID)
-	clipIDList := make([]string, len(records))
+	clipIDList := make([]string, len(usedRecords))
 	totalDuration := 0
-	for i, r := range records {
+	for i, r := range usedRecords {
 		clipIDList[i] = r.ID
 		totalDuration += r.Duration
 	}
 	clipIDsJSON, _ := json.Marshal(clipIDList)
 	mergedRecord := model.VideoRecord{
 		UserID: userID, ConversationID: convID,
-		Model: "merged", Prompt: fmt.Sprintf("合成视频: %d个片段, 共%d秒", len(records), totalDuration),
-		VideoURL: downloadURL, Size: records[0].Size, Duration: totalDuration,
+		Model: "merged", Prompt: fmt.Sprintf("合成视频: %d个片段, 共%d秒", len(usedRecords), totalDuration),
+		VideoURL: downloadURL, Size: usedRecords[0].Size, Duration: totalDuration,
 		Status: "succeeded", Type: "merged", ClipIDs: string(clipIDsJSON),
 	}
 	t.db.Create(&mergedRecord)
 	ExtractThumbnail(t.db, mergedRecord.ID, downloadURL)
-	log.Printf("[VideoTool] Auto-merge succeeded: %d clips, %ds", len(records), totalDuration)
+	log.Printf("[VideoTool] Auto-merge succeeded: %d clips, %ds", len(usedRecords), totalDuration)
 }
 
 // RetryNarration is kept as stub for backward compatibility (narration moved to dubbing tool)

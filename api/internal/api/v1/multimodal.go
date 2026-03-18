@@ -93,7 +93,7 @@ func (h *MultimodalHandler) findSTTProvider(userID string) (providerName, apiKey
 
 	for _, prov := range priority {
 		var cfg model.ModelConfig
-		if err := h.db.Where("provider = ? AND is_enabled = ? AND api_key != '' AND deleted_at IS NULL", prov, true).First(&cfg).Error; err == nil {
+		if err := h.db.Where("user_id = ? AND provider = ? AND is_enabled = ? AND api_key != '' AND api_key != 'claw-identity' AND deleted_at IS NULL", userID, prov, true).First(&cfg).Error; err == nil {
 			base := cfg.BaseURL
 			if base == "" {
 				switch prov {
@@ -110,9 +110,9 @@ func (h *MultimodalHandler) findSTTProvider(userID string) (providerName, apiKey
 		}
 	}
 
-	// Fallback: any enabled provider with an API key
+	// Fallback: any enabled provider with a real API key (exclude star-ai which uses claw-identity)
 	var cfg model.ModelConfig
-	if err := h.db.Where("is_enabled = ? AND api_key != '' AND deleted_at IS NULL", true).First(&cfg).Error; err == nil {
+	if err := h.db.Where("user_id = ? AND is_enabled = ? AND api_key != '' AND api_key != 'claw-identity' AND provider != 'star-ai' AND deleted_at IS NULL", userID, true).First(&cfg).Error; err == nil {
 		base := cfg.BaseURL
 		if base == "" {
 			base = "https://api.openai.com/v1"

@@ -27,15 +27,21 @@ import (
 	"github.com/yinhe/starclaw/internal/inference"
 	"github.com/yinhe/starclaw/internal/instinct"
 	"github.com/yinhe/starclaw/internal/mcp"
+	"github.com/yinhe/starclaw/internal/memory"
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/node"
+	"github.com/yinhe/starclaw/internal/observe"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
 	"github.com/yinhe/starclaw/internal/sandbox"
+	"github.com/yinhe/starclaw/internal/security"
+	"github.com/yinhe/starclaw/internal/squad"
 	"github.com/yinhe/starclaw/internal/swarm"
 	"github.com/yinhe/starclaw/internal/tool"
+	"github.com/yinhe/starclaw/internal/web"
+	"github.com/yinhe/starclaw/internal/webhook"
 	"github.com/yinhe/starclaw/internal/worker"
 	"github.com/yinhe/starclaw/internal/ws"
 	"gorm.io/gorm"
@@ -98,6 +104,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewHTTPRequestTool())
 	toolRegistry.Register(tool.NewBrowserTool(browserMgr))
 	toolRegistry.Register(tool.NewCodeTool(sandboxMgr, processMgr, db))
+	toolRegistry.Register(tool.NewGitTool())
 	videoTool := tool.NewVideoTool(db)
 	toolRegistry.Register(videoTool)
 	toolRegistry.Register(tool.NewDubbingTool(db))
@@ -155,13 +162,13 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	mcp.AutoRegisterBridge(toolRegistry)
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
 
-	// Seed built-in agent templates (Creep marketplace)
-	v1.SeedBuiltinTemplates(db)
+	// NOTE: Built-in agent templates are now in Queen marketplace (seed_marketplace.go).
+	// Local SeedBuiltinTemplates is no longer called.
 
 	// Seed star-ai models for all existing users (idempotent)
 	go database.SeedStarAIForAllUsers(db)
@@ -258,12 +265,87 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			c.JSON(200, molt.GetVersionInfo())
 		})
 
+		// P9: Developer portal (public — OpenAPI + Swagger UI)
+		devHandler := v1.NewDeveloperHandler(db)
+		apiV1.GET("/developer/openapi.json", devHandler.GetOpenAPISpec)
+		apiV1.GET("/developer/docs", devHandler.SwaggerUI)
+		apiV1.GET("/developer/plugins/categories", devHandler.PluginCategories)
+
 		// Peer-to-Peer inter-node endpoints (public, signature-verified)
 		peerPublicHandler := v1.NewPeerHandler(db, cfg)
 		apiV1.GET("/peer/handshake", peerPublicHandler.HandleHandshake)
 		apiV1.GET("/peer/resolve", peerPublicHandler.HandleResolve)
 		apiV1.POST("/peer/gossip", peerPublicHandler.HandleGossip)
 		apiV1.POST("/peer/relay", peerPublicHandler.HandleRelayTask)
+
+		// P7: P2P Network + Evolution engines
+		dhtEngine := node.NewDHT(identity, cfg.Node.Address, peerPublicHandler.Gossip())
+		dhtEngine.Start()
+		creepEngine := node.NewCreepEngine(identity.NodeID, peerPublicHandler.Gossip())
+		creepEngine.Start(60 * time.Second)
+		hivemindEngine := node.NewHivemindEngine(identity.NodeID, peerPublicHandler.Gossip())
+		hivemindEngine.SetAgentProvider(func() []node.AgentCapability {
+			var agents []model.Agent
+			db.Select("id, name, description").Find(&agents)
+			caps := make([]node.AgentCapability, 0, len(agents))
+			for _, ag := range agents {
+				caps = append(caps, node.AgentCapability{
+					AgentID:     ag.ID,
+					Name:        ag.Name,
+					Description: ag.Description,
+					Specialty:   "general",
+					Available:   true,
+				})
+			}
+			return caps
+		})
+		hivemindEngine.Start(30 * time.Second)
+		evolutionEngine := node.NewEvolutionEngine(node.DefaultEvolutionConfig())
+		evolutionEngine.Start()
+		p2pHandler := v1.NewP2PHandler(dhtEngine, creepEngine, hivemindEngine, evolutionEngine)
+
+		// P8: Observability engine
+		observeEngine := observe.NewEngine(db)
+		observeEngine.Start()
+
+		// P8: Webhook orchestration engine
+		webhookEngine := webhook.NewEngine(db)
+		webhookEngine.Start()
+
+		// P9: Security engine
+		keyMgr, _ := security.NewKeyManager()
+		auditChain := security.NewAuditChain(db)
+
+		// P10: AI-Native engines
+		mmRouter := agentpkg.NewMultimodalRouter()
+		proactiveEngine := agentpkg.NewProactiveEngine(db)
+		proactiveEngine.Start()
+		collabEngine := agentpkg.NewCollaborationEngine(db)
+		fineTuneEngine := agentpkg.NewFineTuneEngine(db)
+		fineTuneEngine.Start()
+
+		// DHT inter-node RPC (public)
+		apiV1.GET("/peer/dht/ping", p2pHandler.HandleDHTPing)
+		apiV1.POST("/peer/dht/find_node", p2pHandler.HandleDHTFindNode)
+		apiV1.POST("/peer/dht/store", p2pHandler.HandleDHTStore)
+		apiV1.POST("/peer/dht/find_value", p2pHandler.HandleDHTFindValue)
+
+		// Creep inter-node sync (public)
+		apiV1.POST("/peer/creep/sync", p2pHandler.HandleCreepSync)
+		apiV1.POST("/peer/creep/push", p2pHandler.HandleCreepPush)
+
+		// Hivemind inter-node (public)
+		apiV1.POST("/peer/hivemind/capability", p2pHandler.HandleHivemindCapability)
+		apiV1.POST("/peer/hivemind/execute", p2pHandler.HandleHivemindExecute)
+
+		// Squad inter-node (public, signature-verified)
+		squadPeerHandler := v1.NewSquadPeerHandler(db, identity)
+		apiV1.POST("/peer/squad/invite", squadPeerHandler.HandleInvite)
+		apiV1.POST("/peer/squad/agents", squadPeerHandler.HandleAgents)
+		apiV1.POST("/peer/squad/execute", squadPeerHandler.HandleExecute)
+		apiV1.POST("/peer/squad/callback", squadPeerHandler.HandleCallback)
+		apiV1.POST("/peer/squad/heartbeat", squadPeerHandler.HandleHeartbeat)
+		squadPeerHandler.StartCallbackWatcher()
 
 		// Inference Router (public status + signed contributor endpoints)
 		inferenceRouter := inference.NewInferenceRouter(identity)
@@ -310,6 +392,42 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 		contributorSvc := inference.NewContributorService(contributorCfg, identity, providerRegistry, peerPublicHandler.PeerAddresses, nydusManager)
 		contributorSvc.Start()
+
+		// Squad engine (multi-node team collaboration)
+		selfAddr := cfg.Node.Address
+		if selfAddr == "" {
+			selfAddr = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
+		}
+		squadEngine := squad.NewEngine(db, identity, nydusManager, hivemindEngine, providerRegistry, toolRegistry, selfAddr)
+		squadEngine.Start()
+
+		// Git HTTP Smart Protocol server (enables remote nodes to clone/push via HTTP)
+		gitHTTPHandler := squad.NewGitHTTPHandler("/app/repos")
+		r.Any("/v1/git/*path", func(c *gin.Context) {
+			// Strip /v1/git/ prefix and forward to Git HTTP handler
+			c.Request.URL.Path = strings.TrimPrefix(c.Request.URL.Path, "/v1/git/")
+			gitHTTPHandler.ServeHTTP(c.Writer, c.Request)
+		})
+
+		// Memory lifecycle (decay, purge, capacity enforcement)
+		memLifecycle := memory.NewLifecycleManager(db)
+		memLifecycle.Start()
+
+		// Wire contributor info into swarm heartbeat for mining reporting
+		if len(swarmClient) > 0 && swarmClient[0] != nil {
+			sc := swarmClient[0]
+			sc.ContributorInfoFunc = func() *swarm.ContributorInfo {
+				isC, models, gpu := contributorSvc.GetContributorInfo()
+				if !isC {
+					return nil
+				}
+				return &swarm.ContributorInfo{
+					IsContributor: true,
+					Models:        models,
+					GPUInfo:       gpu,
+				}
+			}
+		}
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)
 		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
@@ -626,6 +744,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/agents/import", agentHandler.Import)
 			protected.POST("/agents/:id/share", agentHandler.Share)
 			protected.POST("/agents/super-agent", agentHandler.EnsureSuperAgent)
+			protected.GET("/agents/installed-source-ids", agentHandler.InstalledSourceIDs)
+			protected.POST("/agents/install-marketplace", agentHandler.InstallFromMarketplace)
+			protected.DELETE("/agents/uninstall/:source_id", agentHandler.UninstallBySourceID)
 
 			// Agent Templates (Creep Marketplace)
 			tplHandler := v1.NewTemplateHandler(db)
@@ -800,6 +921,27 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			teamHandler := v1.NewTeamHandler(db)
 			protected.GET("/teams/:id/orchestrator", teamHandler.GetOrchestrator)
 
+			// Squads (multi-node team collaboration)
+			squadHandler := v1.NewSquadHandler(db, identity)
+			protected.POST("/squads", squadHandler.CreateSquad)
+			protected.GET("/squads", squadHandler.ListSquads)
+			protected.GET("/squads/:id", squadHandler.GetSquad)
+			protected.PUT("/squads/:id", squadHandler.UpdateSquad)
+			protected.DELETE("/squads/:id", squadHandler.DeleteSquad)
+			protected.POST("/squads/:id/invite", squadHandler.InviteMember)
+			protected.GET("/squads/:id/members", squadHandler.ListMembers)
+			protected.DELETE("/squads/:id/members/:nodeId", squadHandler.RemoveMember)
+			protected.POST("/squads/:id/missions", squadHandler.CreateMission)
+			protected.GET("/squads/:id/missions", squadHandler.ListMissions)
+			protected.GET("/missions/:id", squadHandler.GetMission)
+			protected.POST("/missions/:id/start", squadHandler.StartMission)
+			protected.POST("/missions/:id/cancel", squadHandler.CancelMission)
+			protected.GET("/missions", squadHandler.ListAllMissions)
+			protected.GET("/missions/:id/steps", squadHandler.ListMissionSteps)
+			protected.GET("/missions/:id/sprints", squadHandler.ListSprints)
+			protected.POST("/missions/:id/feedback", squadHandler.SubmitFeedback)
+			protected.GET("/missions/:id/reviews", squadHandler.ListStepReviews)
+
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
@@ -859,6 +1001,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/credits/transfer", systemHandler.TransferCredits)
 			protected.GET("/system/credits/transactions", systemHandler.ListCreditTransactions)
 			protected.GET("/system/bounty", systemHandler.GetBountyStatus)
+			protected.GET("/system/mining", systemHandler.GetMiningStatus)
+			protected.POST("/system/mining/toggle", systemHandler.ToggleMining)
 
 			// Device Management
 			deviceHandler := v1.NewDeviceHandler(db)
@@ -888,6 +1032,138 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/peers", peerHandler.AddPeer)
 			protected.DELETE("/peers/:id", peerHandler.RemovePeer)
 			protected.POST("/peers/:id/ping", peerHandler.PingPeer)
+
+			// P7: P2P + Evolution (authenticated endpoints)
+			protected.GET("/p2p/overview", p2pHandler.HandleP2POverview)
+			protected.GET("/p2p/dht/stats", p2pHandler.HandleDHTStats)
+			protected.GET("/p2p/creep/get", p2pHandler.HandleCreepGet)
+			protected.POST("/p2p/creep/set", p2pHandler.HandleCreepSet)
+			protected.GET("/p2p/creep/stats", p2pHandler.HandleCreepStats)
+			protected.POST("/p2p/hivemind/route", p2pHandler.HandleHivemindRoute)
+			protected.GET("/p2p/hivemind/stats", p2pHandler.HandleHivemindStats)
+			protected.POST("/p2p/evolution/seed", p2pHandler.HandleEvolutionSeed)
+			protected.POST("/p2p/evolution/eval", p2pHandler.HandleEvolutionEval)
+			protected.GET("/p2p/evolution/best", p2pHandler.HandleEvolutionBest)
+			protected.POST("/p2p/evolution/evolve", p2pHandler.HandleEvolutionEvolve)
+			protected.GET("/p2p/evolution/stats", p2pHandler.HandleEvolutionStats)
+
+			// P8: Agent Economy (marketplace listings, purchases, revenue, ratings)
+			marketplaceHandler := v1.NewMarketplaceHandler(db)
+			// Public-ish browse (still auth required for user context)
+			protected.GET("/marketplace/listings", marketplaceHandler.ListPublished)
+			protected.GET("/marketplace/listings/:id", marketplaceHandler.GetListing)
+			protected.GET("/marketplace/trending", marketplaceHandler.Trending)
+			protected.GET("/marketplace/listings/:id/ratings", marketplaceHandler.ListRatings)
+			protected.GET("/marketplace/listings/:id/access", marketplaceHandler.CheckAccess)
+			// Purchasing
+			protected.POST("/marketplace/listings/:id/purchase", marketplaceHandler.PurchaseAgent)
+			protected.GET("/marketplace/purchases", marketplaceHandler.MyPurchases)
+			protected.POST("/marketplace/listings/:id/rate", marketplaceHandler.CreateRating)
+			// Creator
+			protected.GET("/marketplace/creator/profile", marketplaceHandler.GetCreatorProfile)
+			protected.POST("/marketplace/creator/register", marketplaceHandler.RegisterCreator)
+			protected.GET("/marketplace/creator/dashboard", marketplaceHandler.CreatorDashboard)
+			protected.GET("/marketplace/creator/revenue", marketplaceHandler.CreatorRevenueList)
+			protected.GET("/marketplace/creator/listings", marketplaceHandler.MyListings)
+			protected.POST("/marketplace/creator/listings", marketplaceHandler.CreateListing)
+			protected.PUT("/marketplace/creator/listings/:id", marketplaceHandler.UpdateListing)
+			protected.POST("/marketplace/creator/listings/:id/version", marketplaceHandler.PublishVersion)
+
+			// P8: Observability (traces, alerts, logs)
+			observeHandler := v1.NewObserveHandler(observeEngine, db)
+			protected.GET("/observe/stats", observeHandler.ObserveStats)
+			protected.GET("/observe/traces/:trace_id", observeHandler.GetTrace)
+			protected.GET("/observe/spans", observeHandler.QuerySpans)
+			protected.GET("/observe/logs", observeHandler.QueryLogs)
+			// Alert rules
+			protected.GET("/observe/alerts/rules", observeHandler.ListAlertRules)
+			protected.POST("/observe/alerts/rules", observeHandler.CreateAlertRule)
+			protected.PUT("/observe/alerts/rules/:id", observeHandler.UpdateAlertRule)
+			protected.POST("/observe/alerts/rules/:id/toggle", observeHandler.ToggleAlertRule)
+			protected.DELETE("/observe/alerts/rules/:id", observeHandler.DeleteAlertRule)
+			// Alert history
+			protected.GET("/observe/alerts/history", observeHandler.ListAlertHistory)
+			protected.POST("/observe/alerts/history/:id/resolve", observeHandler.ResolveAlert)
+
+			// P8: Webhook orchestration (event rules, logs, dead letter queue)
+			webhookRuleHandler := v1.NewWebhookRuleHandler(webhookEngine, db)
+			protected.GET("/webhooks/rules", webhookRuleHandler.ListRules)
+			protected.POST("/webhooks/rules", webhookRuleHandler.CreateRule)
+			protected.PUT("/webhooks/rules/:id", webhookRuleHandler.UpdateRule)
+			protected.POST("/webhooks/rules/:id/toggle", webhookRuleHandler.ToggleRule)
+			protected.DELETE("/webhooks/rules/:id", webhookRuleHandler.DeleteRule)
+			protected.GET("/webhooks/logs", webhookRuleHandler.ListLogs)
+			protected.POST("/webhooks/logs/:id/retry", webhookRuleHandler.RetryDeadLetter)
+			protected.GET("/webhooks/stats", webhookRuleHandler.Stats)
+			protected.GET("/webhooks/event-types", webhookRuleHandler.EventTypes)
+			protected.POST("/webhooks/test", webhookRuleHandler.TestRule)
+
+			// P9: Developer portal (plugins, playground)
+			protected.GET("/developer/plugins", devHandler.ListPlugins)
+			protected.GET("/developer/plugins/:id", devHandler.GetPlugin)
+			protected.POST("/developer/plugins", devHandler.PublishPlugin)
+			protected.GET("/developer/plugins/mine", devHandler.MyPlugins)
+			protected.POST("/developer/plugins/:id/install", devHandler.InstallPlugin)
+			protected.DELETE("/developer/plugins/:id/install", devHandler.UninstallPlugin)
+			protected.GET("/developer/plugins/installed", devHandler.MyInstalled)
+			protected.POST("/developer/plugins/:id/rate", devHandler.RatePlugin)
+			protected.POST("/developer/playground/execute", devHandler.PlaygroundExecute)
+			protected.GET("/developer/playground/history", devHandler.PlaygroundHistory)
+			protected.GET("/developer/stats", devHandler.DeveloperStats)
+
+			// P9: Security (encryption, audit chain, GDPR, compliance)
+			securityHandler := v1.NewSecurityHandler(db, keyMgr, auditChain)
+			protected.GET("/security/encryption", securityHandler.EncryptionStatus)
+			protected.GET("/security/overview", securityHandler.SecurityOverview)
+			protected.GET("/security/audit", securityHandler.AuditChainQuery)
+			protected.GET("/security/audit/verify", securityHandler.AuditChainVerify)
+			protected.GET("/security/audit/export", securityHandler.AuditChainExport)
+			protected.GET("/security/audit/stats", securityHandler.AuditChainStats)
+			protected.GET("/security/gdpr/export", securityHandler.GDPRExportData)
+			protected.POST("/security/gdpr/delete", securityHandler.GDPRDeleteData)
+			protected.GET("/security/gdpr/consent", securityHandler.GDPRConsentStatus)
+			protected.GET("/security/compliance", securityHandler.ComplianceChecklist)
+
+			// P10: AI-Native (multimodal, proactive goals, multi-agent collaboration)
+			advancedHandler := v1.NewAgentAdvancedHandler(db, mmRouter, proactiveEngine, collabEngine)
+			// Multimodal
+			protected.POST("/multimodal/chat", advancedHandler.MultimodalChat)
+			protected.GET("/multimodal/modalities", advancedHandler.SupportedModalities)
+			// Proactive goals
+			protected.POST("/goals", advancedHandler.CreateGoal)
+			protected.GET("/goals", advancedHandler.ListGoals)
+			protected.GET("/goals/:id", advancedHandler.GetGoal)
+			protected.POST("/goals/:id/activate", advancedHandler.ActivateGoal)
+			protected.POST("/goals/:id/cancel", advancedHandler.CancelGoal)
+			protected.GET("/goals/stats", advancedHandler.GoalStats)
+			protected.GET("/goals/decomposition-prompt", advancedHandler.DecompositionPrompt)
+			// Multi-agent collaboration
+			protected.POST("/collaborations", advancedHandler.CreateCollaboration)
+			protected.GET("/collaborations", advancedHandler.ListCollaborations)
+			protected.POST("/collaborations/:id/join", advancedHandler.JoinCollaboration)
+			protected.GET("/collaborations/:id/members", advancedHandler.CollaborationMembers)
+			protected.GET("/collaborations/:id/messages", advancedHandler.CollaborationMessages)
+			protected.POST("/collaborations/:id/messages", advancedHandler.SendCollaborationMessage)
+			protected.POST("/collaborations/:id/vote", advancedHandler.SubmitVote)
+
+			// P10: Fine-tuning & Knowledge Distillation
+			fineTuneHandler := v1.NewFineTuneHandler(db, fineTuneEngine)
+			protected.GET("/finetune/adapters", fineTuneHandler.ListAdapters)
+			protected.POST("/finetune/adapters", fineTuneHandler.CreateAdapter)
+			protected.GET("/finetune/adapters/:id", fineTuneHandler.GetAdapter)
+			protected.DELETE("/finetune/adapters/:id", fineTuneHandler.DeleteAdapter)
+			protected.POST("/finetune/adapters/:id/train", fineTuneHandler.StartTraining)
+			protected.GET("/finetune/adapters/:id/export", fineTuneHandler.ExportSamples)
+			protected.GET("/finetune/adapters/:id/samples", fineTuneHandler.ListSamples)
+			protected.POST("/finetune/adapters/:id/samples", fineTuneHandler.AddSample)
+			protected.POST("/finetune/adapters/:id/samples/batch", fineTuneHandler.AddSamplesBatch)
+			protected.DELETE("/finetune/samples/:sample_id", fineTuneHandler.DeleteSample)
+			protected.GET("/finetune/distillation", fineTuneHandler.ListDistillationJobs)
+			protected.POST("/finetune/distillation", fineTuneHandler.CreateDistillationJob)
+			protected.GET("/finetune/distillation/:id", fineTuneHandler.GetDistillationJob)
+			protected.POST("/finetune/distillation/:id/cancel", fineTuneHandler.CancelDistillationJob)
+			protected.GET("/finetune/distillation/prompt", fineTuneHandler.DistillationPrompt)
+			protected.GET("/finetune/stats", fineTuneHandler.FineTuneStats)
 
 			// Workflow Templates (Marketplace)
 			wfTemplateHandler := v1.NewWorkflowTemplateHandler(db)
@@ -1533,9 +1809,20 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				admin.PUT("/admin/users/:id/role", adminHandler.UpdateUserRole)
 				admin.DELETE("/admin/users/:id", adminHandler.DeleteUser)
 				admin.GET("/admin/stats", adminHandler.SystemStats)
+
+				// P8: Marketplace admin review
+				admin.GET("/admin/marketplace/pending", marketplaceHandler.AdminListPending)
+				admin.POST("/admin/marketplace/listings/:id/review", marketplaceHandler.AdminReviewListing)
+
+				// P9: Plugin admin review
+				admin.GET("/admin/plugins/pending", devHandler.AdminListPendingPlugins)
+				admin.POST("/admin/plugins/:id/review", devHandler.AdminReviewPlugin)
 			}
 		}
 	}
+
+	// Serve embedded web frontend (SPA with fallback to index.html)
+	web.RegisterRoutes(r)
 
 	return r
 }

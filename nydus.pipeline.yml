@@ -1,0 +1,71 @@
+# StarClaw Claw — Nydus CI/CD Pipeline Configuration
+# Triggered by: git push nydus master → post-receive hook → Nydus Server
+#
+# Pipeline stages:
+#   1. test  — go vet + go test (runs inside Docker build)
+#   2. build — multi-stage Docker image (API + Web)
+#   3. deploy — docker compose up with health check
+#   4. verify — post-deploy smoke test
+
+pipeline:
+  name: starclaw-claw
+  repo: starclaw
+  subdir: claw
+  branch: master
+
+stages:
+  # Stage 1: Quality gate (embedded in Dockerfile builder stage)
+  # - go vet ./...
+  # - go test ./internal/security/... ./internal/agent/... ./internal/webhook/...
+  #   ./internal/inference/... ./internal/middleware/...
+  # If tests fail, Docker build fails → deploy is aborted.
+
+  # Stage 2: Build (handled by docker compose build)
+  build:
+    api:
+      context: ./api
+      dockerfile: Dockerfile
+      args:
+        GOPROXY: "https://goproxy.cn,direct"
+        BUILD_VERSION: "${GIT_REV}"
+    web:
+      context: ./web
+      dockerfile: Dockerfile
+
+  # Stage 3: Deploy
+  deploy:
+    command: "bash scripts/server-deploy-update.sh all --no-pull --rev=${GIT_REV}"
+    timeout: 600  # 10 minutes max
+
+  # Stage 4: Post-deploy verification
+  verify:
+    checks:
+      - name: api-health
+        url: "http://localhost:8080/health"
+        expect_status: 200
+        timeout: 30
+      - name: web-accessible
+        url: "http://localhost:8081/"
+        expect_status: 200
+        timeout: 10
+      - name: api-version
+        url: "http://localhost:8080/v1/version"
+        expect_status: 200
+        timeout: 10
+
+# Notification on deploy result
+notifications:
+  on_success:
+    type: webhook
+    url: "${NYDUS_CALLBACK_URL}"
+    body: '{"repo":"starclaw","subdir":"claw","status":"success","rev":"${GIT_REV}"}'
+  on_failure:
+    type: webhook
+    url: "${NYDUS_CALLBACK_URL}"
+    body: '{"repo":"starclaw","subdir":"claw","status":"failed","rev":"${GIT_REV}"}'
+
+# Rollback: if health check fails, revert to previous image
+rollback:
+  enabled: true
+  command: "docker compose -f docker-compose.prod.yml up -d --no-build api web"
+  max_attempts: 1

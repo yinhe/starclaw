@@ -1,37 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Bot, Download, Search, User, Star, Code2, PenTool, BarChart3, Palette, Server, BookOpen, Briefcase, Sparkles, Filter } from 'lucide-react'
-import { templateAPI, queenMarketplaceAPI } from '../lib/api'
+import { useNavigate } from 'react-router-dom'
+import { Bot, Download, Search, Check, Trash2, Loader2, Store } from 'lucide-react'
+import { agentAPI, queenMarketplaceAPI } from '../lib/api'
 
-interface AgentTemplate {
-  id: string
-  name: string
-  description: string
-  category: string
-  tags: string
-  system_prompt: string
-  tools: string
-  icon: string
-  featured: boolean
-  install_count: number
-  rating: number
-  rating_count: number
-  is_builtin: boolean
-  author?: { id: string; username: string }
-  created_at: string
-}
-
-interface Category {
-  id: string
-  name: string
-  name_en: string
-  icon: string
-}
-
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Bot, Code2, PenTool, BarChart3, Palette, Server, BookOpen, Briefcase,
-}
-
-interface CommunityItem {
+interface MarketplaceItem {
   id: string
   name: string
   description: string
@@ -40,97 +12,60 @@ interface CommunityItem {
   config: string
   downloads: number
   rating: number
-  rating_count: number
-  author?: { nickname?: string; email?: string }
+  author?: { nickname?: string }
 }
 
 export default function MarketplacePage() {
-  const [tab, setTab] = useState<'local' | 'community'>('local')
-  const [templates, setTemplates] = useState<AgentTemplate[]>([])
-  const [communityItems, setCommunityItems] = useState<CommunityItem[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
+  const navigate = useNavigate()
+  const [items, setItems] = useState<MarketplaceItem[]>([])
+  const [installedIDs, setInstalledIDs] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
-  const [activeCategory, setActiveCategory] = useState('')
   const [installing, setInstalling] = useState<string | null>(null)
   const [toast, setToast] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    templateAPI.categories().then(res => setCategories(res.data.categories || [])).catch(() => {})
-    loadTemplates()
+    loadMarketplace()
+    loadInstalled()
   }, [])
 
-  const loadTemplates = async (category?: string, q?: string) => {
+  const loadMarketplace = async (q?: string) => {
     setLoading(true)
     try {
-      const params: Record<string, string> = {}
-      if (category) params.category = category
-      if (q) params.q = q
-      const res = await templateAPI.list(params)
-      setTemplates(res.data.templates || [])
-    } catch { /* ignore */ }
+      const res = await queenMarketplaceAPI.list({ q: q || undefined })
+      setItems(res.data.items || [])
+    } catch { setItems([]) }
     setLoading(false)
   }
 
-  const handleCategoryClick = (catId: string) => {
-    const next = activeCategory === catId ? '' : catId
-    setActiveCategory(next)
-    loadTemplates(next, search)
+  const loadInstalled = async () => {
+    try {
+      const res = await agentAPI.installedSourceIDs()
+      setInstalledIDs(new Set(res.data.source_ids || []))
+    } catch { /* ignore */ }
   }
 
   const handleSearch = (val: string) => {
     setSearch(val)
-    if (tab === 'community') loadCommunity(val)
-    else loadTemplates(activeCategory, val)
+    loadMarketplace(val)
   }
 
-  const loadCommunity = async (q?: string) => {
-    setLoading(true)
-    try {
-      const res = await queenMarketplaceAPI.list({ q: q || undefined })
-      setCommunityItems(res.data.items || [])
-    } catch {
-      setCommunityItems([])
-    }
-    setLoading(false)
-  }
-
-  const handleTabChange = (t: 'local' | 'community') => {
-    setTab(t)
-    setSearch('')
-    setActiveCategory('')
-    if (t === 'community') loadCommunity()
-    else loadTemplates()
-  }
-
-  const handleInstall = async (id: string) => {
-    setInstalling(id)
-    try {
-      await templateAPI.install(id)
-      setToast('已安装到我的 Agent')
-      setTemplates(prev => prev.map(t => t.id === id ? { ...t, install_count: t.install_count + 1 } : t))
-      setTimeout(() => setToast(''), 2500)
-    } catch {
-      setToast('安装失败')
-      setTimeout(() => setToast(''), 2500)
-    }
-    setInstalling(null)
-  }
-
-  const handleInstallCommunity = async (item: CommunityItem) => {
+  const handleInstall = async (item: MarketplaceItem) => {
     setInstalling(item.id)
     try {
-      const cfg = item.config ? JSON.parse(item.config) : {}
-      await templateAPI.installRemote({
+      let cfg: { system_prompt?: string; tools?: string; config?: string } = {}
+      try { cfg = JSON.parse(item.config) } catch { /* ignore */ }
+      await agentAPI.installFromMarketplace({
+        source_id: item.id,
         name: item.name,
         description: item.description,
         system_prompt: cfg.system_prompt || '',
         tools: cfg.tools || '[]',
         config: cfg.config || '{}',
-        source: 'starclaw.net',
-        source_id: item.id,
+        icon: item.icon,
       })
-      setToast(`已安装「${item.name}」到我的 Agent`)
+      setInstalledIDs(prev => new Set([...prev, item.id]))
+      setToast(`已安装「${item.name}」`)
       setTimeout(() => setToast(''), 2500)
     } catch {
       setToast('安装失败')
@@ -139,17 +74,20 @@ export default function MarketplacePage() {
     setInstalling(null)
   }
 
+  const handleUninstall = async (sourceId: string) => {
+    if (!confirm('确定要卸载这个智能体吗？')) return
+    try {
+      await agentAPI.uninstallBySourceID(sourceId)
+      setInstalledIDs(prev => { const s = new Set(prev); s.delete(sourceId); return s })
+      setToast('已卸载')
+      setTimeout(() => setToast(''), 2500)
+    } catch { /* ignore */ }
+  }
+
   const parseTags = (tags: string): string[] => {
-    try { return JSON.parse(tags) || [] } catch { return [] }
+    if (!tags) return []
+    try { return JSON.parse(tags) } catch { return tags.split(',').map(t => t.trim()).filter(Boolean) }
   }
-
-  const getIcon = (iconName: string) => {
-    const Icon = iconMap[iconName] || Bot
-    return Icon
-  }
-
-  const featured = templates.filter(t => t.featured)
-  const regular = templates.filter(t => !t.featured)
 
   return (
     <div className="h-full overflow-y-auto">
@@ -158,65 +96,26 @@ export default function MarketplacePage() {
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
+              <Store className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Agent 模板市场</h1>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">Creep 菌毯 — 发现、安装和分享 AI Agent 模板</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">智能体市场</h1>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">发现、安装社区智能体 — 一键添加到我的智能体</p>
             </div>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <button onClick={() => handleTabChange('local')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'local' ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>本地模板</button>
-            <button onClick={() => handleTabChange('community')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'community' ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>🌐 社区市场</button>
           </div>
         </div>
 
-        {/* Search + Filter */}
-        <div className="flex gap-3 mb-6">
-          <div className="relative flex-1">
+        {/* Search */}
+        <div className="mb-6">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
-              placeholder="搜索模板..."
+              placeholder="搜索智能体..."
               className="w-full pl-10 pr-4 py-2.5 border dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2.5 border dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-            <Filter className="w-4 h-4" />
-            筛选
-          </button>
-        </div>
-
-        {/* Categories */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
-          <button
-            onClick={() => handleCategoryClick('')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              activeCategory === ''
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            全部
-          </button>
-          {categories.map(cat => {
-            const CatIcon = getIcon(cat.icon)
-            return (
-              <button
-                key={cat.id}
-                onClick={() => handleCategoryClick(cat.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                  activeCategory === cat.id
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <CatIcon className="w-3.5 h-3.5" />
-                {cat.name}
-              </button>
-            )
-          })}
         </div>
 
         {/* Toast */}
@@ -240,154 +139,60 @@ export default function MarketplacePage() {
               </div>
             ))}
           </div>
-        ) : templates.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
-            <Bot className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>{search ? '没有找到匹配的模板' : '暂无模板'}</p>
+            <Store className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>{search ? '没有找到匹配的智能体' : '暂无社区智能体'}</p>
           </div>
         ) : (
-          <>
-            {/* Community items */}
-            {tab === 'community' && communityItems.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                {communityItems.map(item => (
-                  <div key={item.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center text-lg">
-                        {item.icon || '🤖'}
-                      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map(item => {
+              const isInstalled = installedIDs.has(item.id)
+              const isInstalling = installing === item.id
+              return (
+                <div key={item.id} onClick={() => navigate(`/marketplace/${item.id}`)} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-lg flex items-center justify-center">
+                      <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    {isInstalled ? (
                       <button
-                        onClick={() => handleInstallCommunity(item)}
-                        disabled={installing === item.id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                        onClick={(e) => { e.stopPropagation(); handleUninstall(item.id); }}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg text-xs font-medium hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors group"
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        {installing === item.id ? '...' : '安装到本地'}
+                        <Check className="w-3.5 h-3.5 group-hover:hidden" />
+                        <Trash2 className="w-3.5 h-3.5 hidden group-hover:block" />
+                        <span className="group-hover:hidden">已安装</span>
+                        <span className="hidden group-hover:inline">卸载</span>
                       </button>
-                    </div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white">{item.name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description || '暂无描述'}</p>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">starclaw.net</span>
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        {item.rating > 0 && <span>⭐ {item.rating.toFixed(1)}</span>}
-                        <span>⬇ {item.downloads}</span>
-                      </div>
-                    </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleInstall(item); }}
+                        disabled={isInstalling}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        {isInstalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                        安装
+                      </button>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {tab === 'community' && communityItems.length === 0 && !loading && (
-              <div className="text-center py-20 text-gray-400">
-                <Bot className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>社区暂无已发布的 Agent 模板</p>
-                <p className="text-xs mt-2">在 <a href="https://starclaw.net" target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline">starclaw.net</a> 发布你的 Agent</p>
-              </div>
-            )}
-
-            {/* Featured (local tab only) */}
-            {tab === 'local' && featured.length > 0 && !activeCategory && !search && (
-              <div className="mb-8">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Star className="w-5 h-5 text-yellow-500" />
-                  精选推荐
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {featured.map(tpl => {
-                    const TplIcon = getIcon(tpl.icon)
-                    return (
-                      <div key={tpl.id} className="bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 border border-violet-200 dark:border-violet-800 rounded-xl p-5 hover:shadow-md transition-shadow">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/40 rounded-lg flex items-center justify-center">
-                              <TplIcon className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-gray-900 dark:text-white">{tpl.name}</h3>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-xs text-violet-600 dark:text-violet-400 font-medium">精选</span>
-                                <span className="text-xs text-gray-400">·</span>
-                                <span className="text-xs text-gray-400">{tpl.install_count} 次安装</span>
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleInstall(tpl.id)}
-                            disabled={installing === tpl.id}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            {installing === tpl.id ? '安装中...' : '安装'}
-                          </button>
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{tpl.description}</p>
-                        <div className="flex items-center gap-2 mt-3 flex-wrap">
-                          {parseTags(tpl.tags).slice(0, 4).map(tag => (
-                            <span key={tag} className="px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 text-xs rounded-full">{tag}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* All templates (local tab only) */}
-            {tab === 'local' && <div>
-              {featured.length > 0 && !activeCategory && !search && (
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">全部模板</h2>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(activeCategory || search ? templates : regular).map(tpl => {
-                  const TplIcon = getIcon(tpl.icon)
-                  return (
-                    <div key={tpl.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5 hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                          <TplIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                        </div>
-                        <button
-                          onClick={() => handleInstall(tpl.id)}
-                          disabled={installing === tpl.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          {installing === tpl.id ? '...' : '安装'}
-                        </button>
-                      </div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">{tpl.name}</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{tpl.description || '暂无描述'}</p>
-                      <div className="flex items-center justify-between mt-3">
-                        <div className="flex items-center gap-1 text-xs text-gray-400">
-                          <User className="w-3 h-3" />
-                          {tpl.author?.username || (tpl.is_builtin ? 'StarClaw' : '匿名')}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                          {tpl.rating > 0 && (
-                            <span className="flex items-center gap-0.5">
-                              <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                              {tpl.rating.toFixed(1)}
-                            </span>
-                          )}
-                          <span>{tpl.install_count} 安装</span>
-                        </div>
-                      </div>
-                      {parseTags(tpl.tags).length > 0 && (
-                        <div className="flex gap-1 mt-2 flex-wrap">
-                          {parseTags(tpl.tags).slice(0, 3).map(tag => (
-                            <span key={tag} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs rounded">{tag}</span>
-                          ))}
-                        </div>
-                      )}
+                  <h3 className="font-semibold text-gray-900 dark:text-white">{item.name}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description || '暂无描述'}</p>
+                  {parseTags(item.tags).length > 0 && (
+                    <div className="flex gap-1 mt-2 flex-wrap">
+                      {parseTags(item.tags).slice(0, 3).map(tag => (
+                        <span key={tag} className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-[10px] rounded">{tag}</span>
+                      ))}
                     </div>
-                  )
-                })}
-              </div>
-            </div>}
-          </>
+                  )}
+                  <div className="flex items-center justify-between mt-3">
+                    <span className="text-xs text-gray-400">{item.author?.nickname || 'StarClaw 官方'}</span>
+                    {item.downloads > 0 && <span className="text-[10px] text-gray-400">{item.downloads} 次安装</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
     </div>

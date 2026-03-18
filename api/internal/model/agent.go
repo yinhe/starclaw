@@ -20,6 +20,7 @@ type Agent struct {
 	Config          string         `json:"config" gorm:"type:json"`                   // JSON config (temperature, max_tokens, etc.)
 	IsPublic        bool           `json:"is_public" gorm:"default:false"`
 	IsBuiltin       bool           `json:"is_builtin" gorm:"default:false"`
+	SourceID        string         `json:"source_id" gorm:"type:varchar(36);index"` // marketplace item ID if installed from Queen
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`

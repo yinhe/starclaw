@@ -187,20 +187,45 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 	}
 
 	// Generate TTS audio for each segment
-	var audioFiles []string
+	var rawAudioFiles []string
 	for i, seg := range segments {
 		audioPath := filepath.Join(tmpDir, fmt.Sprintf("tts_%03d.mp3", i))
 		if err := GenerateTTS(apiKey, seg.Text, voice, audioPath); err != nil {
 			return "", fmt.Errorf("TTS failed for segment %d: %v", i+1, err)
 		}
-		audioFiles = append(audioFiles, audioPath)
+		rawAudioFiles = append(rawAudioFiles, audioPath)
 	}
 
-	// Generate SRT subtitle file
+	// Fit TTS audio to segment windows (prevent overlap, adjust speed)
+	var audioFiles []string
+	var audioDurations []float64
+	for i, seg := range segments {
+		window := seg.End - seg.Start
+		if window <= 0 {
+			window = 3.0 // fallback 3s window
+		}
+		fittedPath, fittedDur, err := FitTTSToWindow(rawAudioFiles[i], window, tmpDir, i)
+		if err != nil {
+			log.Printf("[DubbingTool] FitTTS warning seg %d: %v, using raw audio", i, err)
+			fittedPath = rawAudioFiles[i]
+			fittedDur = window
+		}
+		audioFiles = append(audioFiles, fittedPath)
+		audioDurations = append(audioDurations, fittedDur)
+	}
+
+	// Recalculate segment timings based on actual fitted TTS durations
+	totalDur := float64(videoRec.Duration)
+	if totalDur <= 0 {
+		totalDur = 30 // fallback
+	}
+	fittedSegments := FitNarrationSegments(segments, audioDurations, totalDur)
+
+	// Generate SRT subtitle file from fitted timings
 	subStyle := GetSubtitleStyle(videoPath, args.SubtitleStyle)
 	srtPath := filepath.Join(tmpDir, "subtitles.srt")
 	if subStyle.Enabled {
-		if err := GenerateSRT(segments, srtPath); err != nil {
+		if err := GenerateSRT(fittedSegments, srtPath); err != nil {
 			return "", fmt.Errorf("failed to generate subtitles: %v", err)
 		}
 	}
@@ -226,17 +251,19 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 	mixInputs := "[silence]"
 	inputArgs := []string{"-y", "-i", videoPath}
 
-	for i, seg := range segments {
+	for i, seg := range fittedSegments {
 		inputArgs = append(inputArgs, "-i", audioFiles[i])
 		delayMs := int(seg.Start * 1000)
 		filterParts = append(filterParts, fmt.Sprintf("[%d]adelay=%d|%d[a%d]", i+1, delayMs, delayMs, i))
 		mixInputs += fmt.Sprintf("[a%d]", i)
 	}
 
-	filterParts = append(filterParts, fmt.Sprintf("%samix=inputs=%d:duration=first[narration]", mixInputs, len(segments)+1))
+	filterParts = append(filterParts, fmt.Sprintf("%samix=inputs=%d:duration=first:normalize=0[narration_raw]", mixInputs, len(segments)+1))
+	// Boost narration volume (normalize=0 keeps original levels, but we add a safety boost)
+	filterParts = append(filterParts, "[narration_raw]volume=1.8[narration]")
 
 	if hasAudio {
-		filterParts = append(filterParts, "[0:a][narration]amix=inputs=2:duration=first:weights=0.3 1.0[finalaudio]")
+		filterParts = append(filterParts, "[0:a]volume=0.25[bgaudio];[bgaudio][narration]amix=inputs=2:duration=first:normalize=0[finalaudio]")
 	} else {
 		filterParts = append(filterParts, "[narration]acopy[finalaudio]")
 	}

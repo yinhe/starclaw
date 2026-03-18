@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const queenMarketplaceURL = "https://starclaw.net/api/v1/marketplace"
+const queenMarketplaceURL = "https://starclaw.net/api/marketplace"
 
 type TemplateHandler struct {
 	db *gorm.DB

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText, Link2, Brain } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText, Brain, Activity, Webhook, Code2, Shield, Target, FlaskConical, MessageCircle, Swords } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -29,52 +29,75 @@ import { useI18n } from '../lib/i18n'
 interface NavItem { to: string; icon: React.ComponentType<{ className?: string }>; label: string }
 interface NavGroup { group: string; items: NavItem[] }
 
-function getNavGroups(isHosted: boolean): NavGroup[] {
+function getNavGroups(isHosted: boolean, t: (key: string) => string): NavGroup[] {
   const systemItems: NavItem[] = [
-    { to: '/wallet', icon: Zap, label: '星能' },
-    { to: '/settings', icon: Settings, label: '设置' },
+    { to: '/wallet', icon: Zap, label: t('nav.wallet') },
+    { to: '/mining', icon: Cpu, label: t('nav.mining') },
+    { to: '/settings', icon: Settings, label: t('nav.settings') },
   ]
   if (isHosted) {
-    systemItems.unshift({ to: '/billing', icon: CreditCard, label: '计费' })
+    systemItems.unshift({ to: '/billing', icon: CreditCard, label: t('nav.billing') })
   }
   return [
     {
-      group: '核心',
+      group: '',
       items: [
-        { to: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
-        { to: '/chat', icon: MessageSquare, label: '对话' },
+        { to: '/dashboard', icon: LayoutDashboard, label: t('nav.dashboard') },
+        { to: '/chat', icon: MessageSquare, label: t('nav.chat') },
       ],
     },
     {
-      group: '代理',
+      group: t('nav.group.swarm'),
       items: [
-        { to: '/agents', icon: Bot, label: 'Agents' },
-        { to: '/marketplace', icon: Store, label: '市场' },
+        { to: '/agents', icon: Bot, label: t('nav.agents') },
+        { to: '/marketplace', icon: Store, label: t('nav.marketplace') },
+        { to: '/squads', icon: Swords, label: t('nav.squads') },
+        { to: '/hivemind', icon: Radar, label: t('nav.hivemind') },
       ],
     },
     {
-      group: '技能 / 工具',
+      group: t('nav.group.capability'),
       items: [
-        { to: '/skills', icon: Zap, label: '技能管理' },
-        { to: '/models', icon: Cpu, label: '模型' },
-        { to: '/knowledge', icon: BookOpen, label: '知识库' },
-        { to: '/mcp', icon: Plug, label: 'MCP 工具' },
-        { to: '/integrations', icon: Link2, label: '通讯集成' },
+        { to: '/models', icon: Cpu, label: t('nav.models') },
+        { to: '/knowledge', icon: BookOpen, label: t('nav.knowledge') },
+        { to: '/skills', icon: Plug, label: t('nav.skills') },
+        { to: '/memories', icon: Brain, label: t('nav.memories') },
       ],
     },
     {
-      group: '工作流 / 任务',
+      group: t('nav.group.automation'),
       items: [
-        { to: '/workflows', icon: GitBranch, label: '工作流' },
-        { to: '/tasks', icon: ListTodo, label: '自主任务' },
-        { to: '/activities', icon: Brain, label: '本能系统' },
-        { to: '/resources', icon: FolderOpen, label: '资源中心' },
-        { to: '/videos', icon: Film, label: '视频画廊' },
-        { to: '/visualization', icon: Radar, label: '可视化' },
+        { to: '/workflows', icon: GitBranch, label: t('nav.workflows') },
+        { to: '/tasks', icon: ListTodo, label: t('nav.tasks') },
+        { to: '/activities', icon: Brain, label: t('nav.activities') },
+        { to: '/integrations', icon: MessageCircle, label: t('nav.integrations') },
       ],
     },
     {
-      group: '系统',
+      group: t('nav.group.creation'),
+      items: [
+        { to: '/videos', icon: Film, label: t('nav.videos') },
+        { to: '/resources', icon: FolderOpen, label: t('nav.resources') },
+      ],
+    },
+    {
+      group: t('nav.group.ops'),
+      items: [
+        { to: '/observe', icon: Activity, label: t('nav.observe') },
+        { to: '/webhooks', icon: Webhook, label: t('nav.webhooks') },
+        { to: '/developer', icon: Code2, label: t('nav.developer') },
+        { to: '/security', icon: Shield, label: t('nav.security') },
+      ],
+    },
+    {
+      group: t('nav.group.intelligence'),
+      items: [
+        { to: '/goals', icon: Target, label: t('nav.goals') },
+        { to: '/finetune', icon: FlaskConical, label: t('nav.finetune') },
+      ],
+    },
+    {
+      group: t('nav.group.system'),
       items: systemItems,
     },
   ]
@@ -84,7 +107,7 @@ export default function Layout() {
   const { user, logout } = useAuthStore()
   const { dark, toggle: toggleTheme } = useThemeStore()
   const { deployMode, loaded: configLoaded, fetchConfig } = useConfigStore()
-  const { locale, setLocale } = useI18n()
+  const { locale, setLocale, t } = useI18n()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -116,7 +139,7 @@ export default function Layout() {
     }
   }, [])
 
-  const navGroups = getNavGroups(deployMode === 'hosted')
+  const navGroups = getNavGroups(deployMode === 'hosted', t)
 
   useEffect(() => {
     const poll = async () => {
@@ -204,22 +227,22 @@ export default function Layout() {
               <div className="w-14 h-14 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-3">
                 <Radar className="w-7 h-7 text-violet-600 dark:text-violet-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">登录授权请求</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Queen 虫群门户请求使用你的 Claw 身份登录</p>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('auth.request_title')}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('auth.request_desc')}</p>
             </div>
             {authRequests.slice(0, 1).map(req => (
               <div key={req.id} className="space-y-3">
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 space-y-1.5">
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">来源</span>
+                    <span className="text-gray-400">{t('auth.source')}</span>
                     <span className="text-gray-700 dark:text-gray-300 font-mono">{req.origin || '未知'}</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">挑战码</span>
+                    <span className="text-gray-400">{t('auth.challenge')}</span>
                     <span className="text-gray-700 dark:text-gray-300 font-mono truncate max-w-[180px]">{req.challenge?.slice(0, 16)}...</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">时间</span>
+                    <span className="text-gray-400">{t('common.time')}</span>
                     <span className="text-gray-700 dark:text-gray-300">{new Date(req.created_at * 1000).toLocaleTimeString()}</span>
                   </div>
                 </div>
@@ -228,17 +251,17 @@ export default function Layout() {
                     onClick={() => handleAuthReject(req.id)}
                     className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
                   >
-                    拒绝
+                    {t('auth.reject')}
                   </button>
                   <button
                     onClick={() => handleAuthApprove(req.id)}
                     disabled={authApproving}
                     className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition disabled:opacity-50"
                   >
-                    {authApproving ? '签名中...' : '授权登录'}
+                    {authApproving ? t('auth.signing') : t('auth.approve')}
                   </button>
                 </div>
-                <p className="text-[11px] text-gray-400 text-center">授权后将使用你的 Claw 身份签名登录 Queen 门户</p>
+                <p className="text-[11px] text-gray-400 text-center">{t('auth.approve_hint')}</p>
               </div>
             ))}
           </div>
@@ -250,7 +273,7 @@ export default function Layout() {
           {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
         <CrawfishIcon className="w-6 h-6 text-red-400" />
-        <span className="text-white font-bold">StarClaw</span>
+        <span className="text-white font-bold" translate="no">StarClaw</span>
       </div>
 
       {/* Overlay */}
@@ -263,18 +286,20 @@ export default function Layout() {
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <CrawfishIcon className="w-7 h-7 text-red-400" />
-            <span className="text-xl font-bold">StarClaw</span>
+            <span className="text-xl font-bold" translate="no">StarClaw</span>
           </div>
-          <p className="text-xs text-gray-400 mt-1">AI Agent Platform</p>
+          <p className="text-xs text-gray-400 mt-1">{t('app.subtitle')}</p>
         </div>
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navGroups.map(({ group, items }, gi) => (
-            <div key={group}>
+            <div key={group || `g${gi}`}>
               {gi > 0 && <div className="my-2 mx-3 border-t border-gray-700/60" />}
-              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                {group}
-              </div>
+              {group && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  {group}
+                </div>
+              )}
               {items.map(({ to, icon: Icon, label }) => (
                 <NavLink
                   key={to}
@@ -307,14 +332,14 @@ export default function Layout() {
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
           >
             <FileText className="w-4 h-4" />
-            文档
+            {t('nav.docs')}
           </a>
           <div className="px-3 py-1">
             <kbd className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Ctrl+K</kbd>
-            <span className="text-xs text-gray-500 ml-1.5">快速搜索</span>
+            <span className="text-xs text-gray-500 ml-1.5">{t('common.quick_search')}</span>
           </div>
           <div className="flex items-center justify-between px-3 py-1">
-            <span className="text-xs text-gray-400">主题</span>
+            <span className="text-xs text-gray-400">{t('common.theme')}</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
@@ -344,7 +369,7 @@ export default function Layout() {
             <button
               onClick={handleLogout}
               className="text-gray-400 hover:text-white transition-colors"
-              title="退出登录"
+              title={t('common.logout')}
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -374,14 +399,14 @@ export default function Layout() {
               <div className="fixed inset-0 z-10" onClick={() => setShowNotif(false)} />
               <div className="absolute right-4 top-10 w-80 max-h-96 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-20 flex flex-col">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-                  <span className="font-semibold text-sm text-gray-900 dark:text-white">通知</span>
+                  <span className="font-semibold text-sm text-gray-900 dark:text-white">{t('notification.title')}</span>
                   {unreadCount > 0 && (
-                    <button onClick={markAllRead} className="text-xs text-violet-600 hover:underline">全部已读</button>
+                    <button onClick={markAllRead} className="text-xs text-violet-600 hover:underline">{t('notification.mark_all_read')}</button>
                   )}
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {notifications.length === 0 ? (
-                    <div className="py-8 text-center text-gray-400 text-sm">暂无通知</div>
+                    <div className="py-8 text-center text-gray-400 text-sm">{t('notification.none')}</div>
                   ) : (
                     notifications.slice(0, 20).map(n => (
                       <div
@@ -410,11 +435,11 @@ export default function Layout() {
           {updateInfo && !updateDismissed && (
             <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center justify-between text-sm">
               <span className="text-orange-700">
-                新版本 <strong>v{updateInfo.latest}</strong> 可用！
+                {t('update.available')} <strong>v{updateInfo.latest}</strong>
               </span>
               <div className="flex items-center gap-3">
                 <a href={updateInfo.latest_url} target="_blank" rel="noopener noreferrer" className="text-xs text-orange-600 hover:underline">
-                  查看详情
+                  {t('update.view_details')}
                 </a>
                 <button
                   onClick={async () => {
@@ -425,7 +450,7 @@ export default function Layout() {
                   }}
                   className="px-2.5 py-1 text-xs bg-orange-500 text-white rounded-md hover:bg-orange-600 font-medium"
                 >
-                  一键更新
+                  {t('update.one_click')}
                 </button>
                 <button onClick={() => setUpdateDismissed(true)} className="text-orange-400 hover:text-orange-600">
                   <X className="w-4 h-4" />
