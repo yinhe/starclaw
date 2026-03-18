@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Zap, Fingerprint, CheckCircle2, AlertCircle, Loader2, Shield } from 'lucide-react';
 import { clawAuth, clawNodeRequest, setToken } from '../lib/api';
 
@@ -7,7 +7,10 @@ type Step = 'input' | 'connecting' | 'waiting' | 'verifying' | 'done' | 'error';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [clawUrl, setClawUrl] = useState('http://localhost:8080');
+  const [searchParams] = useSearchParams();
+  const paramUrl = searchParams.get('claw_url');
+  const [clawUrl, setClawUrl] = useState(paramUrl || 'http://localhost:8080');
+  const autoStarted = useRef(false);
   const [step, setStep] = useState<Step>('input');
   const [nodeInfo, setNodeInfo] = useState<{ node_id: string } | null>(null);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
@@ -86,6 +89,14 @@ export default function LoginPage() {
       setMsg({ text: e.message || '连接 Claw 节点失败', error: true });
     }
   }
+
+  // Auto-start auth if claw_url provided via URL params (e.g. from Claw wallet)
+  useEffect(() => {
+    if (paramUrl && !autoStarted.current && step === 'input') {
+      autoStarted.current = true;
+      handleClawLogin();
+    }
+  }, [paramUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const INPUT = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500 transition-colors';
 

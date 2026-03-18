@@ -181,12 +181,12 @@ func (h *ClawAuthHandler) findOrCreateClawUser(clawID string) *model.User {
 	// Derive unique placeholder email/phone from claw_id to avoid MySQL unique index
 	// conflicts (MySQL treats empty string as a value, not NULL)
 	idHash := sha256.Sum256([]byte(clawID))
-	placeholder := hex.EncodeToString(idHash[:8])
+	placeholder := hex.EncodeToString(idHash[:6]) // 12 hex chars
 
 	user = model.User{
 		Name:      shortID,
 		Email:     placeholder + "@claw.local",
-		Phone:     "claw-" + placeholder,
+		Phone:     "c" + placeholder,
 		ClawID:    clawID,
 		FreeQuota: 1000000, // 1M free tokens
 		Status:    "active",
