@@ -138,9 +138,15 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Dir string `json:"dir"`
+		Dir  string `json:"dir"`
+		Name string `json:"name"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
+
+	instName := req.Name
+	if instName == "" {
+		instName = "claw"
+	}
 
 	sse := newSSE(w)
 	start := time.Now()
@@ -181,7 +187,11 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command(sporePath, "install", tmpSpore)
+	installArgs := []string{"install", tmpSpore}
+	if instName != "claw" {
+		installArgs = append(installArgs, "--name", instName)
+	}
+	cmd := exec.Command(sporePath, installArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -196,7 +206,7 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 
 	homeDir, _ := os.UserHomeDir()
 	sporeHome := filepath.Join(homeDir, ".spore")
-	clawBase := filepath.Join(sporeHome, "installed", "claw")
+	clawBase := filepath.Join(sporeHome, "installed", instName)
 	clawInstallDir := resolveCurrentDir(clawBase)
 	if clawInstallDir == "" {
 		clawInstallDir = filepath.Join(clawBase, "v1.0.0")
@@ -214,8 +224,8 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	sse.logOK(fmt.Sprintf("[3/4] Configuration saved (port %s) ✓", port), 75)
 
 	// Step 4: Start + Desktop shortcut
-	sse.log("[4/4] Starting Claw service...", 85)
-	startCmd := exec.Command(sporePath, "start", "claw")
+	sse.log(fmt.Sprintf("[4/4] Starting %s service...", instName), 85)
+	startCmd := exec.Command(sporePath, "start", instName)
 	startCmd.Stdout = os.Stdout
 	startCmd.Stderr = os.Stderr
 	startErr := startCmd.Run()
@@ -239,6 +249,7 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	sse.send(map[string]interface{}{
 		"done":     true,
 		"url":      url,
+		"name":     instName,
 		"elapsed":  elapsed,
 		"progress": 100,
 		"log":      fmt.Sprintf("✅ Installation complete! (%s)", elapsed),

@@ -89,6 +89,14 @@ h2{font-size:18px;font-weight:600;margin-bottom:8px}
     </div>
 
     <div class="field">
+      <label>实例名称 Instance Name</label>
+      <div class="input-row">
+        <input type="text" id="instance-name" value="claw" placeholder="claw">
+      </div>
+      <div style="font-size:11px;color:#555;margin-top:4px">多实例部署时可自定义名称，如 claw-dev、claw-test</div>
+    </div>
+
+    <div class="field">
       <label>安装目录 Install Directory</label>
       <div class="input-row">
         <input type="text" id="install-dir" placeholder="Loading...">
@@ -212,7 +220,7 @@ async function startInstall() {
     const res = await fetch(API + '/api/install', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({dir: installDir})
+      body: JSON.stringify({dir: installDir, name: document.getElementById('instance-name').value.trim() || 'claw'})
     });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -260,8 +268,8 @@ function showComplete(ev) {
     '安装耗时 ' + (ev.elapsed || '?') + '，StarClaw 已启动。';
   document.getElementById('done-cmds').innerHTML =
     '<div class="cmd-row"><span class="cmd-code">spore status</span><span class="cmd-desc">— 查看状态</span></div>' +
-    '<div class="cmd-row"><span class="cmd-code">spore stop claw</span><span class="cmd-desc">— 停止服务</span></div>' +
-    '<div class="cmd-row"><span class="cmd-code">spore start claw</span><span class="cmd-desc">— 启动服务</span></div>';
+    '<div class="cmd-row"><span class="cmd-code">spore stop ' + (ev.name||'claw') + '</span><span class="cmd-desc">— 停止服务</span></div>' +
+    '<div class="cmd-row"><span class="cmd-code">spore start ' + (ev.name||'claw') + '</span><span class="cmd-desc">— 启动服务</span></div>';
 }
 
 async function showUninstall() {
