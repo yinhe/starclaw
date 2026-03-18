@@ -8,8 +8,17 @@ export function setToken(token: string) {
   localStorage.setItem('queen_token', token)
 }
 
+export function setRole(role: string) {
+  localStorage.setItem('queen_role', role)
+}
+
+export function getRole(): string {
+  return localStorage.getItem('queen_role') || ''
+}
+
 export function clearToken() {
   localStorage.removeItem('queen_token')
+  localStorage.removeItem('queen_role')
 }
 
 export function isLoggedIn(): boolean {

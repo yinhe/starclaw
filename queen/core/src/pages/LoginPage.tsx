@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, setToken } from '../api'
+import { api, setToken, setRole } from '../api'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -14,11 +14,16 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const isEmail = form.username.includes('@')
-      const data = await api.post<{ token: string }>('/v1/auth/login', {
+      const data = await api.post<{ token: string; user?: { role?: string } }>('/v1/auth/login', {
         ...(isEmail ? { email: form.username } : { phone: form.username }),
         password: form.password,
       })
+      const role = data.user?.role || ''
+      if (role !== 'admin') {
+        throw new Error('仅管理员可登录运营中心')
+      }
       setToken(data.token)
+      setRole(role)
       navigate('/')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '登录失败')
