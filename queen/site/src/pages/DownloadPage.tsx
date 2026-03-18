@@ -17,7 +17,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}.exe`,
     setupSize: '26 MB',
     arch: 'x86_64',
-    setupLabel: `StarClaw-Setup-${V}.exe`,
+    setupLabel: `Setup-${V}.exe`,
     note: 'Download → Double-click → Done',
     scriptCmd: 'irm https://nydus.starclaw.net/spore/install.ps1 | iex',
     scriptLabel: 'PowerShell',
@@ -29,7 +29,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
     setupSize: '19 MB',
     arch: 'x86_64',
-    setupLabel: `StarClaw-Setup-${V}-linux-amd64.tar.gz`,
+    setupLabel: `Setup-${V}-linux.tar.gz`,
     note: 'Download → Extract → Run',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Bash',
@@ -41,7 +41,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
     setupSize: '26 MB',
     arch: 'Apple Silicon (M1/M2/M3/M4)',
-    setupLabel: `StarClaw-Setup-${V}-darwin-arm64.dmg`,
+    setupLabel: `Setup-${V}-arm64.dmg`,
     note: 'Download → Open DMG → Install',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Terminal',
@@ -53,7 +53,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
     setupSize: '27 MB',
     arch: 'Intel x86_64',
-    setupLabel: `StarClaw-Setup-${V}-darwin-amd64.dmg`,
+    setupLabel: `Setup-${V}-intel.dmg`,
     note: 'Download → Open DMG → Install',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Terminal',
@@ -123,7 +123,7 @@ export function DownloadPage() {
               </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-2 gap-4">
               {PACKAGES.map((pkg) => {
                 const Icon = pkg.icon
                 return (
