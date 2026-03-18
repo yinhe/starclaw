@@ -23,10 +23,22 @@ models:
     type: "image"
     price_per_call: 0.01
   # Video Generation
-  - name: "fal/kling-video"
+  - name: "fal/kling-video/v3/pro/text-to-video"
     type: "video"
     price_per_call: 0.10
-    description: "Kling - AI 视频生成"
+    description: "Kling V3 Pro - 文生视频 (3-15s, 原生音频)"
+  - name: "fal/kling-video/v3/pro/image-to-video"
+    type: "video"
+    price_per_call: 0.12
+    description: "Kling V3 Pro - 图生视频 (3-15s, 原生音频)"
+  - name: "fal/kling-video/v3/standard/text-to-video"
+    type: "video"
+    price_per_call: 0.05
+    description: "Kling V3 Standard - 文生视频 (3-15s)"
+  - name: "fal/kling-video/v3/standard/image-to-video"
+    type: "video"
+    price_per_call: 0.06
+    description: "Kling V3 Standard - 图生视频 (3-15s)"
   - name: "fal/minimax-video"
     type: "video"
     price_per_call: 0.10
