@@ -49,7 +49,7 @@ export default function LoginPage() {
           try {
             const status = await clawNodeRequest<{
               id: string; status: string;
-              node_id?: string; public_key?: string; signature?: string; challenge?: string;
+              node_id?: string; public_key?: string; signature?: string; challenge?: string; username?: string;
             }>(baseUrl, `/v1/identity/auth-request/${requestId}`);
 
             if (status.status === 'approved') {
@@ -61,6 +61,7 @@ export default function LoginPage() {
                   node_id: status.node_id!,
                   public_key: status.public_key!,
                   signature: status.signature!,
+                  username: status.username,
                 });
                 setStep('done');
                 setToken(data.token);

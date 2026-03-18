@@ -86,6 +86,7 @@ func (h *ClawAuthHandler) Verify(c *gin.Context) {
 		NodeID    string `json:"node_id" binding:"required"`
 		PublicKey string `json:"public_key" binding:"required"`
 		Signature string `json:"signature" binding:"required"`
+		Username  string `json:"username"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
@@ -136,7 +137,7 @@ func (h *ClawAuthHandler) Verify(c *gin.Context) {
 	}
 
 	// 5. Find or create user account linked to this Claw address
-	user := h.findOrCreateClawUser(req.NodeID)
+	user := h.findOrCreateClawUser(req.NodeID, req.Username)
 	if user == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建账号失败"})
 		return
@@ -165,18 +166,24 @@ func (h *ClawAuthHandler) Verify(c *gin.Context) {
 }
 
 // findOrCreateClawUser finds a user by claw_id, or creates a new one.
-func (h *ClawAuthHandler) findOrCreateClawUser(clawID string) *model.User {
+// If username is provided from Claw, it updates the display name.
+func (h *ClawAuthHandler) findOrCreateClawUser(clawID, username string) *model.User {
 	// Try to find existing user by claw_id
 	var user model.User
 	if err := h.db.Where("claw_id = ?", clawID).First(&user).Error; err == nil {
+		// Update name if Claw passed a username and current name is just the node ID
+		if username != "" {
+			newName := h.formatDisplayName(username, clawID)
+			if user.Name != newName {
+				h.db.Model(&user).Update("name", newName)
+				user.Name = newName
+			}
+		}
 		return &user
 	}
 
-	// Create new user with claw identity
-	shortID := clawID
-	if len(shortID) > 14 {
-		shortID = shortID[:14] + "…"
-	}
+	// Build display name: "username (claw:abc123...)" or just short node ID
+	displayName := h.formatDisplayName(username, clawID)
 
 	// Derive unique placeholder email/phone from claw_id to avoid MySQL unique index
 	// conflicts (MySQL treats empty string as a value, not NULL)
@@ -184,7 +191,7 @@ func (h *ClawAuthHandler) findOrCreateClawUser(clawID string) *model.User {
 	placeholder := hex.EncodeToString(idHash[:6]) // 12 hex chars
 
 	user = model.User{
-		Name:      shortID,
+		Name:      displayName,
 		Email:     placeholder + "@claw.local",
 		Phone:     "c" + placeholder,
 		ClawID:    clawID,
@@ -198,4 +205,19 @@ func (h *ClawAuthHandler) findOrCreateClawUser(clawID string) *model.User {
 
 	log.Printf("[claw-auth] Created new star-ai user %s for claw %s", user.ID, clawID)
 	return &user
+}
+
+// formatDisplayName returns "username (claw:abc1...)" or just the short node ID.
+func (h *ClawAuthHandler) formatDisplayName(username, clawID string) string {
+	shortID := clawID
+	if len(shortID) > 14 {
+		shortID = shortID[:14] + "…"
+	}
+	if username != "" && username != "admin" {
+		return username + " (" + shortID + ")"
+	}
+	if username == "admin" {
+		return "admin (" + shortID + ")"
+	}
+	return shortID
 }

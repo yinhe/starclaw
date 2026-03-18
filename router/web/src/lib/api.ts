@@ -54,7 +54,7 @@ export const auth = {
 export const clawAuth = {
   challenge: () =>
     request<{ challenge: string; expires_in: number }>('POST', '/auth/claw/challenge'),
-  verify: (body: { challenge: string; node_id: string; public_key: string; signature: string }) =>
+  verify: (body: { challenge: string; node_id: string; public_key: string; signature: string; username?: string }) =>
     request<{ token: string; user: { id: string; email: string; phone: string; name: string; claw_id: string } }>(
       'POST', '/auth/claw/verify', body
     ),

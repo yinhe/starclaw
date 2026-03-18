@@ -16,13 +16,14 @@ import (
 type AuthRequest struct {
 	ID        string `json:"id"`
 	Challenge string `json:"challenge"`
-	Origin    string `json:"origin"`    // e.g. "starclaw.net"
-	Status    string `json:"status"`    // pending / approved / rejected / expired
+	Origin    string `json:"origin"` // e.g. "starclaw.net"
+	Status    string `json:"status"` // pending / approved / rejected / expired
 	CreatedAt int64  `json:"created_at"`
 	// Filled after approval
 	NodeID    string `json:"node_id,omitempty"`
 	PublicKey string `json:"public_key,omitempty"`
 	Signature string `json:"signature,omitempty"`
+	Username  string `json:"username,omitempty"`
 }
 
 type AuthRequestHandler struct {
@@ -116,6 +117,9 @@ func (h *AuthRequestHandler) GetStatus(c *gin.Context) {
 		resp["public_key"] = req.PublicKey
 		resp["signature"] = req.Signature
 		resp["challenge"] = req.Challenge
+		if req.Username != "" {
+			resp["username"] = req.Username
+		}
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -163,6 +167,7 @@ func (h *AuthRequestHandler) Approve(c *gin.Context) {
 	req.NodeID = h.identity.NodeID
 	req.PublicKey = h.identity.PublicKeyHex()
 	req.Signature = fmt.Sprintf("%x", sig)
+	req.Username = c.GetString("username")
 
 	c.JSON(http.StatusOK, gin.H{"status": "approved"})
 }
