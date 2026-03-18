@@ -94,6 +94,16 @@ export interface AuditLogEntry {
   created_at: string
 }
 
+// --- Admin Users ---
+export interface AdminUser {
+  id: string
+  username: string
+  role: string
+  team_id: string
+  email: string
+  created_at: string
+}
+
 // --- Teams ---
 export interface Team {
   id: string
@@ -296,6 +306,12 @@ export const broodAPI = {
     request<{ found: boolean; address?: string; name?: string; claw_id?: string; version?: string; status?: string; team?: string }>(
       `/resolve?claw_id=${encodeURIComponent(clawId)}`,
     ),
+
+  // --- Admin Users ---
+  listAdmins: () => request<{ users: AdminUser[]; total: number }>('/admins'),
+  createAdmin: (data: { username: string; password: string; role?: string; team_id?: string; email?: string }) =>
+    request<{ user: AdminUser }>('/admins', { method: 'POST', body: JSON.stringify(data) }),
+  deleteAdmin: (id: string) => request(`/admins/${id}`, { method: 'DELETE' }),
 
   // --- Teams ---
   listTeams: () => request<{ teams: (Team & { node_count: number })[]; total: number }>('/teams'),
