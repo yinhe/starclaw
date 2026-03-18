@@ -34,13 +34,21 @@ else
   git pull origin main
 fi
 
-# Capture version
+# Capture version (must match YYYY.MMDD.HHMM format for Molt comparison)
 if [ -n "$REV" ]; then
   BUILD_VER="$REV"
 elif [ -f .git/HEAD ]; then
-  BUILD_VER=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
-else
-  BUILD_VER="dev"
+  # Prefer latest git tag (release version format)
+  BUILD_VER=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+fi
+# Fallback: query Nydus release API
+if [ -z "$BUILD_VER" ] || [ "$BUILD_VER" = "dev" ]; then
+  BUILD_VER=$(curl -sf --connect-timeout 3 https://nydus.starclaw.net/releases/latest 2>/dev/null \
+    | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true)
+fi
+# Final fallback: UTC timestamp
+if [ -z "$BUILD_VER" ] || [ "$BUILD_VER" = "dev" ]; then
+  BUILD_VER=$(date -u +"%Y.%m%d.%H%M")
 fi
 echo "$BUILD_VER" > api/.version
 echo "  Version: $BUILD_VER"

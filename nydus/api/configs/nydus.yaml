@@ -34,7 +34,7 @@ repos:
         ssh_host: "root@starclaw.me"
         ssh_key: "/root/.ssh/id_ed25519"
         deploy_path: "/opt/starclaw"
-        deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api web"
+        deploy_cmd: "bash scripts/server-deploy-update.sh all --no-pull"
         subdir: "claw"
         branch: "master"
 
