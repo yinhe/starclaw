@@ -88,13 +88,21 @@ h2{font-size:18px;font-weight:600;margin-bottom:8px}
       <div class="size-item"><div class="val" id="sz-os">-</div><div class="lbl">平台</div></div>
     </div>
 
-    <div class="field">
-      <label>实例名称 Instance Name</label>
-      <div class="input-row">
-        <input type="text" id="instance-name" value="claw" placeholder="claw">
+    <div style="display:flex;gap:12px">
+      <div class="field" style="flex:1">
+        <label>实例名称 Instance Name</label>
+        <div class="input-row">
+          <input type="text" id="instance-name" value="claw" placeholder="claw">
+        </div>
       </div>
-      <div style="font-size:11px;color:#555;margin-top:4px">多实例部署时可自定义名称，如 claw-dev、claw-test</div>
+      <div class="field" style="width:100px">
+        <label>端口 Port</label>
+        <div class="input-row">
+          <input type="text" id="instance-port" value="" placeholder="自动" style="text-align:center">
+        </div>
+      </div>
     </div>
+    <div style="font-size:11px;color:#555;margin-top:-12px;margin-bottom:16px">多实例部署时可自定义名称和端口，如 claw-dev:8081、claw-test:8082</div>
 
     <div class="field">
       <label>安装目录 Install Directory</label>
@@ -220,7 +228,11 @@ async function startInstall() {
     const res = await fetch(API + '/api/install', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({dir: installDir, name: document.getElementById('instance-name').value.trim() || 'claw'})
+      body: JSON.stringify({
+        dir: installDir,
+        name: document.getElementById('instance-name').value.trim() || 'claw',
+        port: document.getElementById('instance-port').value.trim()
+      })
     });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

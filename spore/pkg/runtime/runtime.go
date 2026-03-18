@@ -97,24 +97,24 @@ func (m *Manager) InstallFromDir(srcDir string, customName ...string) (*SporeIns
 		}
 	}
 
-	// Stop running instance before overwriting files (Windows: exe locked while running)
+	// Stop THIS instance before overwriting files (Windows: exe locked while running)
 	if existing, _ := m.loadInstance(instName); existing != nil && existing.Status == "running" {
 		log.Printf("[spore] stopping running %s before upgrade...", instName)
 		m.Stop(instName)
 		time.Sleep(1 * time.Second)
 	}
-	// Windows fallback: kill by binary name if still locked (e.g. started outside spore)
-	if goruntime.GOOS == "windows" && mf.Binary != "" {
-		killCmd := exec.Command("taskkill", "/F", "/IM", mf.Binary)
-		if killCmd.Run() == nil {
-			log.Printf("[spore] force-killed %s via taskkill", mf.Binary)
-			time.Sleep(1 * time.Second)
-		}
-	}
 
-	// Copy files from srcDir to versionDir
+	// Copy files from srcDir to versionDir (retry once if locked on Windows)
 	if err := copyDir(srcDir, versionDir); err != nil {
-		return nil, fmt.Errorf("copy files: %w", err)
+		if goruntime.GOOS == "windows" {
+			log.Printf("[spore] copy failed, retrying after wait: %v", err)
+			time.Sleep(2 * time.Second)
+			if err2 := copyDir(srcDir, versionDir); err2 != nil {
+				return nil, fmt.Errorf("copy files: %w", err2)
+			}
+		} else {
+			return nil, fmt.Errorf("copy files: %w", err)
+		}
 	}
 
 	// Make binary executable

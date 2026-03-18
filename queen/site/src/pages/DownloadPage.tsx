@@ -42,9 +42,9 @@ const PACKAGES = [
     setupSize: '26 MB',
     arch: 'Apple Silicon (M1/M2/M3/M4)',
     setupLabel: 'StarClaw-Setup.dmg',
-    note: 'Download → Open DMG → Install',
+    note: 'DMG 安装: 右键点击 → 打开 (绕过 Gatekeeper)',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-    scriptLabel: 'Terminal',
+    scriptLabel: 'Terminal (推荐)',
   },
   {
     platform: 'macOS (Intel)',
@@ -54,9 +54,9 @@ const PACKAGES = [
     setupSize: '27 MB',
     arch: 'Intel x86_64',
     setupLabel: 'StarClaw-Setup.dmg',
-    note: 'Download → Open DMG → Install',
+    note: 'DMG 安装: 右键点击 → 打开 (绕过 Gatekeeper)',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-    scriptLabel: 'Terminal',
+    scriptLabel: 'Terminal (推荐)',
   },
 ]
 

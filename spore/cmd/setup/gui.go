@@ -140,6 +140,7 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Dir  string `json:"dir"`
 		Name string `json:"name"`
+		Port string `json:"port"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
 
@@ -201,8 +202,11 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	os.Remove(tmpSpore)
 	sse.logOK("[2/4] Claw package installed ✓", 55)
 
-	// Step 3: Configure — find available port (Vite-style auto-increment)
-	port := findAvailablePort(8080, 8099)
+	// Step 3: Configure — use specified port or find available one
+	port := req.Port
+	if port == "" {
+		port = findAvailablePort(8080, 8099)
+	}
 
 	homeDir, _ := os.UserHomeDir()
 	sporeHome := filepath.Join(homeDir, ".spore")
