@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 //go:embed embed/spore_bin
 var sporeBin []byte
@@ -38,8 +38,11 @@ func main() {
 
 	// GUI mode (default) — open browser wizard
 	if !cliMode && !uninstallMode {
-		startGUI()
-		return
+		if err := startGUI(); err != nil {
+			fmt.Printf("GUI failed: %v — falling back to CLI\n", err)
+		} else {
+			return
+		}
 	}
 
 	// CLI uninstall

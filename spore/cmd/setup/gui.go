@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -20,7 +19,7 @@ var wizardHTML []byte
 
 const guiPort = "17890"
 
-func startGUI() {
+func startGUI() error {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -38,23 +37,28 @@ func startGUI() {
 		// Port in use, try random
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			log.Fatalf("Cannot start GUI server: %v", err)
+			return fmt.Errorf("cannot start GUI server: %w", err)
 		}
 		addr = listener.Addr().String()
 	}
 
 	url := fmt.Sprintf("http://%s", addr)
-	fmt.Printf("StarClaw Setup GUI: %s\n", url)
+	fmt.Println()
+	fmt.Println("  ✨ StarClaw Setup v" + version + " (GUI)")
+	fmt.Println("  🌐 " + url)
+	fmt.Println()
+	fmt.Println("  Browser will open automatically.")
+	fmt.Println("  If not, copy the URL above into your browser.")
+	fmt.Println("  Press Ctrl+C to exit.")
+	fmt.Println()
 
 	go func() {
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		openBrowser(url)
 	}()
 
 	server := &http.Server{Handler: mux}
-	if err := server.Serve(listener); err != nil {
-		log.Fatalf("GUI server error: %v", err)
-	}
+	return server.Serve(listener)
 }
 
 func handleInfo(w http.ResponseWriter, r *http.Request) {
@@ -239,12 +243,12 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 
 	elapsed := time.Since(start).Round(time.Millisecond).String()
 	sse.send(map[string]interface{}{
-		"done":    true,
-		"url":     url,
-		"elapsed": elapsed,
+		"done":     true,
+		"url":      url,
+		"elapsed":  elapsed,
 		"progress": 100,
-		"log":     fmt.Sprintf("✅ Installation complete! (%s)", elapsed),
-		"level":   "ok",
+		"log":      fmt.Sprintf("✅ Installation complete! (%s)", elapsed),
+		"level":    "ok",
 	})
 }
 
