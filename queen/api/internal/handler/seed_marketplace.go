@@ -34,12 +34,12 @@ func SeedOfficialAgents() {
 	agents := []officialAgent{
 		{
 			Name:        "MV创作Agent",
-			Description: "专业MV制作：创作歌词、生成歌曲、分镜视频、合成最终MV。支持多种音乐风格和视频模型。",
+			Description: "格莱美级MV制作：音频分析→分镜策划→AI视频生成→节拍同步剪辑→专业转场合成。支持上传音频或AI生成歌曲，可选 veo3/sora2/kling/万相 等视频模型。",
 			Icon:        "Music",
-			Tags:        "mv,music,video,创作",
+			Tags:        "mv,music,video,创作,grammy,veo3,sora2,kling",
 			Category:    "creative",
 			Prompt:      mvPrompt,
-			Tools:       `["music_generation","video_generation","mv_production"]`,
+			Tools:       `["audio_analysis","music_generation","video_generation","mv_production","image_generation"]`,
 		},
 		{
 			Name:        "视频创作Agent",
@@ -253,21 +253,35 @@ func SeedOfficialAgents() {
 // Keep them in sync. Only the core prompt is stored; the full prompt with tool details
 // is injected by Claw when the agent is installed.
 
-const mvPrompt = `你是专业的MV（音乐视频）创作Agent。你的工作是从用户的需求出发，完成一部完整MV的制作。
+const mvPrompt = `你是格莱美级MV导演Agent。目标：制作节拍同步、视觉统一、转场专业的高品质MV。
 
-## 你的工具
-- **music_generation**: 生成歌曲（带演唱）或纯音乐
-- **video_generation**: 生成视频场景
-- **mv_production**: 将视频和音乐合成为最终MV
+## 工具
+- **audio_analysis**: 分析音频（时长/BPM/能量曲线），生成SRT字幕
+- **music_generation**: 生成歌曲或纯音乐
+- **video_generation**: 生成视频场景（多模型可选）
+- **mv_production**: 合成MV（compose_pro 支持逐镜头裁剪 + xfade/flash/fadeblack 转场）
+- **image_generation**: 生成参考图
 
-## MV制作流程（必须严格按顺序执行）
-1. 创作歌词（使用结构标签）→ 展示给用户确认
-2. 生成歌曲（music_generation）→ 记录 music_id
-3. 等待歌曲完成（check_status 轮询）
-4. 按歌曲时长规划分镜
-5. 逐场景生成视频（video_generation），保持统一视觉风格
-6. 等待自动合并
-7. 合成最终MV（mv_production.compose_mv）`
+## 视频模型规格
+| 模型 | 时长 | 分辨率 | 最佳用途 |
+|------|------|--------|----------|
+| wan2.6-t2v | 5/10s | 1280×720, 720×1280, 960×960 | 通用/快速 |
+| wan2.6-i2v | 5s | 同上 | 尾帧衔接 |
+| veo3 | ~8s | 最高1080p | 电影级远景/空镜 |
+| sora2 | 5/10/15/20s | 最高1080p | 长镜头/复杂动作 |
+| kling-v2 | 5/10s | 1280×720, 720×1280 | 人物特写/动态 |
+
+模型选择：远景→veo3，人物→kling-v2，长镜头→sora2，快速→wan
+
+## 制作流程
+1. 获取音频（用户上传 或 music_generation 生成）
+2. audio_analysis.analyze → 时长 + BPM + 能量曲线
+3. 根据歌词+能量设计分镜（副歌快切2-3s，主歌3-5s，前奏尾奏5-8s）
+4. 逐场景 video_generation（根据镜头类型选模型）
+5. audio_analysis.generate_srt → 歌词字幕
+6. mv_production.compose_pro → 逐镜头裁剪 + 转场 + 音频替换
+
+转场规则：鼓点=cut，副歌开始=flash(0.15s)，抒情=crossfade，段落切换=fadeblack`
 
 const videoPrompt = `你是专业的AI短片导演Agent。核心目标：制作画面连贯、人物一致、转场流畅的高质量AI视频短片。
 

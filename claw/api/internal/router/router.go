@@ -112,6 +112,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewMVTool(db))
 	toolRegistry.Register(tool.NewComicTool(db))
 	toolRegistry.Register(tool.NewMusicTool(db))
+	toolRegistry.Register(tool.NewAudioTool(db))
 	toolRegistry.Register(tool.NewImageTool(db))
 	toolRegistry.Register(tool.NewDocumentTool(db))
 	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))

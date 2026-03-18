@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,18 +28,24 @@ func NewMVTool(db *gorm.DB) *MVTool {
 func (t *MVTool) Name() string { return "mv_production" }
 
 func (t *MVTool) Description() string {
-	return `MV（音乐视频）合成工具，将视频画面与音乐轨道合成为最终MV。支持歌词字幕烧录，自适应视频方向。
-操作：compose_mv
-使用前需要先用 music_generation 生成音乐，用 video_generation 生成视频片段。compose_mv 会将视频的原始音频替换为音乐，可选添加歌词字幕。`
+	return `MV（音乐视频）合成工具，将视频画面与音乐轨道合成为最终MV。
+操作：
+- compose_mv: 基础合成，将视频片段与音乐合并（简单拼接）
+- compose_pro: 专业合成，支持逐镜头精确时长裁剪、xfade/flash/beat_cut转场、节拍同步剪辑。格莱美级MV用此操作。
+
+compose_pro 接受 scenes JSON数组，每个场景包含 video_id、trim_duration（精确裁剪秒数）、transition（转场类型：cut/crossfade/flash/fadewhite/wipeleft/fadeblack）、transition_duration（转场时长秒数）。
+音频来源：music_id（已生成音乐）或 audio_url（上传的音频文件路径）。`
 }
 
 func (t *MVTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":         {Type: "string", Description: "Action: compose_mv"},
-			"music_id":       {Type: "string", Description: "Music record ID from music_generation tool (required)"},
-			"video_id":       {Type: "string", Description: "Specific video record ID to use. If empty, merges all clips in current conversation."},
+			"action":         {Type: "string", Description: "Action: compose_mv, compose_pro"},
+			"music_id":       {Type: "string", Description: "Music record ID from music_generation tool"},
+			"audio_url":      {Type: "string", Description: "Direct audio file URL/path (alternative to music_id, e.g. uploaded .wav file)"},
+			"video_id":       {Type: "string", Description: "For compose_mv: specific video record ID to use."},
+			"scenes":         {Type: "string", Description: `For compose_pro: JSON array of scenes. Each scene: {"video_id":"xxx", "trim_duration":5.0, "transition":"crossfade", "transition_duration":0.5}. Transitions: cut (hard cut, default), crossfade (dissolve), flash (white flash), fadewhite, fadeblack, wipeleft, slideleft, circlecrop. transition_duration defaults to 0.5s.`},
 			"lyrics_srt":     {Type: "string", Description: "SRT-format lyrics for subtitle burning. Optional."},
 			"subtitle_style": {Type: "string", Description: "Subtitle style: auto (default), small, large, none"},
 		},
@@ -49,7 +56,9 @@ func (t *MVTool) Parameters() interface{} {
 type mvArgs struct {
 	Action        string `json:"action"`
 	MusicID       string `json:"music_id"`
+	AudioURL      string `json:"audio_url"`
 	VideoID       string `json:"video_id"`
+	Scenes        string `json:"scenes"`
 	LyricsSRT     string `json:"lyrics_srt"`
 	SubtitleStyle string `json:"subtitle_style"`
 }
@@ -62,8 +71,10 @@ func (t *MVTool) Execute(ctx context.Context, argsJSON string) (string, error) {
 	switch args.Action {
 	case "compose_mv":
 		return t.composeMV(ctx, args)
+	case "compose_pro":
+		return t.composePro(ctx, args)
 	default:
-		return "", fmt.Errorf("unknown action: %s. Use: compose_mv", args.Action)
+		return "", fmt.Errorf("unknown action: %s. Use: compose_mv, compose_pro", args.Action)
 	}
 }
 
@@ -240,3 +251,366 @@ func (t *MVTool) composeMV(ctx context.Context, args mvArgs) (string, error) {
 		"message": fmt.Sprintf("MV合成完成！%d个场景+音乐，共%d秒。下载: %s (%.1f MB)", totalClips, totalDuration, downloadURL, sizeMB),
 	}), nil
 }
+
+// ── compose_pro: Professional MV assembly with per-clip trimming + transitions ──
+
+type proScene struct {
+	VideoID            string  `json:"video_id"`
+	TrimDuration       float64 `json:"trim_duration"`       // seconds to keep from clip (0 = use full clip)
+	Transition         string  `json:"transition"`          // cut, crossfade, flash, fadewhite, fadeblack, wipeleft, slideleft, circlecrop
+	TransitionDuration float64 `json:"transition_duration"` // transition length in seconds (default 0.5)
+}
+
+func (t *MVTool) composePro(ctx context.Context, args mvArgs) (string, error) {
+	userID := ""
+	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
+		userID = uid
+	}
+	convID := ""
+	if cid, ok := ctx.Value(CtxKeyConversationID).(string); ok {
+		convID = cid
+	}
+
+	if args.Scenes == "" {
+		return "", fmt.Errorf("scenes JSON array is required for compose_pro")
+	}
+
+	var scenes []proScene
+	if err := json.Unmarshal([]byte(args.Scenes), &scenes); err != nil {
+		return "", fmt.Errorf("invalid scenes JSON: %v", err)
+	}
+	if len(scenes) == 0 {
+		return "", fmt.Errorf("at least one scene is required")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "compose-pro-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Resolve audio (music_id or audio_url)
+	audioPath, err := t.resolveAudioURL(args, tmpDir)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("[MVTool] compose_pro: %d scenes, audio=%s", len(scenes), audioPath)
+
+	// Step 1: Resolve and trim each clip
+	var trimmedPaths []string
+	var trimmedDurations []float64
+	for i, scene := range scenes {
+		if scene.VideoID == "" {
+			return "", fmt.Errorf("scene %d: video_id is required", i+1)
+		}
+		var video model.VideoRecord
+		if err := t.db.Where("id = ?", scene.VideoID).First(&video).Error; err != nil {
+			return "", fmt.Errorf("scene %d: video not found: %s", i+1, scene.VideoID)
+		}
+
+		// Download/resolve clip
+		clipPath := filepath.Join(tmpDir, fmt.Sprintf("raw_%03d.mp4", i))
+		if strings.HasPrefix(video.VideoURL, "/v1/videos/merged/") {
+			fn := strings.TrimPrefix(video.VideoURL, "/v1/videos/merged/")
+			src := "/app/merged_videos/" + fn
+			if _, err := os.Stat(src); err == nil {
+				clipPath = src
+			}
+		}
+		if clipPath == filepath.Join(tmpDir, fmt.Sprintf("raw_%03d.mp4", i)) {
+			resolved, err := ResolveClipToLocal(video.VideoURL, clipPath)
+			if err != nil {
+				return "", fmt.Errorf("scene %d: failed to resolve video: %v", i+1, err)
+			}
+			clipPath = resolved
+		}
+
+		// Trim to exact duration if specified
+		finalPath := clipPath
+		clipDur := float64(video.Duration)
+		if scene.TrimDuration > 0 && scene.TrimDuration < clipDur {
+			trimPath := filepath.Join(tmpDir, fmt.Sprintf("trim_%03d.mp4", i))
+			trimCmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+				"-i", clipPath,
+				"-t", fmt.Sprintf("%.3f", scene.TrimDuration),
+				"-c:v", "libx264", "-preset", "fast", "-an",
+				trimPath,
+			)
+			if out, err := trimCmd.CombinedOutput(); err != nil {
+				return "", fmt.Errorf("scene %d: trim failed: %v\n%s", i+1, err, string(out))
+			}
+			finalPath = trimPath
+			clipDur = scene.TrimDuration
+		}
+
+		trimmedPaths = append(trimmedPaths, finalPath)
+		trimmedDurations = append(trimmedDurations, clipDur)
+	}
+
+	// Step 2: Assemble with transitions using ffmpeg xfade filter chain
+	var assembledPath string
+	if len(trimmedPaths) == 1 {
+		assembledPath = trimmedPaths[0]
+	} else {
+		assembledPath, err = t.assembleWithTransitions(ctx, tmpDir, trimmedPaths, trimmedDurations, scenes)
+		if err != nil {
+			return "", fmt.Errorf("assembly failed: %v", err)
+		}
+	}
+
+	// Step 3: Combine with audio + optional subtitles
+	outputDir := "/app/merged_videos"
+	os.MkdirAll(outputDir, 0755)
+	outputFilename := fmt.Sprintf("mvpro_%s.mp4", uuid.New().String()[:8])
+	outputPath := filepath.Join(outputDir, outputFilename)
+
+	var ffmpegArgs []string
+	if args.LyricsSRT != "" {
+		srtPath := filepath.Join(tmpDir, "lyrics.srt")
+		os.WriteFile(srtPath, []byte(args.LyricsSRT), 0644)
+		escapedSRT := strings.ReplaceAll(srtPath, "\\", "/")
+		escapedSRT = strings.ReplaceAll(escapedSRT, ":", "\\:")
+		mvSubStyle := GetSubtitleStyle(assembledPath, args.SubtitleStyle)
+		mvForceStyle := mvSubStyle.ForceStyleString() + ",Alignment=2"
+		ffmpegArgs = []string{
+			"-y", "-i", assembledPath, "-i", audioPath,
+			"-filter_complex",
+			fmt.Sprintf("[0:v]subtitles=%s:force_style='%s'[v]", escapedSRT, mvForceStyle),
+			"-map", "[v]", "-map", "1:a",
+			"-c:v", "libx264", "-preset", "fast",
+			"-c:a", "aac", "-b:a", "192k",
+			"-shortest", outputPath,
+		}
+	} else {
+		ffmpegArgs = []string{
+			"-y", "-i", assembledPath, "-i", audioPath,
+			"-map", "0:v", "-map", "1:a",
+			"-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+			"-shortest", outputPath,
+		}
+	}
+
+	log.Printf("[MVTool] compose_pro final: video=%s, audio=%s", assembledPath, audioPath)
+	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Fallback: re-encode video if copy fails
+		ffmpegArgs[len(ffmpegArgs)-3] = "libx264"
+		cmd2 := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+			return "", fmt.Errorf("final compose failed: %v\n%s\n%s", err2, string(out), string(out2))
+		}
+	}
+
+	fi, _ := os.Stat(outputPath)
+	sizeMB := float64(0)
+	if fi != nil {
+		sizeMB = float64(fi.Size()) / (1024 * 1024)
+	}
+
+	// Calculate total duration
+	totalDur := 0.0
+	for _, d := range trimmedDurations {
+		totalDur += d
+	}
+	// Subtract transition overlaps
+	for i := 1; i < len(scenes); i++ {
+		td := scenes[i].TransitionDuration
+		if td > 0 && scenes[i].Transition != "" && scenes[i].Transition != "cut" {
+			totalDur -= td
+		}
+	}
+
+	downloadURL := fmt.Sprintf("/v1/videos/merged/%s", outputFilename)
+	mvRecord := model.VideoRecord{
+		UserID: userID, ConversationID: convID,
+		Model:    "mv-pro",
+		Prompt:   fmt.Sprintf("Pro MV: %d scenes, %.0fs", len(scenes), totalDur),
+		VideoURL: downloadURL, Size: "1280*720",
+		Duration: int(totalDur),
+		Status:   "succeeded", Type: "mv",
+	}
+	t.db.Create(&mvRecord)
+	ExtractThumbnail(t.db, mvRecord.ID, outputPath)
+
+	// Build transition summary
+	transitionCounts := make(map[string]int)
+	for _, s := range scenes {
+		tr := s.Transition
+		if tr == "" {
+			tr = "cut"
+		}
+		transitionCounts[tr]++
+	}
+	var trSummary []string
+	for k, v := range transitionCounts {
+		trSummary = append(trSummary, fmt.Sprintf("%s×%d", k, v))
+	}
+
+	return toJSON(map[string]interface{}{
+		"action": "compose_pro", "status": "success",
+		"mv_id": mvRecord.ID, "download_url": downloadURL,
+		"size_mb":     fmt.Sprintf("%.1f", sizeMB),
+		"clips":       len(scenes),
+		"duration":    int(totalDur),
+		"transitions": strings.Join(trSummary, ", "),
+		"message": fmt.Sprintf("专业MV合成完成！%d个镜头，%d秒，转场: %s。下载: %s (%.1f MB)",
+			len(scenes), int(totalDur), strings.Join(trSummary, "/"), downloadURL, sizeMB),
+	}), nil
+}
+
+// assembleWithTransitions chains clips with xfade transitions
+func (t *MVTool) assembleWithTransitions(ctx context.Context, tmpDir string, clips []string, durations []float64, scenes []proScene) (string, error) {
+	if len(clips) < 2 {
+		return clips[0], nil
+	}
+
+	// For many clips, chain pairwise: merge 0+1 → tmp, tmp+2 → tmp2, ...
+	// This avoids ultra-complex filter_complex chains that fail with many inputs
+	current := clips[0]
+	currentDur := durations[0]
+
+	for i := 1; i < len(clips); i++ {
+		next := clips[i]
+		nextDur := durations[i]
+
+		transition := "cut"
+		transDur := 0.0
+		if i < len(scenes) {
+			transition = scenes[i].Transition
+			transDur = scenes[i].TransitionDuration
+		}
+		if transition == "" {
+			transition = "cut"
+		}
+		if transDur <= 0 && transition != "cut" {
+			transDur = 0.5
+		}
+
+		outPath := filepath.Join(tmpDir, fmt.Sprintf("chain_%03d.mp4", i))
+
+		if transition == "cut" {
+			// Simple concat
+			listPath := filepath.Join(tmpDir, fmt.Sprintf("list_%03d.txt", i))
+			os.WriteFile(listPath, []byte(fmt.Sprintf("file '%s'\nfile '%s'\n", current, next)), 0644)
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+				"-f", "concat", "-safe", "0", "-i", listPath,
+				"-c:v", "libx264", "-preset", "fast", "-an",
+				outPath,
+			)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return "", fmt.Errorf("concat %d failed: %v\n%s", i, err, string(out))
+			}
+			currentDur = currentDur + nextDur
+		} else if transition == "flash" {
+			// Flash = very short fadewhite
+			if transDur > 0.3 {
+				transDur = 0.15
+			}
+			offset := currentDur - transDur
+			if offset < 0 {
+				offset = 0
+			}
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+				"-i", current, "-i", next,
+				"-filter_complex",
+				fmt.Sprintf("[0:v][1:v]xfade=transition=fadewhite:duration=%.3f:offset=%.3f[v]", transDur, offset),
+				"-map", "[v]", "-c:v", "libx264", "-preset", "fast", "-an",
+				outPath,
+			)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return "", fmt.Errorf("flash transition %d failed: %v\n%s", i, err, string(out))
+			}
+			currentDur = currentDur + nextDur - transDur
+		} else {
+			// xfade transition (crossfade, fadewhite, fadeblack, wipeleft, slideleft, circlecrop, etc.)
+			xfadeType := transition
+			if xfadeType == "crossfade" {
+				xfadeType = "fade"
+			}
+			offset := currentDur - transDur
+			if offset < 0 {
+				offset = 0
+			}
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+				"-i", current, "-i", next,
+				"-filter_complex",
+				fmt.Sprintf("[0:v][1:v]xfade=transition=%s:duration=%.3f:offset=%.3f[v]", xfadeType, transDur, offset),
+				"-map", "[v]", "-c:v", "libx264", "-preset", "fast", "-an",
+				outPath,
+			)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				// Fallback to simple concat if xfade fails
+				log.Printf("[MVTool] xfade %s failed for scene %d, falling back to concat: %v", xfadeType, i, err)
+				listPath := filepath.Join(tmpDir, fmt.Sprintf("list_%03d.txt", i))
+				os.WriteFile(listPath, []byte(fmt.Sprintf("file '%s'\nfile '%s'\n", current, next)), 0644)
+				cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y",
+					"-f", "concat", "-safe", "0", "-i", listPath,
+					"-c:v", "libx264", "-preset", "fast", "-an",
+					outPath,
+				)
+				if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+					return "", fmt.Errorf("fallback concat %d failed: %v\n%s\n%s", i, err2, string(out), string(out2))
+				}
+				currentDur = currentDur + nextDur
+			} else {
+				currentDur = currentDur + nextDur - transDur
+			}
+		}
+
+		current = outPath
+	}
+
+	return current, nil
+}
+
+// resolveAudioURL resolves music from music_id or audio_url
+func (t *MVTool) resolveAudioURL(args mvArgs, tmpDir string) (string, error) {
+	if args.MusicID != "" {
+		return ResolveMusicPath(t.db, args.MusicID, tmpDir)
+	}
+	if args.AudioURL != "" {
+		// Local upload path
+		if strings.HasPrefix(args.AudioURL, "/app/uploads/") {
+			if _, err := os.Stat(args.AudioURL); err == nil {
+				return args.AudioURL, nil
+			}
+		}
+		if strings.HasPrefix(args.AudioURL, "/v1/uploads/") {
+			localPath := "/app/uploads/" + strings.TrimPrefix(args.AudioURL, "/v1/uploads/")
+			if _, err := os.Stat(localPath); err == nil {
+				return localPath, nil
+			}
+		}
+		// Music path
+		if strings.HasPrefix(args.AudioURL, "/v1/music/") {
+			filename := strings.TrimPrefix(args.AudioURL, "/v1/music/")
+			localPath := "/app/music/" + filename
+			if _, err := os.Stat(localPath); err == nil {
+				return localPath, nil
+			}
+		}
+		// Remote URL
+		if strings.HasPrefix(args.AudioURL, "http://") || strings.HasPrefix(args.AudioURL, "https://") {
+			ext := ".wav"
+			if strings.Contains(args.AudioURL, ".mp3") {
+				ext = ".mp3"
+			}
+			dlPath := filepath.Join(tmpDir, "audio"+ext)
+			if err := DownloadFile(args.AudioURL, dlPath); err != nil {
+				return "", fmt.Errorf("failed to download audio: %v", err)
+			}
+			return dlPath, nil
+		}
+		// Direct local path
+		if _, err := os.Stat(args.AudioURL); err == nil {
+			return args.AudioURL, nil
+		}
+		return "", fmt.Errorf("cannot resolve audio_url: %s", args.AudioURL)
+	}
+	return "", fmt.Errorf("music_id or audio_url is required")
+}
+
+// suppress unused import
+var _ = strconv.Itoa

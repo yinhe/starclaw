@@ -67,6 +67,7 @@ starclaw.net                       star-ai.net/v1/*           starclaw.me
 | Target | 子目录 | 部署服务器 | 方式 |
 |--------|--------|-----------|------|
 | queen-server-c | `queen/` | Server C | 本地 Worm (Docker) |
+| overlord-server-c | `overlord/` | Server C | 本地 Worm (Docker) |
 | gateway-server-b | `queen/api/` | Server B | SSH + 远程 Worm |
 | claw-starclaw-me | `claw/` | starclaw.me | SSH direct（无 Worm） |
 
@@ -227,6 +228,14 @@ repos:
         deploy_path: "/opt/starclaw-queen"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build"
         subdir: "queen"
+        branch: "master"
+
+      # Overlord：企业 AI 管控平台（本地 Worm）
+      - name: "overlord-server-c"
+        worm_url: "http://nydus-worm:8096"
+        deploy_path: "/opt/starclaw-overlord"
+        deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api console web"
+        subdir: "overlord"
         branch: "master"
 
       # 远程 target：通过 SSH 同步代码 + 调用远程 Worm

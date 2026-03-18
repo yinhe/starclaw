@@ -28,6 +28,15 @@ repos:
         subdir: "queen/api"
         branch: "master"
 
+      # ========== OVERLORD (企业 AI 管控平台 — Server C 本地) ==========
+
+      - name: "overlord-server-c"
+        worm_url: "http://nydus-worm:8096"
+        deploy_path: "/opt/starclaw-overlord"
+        deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api console web"
+        subdir: "overlord"
+        branch: "master"
+
       # ========== OUR CLAW (我们自己的 Claw 演示实例) ==========
 
       - name: "claw-starclaw-me"

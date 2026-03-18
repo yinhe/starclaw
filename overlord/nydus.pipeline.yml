@@ -1,0 +1,58 @@
+# StarClaw Overlord — Nydus CI/CD Pipeline Configuration
+# Triggered by: git push nydus master → post-receive hook → Nydus Server
+#
+# Pipeline stages:
+#   1. build  — Docker build for api + console + web
+#   2. deploy — docker compose up with health check
+#   3. verify — post-deploy smoke test
+
+pipeline:
+  name: starclaw-overlord
+  repo: starclaw
+  subdir: overlord
+  branch: master
+
+stages:
+  # Stage 1: Build (handled by docker compose build)
+  build:
+    api:
+      context: ./api
+      dockerfile: Dockerfile
+      args:
+        GOPROXY: "https://goproxy.cn,direct"
+    console:
+      context: ./console
+      dockerfile: Dockerfile
+    web:
+      context: ./web
+      dockerfile: Dockerfile
+
+  # Stage 2: Deploy
+  deploy:
+    command: "docker compose -f docker-compose.prod.yml up -d --build api console web"
+    timeout: 600  # 10 minutes max
+
+  # Stage 3: Post-deploy verification
+  verify:
+    checks:
+      - name: api-health
+        url: "http://localhost:8098/health"
+        expect_status: 200
+        timeout: 30
+
+# Notification on deploy result
+notifications:
+  on_success:
+    type: webhook
+    url: "${NYDUS_CALLBACK_URL}"
+    body: '{"repo":"starclaw","subdir":"overlord","status":"success","rev":"${GIT_REV}"}'
+  on_failure:
+    type: webhook
+    url: "${NYDUS_CALLBACK_URL}"
+    body: '{"repo":"starclaw","subdir":"overlord","status":"failed","rev":"${GIT_REV}"}'
+
+# Rollback: if health check fails, revert to previous image
+rollback:
+  enabled: true
+  command: "docker compose -f docker-compose.prod.yml up -d --no-build api console web"
+  max_attempts: 1
