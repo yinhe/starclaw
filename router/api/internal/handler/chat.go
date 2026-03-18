@@ -141,10 +141,21 @@ func (h *ChatHandler) forwardDomestic(c *gin.Context, provSlug, modelName string
 	}
 	baseURL := prov.Endpoint
 
-	// Rewrite model name in body (strip provider prefix)
+	// Rewrite model name in body (strip provider prefix) and clamp parameters
 	var bodyMap map[string]interface{}
 	json.Unmarshal(body, &bodyMap)
 	bodyMap["model"] = modelName
+
+	// Clamp max_tokens to provider-specific limits
+	if mt, ok := bodyMap["max_tokens"]; ok {
+		if mtf, ok := mt.(float64); ok {
+			limit := getMaxTokensLimit(provSlug, modelName)
+			if int(mtf) > limit {
+				bodyMap["max_tokens"] = limit
+			}
+		}
+	}
+
 	rewritten, _ := json.Marshal(bodyMap)
 
 	url := baseURL + "/chat/completions"
@@ -293,6 +304,28 @@ func parseModelName(model string) (string, string) {
 		return "grok", model
 	default:
 		return "openai", model // default fallback
+	}
+}
+
+// getMaxTokensLimit returns the max allowed max_tokens for a given provider/model
+func getMaxTokensLimit(provSlug, modelName string) int {
+	lower := strings.ToLower(modelName)
+	switch provSlug {
+	case "qwen":
+		switch {
+		case strings.Contains(lower, "qwen-max"):
+			return 16384
+		case strings.Contains(lower, "qwen-long"):
+			return 6000
+		default:
+			return 32768 // qwen-plus, qwen-turbo, qwq, etc.
+		}
+	case "deepseek":
+		return 65536
+	case "minimax":
+		return 65536
+	default:
+		return 128000
 	}
 }
 
