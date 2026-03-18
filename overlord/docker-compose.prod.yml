@@ -30,7 +30,7 @@ services:
       OVERLORD_ADMIN_PASSWORD: ${OVERLORD_ADMIN_PASSWORD:-admin123}
       GIN_MODE: release
     ports:
-      - "${OVERLORD_API_PORT:-8095}:8095"
+      - "127.0.0.1:${OVERLORD_API_PORT:-8098}:8095"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8095/health"]
       interval: 10s
@@ -48,7 +48,7 @@ services:
     container_name: starclaw-overlord-console
     restart: always
     ports:
-      - "${OVERLORD_CONSOLE_PORT:-3095}:80"
+      - "127.0.0.1:${OVERLORD_CONSOLE_PORT:-3095}:80"
     depends_on:
       - api
     networks:
@@ -60,7 +60,7 @@ services:
     container_name: starclaw-overlord-web
     restart: always
     ports:
-      - "${OVERLORD_WEB_PORT:-3096}:80"
+      - "127.0.0.1:${OVERLORD_WEB_PORT:-3096}:80"
     depends_on:
       - api
     networks:

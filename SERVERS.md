@@ -34,6 +34,9 @@
       ├── overseer.starclaw.net → overseer (:8087)       ← 监控面板
       ├── partner.starclaw.net  → partner (:8088)        ← 城市合伙人招募
       ├── city.starclaw.net    → city (:8089)           ← 城市合伙人 CRM
+      ├── overlord.starclaw.net → overlord-api (:8098)    ← 企业 AI 管控
+      │                          overlord-console (:3095)
+      │                          overlord-web (:3096)
       ├── nydus.starclaw.net   → nydus-server (:8095)   ← Claw 更新备源
       └── proxy.starclaw.net   → proxy (:8000)          ← AI API 中转
 ```
@@ -144,6 +147,10 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 | City | starclaw-queen-city | 8089 | city.starclaw.net | 城市合伙人 CRM |
 | **Proxy** | **starclaw-queen-proxy** | **8000** | **proxy.starclaw.net** | **AI API 中转 (OpenAI/Grok/Fal/Runway)** |
 | **Redis** | **starclaw-queen-redis** | **6379** | — | **Proxy 队列** |
+| **Overlord API** | **starclaw-overlord-api** | **8098** | **overlord.starclaw.net** | **企业 AI 管控平台 API** |
+| **Overlord Console** | **starclaw-overlord-console** | **3095** | **overlord.starclaw.net** | **管理控制台 (12 页)** |
+| **Overlord Web** | **starclaw-overlord-web** | **3096** | **overlord.starclaw.net/app** | **员工工作台 (5 页)** |
+| Overlord MySQL | starclaw-overlord-mysql | 3307 | — | Overlord 独立数据库 |
 | Nydus Server | nydus-server | 8095 | nydus.starclaw.net | Git 仓库 + 部署调度 + Claw 更新备源 |
 | Nydus Worm | nydus-worm | 8096 | — | 部署执行 Agent |
 | MySQL | starclaw-queen-mysql | 3306 | — | 数据库 (starclaw_queen) |
@@ -209,6 +216,7 @@ starclaw/                        # 私有 monorepo
 ├── router/         ⛽           # Server B — star-ai.net
 ├── queen/proxy/    🌏           # Server C — AI API 海外中转 (proxy.starclaw.net)
 ├── queen/          👑           # Server C — Queen 中央控制
+├── overlord/       👁️           # Server C — 企业 AI 管控 (overlord.starclaw.net)
 ├── nydus/          🕳️           # Server C — 虫道代码分发系统
 ├── .env                         # 环境变量（gitignored，含密钥）
 ├── .env.production.example      # 环境变量模板（tracked）
