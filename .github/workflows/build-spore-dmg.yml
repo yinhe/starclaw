@@ -1,0 +1,95 @@
+name: Build Spore DMG (macOS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v2026.0318.0738)'
+        required: true
+      nydus_base:
+        description: 'Nydus releases base URL'
+        required: true
+        default: 'https://nydus.starclaw.net/spore/releases'
+
+jobs:
+  build-dmg:
+    name: Build macOS DMGs
+    runs-on: macos-latest
+    steps:
+      - name: Download raw macOS binaries from Nydus
+        env:
+          V: ${{ github.event.inputs.version }}
+          BASE: ${{ github.event.inputs.nydus_base }}
+        run: |
+          mkdir -p releases
+          for arch in arm64 amd64; do
+            url="${BASE}/StarClaw-Setup-${V}-darwin-${arch}"
+            echo "Downloading $url ..."
+            curl -fSL "$url" -o "releases/StarClaw-Setup-${V}-darwin-${arch}" || {
+              echo "::warning::Failed to download darwin-${arch}"
+              continue
+            }
+            chmod +x "releases/StarClaw-Setup-${V}-darwin-${arch}"
+          done
+          ls -lh releases/
+
+      - name: Build DMGs with hdiutil
+        env:
+          V: ${{ github.event.inputs.version }}
+        run: |
+          for arch in arm64 amd64; do
+            RAW="releases/StarClaw-Setup-${V}-darwin-${arch}"
+            [ -f "$RAW" ] || continue
+
+            echo "=== Building DMG for darwin-${arch} ==="
+            APP_DIR="/tmp/dmg-${arch}/StarClaw Installer"
+            mkdir -p "$APP_DIR"
+
+            cp "$RAW" "$APP_DIR/StarClaw-Setup"
+            chmod +x "$APP_DIR/StarClaw-Setup"
+
+            cat > "$APP_DIR/Install StarClaw.command" << 'SCRIPT'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          xattr -cr . 2>/dev/null || true
+          chmod +x ./StarClaw-Setup 2>/dev/null || true
+          echo ""
+          echo "  ✨ StarClaw Installer"
+          echo ""
+          ./StarClaw-Setup "$@"
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            echo ""
+            echo "  ❌ Setup exited with error code $STATUS"
+            echo "  If macOS blocked the app: System Settings → Privacy & Security → Open Anyway"
+            echo ""
+            echo "  Press Enter to close..."
+            read -r
+          fi
+          SCRIPT
+            chmod +x "$APP_DIR/Install StarClaw.command"
+
+            cat > "$APP_DIR/README.txt" << README
+          StarClaw Installer
+          Double-click "Install StarClaw.command" to start.
+          Version: ${V} | Arch: ${arch}
+          https://starclaw.me
+          README
+
+            hdiutil create \
+              -volname "StarClaw Installer" \
+              -srcfolder "$APP_DIR" \
+              -ov -format UDZO -imagekey zlib-level=9 \
+              "releases/StarClaw-Setup-${V}-darwin-${arch}.dmg"
+
+            echo "  -> StarClaw-Setup-${V}-darwin-${arch}.dmg"
+          done
+
+          ls -lh releases/*.dmg
+
+      - name: Upload DMG artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spore-dmg-${{ github.event.inputs.version }}
+          path: releases/*.dmg
+          retention-days: 30
