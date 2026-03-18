@@ -277,10 +277,12 @@ func parseModelName(model string) (string, string) {
 	// Heuristic fallback for raw model names
 	lower := strings.ToLower(model)
 	switch {
-	case strings.HasPrefix(lower, "qwen"):
+	case strings.HasPrefix(lower, "qwen"), strings.HasPrefix(lower, "qwq"):
 		return "qwen", model
 	case strings.HasPrefix(lower, "deepseek"):
 		return "deepseek", model
+	case strings.HasPrefix(lower, "minimax"):
+		return "minimax", model
 	case strings.HasPrefix(lower, "gpt") || strings.HasPrefix(lower, "o1") || strings.HasPrefix(lower, "o3") || strings.HasPrefix(lower, "o4"):
 		return "openai", model
 	case strings.HasPrefix(lower, "claude"):
