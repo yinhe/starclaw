@@ -86,7 +86,7 @@ type videoArgs struct {
 // fal.ai video model endpoints
 var falVideoEndpoints = map[string]string{
 	"veo3":          "fal-ai/veo3",
-	"sora2":         "fal-ai/minimax-video/video-01-live",
+	"sora2":         "fal-ai/sora",
 	"kling-v2":      "fal-ai/kling-video/v2.1/master/text-to-video",
 	"minimax-video": "fal-ai/minimax-video/video-01-live",
 	"luma":          "fal-ai/luma-dream-machine",
@@ -243,9 +243,9 @@ func (t *VideoTool) getLastFrameURL(recordOrTaskID string) (string, error) {
 // ── DashScope Wan Provider ──
 
 func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string, args videoArgs, duration int) (string, error) {
-	apiKey, baseHost := GetDashScopeAPIKey(t.db, userID)
+	apiKey, baseHost := GetDashScopeAPIKeyCtx(ctx, t.db, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no DashScope API key found. Please configure a qwen model first")
+		return "", fmt.Errorf("no DashScope API key found. Please configure a qwen model or use StarAI")
 	}
 
 	input := map[string]interface{}{"prompt": args.Prompt}
@@ -258,16 +258,31 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 	}
 	bodyBytes, _ := json.Marshal(body)
 
-	url := fmt.Sprintf("https://%s/api/v1/services/aigc/video-generation/video-synthesis", baseHost)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(bodyBytes)))
+	var reqURL string
+	var client *http.Client
+	if isStarAIKey(apiKey) {
+		reqURL = StarAIProxyURL("dashscope", "/api/v1/services/aigc/video-generation/video-synthesis")
+		c, _ := GetStarAIClient()
+		if c == nil {
+			return "", fmt.Errorf("StarAI proxy not initialized")
+		}
+		client = c
+		log.Printf("[StarAI] Wan submit via proxy: %s", reqURL)
+	} else {
+		reqURL = fmt.Sprintf("https://%s/api/v1/services/aigc/video-generation/video-synthesis", baseHost)
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if !isStarAIKey(apiKey) {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-DashScope-Async", "enable")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("API request failed: %v", err)
 	}
@@ -334,9 +349,9 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 // ── fal.ai Provider ──
 
 func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string, args videoArgs, duration int) (string, error) {
-	apiKey := GetFalAPIKey(t.db, userID)
+	apiKey := GetFalAPIKeyCtx(ctx, t.db, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider first")
+		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider or use StarAI")
 	}
 	endpoint, ok := falVideoEndpoints[args.Model]
 	if !ok {
@@ -510,18 +525,18 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 // ── List Models ──
 
 func (t *VideoTool) listModels() (string, error) {
-	models := []map[string]string{
-		{"name": "wan2.6-t2v", "type": "text-to-video", "provider": "dashscope", "description": "阿里云万相文生视频，最高10秒"},
-		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "description": "阿里云万相图生视频，需要img_url"},
-		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "description": "Google Veo 3, 电影级画质"},
-		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "description": "OpenAI Sora 2"},
-		{"name": "kling-v2", "type": "text-to-video", "provider": "fal.ai", "description": "快手可灵 v2"},
-		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "description": "MiniMax 视频生成"},
-		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "description": "Luma Dream Machine"},
+	models := []map[string]interface{}{
+		{"name": "wan2.6-t2v", "type": "text-to-video", "provider": "dashscope", "durations": "5s, 10s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相文生视频。通用首选，速度快，3种画幅", "best_for": "通用场景、第一个镜头、快速迭代"},
+		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "durations": "5s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相图生视频，需要img_url。用于尾帧衔接保持场景连续", "best_for": "场景衔接（上一场景尾帧→下一场景起始帧）"},
+		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质，最强画面质量", "best_for": "远景建立镜头、电影级MV、风景空镜"},
+		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2，强运动理解，支持长视频", "best_for": "复杂动作、长镜头、20秒连续画面"},
+		{"name": "kling-v2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s", "resolutions": "1280*720, 720*1280", "quality": "high", "speed": "medium", "description": "快手可灵 v2.1，人物一致性好，运动自然", "best_for": "人物特写、动态场景、角色动作"},
+		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "1280*720", "quality": "good", "speed": "fast", "description": "MiniMax Video-01-Live，快速生成", "best_for": "快速出片、动画风格"},
+		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "最高1080p", "quality": "artistic", "speed": "medium", "description": "Luma Dream Machine，梦幻艺术风格", "best_for": "艺术风格、梦幻场景、概念视觉"},
 	}
 	return toJSON(map[string]interface{}{
 		"action": "list_models", "models": models,
-		"tips": "wan系列需要qwen的API Key，其他模型需要fal.ai的API Key。超过10秒请生成多场景再合并。",
+		"tips": "wan系列通过 StarAI/DashScope API Key 调用，其他模型通过 fal.ai API Key 调用。MV制作推荐：veo3(电影级远景) + kling-v2(人物特写) + wan(快速补充镜头)。",
 	}), nil
 }
 
@@ -1033,14 +1048,28 @@ func (t *VideoTool) pollDashScopeTask(ctx context.Context, apiKey, baseHost, tas
 }
 
 func (t *VideoTool) getDashScopeTaskStatus(ctx context.Context, apiKey, baseHost, taskID string) (string, string, error) {
-	url := fmt.Sprintf("https://%s/api/v1/tasks/%s", baseHost, taskID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	var reqURL string
+	var client *http.Client
+	if isStarAIKey(apiKey) {
+		reqURL = StarAIProxyURL("dashscope", "/api/v1/tasks/"+taskID)
+		c, _ := GetStarAIClient()
+		if c == nil {
+			return "", "", fmt.Errorf("StarAI proxy not initialized")
+		}
+		client = c
+	} else {
+		reqURL = fmt.Sprintf("https://%s/api/v1/tasks/%s", baseHost, taskID)
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if !isStarAIKey(apiKey) {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", "", err
 	}

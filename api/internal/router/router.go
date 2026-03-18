@@ -95,6 +95,13 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		Identity: identity,
 	}))
 
+	// Initialize StarAI proxy for tools (video/image/music route through StarAI Router)
+	starAIBaseURL := "https://api.star-ai.net/v1"
+	if envURL := os.Getenv("STAR_AI_BASE_URL"); envURL != "" {
+		starAIBaseURL = envURL
+	}
+	tool.InitStarAIProxy(identity, starAIBaseURL)
+
 	// Tool registry
 	browserMgr := browser.NewManager()
 	sandboxMgr := sandbox.NewManager()
@@ -112,6 +119,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewMVTool(db))
 	toolRegistry.Register(tool.NewComicTool(db))
 	toolRegistry.Register(tool.NewMusicTool(db))
+	toolRegistry.Register(tool.NewAudioTool(db))
 	toolRegistry.Register(tool.NewImageTool(db))
 	toolRegistry.Register(tool.NewDocumentTool(db))
 	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))

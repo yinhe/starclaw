@@ -38,6 +38,17 @@ func GetDashScopeAPIKey(db *gorm.DB, userID string) (string, string) {
 	return cfg.APIKey, "dashscope.aliyuncs.com"
 }
 
+// GetDashScopeAPIKeyCtx is like GetDashScopeAPIKey but checks for StarAI provider first.
+// If StarAI is active, returns a special marker so callers can route through StarAI proxy.
+func GetDashScopeAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) (string, string) {
+	if IsStarAIProvider(ctx) {
+		if client, _ := GetStarAIClient(); client != nil {
+			return "starai://qwen", "starai-proxy"
+		}
+	}
+	return GetDashScopeAPIKey(db, userID)
+}
+
 // GetFalAPIKey retrieves the fal.ai API key from user's model config.
 func GetFalAPIKey(db *gorm.DB, userID string) string {
 	if userID == "" {
@@ -51,6 +62,16 @@ func GetFalAPIKey(db *gorm.DB, userID string) string {
 		}
 	}
 	return cfg.APIKey
+}
+
+// GetFalAPIKeyCtx is like GetFalAPIKey but checks for StarAI provider first.
+func GetFalAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) string {
+	if IsStarAIProvider(ctx) {
+		if client, _ := GetStarAIClient(); client != nil {
+			return "starai://fal"
+		}
+	}
+	return GetFalAPIKey(db, userID)
 }
 
 // ── File Path Resolution ──
@@ -132,19 +153,47 @@ func DownloadFile(url, dest string) error {
 
 // ── fal.ai Queue Helpers ──
 
-// SubmitToFal submits a request to fal.ai queue API and returns the request_id
+// isStarAIKey returns true if the API key is a StarAI proxy marker
+func isStarAIKey(apiKey string) bool {
+	return strings.HasPrefix(apiKey, "starai://")
+}
+
+// SubmitToFal submits a request to fal.ai queue API and returns the request_id.
+// If apiKey starts with "starai://", routes through StarAI Router proxy.
 func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, error) {
 	bodyBytes, _ := json.Marshal(body)
-	url := fmt.Sprintf("https://queue.fal.run/%s", endpoint)
+
+	var url string
+	var client *http.Client
+	var authHeader string
+
+	if isStarAIKey(apiKey) {
+		// Route through StarAI Router proxy
+		url = StarAIProxyURL("fal", "/"+endpoint)
+		c, _ := GetStarAIClient()
+		if c == nil {
+			return "", fmt.Errorf("StarAI proxy not initialized")
+		}
+		client = c
+		// No auth header needed — SignedTransport adds X-Claw-* headers
+		log.Printf("[StarAI] fal submit via proxy: %s", url)
+	} else {
+		// Direct fal.ai call
+		url = fmt.Sprintf("https://queue.fal.run/%s", endpoint)
+		client = http.DefaultClient
+		authHeader = "Key " + apiKey
+	}
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Key "+apiKey)
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("fal.ai request failed: %v", err)
 	}
@@ -172,13 +221,31 @@ func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, 
 // Returns the full result JSON map on success.
 func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (map[string]interface{}, error) {
 	deadline := time.Now().Add(timeout)
-	statusURL := fmt.Sprintf("https://queue.fal.run/%s/requests/%s/status", endpoint, requestID)
+
+	var statusURL string
+	var client *http.Client
+	var authHeader string
+
+	if isStarAIKey(apiKey) {
+		statusURL = StarAIProxyURL("fal", "/"+endpoint+"/requests/"+requestID+"/status")
+		c, _ := GetStarAIClient()
+		if c == nil {
+			return nil, fmt.Errorf("StarAI proxy not initialized")
+		}
+		client = c
+	} else {
+		statusURL = fmt.Sprintf("https://queue.fal.run/%s/requests/%s/status", endpoint, requestID)
+		client = http.DefaultClient
+		authHeader = "Key " + apiKey
+	}
 
 	for time.Now().Before(deadline) {
 		req, _ := http.NewRequest("GET", statusURL, nil)
-		req.Header.Set("Authorization", "Key "+apiKey)
+		if authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			time.Sleep(5 * time.Second)
 			continue
@@ -191,7 +258,6 @@ func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (m
 
 		s, _ := status["status"].(string)
 		if s == "COMPLETED" {
-			// Fetch the actual result
 			return FetchFalResult(apiKey, endpoint, requestID)
 		}
 		if s == "FAILED" {
@@ -206,11 +272,29 @@ func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (m
 
 // FetchFalResult fetches the completed result from fal.ai
 func FetchFalResult(apiKey, endpoint, requestID string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("https://queue.fal.run/%s/requests/%s", endpoint, requestID)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Key "+apiKey)
+	var url string
+	var client *http.Client
+	var authHeader string
 
-	resp, err := http.DefaultClient.Do(req)
+	if isStarAIKey(apiKey) {
+		url = StarAIProxyURL("fal", "/"+endpoint+"/requests/"+requestID)
+		c, _ := GetStarAIClient()
+		if c == nil {
+			return nil, fmt.Errorf("StarAI proxy not initialized")
+		}
+		client = c
+	} else {
+		url = fmt.Sprintf("https://queue.fal.run/%s/requests/%s", endpoint, requestID)
+		client = http.DefaultClient
+		authHeader = "Key " + apiKey
+	}
+
+	req, _ := http.NewRequest("GET", url, nil)
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

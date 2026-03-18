@@ -254,9 +254,10 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		MaxTokens:   maxTok,
 	}
 
-	// Inject user_id and conversation_id into context so tools can access them
+	// Inject user_id, conversation_id, and provider into context so tools can access them
 	ctx := context.WithValue(c.Request.Context(), tool.CtxKeyUserID, userID)
 	ctx = context.WithValue(ctx, tool.CtxKeyConversationID, conversation.ID)
+	ctx = context.WithValue(ctx, tool.CtxKeyProvider, modelCfg.Provider)
 	c.Request = c.Request.WithContext(ctx)
 
 	// Store platform key flag for billing
@@ -739,8 +740,13 @@ func buildFileContext(files []FileAttachment) string {
 			parts = append(parts, fmt.Sprintf("%d. 📷 %s (%s, %s) — 图片已注入到视觉消息中，你可以直接看到并分析图片内容", i+1, f.Filename, f.Mime, sizeStr))
 			continue
 		}
+		if strings.HasPrefix(mime, "audio/") {
+			parts = append(parts, fmt.Sprintf("%d. 🎵 %s (%s, %s) — 音频文件路径: %s", i+1, f.Filename, f.Mime, sizeStr, f.URL))
+			parts = append(parts, fmt.Sprintf("   可直接用于 audio_analysis（file_url: \"%s\"）和 mv_production.compose_pro（audio_url: \"%s\"）", f.URL, f.URL))
+			continue
+		}
 		if strings.HasPrefix(mime, "video/") {
-			parts = append(parts, fmt.Sprintf("%d. 🎬 %s (%s, %s) — 已从视频中提取关键帧注入到视觉消息中，你可以看到视频画面并分析内容", i+1, f.Filename, f.Mime, sizeStr))
+			parts = append(parts, fmt.Sprintf("%d. 🎬 %s (%s, %s, 路径: %s) — 已从视频中提取关键帧注入到视觉消息中，你可以看到视频画面并分析内容", i+1, f.Filename, f.Mime, sizeStr, f.URL))
 			continue
 		}
 
@@ -945,9 +951,13 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 
 	// /model <name> → switch model
 	arg = strings.ToLower(arg)
+	// Normalize: strip hyphens/underscores for fuzzy matching (e.g. "starai" matches "star-ai")
+	argNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(arg)
 	var target *model.ModelConfig
 	for i := range models {
-		if strings.ToLower(models[i].Provider) == arg ||
+		provLower := strings.ToLower(models[i].Provider)
+		provNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(provLower)
+		if provLower == arg || provNorm == argNorm ||
 			strings.Contains(strings.ToLower(models[i].DisplayName), arg) ||
 			strings.Contains(strings.ToLower(models[i].ModelName), arg) {
 			target = &models[i]

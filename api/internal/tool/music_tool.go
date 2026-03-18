@@ -83,14 +83,12 @@ func (t *MusicTool) Execute(ctx context.Context, argsJSON string) (string, error
 
 // getFalAPIKey retrieves the fal.ai API key from the user's model config
 func (t *MusicTool) getFalAPIKey(userID string) string {
-	if userID == "" {
-		return ""
-	}
-	var cfg model.ModelConfig
-	if err := t.db.Where("user_id = ? AND provider = ? AND api_key != ''", userID, "fal").First(&cfg).Error; err != nil {
-		return ""
-	}
-	return cfg.APIKey
+	return GetFalAPIKey(t.db, userID)
+}
+
+// getFalAPIKeyCtx checks StarAI provider first
+func (t *MusicTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
+	return GetFalAPIKeyCtx(ctx, t.db, userID)
 }
 
 func (t *MusicTool) generateMusic(ctx context.Context, args musicArgs) (string, error) {
@@ -98,9 +96,9 @@ func (t *MusicTool) generateMusic(ctx context.Context, args musicArgs) (string, 
 	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
 		userID = uid
 	}
-	apiKey := t.getFalAPIKey(userID)
+	apiKey := t.getFalAPIKeyCtx(ctx, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider in Model Settings first")
+		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider or use StarAI")
 	}
 
 	convID := ""
