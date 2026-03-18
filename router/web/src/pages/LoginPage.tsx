@@ -52,17 +52,22 @@ export default function LoginPage() {
             if (status.status === 'approved') {
               if (pollRef.current) clearInterval(pollRef.current);
               setStep('verifying');
-              const data = await clawAuth.verify({
-                challenge: status.challenge!,
-                node_id: status.node_id!,
-                public_key: status.public_key!,
-                signature: status.signature!,
-              });
-              setStep('done');
-              setToken(data.token);
-              setMsg({ text: `${info.node_id.slice(0, 18)}... 身份验证成功`, error: false });
-              setTimeout(() => navigate('/dashboard'), 1200);
-              resolve();
+              try {
+                const data = await clawAuth.verify({
+                  challenge: status.challenge!,
+                  node_id: status.node_id!,
+                  public_key: status.public_key!,
+                  signature: status.signature!,
+                });
+                setStep('done');
+                setToken(data.token);
+                setMsg({ text: `${info.node_id.slice(0, 18)}... 身份验证成功`, error: false });
+                setTimeout(() => navigate('/dashboard'), 1200);
+                resolve();
+              } catch (verifyErr: any) {
+                reject(new Error(verifyErr.message || 'StarAI 验证身份失败'));
+              }
+              return;
             } else if (status.status === 'rejected') {
               if (pollRef.current) clearInterval(pollRef.current);
               reject(new Error('授权被拒绝'));
