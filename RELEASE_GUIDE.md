@@ -316,19 +316,20 @@ CORS is enabled via nginx `location /releases/` block.
 
 ## 7. Nydus Deployment Flow
 
-When pushing to `nydus master`:
-1. Post-receive hook fires → Nydus API processes the push
-2. For `refs/tags/v*` → tags are auto-synced to `claw.git` (for `/releases/latest`)
-3. For `refs/heads/master` → configured targets are deployed:
-   - `queen-server-c` (queen/ → Queen server via worm)
-   - `claw-starclaw-me` (claw/ → starclaw.me via SSH)
-4. Router (star-ai.net) is deployed separately:
-   ```bash
-   # Sync code via Nydus git archive
-   ssh root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:router | ssh root@47.103.51.32 'cd /opt/starclaw/router && tar xf -'"
-   # Rebuild on server B
-   ssh root@47.103.51.32 "cd /opt/starclaw/router && docker compose build --no-cache api web && docker compose up -d api web"
-   ```
+When pushing to `nydus master`, the post-receive hook auto-detects changed directories and deploys:
+
+| 变更目录 | 部署目标 | 说明 |
+|----------|----------|------|
+| `queen/api/` | Server C (本地) | `docker compose build queen-api` |
+| `queen/swarm/` | Server C (本地) | `docker compose build swarm` |
+| `queen/site/` | **Server A** (starclaw.me) | SSH → Docker 构建 → 静态文件到 `/var/www/starclaw/website/` |
+| `router/api/` | Server B (star-ai.net) | SSH → `docker compose build api` |
+| `router/web/` | Server B (star-ai.net) | SSH → `docker compose build web` |
+
+Hook 位置: `/data/nydus/repos/starclaw.git/hooks/post-receive`
+
+> **注意：** `queen/site/` 部署到 Server A（官网），不是 Server C 的 `queen-web` 容器。
+> Server A 无 npm，使用 Docker 多阶段构建。
 
 ---
 

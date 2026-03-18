@@ -54,6 +54,29 @@
 **部署：** `docker-compose.prod.yml` (Claw) + 静态文件 `/var/www/starclaw/website/` (官网)
 **nginx：** `/etc/nginx/sites-enabled/starclaw`
 
+### 官网部署 (queen/site → starclaw.me)
+
+**自动：** `git push nydus master` 时，若 `queen/site/` 有变更，Nydus hook 会自动通过 Server C SSH 到 Server A 构建并部署。
+
+**手动（备用）：**
+```bash
+# 从 Server C 中转：取代码 → 传到 Server A → Docker 构建 → 复制静态文件
+ssh -i ~/.ssh/queen_deploy root@43.106.158.26 "\
+  git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/site | \
+  ssh root@starclaw.me 'mkdir -p /tmp/queen-site && cd /tmp/queen-site && rm -rf * && tar xf -'"
+
+ssh -i ~/.ssh/queen_deploy root@43.106.158.26 "\
+  ssh root@starclaw.me 'cd /tmp/queen-site && \
+    docker build -t queen-site-build . && \
+    docker rm -f queen-site-tmp 2>/dev/null; \
+    docker create --name queen-site-tmp queen-site-build && \
+    rm -rf /var/www/starclaw/website/* && \
+    docker cp queen-site-tmp:/usr/share/nginx/html/. /var/www/starclaw/website/ && \
+    docker rm queen-site-tmp && rm -rf /tmp/queen-site'"
+```
+
+> **注意：** Server A 没有 npm，必须用 Docker 多阶段构建。`queen-web` 容器 (Server C :8086) 是 Queen Dashboard (starclaw.net)，不是官网。
+
 ## Server B — Router (star-ai.net)
 
 AI 算力平台 + API Gateway，面向付费用户和开发者。
