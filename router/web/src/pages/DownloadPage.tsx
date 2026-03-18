@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Monitor, Terminal, Apple, Download, ExternalLink, Zap } from 'lucide-react';
 
@@ -38,6 +39,18 @@ const PACKAGES = [
 ];
 
 export default function DownloadPage() {
+  const [version, setVersion] = useState<string>('');
+
+  useEffect(() => {
+    fetch('https://nydus.starclaw.net/releases/latest')
+      .then(r => r.json())
+      .then(d => {
+        const v = d.tag_name || '';
+        setVersion(v.startsWith('v') ? v : 'v' + v);
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       <nav className="border-b border-gray-800/50 backdrop-blur-sm sticky top-0 z-50 bg-gray-950/80">
@@ -61,7 +74,10 @@ export default function DownloadPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-16 space-y-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">下载客户端</h1>
+          <h1 className="text-2xl font-bold text-white">
+            下载客户端
+            {version && <span className="ml-3 text-base font-medium text-amber-400">{version}</span>}
+          </h1>
           <p className="text-gray-400 text-sm mt-1">安装 StarClaw 客户端，在本地运行 AI Agent</p>
         </div>
 

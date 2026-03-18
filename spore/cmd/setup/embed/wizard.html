@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StarClaw Setup</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0f;color:#e5e5e5;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{width:520px;background:#13131a;border:1px solid #1f1f2e;border-radius:16px;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:32px}
+.logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#f59e0b,#ea580c);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.logo-text{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.logo-text span{background:linear-gradient(90deg,#f59e0b,#ea580c);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.version{font-size:12px;color:#666;margin-left:8px;font-weight:400}
+
+h2{font-size:18px;font-weight:600;margin-bottom:8px}
+.desc{color:#888;font-size:13px;line-height:1.6;margin-bottom:24px}
+
+.field{margin-bottom:20px}
+.field label{display:block;font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.field .input-row{display:flex;gap:8px}
+.field input{flex:1;background:#0a0a0f;border:1px solid #2a2a3a;border-radius:8px;padding:10px 14px;color:#e5e5e5;font-size:14px;outline:none;transition:border .2s}
+.field input:focus{border-color:#f59e0b}
+.btn-browse{background:#1f1f2e;border:1px solid #2a2a3a;color:#aaa;padding:10px 16px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap;transition:all .2s}
+.btn-browse:hover{background:#2a2a3a;color:#fff}
+
+.btn-primary{width:100%;padding:12px;background:linear-gradient(135deg,#f59e0b,#ea580c);color:#000;font-weight:600;font-size:15px;border:none;border-radius:10px;cursor:pointer;transition:opacity .2s}
+.btn-primary:hover{opacity:.9}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+
+.btn-secondary{width:100%;padding:12px;background:transparent;color:#f59e0b;font-weight:500;font-size:14px;border:1px solid #f59e0b33;border-radius:10px;cursor:pointer;margin-top:10px;transition:all .2s}
+.btn-secondary:hover{background:#f59e0b11;border-color:#f59e0b66}
+
+.btn-danger{width:100%;padding:12px;background:#dc2626;color:#fff;font-weight:600;font-size:15px;border:none;border-radius:10px;cursor:pointer;transition:opacity .2s}
+.btn-danger:hover{opacity:.9}
+
+.progress-bar{width:100%;height:6px;background:#1f1f2e;border-radius:3px;overflow:hidden;margin:16px 0}
+.progress-fill{height:100%;background:linear-gradient(90deg,#f59e0b,#ea580c);border-radius:3px;transition:width .3s;width:0}
+
+.log{background:#0a0a0f;border:1px solid #1f1f2e;border-radius:8px;padding:12px 14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;color:#888;max-height:160px;overflow-y:auto;line-height:1.8;margin-bottom:16px}
+.log .ok{color:#22c55e}
+.log .info{color:#f59e0b}
+.log .err{color:#ef4444}
+
+.result{text-align:center;padding:20px 0}
+.result .icon{font-size:48px;margin-bottom:16px}
+.result h2{font-size:22px;margin-bottom:8px}
+.result .url{display:inline-block;margin-top:12px;padding:8px 20px;background:#f59e0b22;color:#f59e0b;border-radius:8px;font-size:14px;font-weight:500;text-decoration:none;border:1px solid #f59e0b33}
+.result .url:hover{background:#f59e0b33}
+.result .cmds{margin-top:16px;text-align:left;background:#0a0a0f;border-radius:8px;padding:12px 16px;font-size:12px;color:#888;font-family:monospace;line-height:1.8}
+
+.step-indicator{display:flex;gap:6px;margin-bottom:24px}
+.step-dot{width:8px;height:8px;border-radius:50%;background:#1f1f2e;transition:background .3s}
+.step-dot.active{background:#f59e0b}
+.step-dot.done{background:#22c55e}
+
+.hidden{display:none!important}
+
+.size-info{display:flex;gap:16px;margin-bottom:20px}
+.size-item{flex:1;background:#0a0a0f;border:1px solid #1f1f2e;border-radius:8px;padding:10px 14px;text-align:center}
+.size-item .val{font-size:18px;font-weight:600;color:#f59e0b}
+.size-item .lbl{font-size:11px;color:#666;margin-top:2px}
+
+.mode-switch{display:flex;gap:8px;margin-bottom:24px}
+.mode-btn{flex:1;padding:10px;text-align:center;background:#0a0a0f;border:1px solid #1f1f2e;border-radius:8px;cursor:pointer;font-size:13px;color:#888;transition:all .2s}
+.mode-btn.active{border-color:#f59e0b;color:#f59e0b;background:#f59e0b11}
+.mode-btn:hover{border-color:#333}
+</style>
+</head>
+<body>
+<div class="card" id="app">
+  <!-- Step 0: Welcome / Mode Select -->
+  <div id="step-welcome">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">Star<span>Claw</span> <span class="version" id="ver"></span></div>
+    </div>
+    <h2>安装 StarClaw</h2>
+    <p class="desc">AI Agent 平台 — 5 分钟内启动属于你自己的 AI 助手。<br>无需 Docker，一键安装，即装即用。</p>
+
+    <div class="size-info">
+      <div class="size-item"><div class="val" id="sz-total">~18</div><div class="lbl">MB 总大小</div></div>
+      <div class="size-item"><div class="val">SQLite</div><div class="lbl">内嵌数据库</div></div>
+      <div class="size-item"><div class="val" id="sz-os">-</div><div class="lbl">平台</div></div>
+    </div>
+
+    <div class="field">
+      <label>安装目录 Install Directory</label>
+      <div class="input-row">
+        <input type="text" id="install-dir" placeholder="Loading...">
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="startInstall()">🚀 开始安装</button>
+    <button class="btn-secondary" onclick="showUninstall()">卸载 StarClaw</button>
+  </div>
+
+  <!-- Step 1: Installing -->
+  <div id="step-install" class="hidden">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">Star<span>Claw</span></div>
+    </div>
+    <div class="step-indicator">
+      <div class="step-dot done"></div>
+      <div class="step-dot active" id="dot-1"></div>
+      <div class="step-dot" id="dot-2"></div>
+    </div>
+    <h2>正在安装...</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div class="log" id="log"></div>
+    <button class="btn-primary" disabled id="btn-installing">安装中，请稍候...</button>
+  </div>
+
+  <!-- Step 2: Complete -->
+  <div id="step-done" class="hidden">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">Star<span>Claw</span></div>
+    </div>
+    <div class="step-indicator">
+      <div class="step-dot done"></div>
+      <div class="step-dot done"></div>
+      <div class="step-dot done"></div>
+    </div>
+    <div class="result">
+      <div class="icon">✅</div>
+      <h2>安装完成！</h2>
+      <p class="desc" id="done-msg">StarClaw 已成功安装并启动。</p>
+      <a class="url" id="open-url" href="#" target="_blank">🌐 打开 StarClaw</a>
+      <div class="cmds" id="done-cmds"></div>
+    </div>
+  </div>
+
+  <!-- Uninstall: Confirm -->
+  <div id="step-uninstall" class="hidden">
+    <div class="logo">
+      <div class="logo-icon" style="background:linear-gradient(135deg,#dc2626,#991b1b)">⚡</div>
+      <div class="logo-text">Star<span>Claw</span></div>
+    </div>
+    <h2>卸载 StarClaw</h2>
+    <p class="desc">将删除以下内容：</p>
+    <div class="log" id="uninstall-info"></div>
+    <button class="btn-danger" onclick="startUninstall()">确认卸载</button>
+    <button class="btn-secondary" onclick="backToWelcome()">取消</button>
+  </div>
+
+  <!-- Uninstall: Progress -->
+  <div id="step-uninstall-progress" class="hidden">
+    <div class="logo">
+      <div class="logo-icon" style="background:linear-gradient(135deg,#dc2626,#991b1b)">⚡</div>
+      <div class="logo-text">Star<span>Claw</span></div>
+    </div>
+    <h2>正在卸载...</h2>
+    <div class="progress-bar"><div class="progress-fill" id="u-progress"></div></div>
+    <div class="log" id="u-log"></div>
+  </div>
+
+  <!-- Uninstall: Done -->
+  <div id="step-uninstall-done" class="hidden">
+    <div class="result">
+      <div class="icon">👋</div>
+      <h2>卸载完成</h2>
+      <p class="desc">StarClaw 已从你的电脑中移除。<br>感谢使用，期待再见！</p>
+      <button class="btn-secondary" onclick="window.close()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let installDir = '';
+
+async function init() {
+  try {
+    const r = await fetch(API + '/api/info');
+    const d = await r.json();
+    installDir = d.default_dir || '';
+    document.getElementById('install-dir').value = installDir;
+    document.getElementById('ver').textContent = d.version ? 'v' + d.version : '';
+    document.getElementById('sz-os').textContent = d.os || '-';
+    document.getElementById('sz-total').textContent = d.total_size || '~18';
+  } catch(e) { console.error(e); }
+}
+
+function show(id) {
+  document.querySelectorAll('#app > div').forEach(el => el.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+function appendLog(target, msg, cls) {
+  const el = document.getElementById(target);
+  const line = document.createElement('div');
+  line.className = cls || '';
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function startInstall() {
+  installDir = document.getElementById('install-dir').value.trim();
+  if (!installDir) return alert('请输入安装目录');
+  show('step-install');
+  const log = document.getElementById('log');
+  log.innerHTML = '';
+
+  try {
+    const res = await fetch(API + '/api/install', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({dir: installDir})
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream: true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          if (ev.progress !== undefined) {
+            document.getElementById('progress').style.width = ev.progress + '%';
+          }
+          if (ev.log) {
+            appendLog('log', ev.log, ev.level || 'info');
+          }
+          if (ev.done) {
+            document.getElementById('dot-1').className = 'step-dot done';
+            document.getElementById('dot-2').className = 'step-dot done';
+            setTimeout(() => showComplete(ev), 500);
+          }
+          if (ev.error) {
+            appendLog('log', '❌ ' + ev.error, 'err');
+            document.getElementById('btn-installing').textContent = '安装失败';
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    appendLog('log', '连接失败: ' + e.message, 'err');
+  }
+}
+
+function showComplete(ev) {
+  show('step-done');
+  const url = ev.url || 'http://localhost';
+  document.getElementById('open-url').href = url;
+  document.getElementById('open-url').textContent = '🌐 打开 ' + url;
+  document.getElementById('done-msg').textContent =
+    '安装耗时 ' + (ev.elapsed || '?') + '，StarClaw 已启动。';
+  document.getElementById('done-cmds').innerHTML =
+    'spore status &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 查看状态\n' +
+    'spore stop claw &nbsp;&nbsp;— 停止服务\n' +
+    'spore start claw — 启动服务';
+}
+
+async function showUninstall() {
+  show('step-uninstall');
+  const info = document.getElementById('uninstall-info');
+  info.innerHTML = '';
+  try {
+    const r = await fetch(API + '/api/info');
+    const d = await r.json();
+    appendLog('uninstall-info', '1. 安装目录: ' + (d.install_dir || d.default_dir), '');
+    appendLog('uninstall-info', '2. Spore 数据: ' + (d.spore_home || '~/.spore'), '');
+    appendLog('uninstall-info', '3. 桌面快捷方式', '');
+    appendLog('uninstall-info', '4. PATH 环境变量', '');
+  } catch(e) { appendLog('uninstall-info', '无法获取信息', 'err'); }
+}
+
+function backToWelcome() { show('step-welcome'); }
+
+async function startUninstall() {
+  show('step-uninstall-progress');
+  const log = document.getElementById('u-log');
+  log.innerHTML = '';
+
+  try {
+    const res = await fetch(API + '/api/uninstall', {method:'POST'});
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream: true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          if (ev.progress !== undefined) {
+            document.getElementById('u-progress').style.width = ev.progress + '%';
+          }
+          if (ev.log) appendLog('u-log', ev.log, ev.level || 'info');
+          if (ev.done) setTimeout(() => show('step-uninstall-done'), 500);
+          if (ev.error) appendLog('u-log', '❌ ' + ev.error, 'err');
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    appendLog('u-log', '连接失败: ' + e.message, 'err');
+  }
+}
+
+init();
+</script>
+</body>
+</html>

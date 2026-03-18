@@ -25,15 +25,31 @@ var clawPkg []byte
 var iconData []byte
 
 func main() {
-	// Check for --uninstall flag
+	cliMode := false
+	uninstallMode := false
 	for _, arg := range os.Args[1:] {
-		if arg == "--uninstall" || arg == "-uninstall" || arg == "uninstall" {
-			cls()
-			uninstall()
-			return
+		switch arg {
+		case "--cli", "-cli":
+			cliMode = true
+		case "--uninstall", "-uninstall", "uninstall":
+			uninstallMode = true
 		}
 	}
 
+	// GUI mode (default) — open browser wizard
+	if !cliMode && !uninstallMode {
+		startGUI()
+		return
+	}
+
+	// CLI uninstall
+	if uninstallMode {
+		cls()
+		uninstall()
+		return
+	}
+
+	// CLI install (legacy)
 	cls()
 	cyan := "\033[36m"
 	green := "\033[32m"
