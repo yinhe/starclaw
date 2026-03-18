@@ -93,13 +93,23 @@ fi
 SCRIPT
   chmod +x "$DMG_DIR/StarClaw Setup/Install StarClaw.command"
 
-  genisoimage -V "StarClaw" \
-    -D -R -J \
-    -no-pad \
-    -o "$RELEASES/StarClaw-Setup-${VTAG}-$suffix.dmg" \
-    "$DMG_DIR/StarClaw Setup/"
+  DMG_OUT="$RELEASES/StarClaw-Setup-${VTAG}-$suffix.dmg"
 
-  echo "  -> StarClaw-Setup-${VTAG}-$suffix.dmg ($(du -h "$RELEASES/StarClaw-Setup-${VTAG}-$suffix.dmg" | cut -f1))"
+  if command -v hdiutil &>/dev/null; then
+    # macOS: create proper DMG with hdiutil
+    hdiutil create -volname "StarClaw Installer" \
+      -srcfolder "$DMG_DIR/StarClaw Setup/" \
+      -ov -format UDZO -imagekey zlib-level=9 \
+      "$DMG_OUT"
+  else
+    # Linux fallback: genisoimage (basic ISO, not true DMG)
+    genisoimage -V "StarClaw" \
+      -D -R -J -no-pad \
+      -o "$DMG_OUT" \
+      "$DMG_DIR/StarClaw Setup/"
+  fi
+
+  echo "  -> $(basename "$DMG_OUT") ($(du -h "$DMG_OUT" | cut -f1))"
 done
 
 echo "=== Done ==="
