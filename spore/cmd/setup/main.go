@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const version = "1.1.0"
+const version = "2026.0318.0738"
 
 //go:embed embed/spore_bin
 var sporeBin []byte
@@ -25,6 +25,17 @@ var clawPkg []byte
 var iconData []byte
 
 func main() {
+	// On macOS, catch panics so terminal doesn't flash and close
+	if goruntime.GOOS == "darwin" {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("\n  ❌ Unexpected error: %v\n\n", r)
+				fmt.Println("  Press Enter to close...")
+				bufio.NewReader(os.Stdin).ReadBytes('\n')
+			}
+		}()
+	}
+
 	cliMode := false
 	uninstallMode := false
 	for _, arg := range os.Args[1:] {
@@ -40,6 +51,11 @@ func main() {
 	if !cliMode && !uninstallMode {
 		if err := startGUI(); err != nil {
 			fmt.Printf("GUI failed: %v — falling back to CLI\n", err)
+			if goruntime.GOOS == "darwin" {
+				fmt.Println("\n  If macOS blocked the app, go to System Settings → Privacy & Security → 'Open Anyway'")
+				fmt.Println("  Press Enter to close...")
+				bufio.NewReader(os.Stdin).ReadBytes('\n')
+			}
 		} else {
 			return
 		}

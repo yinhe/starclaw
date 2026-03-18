@@ -61,13 +61,35 @@ for arch in arm64 amd64; do
   cp "$RAW" "$DMG_DIR/StarClaw Setup/StarClaw-Setup"
   chmod +x "$DMG_DIR/StarClaw Setup/StarClaw-Setup"
 
-  cat > "$DMG_DIR/StarClaw Setup/Install StarClaw.command" << SCRIPT
+  cat > "$DMG_DIR/StarClaw Setup/Install StarClaw.command" << 'SCRIPT'
 #!/bin/bash
-set -e
-cd "\$(dirname "\$0")"
+cd "$(dirname "$0")"
+
+# Remove macOS quarantine flags
+xattr -cr . 2>/dev/null || true
 xattr -d com.apple.quarantine ./StarClaw-Setup 2>/dev/null || true
-echo "Starting StarClaw Setup..."
-./StarClaw-Setup
+chmod +x ./StarClaw-Setup 2>/dev/null || true
+
+echo ""
+echo "  ✨ StarClaw Installer"
+echo ""
+
+# Try to run the setup
+./StarClaw-Setup "$@"
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "  ❌ Setup exited with error code $STATUS"
+  echo ""
+  echo "  If macOS blocked the app, try:"
+  echo "    1. Open System Settings → Privacy & Security"
+  echo "    2. Scroll down and click 'Open Anyway' next to the StarClaw message"
+  echo "    3. Or right-click the installer and choose 'Open'"
+  echo ""
+  echo "  Press Enter to close..."
+  read -r
+fi
 SCRIPT
   chmod +x "$DMG_DIR/StarClaw Setup/Install StarClaw.command"
 
