@@ -10,25 +10,30 @@ import (
 
 const mvWorkflow = `{
   "nodes": [
-    {"id":"start","type":"start","position":{"x":300,"y":30},"data":{"label":"开始"}},
-    {"id":"step-1","type":"llm","position":{"x":300,"y":120},"data":{"label":"创作歌词","description":"根据用户需求编写结构化歌词 [verse]/[chorus]/[bridge]"}},
-    {"id":"step-2","type":"tool","position":{"x":300,"y":220},"data":{"label":"生成歌曲","toolName":"music_generation","description":"调用 generate_music，传入歌词和风格标签"}},
-    {"id":"step-3","type":"tool","position":{"x":300,"y":320},"data":{"label":"等待歌曲完成","toolName":"music_generation","description":"轮询 check_status 至 succeeded，获取实际时长"}},
-    {"id":"step-4","type":"llm","position":{"x":300,"y":420},"data":{"label":"规划分镜","description":"根据歌曲时长规划场景数量和画面描述"}},
-    {"id":"step-5","type":"tool","position":{"x":300,"y":520},"data":{"label":"逐场景生成视频","toolName":"video_generation","description":"逐个调用 generate_video，标注 scene 字段"}},
-    {"id":"step-6","type":"tool","position":{"x":300,"y":620},"data":{"label":"等待自动合并","toolName":"video_generation","description":"系统自动合并所有场景视频"}},
-    {"id":"step-7","type":"tool","position":{"x":300,"y":720},"data":{"label":"合成MV","toolName":"mv_production","description":"调用 compose_mv，传入 music_id 和可选歌词字幕"}},
-    {"id":"end","type":"end","position":{"x":300,"y":820},"data":{"label":"完成"}}
+    {"id":"start","type":"start","position":{"x":400,"y":30},"data":{"label":"开始"}},
+    {"id":"branch","type":"condition","position":{"x":400,"y":120},"data":{"label":"音频来源判断","description":"用户上传了音频？→ 跳到分析；没有 → 创作歌曲"}},
+    {"id":"gen-1","type":"llm","position":{"x":150,"y":230},"data":{"label":"创作歌词","description":"根据用户需求编写 [verse]/[chorus]/[bridge] 结构歌词"}},
+    {"id":"gen-2","type":"tool","position":{"x":150,"y":340},"data":{"label":"生成歌曲","toolName":"music_generation","description":"调用 generate_music，传入歌词和风格标签"}},
+    {"id":"gen-3","type":"tool","position":{"x":150,"y":450},"data":{"label":"等待歌曲完成","toolName":"music_generation","description":"轮询 check_status 至 succeeded"}},
+    {"id":"analyze","type":"tool","position":{"x":400,"y":450},"data":{"label":"音频分析","toolName":"audio_analysis","description":"analyze: 获取时长/BPM/能量曲线；detect_beats: 获取节拍时间戳"}},
+    {"id":"plan","type":"llm","position":{"x":400,"y":560},"data":{"label":"导演策划分镜","description":"根据能量曲线+歌词段落，设计每个镜头的时长/画面/转场/模型选择"}},
+    {"id":"generate","type":"tool","position":{"x":400,"y":670},"data":{"label":"批量生成视频场景","toolName":"video_generation","description":"逐个调用 generate_video（veo3/kling/wan/sora2），标注 scene 字段"}},
+    {"id":"srt","type":"tool","position":{"x":400,"y":780},"data":{"label":"生成歌词字幕","toolName":"audio_analysis","description":"调用 generate_srt，歌词+时长 → SRT 字幕文件"}},
+    {"id":"compose","type":"tool","position":{"x":400,"y":890},"data":{"label":"专业合成MV","toolName":"mv_production","description":"compose_pro: 逐镜头裁剪+节拍同步+转场(cut/crossfade/flash/fadeblack)+字幕烧录"}},
+    {"id":"end","type":"end","position":{"x":400,"y":1000},"data":{"label":"完成"}}
   ],
   "edges": [
-    {"id":"e-s1","source":"start","target":"step-1"},
-    {"id":"e-12","source":"step-1","target":"step-2"},
-    {"id":"e-23","source":"step-2","target":"step-3"},
-    {"id":"e-34","source":"step-3","target":"step-4"},
-    {"id":"e-45","source":"step-4","target":"step-5"},
-    {"id":"e-56","source":"step-5","target":"step-6"},
-    {"id":"e-67","source":"step-6","target":"step-7"},
-    {"id":"e-7e","source":"step-7","target":"end"}
+    {"id":"e-sb","source":"start","target":"branch"},
+    {"id":"e-b-gen","source":"branch","target":"gen-1","data":{"label":"需要创作歌曲"}},
+    {"id":"e-b-ana","source":"branch","target":"analyze","data":{"label":"已有音频+歌词"}},
+    {"id":"e-g12","source":"gen-1","target":"gen-2"},
+    {"id":"e-g23","source":"gen-2","target":"gen-3"},
+    {"id":"e-g3a","source":"gen-3","target":"analyze"},
+    {"id":"e-ap","source":"analyze","target":"plan"},
+    {"id":"e-pg","source":"plan","target":"generate"},
+    {"id":"e-gs","source":"generate","target":"srt"},
+    {"id":"e-sc","source":"srt","target":"compose"},
+    {"id":"e-ce","source":"compose","target":"end"}
   ]
 }`
 
