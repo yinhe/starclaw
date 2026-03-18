@@ -14,7 +14,7 @@ export default function LoginPage() {
   async function handleClawLogin() {
     setStep('connecting')
     setMsg(null)
-    const baseUrl = clawUrl.replace(/\/$/, '')
+    const baseUrl = new URL(clawUrl.includes('://') ? clawUrl : `https://${clawUrl}`).origin
     try {
       await clawNodeRequest<{ node_id: string }>(baseUrl, '/v1/identity/info')
       const { challenge } = await clawAuth.challenge()
