@@ -68,10 +68,22 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			BaseURL: cfg.BaseURL,
 		})
 	case "star-ai", "starai":
-		return NewStarAIProvider(StarAIConfig{
+		starCfg := StarAIConfig{
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
-		})
+		}
+		// If api_key is claw-identity, try to get Identity from registry for Ed25519 auth
+		if registry != nil && cfg.APIKey == "claw-identity" {
+			if rp, ok := registry.Get("star-ai"); ok {
+				if sp, ok := rp.(*StarAIProvider); ok && sp.inner.client.Transport != nil {
+					if st, ok := sp.inner.client.Transport.(*SignedTransport); ok {
+						starCfg.Identity = st.Identity
+						log.Printf("[Provider] Extracted Identity from registry for star-ai fallback")
+					}
+				}
+			}
+		}
+		return NewStarAIProvider(starCfg)
 	default:
 		// OpenAI-compatible fallback
 		return NewOpenAIProvider(OpenAIConfig{
