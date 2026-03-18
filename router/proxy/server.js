@@ -1271,6 +1271,227 @@ app.post('/fal/veo3-fast-image-to-video', apiKeyValidation, async (req, res) => 
 	}
 })
 
+// === Kling V3 Pro 视频生成接口 ===
+
+function normalizeKlingV3Duration(duration) {
+	// Kling V3 accepts "3" through "15" as string
+	const permitted = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+	if (duration === undefined || duration === null || duration === '') return '5'
+	const num = typeof duration === 'number' ? duration : Number(String(duration).replace(/s$/i, ''))
+	if (Number.isNaN(num)) return null
+	const clamped = Math.max(3, Math.min(15, Math.round(num)))
+	return String(clamped)
+}
+
+function normalizeKlingV3AspectRatio(aspectRatio) {
+	const permitted = ['16:9', '9:16', '1:1']
+	if (!aspectRatio) return '16:9'
+	const v = String(aspectRatio).trim()
+	return permitted.includes(v) ? v : null
+}
+
+function buildKlingV3T2VInput(body) {
+	const { prompt, duration, aspect_ratio, generate_audio, negative_prompt, cfg_scale, ...otherParams } = body || {}
+	if (!prompt) return { error: { status: 400, payload: { error: 'prompt 参数是必需的' } } }
+	const normalizedDuration = normalizeKlingV3Duration(duration)
+	if (!normalizedDuration) return { error: { status: 400, payload: { error: 'duration 参数不合法', permitted: '3-15', received: duration } } }
+	const normalizedAspect = normalizeKlingV3AspectRatio(aspect_ratio)
+	if (!normalizedAspect) return { error: { status: 400, payload: { error: 'aspect_ratio 参数不合法', permitted: ['16:9', '9:16', '1:1'], received: aspect_ratio } } }
+	return {
+		input: {
+			prompt,
+			duration: normalizedDuration,
+			aspect_ratio: normalizedAspect,
+			generate_audio: generate_audio ?? true,
+			negative_prompt: negative_prompt || 'blur, distort, and low quality',
+			cfg_scale: cfg_scale ?? 0.5,
+			...otherParams,
+		},
+	}
+}
+
+async function buildKlingV3I2VInput(body) {
+	const { prompt, start_image_url, image_url, duration, generate_audio, negative_prompt, cfg_scale, end_image_url, ...otherParams } = body || {}
+	if (!prompt) return { error: { status: 400, payload: { error: 'prompt 参数是必需的' } } }
+	const rawImgUrl = start_image_url || image_url
+	if (!rawImgUrl) return { error: { status: 400, payload: { error: 'start_image_url 或 image_url 参数是必需的' } } }
+	const normalizedDuration = normalizeKlingV3Duration(duration)
+	if (!normalizedDuration) return { error: { status: 400, payload: { error: 'duration 参数不合法', permitted: '3-15', received: duration } } }
+	let fixedImgUrl
+	try { fixedImgUrl = await ensureFalAccessibleFileUrl(rawImgUrl) } catch (e) {
+		return { error: { status: e.status || 400, payload: e.body || { error: 'start_image_url 无法访问' } } }
+	}
+	const input = {
+		prompt,
+		start_image_url: fixedImgUrl,
+		duration: normalizedDuration,
+		generate_audio: generate_audio ?? true,
+		negative_prompt: negative_prompt || 'blur, distort, and low quality',
+		cfg_scale: cfg_scale ?? 0.5,
+		...otherParams,
+	}
+	if (end_image_url) {
+		try { input.end_image_url = await ensureFalAccessibleFileUrl(end_image_url) } catch (_) {}
+	}
+	return { input }
+}
+
+// Kling V3 Pro - 文生视频（同步）
+app.post('/fal/kling-v3-pro', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildKlingV3T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Kling V3 Pro T2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/kling-video/v3/pro/text-to-video', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Kling V3 Pro T2V 队列状态:', update.status) },
+		})
+		console.log('Kling V3 Pro T2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Kling V3 Pro T2V 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Kling V3 Pro 文生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Kling V3 Pro - 文生视频（队列模式）：提交
+app.post('/fal/kling-v3-pro/submit', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildKlingV3T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('提交 Kling V3 Pro T2V 队列任务，prompt:', built.input.prompt)
+		const result = await fal.queue.submit('fal-ai/kling-video/v3/pro/text-to-video', { input: built.input })
+		res.status(202).json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Kling V3 Pro T2V Submit 失败:', util.inspect({ status, detail: error?.body?.detail, message: error?.message }, { depth: null }))
+		res.status(status).json({ error: 'Kling V3 Pro 提交任务失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Kling V3 Pro - 文生视频（队列模式）：状态
+app.get('/fal/kling-v3-pro/status/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const status = await fal.queue.status('fal-ai/kling-video/v3/pro/text-to-video', { requestId: req.params.requestId, logs: true })
+		res.json(status)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Kling V3 Pro T2V Status 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Kling V3 Pro 查询状态失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Kling V3 Pro - 文生视频（队列模式）：结果
+app.get('/fal/kling-v3-pro/result/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const result = await fal.queue.result('fal-ai/kling-video/v3/pro/text-to-video', { requestId: req.params.requestId })
+		res.json(result)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Kling V3 Pro T2V Result 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Kling V3 Pro 获取结果失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Kling V3 Pro - 图生视频（同步）
+app.post('/fal/kling-v3-pro-image-to-video', apiKeyValidation, async (req, res) => {
+	try {
+		const built = await buildKlingV3I2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Kling V3 Pro I2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/kling-video/v3/pro/image-to-video', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Kling V3 Pro I2V 队列状态:', update.status) },
+		})
+		console.log('Kling V3 Pro I2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Kling V3 Pro I2V 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Kling V3 Pro 图生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Kling V3 Pro - 图生视频（队列模式）：提交
+app.post('/fal/kling-v3-pro-image-to-video/submit', apiKeyValidation, async (req, res) => {
+	try {
+		const built = await buildKlingV3I2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('提交 Kling V3 Pro I2V 队列任务，prompt:', built.input.prompt)
+		const result = await fal.queue.submit('fal-ai/kling-video/v3/pro/image-to-video', { input: built.input })
+		res.status(202).json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Kling V3 Pro I2V Submit 失败:', error?.message)
+		res.status(status).json({ error: 'Kling V3 Pro 图生视频提交失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Kling V3 Pro - 图生视频（队列模式）：状态
+app.get('/fal/kling-v3-pro-image-to-video/status/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const status = await fal.queue.status('fal-ai/kling-video/v3/pro/image-to-video', { requestId: req.params.requestId, logs: true })
+		res.json(status)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Kling V3 Pro I2V Status 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Kling V3 Pro 图生视频查询状态失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Kling V3 Pro - 图生视频（队列模式）：结果
+app.get('/fal/kling-v3-pro-image-to-video/result/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const result = await fal.queue.result('fal-ai/kling-video/v3/pro/image-to-video', { requestId: req.params.requestId })
+		res.json(result)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Kling V3 Pro I2V Result 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Kling V3 Pro 图生视频获取结果失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Kling V3 Standard - 文生视频（同步）
+app.post('/fal/kling-v3-standard', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildKlingV3T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Kling V3 Standard T2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/kling-video/v3/standard/text-to-video', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Kling V3 Standard T2V 队列状态:', update.status) },
+		})
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Kling V3 Standard T2V 调用失败:', error?.message)
+		res.status(status).json({ error: 'Kling V3 Standard 文生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Kling V3 Standard - 图生视频（同步）
+app.post('/fal/kling-v3-standard-image-to-video', apiKeyValidation, async (req, res) => {
+	try {
+		const built = await buildKlingV3I2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Kling V3 Standard I2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/kling-video/v3/standard/image-to-video', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Kling V3 Standard I2V 队列状态:', update.status) },
+		})
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Kling V3 Standard I2V 调用失败:', error?.message)
+		res.status(status).json({ error: 'Kling V3 Standard 图生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
 // Flux Pro Kontext - 高质量图像生成
 app.post('/fal/flux-pro-kontext', apiKeyValidation, async (req, res) => {
 	try {
@@ -2003,6 +2224,42 @@ app.get('/fal/models', apiKeyValidation, (req, res) => {
 					max_duration: 8,
 					supported_ratios: ['16:9', '9:16', '1:1'],
 					features: ['motion_control', 'fast_generation']
+				},
+				'kling-v3-pro': {
+					name: 'Kling V3 Pro',
+					description: '可灵 V3 Pro 文生视频，电影级画质，支持原生音频生成，3-15秒',
+					endpoint: '/fal/kling-v3-pro',
+					type: 'text-to-video',
+					max_duration: 15,
+					supported_ratios: ['16:9', '9:16', '1:1'],
+					features: ['native_audio', 'cfg_scale', 'negative_prompt', 'multi_prompt']
+				},
+				'kling-v3-pro-image-to-video': {
+					name: 'Kling V3 Pro Image-to-Video',
+					description: '可灵 V3 Pro 图生视频，支持首尾帧、原生音频，3-15秒',
+					endpoint: '/fal/kling-v3-pro-image-to-video',
+					type: 'image-to-video',
+					max_duration: 15,
+					supported_ratios: ['16:9', '9:16', '1:1'],
+					features: ['native_audio', 'start_end_image', 'elements', 'cfg_scale']
+				},
+				'kling-v3-standard': {
+					name: 'Kling V3 Standard',
+					description: '可灵 V3 Standard 文生视频，性价比高，3-15秒',
+					endpoint: '/fal/kling-v3-standard',
+					type: 'text-to-video',
+					max_duration: 15,
+					supported_ratios: ['16:9', '9:16', '1:1'],
+					features: ['native_audio', 'cfg_scale', 'cost_effective']
+				},
+				'kling-v3-standard-image-to-video': {
+					name: 'Kling V3 Standard Image-to-Video',
+					description: '可灵 V3 Standard 图生视频，性价比高，3-15秒',
+					endpoint: '/fal/kling-v3-standard-image-to-video',
+					type: 'image-to-video',
+					max_duration: 15,
+					supported_ratios: ['16:9', '9:16', '1:1'],
+					features: ['native_audio', 'start_end_image', 'cost_effective']
 				}
 			},
 			image_generation: {
