@@ -44,8 +44,14 @@ const QWEN_REGIONS = [
 
 const MINIMAX_REGIONS = [
   { value: 'https://api.minimaxi.com/v1', label: '国内（api.minimaxi.com）' },
-  { value: 'https://api.minimax.io/v1', label: '海外（api.minimax.io）' },
 ]
+
+const normalizeMiniMaxBaseUrl = (provider: string, baseUrl: string) => {
+  if (provider === 'minimax') {
+    return 'https://api.minimaxi.com/v1'
+  }
+  return baseUrl
+}
 
 const PROVIDER_LABELS: Record<string, string> = {
   'star-ai': 'Star AI',
@@ -68,7 +74,6 @@ const REGION_LABELS: Record<string, string> = {
   'https://dashscope-intl.aliyuncs.com/compatible-mode/v1': '新加坡',
   'https://dashscope-us.aliyuncs.com/compatible-mode/v1': '美国',
   'https://api.minimaxi.com/v1': '国内',
-  'https://api.minimax.io/v1': '海外',
 }
 
 export default function ModelsPage() {
@@ -91,7 +96,10 @@ export default function ModelsPage() {
   const loadModels = async () => {
     try {
       const [listRes, availRes] = await Promise.all([modelAPI.list(), modelAPI.available()])
-      setModels(listRes.data.models || [])
+      setModels((listRes.data.models || []).map((m: ModelConfig) => ({
+        ...m,
+        base_url: normalizeMiniMaxBaseUrl(m.provider, m.base_url),
+      })))
       const avail: Record<string, string[]> = {}
       for (const p of availRes.data.providers || []) {
         avail[p.config_id] = p.models
@@ -105,7 +113,7 @@ export default function ModelsPage() {
       await modelAPI.create({
         provider: form.provider,
         api_key: form.provider === 'star-ai' ? 'claw-identity' : form.api_key,
-        base_url: form.base_url,
+        base_url: normalizeMiniMaxBaseUrl(form.provider, form.base_url),
       })
       setShowModal(false)
       setForm({ provider: 'qwen', api_key: '', base_url: QWEN_REGIONS[0].value })
@@ -123,7 +131,7 @@ export default function ModelsPage() {
 
   const startEdit = (m: ModelConfig) => {
     setEditingId(m.id)
-    setEditForm({ api_key: '', base_url: m.base_url })
+    setEditForm({ api_key: '', base_url: normalizeMiniMaxBaseUrl(m.provider, m.base_url) })
     setExpandedId(m.id)
   }
 
@@ -131,7 +139,7 @@ export default function ModelsPage() {
     try {
       const data: Record<string, unknown> = {
         provider,
-        base_url: editForm.base_url,
+        base_url: normalizeMiniMaxBaseUrl(provider, editForm.base_url),
       }
       if (editForm.api_key) {
         data.api_key = editForm.api_key
