@@ -1,0 +1,62 @@
+name: "MiniMax"
+type: "hybrid"
+enabled: true
+endpoint: "https://api.minimaxi.com/v1"
+auth:
+  type: "bearer"
+  key_env: "MINIMAX_API_KEY"
+models:
+  # Text / Chat
+  - name: "minimax/MiniMax-M2.5"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.001
+    output_price_cny: 0.01
+  - name: "minimax/MiniMax-M2.5-highspeed"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.001
+    output_price_cny: 0.004
+  - name: "minimax/MiniMax-M2.1"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.001
+    output_price_cny: 0.01
+  - name: "minimax/MiniMax-VL-01"
+    type: "vision"
+    context_length: 128000
+    input_price_cny: 0.003
+    output_price_cny: 0.009
+  # Video Generation (Hailuo)
+  - name: "minimax/MiniMax-Hailuo-2.3"
+    type: "video"
+    price_per_call_cny: 0.3
+    description: "海螺2.3 视频生成"
+  - name: "minimax/MiniMax-Hailuo-2.3-Fast"
+    type: "video"
+    price_per_call_cny: 0.15
+    description: "海螺2.3 快速视频生成"
+  # Music Generation
+  - name: "minimax/MiniMax-Music-2.5+"
+    type: "music"
+    price_per_call_cny: 0.15
+    description: "音乐生成 2.5+"
+  - name: "minimax/MiniMax-Music-2.5"
+    type: "music"
+    price_per_call_cny: 0.1
+    description: "音乐生成 2.5"
+  # Speech / TTS
+  - name: "minimax/MiniMax-Speech-2.8-hd"
+    type: "tts"
+    price_per_char_cny: 0.0003
+    description: "高清语音合成"
+  - name: "minimax/MiniMax-Speech-2.6"
+    type: "tts"
+    price_per_char_cny: 0.0002
+    description: "标准语音合成"
+  # Image
+  - name: "minimax/image-01"
+    type: "image"
+    price_per_call_cny: 0.04
+    description: "图片生成"
+regions: ["cn"]

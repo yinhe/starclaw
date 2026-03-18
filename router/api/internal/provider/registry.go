@@ -31,20 +31,20 @@ type AuthConfig struct {
 
 // ModelConfig represents a single model within a provider
 type ModelConfig struct {
-	Name           string  `yaml:"name"`
-	Type           string  `yaml:"type"` // chat, reasoning, image, video, tts, stt, embedding, image_edit
-	ContextLength  int     `yaml:"context_length,omitempty"`
-	InputPrice     float64 `yaml:"input_price,omitempty"`      // per 1M tokens (USD)
-	OutputPrice    float64 `yaml:"output_price,omitempty"`     // per 1M tokens (USD)
-	InputPriceCNY  float64 `yaml:"input_price_cny,omitempty"`  // per 千 tokens (CNY)
-	OutputPriceCNY float64 `yaml:"output_price_cny,omitempty"` // per 千 tokens (CNY)
-	PricePerCall   float64 `yaml:"price_per_call,omitempty"`   // per call (USD)
-	PricePerCallCNY float64 `yaml:"price_per_call_cny,omitempty"`
-	PricePerChar   float64 `yaml:"price_per_char,omitempty"`
-	PricePerCharCNY float64 `yaml:"price_per_char_cny,omitempty"`
-	PricePerMin    float64 `yaml:"price_per_min,omitempty"`
-	Description    string  `yaml:"description,omitempty"`
-	Regions        []string `yaml:"regions,omitempty"`
+	Name            string   `yaml:"name"`
+	Type            string   `yaml:"type"` // chat, reasoning, image, video, tts, stt, embedding, image_edit
+	ContextLength   int      `yaml:"context_length,omitempty"`
+	InputPrice      float64  `yaml:"input_price,omitempty"`      // per 1M tokens (USD)
+	OutputPrice     float64  `yaml:"output_price,omitempty"`     // per 1M tokens (USD)
+	InputPriceCNY   float64  `yaml:"input_price_cny,omitempty"`  // per 千 tokens (CNY)
+	OutputPriceCNY  float64  `yaml:"output_price_cny,omitempty"` // per 千 tokens (CNY)
+	PricePerCall    float64  `yaml:"price_per_call,omitempty"`   // per call (USD)
+	PricePerCallCNY float64  `yaml:"price_per_call_cny,omitempty"`
+	PricePerChar    float64  `yaml:"price_per_char,omitempty"`
+	PricePerCharCNY float64  `yaml:"price_per_char_cny,omitempty"`
+	PricePerMin     float64  `yaml:"price_per_min,omitempty"`
+	Description     string   `yaml:"description,omitempty"`
+	Regions         []string `yaml:"regions,omitempty"`
 }
 
 // Registry holds all loaded provider configurations
@@ -177,7 +177,7 @@ func (r *Registry) GetAPIKey(slug string) string {
 // IsDomestic returns true if the provider can be reached directly from China
 func IsDomestic(slug string) bool {
 	switch slug {
-	case "qwen", "deepseek":
+	case "qwen", "deepseek", "minimax":
 		return true
 	default:
 		return false
