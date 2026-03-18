@@ -1,5 +1,5 @@
 import { Terminal, Apple, Monitor, Container, ArrowRight, Download, Zap, Copy, Check } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { CopyBlock } from '../components/CopyBlock'
@@ -70,6 +70,17 @@ function CopyButton({ text }: { text: string }) {
 
 export function DownloadPage() {
   const { t } = useI18n()
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    fetch('https://nydus.starclaw.net/releases/latest')
+      .then(r => r.json())
+      .then(d => {
+        const v = d.tag_name || ''
+        setVersion(v.startsWith('v') ? v : 'v' + v)
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <Layout>
@@ -91,7 +102,10 @@ export function DownloadPage() {
                 <Zap size={24} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-white">Spore — {t('dl.quick')}</h2>
+                <h2 className="text-2xl font-bold text-white">
+                  Spore — {t('dl.quick')}
+                  {version && <span className="ml-2 text-base font-medium text-claw-400">{version}</span>}
+                </h2>
                 <p className="text-sm text-gray-400">{t('dl.spore.tagline')}</p>
               </div>
             </div>
