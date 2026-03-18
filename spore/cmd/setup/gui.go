@@ -191,14 +191,8 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	os.Remove(tmpSpore)
 	sse.logOK("[2/4] Claw package installed ✓", 55)
 
-	// Step 3: Configure
-	port := "80"
-	if !isPortAvailable(port) {
-		port = "8080"
-		if !isPortAvailable(port) {
-			port = "8888"
-		}
-	}
+	// Step 3: Configure — find available port (Vite-style auto-increment)
+	port := findAvailablePort(8080, 8099)
 
 	homeDir, _ := os.UserHomeDir()
 	sporeHome := filepath.Join(homeDir, ".spore")
@@ -213,7 +207,7 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	config := fmt.Sprintf("server:\n  port: %s\n\ndatabase:\n  driver: sqlite\n  sqlite_path: \"./data/claw.db\"\n\njwt:\n  secret: \"%s\"\n", port, jwtSecret)
 	os.WriteFile(filepath.Join(clawInstallDir, "config.yaml"), []byte(config), 0644)
 
-	envContent := fmt.Sprintf("GIN_MODE=release\nCLAW_DATA_DIR=./data\nCLAW_PORT=%s\nDEFAULT_PROVIDER=qwen\n", port)
+	envContent := fmt.Sprintf("GIN_MODE=release\nCLAW_DATA_DIR=./data\nCLAW_PORT=%s\nDEFAULT_PROVIDER=starai\n", port)
 	os.WriteFile(filepath.Join(clawInstallDir, ".env"), []byte(envContent), 0644)
 
 	addToPath(binDir)

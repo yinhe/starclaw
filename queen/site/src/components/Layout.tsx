@@ -166,7 +166,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h3 className="text-sm font-semibold text-white mb-3">{t('footer.ecosystem')}</h3>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li><a href="https://starclaw.net" className="hover:text-white transition-colors">{t('footer.portal')}</a></li>
-                <li><a href="https://star-ai.net" className="hover:text-white transition-colors">Star AI</a></li>
+                <li><a href="https://star-ai.net" className="hover:text-white transition-colors">StarAI</a></li>
                 <li><a href="https://app.starclaw.me" className="hover:text-white transition-colors">{t('nav.demo')}</a></li>
               </ul>
             </div>

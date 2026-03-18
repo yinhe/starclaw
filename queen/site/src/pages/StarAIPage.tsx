@@ -132,7 +132,7 @@ export function StarAIPage() {
             </table>
           </div>
           <p className="text-center text-xs text-gray-500 mt-4">
-            40+ models available. Prices shown are upstream USD per million tokens. Star AI markup: 30%.
+            100+ models available. Prices shown are upstream USD per million tokens. StarAI markup: 30%.
           </p>
         </div>
       </section>

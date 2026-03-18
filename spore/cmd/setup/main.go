@@ -130,15 +130,9 @@ func main() {
 	os.Remove(tmpSpore)
 	fmt.Println(" ✓")
 
-	// Step 3: Auto-configure
-	port := "80"
-	if !isPortAvailable(port) {
-		port = "8080"
-		if !isPortAvailable(port) {
-			port = "8888"
-		}
-		fmt.Printf(yellow+"  Port 80 is in use, using port %s\n"+reset, port)
-	}
+	// Step 3: Auto-configure — find available port (Vite-style auto-increment)
+	port := findAvailablePort(8080, 8099)
+	fmt.Printf("  Using port %s\n", port)
 
 	homeDir, _ := os.UserHomeDir()
 	sporeHome := filepath.Join(homeDir, ".spore")
@@ -166,11 +160,11 @@ jwt:
 	// Write config.yaml directly in the install dir (where viper searches ".")
 	os.WriteFile(filepath.Join(clawInstallDir, "config.yaml"), []byte(config), 0644)
 
-	envContent := fmt.Sprintf("GIN_MODE=release\nCLAW_DATA_DIR=./data\nCLAW_PORT=%s\nDEFAULT_PROVIDER=qwen\n", port)
+	envContent := fmt.Sprintf("GIN_MODE=release\nCLAW_DATA_DIR=./data\nCLAW_PORT=%s\nDEFAULT_PROVIDER=starai\n", port)
 	os.WriteFile(filepath.Join(clawInstallDir, ".env"), []byte(envContent), 0644)
 
 	addToPath(binDir)
-	fmt.Printf(green+"  [3/4]"+reset+" Configuration saved (port %s, default: Qwen) ✓\n", port)
+	fmt.Printf(green+"  [3/4]"+reset+" Configuration saved (port %s, default: StarAI) ✓\n", port)
 
 	// Step 4: Start + Desktop shortcut
 	fmt.Print(green + "  [4/4]" + reset + " Starting Claw...")
@@ -203,7 +197,7 @@ jwt:
 	fmt.Println()
 	fmt.Printf("  🌐 Browser: "+cyan+"%s"+reset+"\n", url)
 	fmt.Println("  🖥️  Desktop: " + appName())
-	fmt.Println("  🤖 Default AI: " + cyan + "Qwen" + reset)
+	fmt.Println("  🤖 Default AI: " + cyan + "StarAI" + reset)
 	fmt.Println()
 	fmt.Println("  Commands:")
 	fmt.Println("    spore status        — Check status")
@@ -248,6 +242,17 @@ func isPortAvailable(port string) bool {
 	}
 	ln.Close()
 	return true
+}
+
+// findAvailablePort tries ports from startPort to endPort, returns first available (Vite-style).
+func findAvailablePort(startPort, endPort int) string {
+	for p := startPort; p <= endPort; p++ {
+		s := fmt.Sprintf("%d", p)
+		if isPortAvailable(s) {
+			return s
+		}
+	}
+	return fmt.Sprintf("%d", startPort)
 }
 
 // appName returns "星爪" for Chinese locale, "StarClaw" otherwise

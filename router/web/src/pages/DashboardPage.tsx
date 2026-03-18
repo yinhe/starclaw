@@ -75,7 +75,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <p className="text-gray-500 text-xs mt-3">
-          兼容 OpenAI API 格式，支持 40+ 模型。在 API Keys 页面获取你的密钥。
+          兼容 OpenAI API 格式，支持 100+ 模型。在 API Keys 页面获取你的密钥。
         </p>
       </div>
     </div>

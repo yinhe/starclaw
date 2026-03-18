@@ -15,7 +15,7 @@ const models = [
 const features = [
   {
     icon: <Globe className="w-6 h-6" />,
-    title: '40+ 模型，一个 API',
+    title: '100+ 模型，一个 API',
     desc: '统一的 OpenAI 兼容接口。国内外模型无缝切换，无需管理多个 SDK 和密钥。',
   },
   {
@@ -87,7 +87,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            OpenAI 兼容接口，接入 GPT-4o、Claude、Qwen、DeepSeek 等 40+ 模型。
+            OpenAI 兼容接口，接入 GPT-4o、Claude、Qwen、DeepSeek、MiniMax、fal.ai 等 100+ 模型。
             国内直连零延迟，海外自动中转。按量计费，透明定价。
           </p>
           <div className="flex items-center justify-center gap-4">
@@ -134,7 +134,7 @@ export default function LandingPage() {
       {/* Models */}
       <section id="models" className="max-w-6xl mx-auto px-6 py-20">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold mb-3">支持 40+ 模型</h2>
+          <h2 className="text-3xl font-bold mb-3">支持 100+ 模型</h2>
           <p className="text-gray-400">所有模型通过统一接口访问，无需切换 SDK</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -165,7 +165,7 @@ export default function LandingPage() {
         </div>
         <div className="text-center mt-8">
           <Link to="/register" className="text-amber-400 hover:text-amber-300 text-sm inline-flex items-center gap-1">
-            查看全部 40+ 模型 <ArrowRight className="w-3 h-3" />
+            查看全部 100+ 模型 <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
       </section>
@@ -288,7 +288,7 @@ export default function LandingPage() {
       <section className="border-t border-gray-800/50">
         <div className="max-w-4xl mx-auto px-6 py-20 text-center">
           <h2 className="text-3xl font-bold mb-4">准备好了吗？</h2>
-          <p className="text-gray-400 mb-8">30 秒注册，立即获取 API Key，开始调用 40+ AI 模型</p>
+          <p className="text-gray-400 mb-8">30 秒注册，立即获取 API Key，开始调用 100+ AI 模型</p>
           <Link
             to="/register"
             className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-gray-900 font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors"

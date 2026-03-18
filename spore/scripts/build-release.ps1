@@ -98,7 +98,7 @@ foreach ($p in $platforms) {
         update = @{ channel = "stable"; auto_update = $false; delta_enabled = $true }
         built_at = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"); built_by = "build-release/$gitVersion"
     } | ConvertTo-Json -Depth 4
-    $manifest | Set-Content (Join-Path $pkgDir "manifest.json") -Encoding UTF8
+    [IO.File]::WriteAllText((Join-Path $pkgDir "manifest.json"), $manifest)
 
     $webDist = Join-Path (Join-Path (Join-Path $Root "claw") "web") "dist"
     if (Test-Path $webDist) { Copy-Item -Recurse $webDist (Join-Path $pkgDir "web") }
