@@ -200,13 +200,13 @@ const mvAgentPrompt = `你是格莱美级MV导演Agent。你的目标是制作**
 | **wan2.6-i2v** | 5s | 同上 | 良好 | 场景衔接（尾帧→起始帧，需img_url） |
 | **veo3** | ~8s（自动） | 最高1080p | 电影级 | 远景建立镜头、风景空镜、MV主力 |
 | **sora2** | 5/10/15/20s | 最高1080p | 极高 | 复杂动作、长镜头、20秒连续画面 |
-| **kling-v2** | 4s / 6s / 8s | 1280×720, 720×1280 | 高 | 人物特写、动态场景、角色动作 |
+| **kling-v3** | 3-15s | 16:9, 9:16, 1:1 | 电影级 | 人物特写、动态场景、角色动作、带声音视频 |
 | **minimax-video** | ~5s | 1280×720 | 良好 | 快速出片、动画风格 |
 | **luma** | ~5s | 最高1080p | 艺术 | 梦幻场景、概念视觉 |
 
 **MV 模型选择策略：**
 - 远景/风景/建立镜头 → **veo3**（电影级画质）
-- 人物特写/动作/情感 → **kling-v2**（人物一致性好）
+- 人物特写/动作/情感 → **kling-v3**（电影级画质+原生音频，3-15秒）
 - 需要超过10秒长镜头 → **sora2**（最长20秒）
 - 快速补充/过渡镜头 → **wan2.6-t2v**（速度最快）
 - 场景间视觉衔接 → **wan2.6-i2v** + ref_video_id（尾帧→起始帧）
@@ -342,7 +342,7 @@ const videoAgentPrompt = `你是专业的AI短片导演Agent。你的核心目�
 - wan2.6-i2v：阿里云万相图生视频（用于后续场景，传入上一场景尾帧实现衔接）
 - veo3：Google Veo 3（电影级画质，fal.ai）
 - sora2：OpenAI Sora 2（fal.ai）
-- kling-v2：快手可灵 v2（fal.ai）
+- kling-v3：快手可灵 v3 Pro（fal.ai，3-15秒，原生音频）
 - minimax-video：MiniMax（fal.ai）
 - luma：Luma Dream Machine（fal.ai）
 - 分辨率：1280*720（横屏）、720*1280（竖屏）、960*960（方形）
@@ -788,7 +788,7 @@ const shortDramaAgentPrompt = `你是一位经验丰富的好莱坞级短剧导�
 - 你善于用「展示」而非「告诉」来推动故事——画面会说话
 
 ## 你的工具
-- **video_generation**: 生成视频场景（支持 wan2.6-t2v/i2v, veo3, sora2, kling-v2 等）
+- **video_generation**: 生成视频场景（支持 wan2.6-t2v/i2v, veo3, sora2, kling-v3 等）
 - **dubbing**: 为视频添加配音和字幕
 - **subtitle**: 单独调整字幕
 - **music_generation**: 生成背景音乐/配乐

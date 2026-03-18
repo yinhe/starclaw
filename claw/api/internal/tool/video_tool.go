@@ -41,7 +41,7 @@ func (t *VideoTool) Description() string {
 - wan2.6-i2v: 阿里云万相图生视频，需要img_url
 - veo3: Google Veo 3 文生视频 (fal.ai)，电影级画质
 - sora2: OpenAI Sora 2 文生视频 (fal.ai)
-- kling-v2: 快手可灵 v2 文生视频 (fal.ai)
+- kling-v3: 快手可灵 v3 文生视频 (fal.ai)，支持3-15秒，原生音频
 - minimax-video: MiniMax 视频生成 (fal.ai)
 - luma: Luma Dream Machine (fal.ai)
 
@@ -55,7 +55,7 @@ func (t *VideoTool) Parameters() interface{} {
 		Properties: map[string]Property{
 			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame"},
 			"prompt":       {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
-			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, sora2, kling-v2, minimax-video, luma"},
+			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, sora2, kling-v3, minimax-video, luma"},
 			"img_url":      {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
 			"size":         {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
 			"duration":     {Type: "string", Description: "Video duration in seconds: 5 or 10. Default: 5"},
@@ -87,7 +87,7 @@ type videoArgs struct {
 var falVideoEndpoints = map[string]string{
 	"veo3":          "fal-ai/veo3",
 	"sora2":         "fal-ai/sora",
-	"kling-v2":      "fal-ai/kling-video/v2.1/master/text-to-video",
+	"kling-v3":      "fal-ai/kling-video/v3/pro/text-to-video",
 	"minimax-video": "fal-ai/minimax-video/video-01-live",
 	"luma":          "fal-ai/luma-dream-machine",
 }
@@ -137,8 +137,8 @@ func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, 
 		args.Size = "1280*720"
 	}
 	duration := 5
-	if args.Duration == "10" {
-		duration = 10
+	if d, err := strconv.Atoi(args.Duration); err == nil && d > 0 {
+		duration = d
 	}
 
 	// Prepend style_prefix to prompt for visual consistency across scenes
@@ -358,22 +358,29 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		return "", fmt.Errorf("unknown fal.ai video model: %s", args.Model)
 	}
 
+	// kling-v3: switch to i2v endpoint when image is provided
+	if args.Model == "kling-v3" && args.ImgURL != "" {
+		endpoint = "fal-ai/kling-video/v3/pro/image-to-video"
+	}
+
 	body := map[string]interface{}{
 		"prompt": args.Prompt,
 	}
 
 	// Per-model duration formatting
 	switch args.Model {
-	case "kling-v2":
-		// kling-v2 accepts only "4s", "6s", "8s"
-		switch {
-		case duration <= 4:
-			body["duration"] = "4s"
-		case duration <= 6:
-			body["duration"] = "6s"
-		default:
-			body["duration"] = "8s"
+	case "kling-v3":
+		// kling-v3 accepts "3" through "15" as string
+		if duration < 3 {
+			duration = 5
 		}
+		if duration > 15 {
+			duration = 15
+		}
+		body["duration"] = fmt.Sprintf("%d", duration)
+		body["generate_audio"] = true
+		body["negative_prompt"] = "blur, distort, and low quality"
+		body["cfg_scale"] = 0.5
 	case "veo3":
 		// veo3 auto-determines duration, don't send it
 	case "luma":
@@ -383,15 +390,35 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 	}
 
 	if args.ImgURL != "" {
-		body["image_url"] = args.ImgURL
-	}
-	sizeParts := strings.Split(args.Size, "*")
-	if len(sizeParts) == 2 {
-		if w, err := strconv.Atoi(sizeParts[0]); err == nil {
-			body["width"] = w
+		if args.Model == "kling-v3" {
+			body["start_image_url"] = args.ImgURL
+		} else {
+			body["image_url"] = args.ImgURL
 		}
-		if h, err := strconv.Atoi(sizeParts[1]); err == nil {
-			body["height"] = h
+	}
+	if args.Model == "kling-v3" {
+		// kling-v3 uses aspect_ratio instead of width/height
+		sizeParts := strings.Split(args.Size, "*")
+		if len(sizeParts) == 2 {
+			w, _ := strconv.Atoi(sizeParts[0])
+			h, _ := strconv.Atoi(sizeParts[1])
+			if w > h {
+				body["aspect_ratio"] = "16:9"
+			} else if h > w {
+				body["aspect_ratio"] = "9:16"
+			} else {
+				body["aspect_ratio"] = "1:1"
+			}
+		}
+	} else {
+		sizeParts := strings.Split(args.Size, "*")
+		if len(sizeParts) == 2 {
+			if w, err := strconv.Atoi(sizeParts[0]); err == nil {
+				body["width"] = w
+			}
+			if h, err := strconv.Atoi(sizeParts[1]); err == nil {
+				body["height"] = h
+			}
 		}
 	}
 
@@ -550,13 +577,13 @@ func (t *VideoTool) listModels() (string, error) {
 		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "durations": "5s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相图生视频，需要img_url。用于尾帧衔接保持场景连续", "best_for": "场景衔接（上一场景尾帧→下一场景起始帧）"},
 		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质，最强画面质量", "best_for": "远景建立镜头、电影级MV、风景空镜"},
 		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2，强运动理解，支持长视频", "best_for": "复杂动作、长镜头、20秒连续画面"},
-		{"name": "kling-v2", "type": "text-to-video", "provider": "fal.ai", "durations": "4s, 6s, 8s", "resolutions": "1280*720, 720*1280", "quality": "high", "speed": "medium", "description": "快手可灵 v2.1，人物一致性好，运动自然", "best_for": "人物特写、动态场景、角色动作"},
+		{"name": "kling-v3", "type": "text-to-video", "provider": "fal.ai", "durations": "3-15s", "resolutions": "16:9, 9:16, 1:1", "quality": "cinematic", "speed": "medium", "description": "快手可灵 v3 Pro，电影级画质，原生音频生成，支持3-15秒", "best_for": "人物特写、动态场景、角色动作、带声音视频"},
 		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "1280*720", "quality": "good", "speed": "fast", "description": "MiniMax Video-01-Live，快速生成", "best_for": "快速出片、动画风格"},
 		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "最高1080p", "quality": "artistic", "speed": "medium", "description": "Luma Dream Machine，梦幻艺术风格", "best_for": "艺术风格、梦幻场景、概念视觉"},
 	}
 	return toJSON(map[string]interface{}{
 		"action": "list_models", "models": models,
-		"tips": "wan系列通过 StarAI/DashScope API Key 调用，其他模型通过 fal.ai API Key 调用。MV制作推荐：veo3(电影级远景) + kling-v2(人物特写) + wan(快速补充镜头)。",
+		"tips": "wan系列通过 StarAI/DashScope API Key 调用，其他模型通过 fal.ai API Key 调用。MV制作推荐：veo3(电影级远景) + kling-v3(人物特写+原生音频) + wan(快速补充镜头)。",
 	}), nil
 }
 
