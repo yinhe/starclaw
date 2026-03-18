@@ -48,7 +48,10 @@ h2{font-size:18px;font-weight:600;margin-bottom:8px}
 .result h2{font-size:22px;margin-bottom:8px}
 .result .url{display:inline-block;margin-top:12px;padding:8px 20px;background:#f59e0b22;color:#f59e0b;border-radius:8px;font-size:14px;font-weight:500;text-decoration:none;border:1px solid #f59e0b33}
 .result .url:hover{background:#f59e0b33}
-.result .cmds{margin-top:16px;text-align:left;background:#0a0a0f;border-radius:8px;padding:12px 16px;font-size:12px;color:#888;font-family:monospace;line-height:1.8}
+.result .cmds{margin-top:16px;text-align:left;background:#0a0a0f;border:1px solid #1f1f2e;border-radius:8px;padding:14px 18px;font-size:12px;color:#888;font-family:'Cascadia Code','Fira Code',monospace;line-height:2}
+.result .cmds .cmd-row{display:flex;gap:12px;align-items:baseline}
+.result .cmds .cmd-code{color:#f59e0b;white-space:nowrap;min-width:140px}
+.result .cmds .cmd-desc{color:#666;white-space:nowrap}
 
 .step-indicator{display:flex;gap:6px;margin-bottom:24px}
 .step-dot{width:8px;height:8px;border-radius:50%;background:#1f1f2e;transition:background .3s}
@@ -256,9 +259,9 @@ function showComplete(ev) {
   document.getElementById('done-msg').textContent =
     '安装耗时 ' + (ev.elapsed || '?') + '，StarClaw 已启动。';
   document.getElementById('done-cmds').innerHTML =
-    'spore status &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 查看状态\n' +
-    'spore stop claw &nbsp;&nbsp;— 停止服务\n' +
-    'spore start claw — 启动服务';
+    '<div class="cmd-row"><span class="cmd-code">spore status</span><span class="cmd-desc">— 查看状态</span></div>' +
+    '<div class="cmd-row"><span class="cmd-code">spore stop claw</span><span class="cmd-desc">— 停止服务</span></div>' +
+    '<div class="cmd-row"><span class="cmd-code">spore start claw</span><span class="cmd-desc">— 启动服务</span></div>';
 }
 
 async function showUninstall() {
