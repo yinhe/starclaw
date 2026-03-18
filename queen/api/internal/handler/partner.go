@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -610,6 +612,57 @@ func (h *PartnerHandler) AdminGrantEquity(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"grant": grant})
+}
+
+// ── Core Partner: node management (proxy to swarm) ──
+
+func (h *PartnerHandler) ListNodes(c *gin.Context) {
+	swarmURL := os.Getenv("SWARM_URL")
+	if swarmURL == "" {
+		swarmURL = "http://localhost:8090"
+	}
+
+	path := "/swarm/nodes"
+	q := c.Request.URL.Query()
+	if qs := q.Encode(); qs != "" {
+		path += "?" + qs
+	}
+
+	resp, err := http.Get(swarmURL + path)
+	if err != nil {
+		middleware.Fail(c, http.StatusBadGateway, middleware.CodeInternal, "failed to reach swarm")
+		return
+	}
+	defer resp.Body.Close()
+
+	var data interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		middleware.Fail(c, http.StatusBadGateway, middleware.CodeInternal, "invalid swarm response")
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+func (h *PartnerHandler) GetNode(c *gin.Context) {
+	swarmURL := os.Getenv("SWARM_URL")
+	if swarmURL == "" {
+		swarmURL = "http://localhost:8090"
+	}
+
+	id := c.Param("id")
+	resp, err := http.Get(swarmURL + fmt.Sprintf("/swarm/nodes/%s", id))
+	if err != nil {
+		middleware.Fail(c, http.StatusBadGateway, middleware.CodeInternal, "failed to reach swarm")
+		return
+	}
+	defer resp.Body.Close()
+
+	var data interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		middleware.Fail(c, http.StatusBadGateway, middleware.CodeInternal, "invalid swarm response")
+		return
+	}
+	c.JSON(http.StatusOK, data)
 }
 
 // ── Core Partner: manage city partner Claw whitelist ──

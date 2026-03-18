@@ -104,6 +104,13 @@ export interface CityPartner {
 interface MonthTypeBreakdown { month: string; type: string; total: number }
 interface FunnelItem { stage: string; count: number; value: number }
 
+export interface SwarmNode {
+  id: string; name: string; role: string; status: string;
+  version: string; address: string; region: string;
+  cpu_percent: number; mem_percent: number;
+  tasks_running: number; last_heartbeat: string;
+}
+
 // Partner Hub API
 export const partner = {
   dashboard: () =>
@@ -136,6 +143,17 @@ export const partner = {
 
   reviewCityPartner: (id: string, data: { status: string; comm_rate?: number }) =>
     request<{ message: string }>('PUT', `/partner/city-partners/${id}`, data),
+
+  listNodes: (params?: { role?: string; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.role) qs.set('role', params.role);
+    if (params?.status) qs.set('status', params.status);
+    const s = qs.toString();
+    return request<{ nodes: SwarmNode[]; total: number }>('GET', `/partner/nodes${s ? '?' + s : ''}`);
+  },
+
+  getNode: (id: string) =>
+    request<SwarmNode>('GET', `/partner/nodes/${id}`),
 
   listCommissions: (params?: { month?: string; type?: string }) => {
     const qs = new URLSearchParams();

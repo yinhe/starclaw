@@ -7,6 +7,7 @@ import DealsPage from './pages/DealsPage'
 import CitiesPage from './pages/CitiesPage'
 import CommissionsPage from './pages/CommissionsPage'
 import EquityPage from './pages/EquityPage'
+import NodesPage from './pages/NodesPage'
 import DeployPage from './pages/DeployPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -27,6 +28,7 @@ export default function App() {
         >
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/deals" element={<DealsPage />} />
+          <Route path="/nodes" element={<NodesPage />} />
           <Route path="/cities" element={<CitiesPage />} />
           <Route path="/commissions" element={<CommissionsPage />} />
           <Route path="/equity" element={<EquityPage />} />

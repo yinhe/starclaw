@@ -206,6 +206,8 @@ func Setup() *gin.Engine {
 		partnerPortal.PUT("/deals/:id", writeRL.UserRateLimit(), ph.UpdateDeal)
 		partnerPortal.GET("/city-partners", ph.ListCityPartners)
 		partnerPortal.PUT("/city-partners/:id", writeRL.UserRateLimit(), ph.ReviewCityPartner)
+		partnerPortal.GET("/nodes", ph.ListNodes)
+		partnerPortal.GET("/nodes/:id", ph.GetNode)
 		partnerPortal.GET("/commissions", ph.ListCommissions)
 		partnerPortal.GET("/equity", ph.GetEquity)
 		partnerPortal.GET("/deployments", ph.ListDeployments)
