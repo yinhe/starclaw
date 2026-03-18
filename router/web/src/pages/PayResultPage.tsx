@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { CheckCircle, XCircle, Loader2, ArrowLeft } from 'lucide-react';
 import { dash } from '../lib/api';
 
 export default function PayResultPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<'loading' | 'success' | 'pending' | 'failed'>('loading');
   const [orderNo] = useState(searchParams.get('out_trade_no') || '');
+  const [countdown, setCountdown] = useState(0);
 
   useEffect(() => {
     // Poll order status for a few seconds
@@ -44,6 +46,26 @@ export default function PayResultPage() {
     }
   }, [orderNo]);
 
+  // Auto-redirect after status is determined
+  useEffect(() => {
+    if (status === 'success') {
+      setCountdown(3);
+      const t = setInterval(() => setCountdown(c => {
+        if (c <= 1) { clearInterval(t); navigate('/dashboard'); }
+        return c - 1;
+      }), 1000);
+      return () => clearInterval(t);
+    }
+    if (status === 'pending') {
+      setCountdown(5);
+      const t = setInterval(() => setCountdown(c => {
+        if (c <= 1) { clearInterval(t); navigate('/billing'); }
+        return c - 1;
+      }), 1000);
+      return () => clearInterval(t);
+    }
+  }, [status, navigate]);
+
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center space-y-6">
@@ -59,7 +81,7 @@ export default function PayResultPage() {
           <>
             <CheckCircle className="w-16 h-16 text-green-400 mx-auto" />
             <h1 className="text-2xl font-bold text-white">充值成功</h1>
-            <p className="text-gray-400">余额已到账，可以开始使用了</p>
+            <p className="text-gray-400">余额已到账，{countdown > 0 ? `${countdown} 秒后自动跳转...` : '正在跳转...'}</p>
             {orderNo && <p className="text-gray-500 text-xs font-mono">订单号: {orderNo}</p>}
           </>
         )}
@@ -68,7 +90,7 @@ export default function PayResultPage() {
           <>
             <CheckCircle className="w-16 h-16 text-amber-400 mx-auto" />
             <h1 className="text-2xl font-bold text-white">支付处理中</h1>
-            <p className="text-gray-400">支付宝正在处理你的订单，余额将在 1-2 分钟内到账</p>
+            <p className="text-gray-400">支付平台正在处理你的订单，{countdown > 0 ? `${countdown} 秒后跳转充值页...` : '正在跳转...'}</p>
             {orderNo && <p className="text-gray-500 text-xs font-mono">订单号: {orderNo}</p>}
           </>
         )}
