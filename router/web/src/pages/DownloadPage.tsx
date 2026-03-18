@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Monitor, Terminal, Apple, Download, ExternalLink, Zap } from 'lucide-react';
+import { isLoggedIn } from '../lib/api';
 
 const STARAI_BASE = 'https://star-ai.net/downloads';
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases';
@@ -76,10 +77,18 @@ export default function DownloadPage() {
           <div className="flex items-center gap-3">
             <Link to="/" className="text-sm text-gray-400 hover:text-white px-3 py-2 transition-colors">首页</Link>
             <Link to="/download" className="text-sm text-gray-300 hover:text-white px-3 py-2 transition-colors">下载</Link>
-            <Link to="/login" className="text-sm text-gray-300 hover:text-white px-3 py-2 transition-colors">登录</Link>
-            <Link to="/register" className="text-sm bg-amber-500 hover:bg-amber-400 text-gray-900 font-medium px-4 py-2 rounded-lg transition-colors">
-              开始使用
-            </Link>
+            {isLoggedIn() ? (
+              <Link to="/dashboard" className="text-sm bg-amber-500 hover:bg-amber-400 text-gray-900 font-medium px-4 py-2 rounded-lg transition-colors">
+                控制台
+              </Link>
+            ) : (
+              <>
+                <Link to="/login" className="text-sm text-gray-300 hover:text-white px-3 py-2 transition-colors">登录</Link>
+                <Link to="/register" className="text-sm bg-amber-500 hover:bg-amber-400 text-gray-900 font-medium px-4 py-2 rounded-lg transition-colors">
+                  开始使用
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>

@@ -20,7 +20,7 @@ interface EditForm {
 }
 
 const PROVIDERS = [
-  { value: 'star-ai', label: 'Star AI', desc: '聚合 OpenAI / Claude / Gemini / DeepSeek / Qwen 等 60+ 模型，Claw 身份免密', icon: '⚡', base_url: 'https://star-ai.net/v1' },
+  { value: 'star-ai', label: 'StarAI', desc: '聚合 OpenAI / Claude / Gemini / DeepSeek / Qwen 等 100+ 模型，Claw 身份免密', icon: '⚡', base_url: 'https://api.star-ai.net/v1' },
   { value: 'qwen', label: '通义千问 (Qwen)', desc: '阿里云百炼，180+ 模型，文本/图像/视频/语音全覆盖', icon: '🤖', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
   { value: 'openai', label: 'OpenAI', desc: 'GPT-4o, o1, DALL-E 等', icon: '🟢', base_url: 'https://api.openai.com/v1' },
   { value: 'anthropic', label: 'Anthropic', desc: 'Claude 4, Claude 3.5 Sonnet 等', icon: '🟠', base_url: 'https://api.anthropic.com' },
@@ -54,7 +54,7 @@ const normalizeMiniMaxBaseUrl = (provider: string, baseUrl: string) => {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  'star-ai': 'Star AI',
+  'star-ai': 'StarAI',
   qwen: '通义千问 (Qwen)',
   openai: 'OpenAI',
   anthropic: 'Anthropic',
@@ -371,7 +371,7 @@ export default function ModelsPage() {
 
               {isStarAI ? (
                 <div className="bg-emerald-50 rounded-lg px-4 py-3 text-xs text-emerald-700">
-                  Star AI 使用 Claw 节点身份认证，无需 API Key。添加后即可直接使用 60+ 模型。
+                  StarAI 使用 Claw 节点身份认证，无需 API Key。添加后即可直接使用 100+ 模型。
                 </div>
               ) : (
                 <div>

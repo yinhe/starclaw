@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Key, BarChart3, CreditCard, LogOut, Zap, FileText, Settings, Cpu, Download } from 'lucide-react';
+import { LayoutDashboard, Key, BarChart3, CreditCard, LogOut, Zap, FileText, Settings, Cpu } from 'lucide-react';
 import { clearToken } from '../lib/api';
 
 const nav = [
@@ -9,7 +9,6 @@ const nav = [
   { to: '/usage', icon: BarChart3, label: '用量' },
   { to: '/logs', icon: FileText, label: '日志' },
   { to: '/billing', icon: CreditCard, label: '充值' },
-  { to: '/download', icon: Download, label: '下载客户端' },
   { to: '/account', icon: Settings, label: '设置' },
 ];
 

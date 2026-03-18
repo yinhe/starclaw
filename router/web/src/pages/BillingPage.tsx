@@ -184,6 +184,7 @@ export default function BillingPage() {
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-left">
                 <th className="px-5 py-3 font-medium">时间</th>
+                <th className="px-5 py-3 font-medium">订单号</th>
                 <th className="px-5 py-3 font-medium">渠道</th>
                 <th className="px-5 py-3 font-medium text-right">金额</th>
                 <th className="px-5 py-3 font-medium text-right">到账</th>
@@ -193,7 +194,7 @@ export default function BillingPage() {
             <tbody>
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-5 py-12 text-center text-gray-500">
                     <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     暂无充值记录
                   </td>
@@ -204,6 +205,7 @@ export default function BillingPage() {
                   return (
                     <tr key={o.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                       <td className="px-5 py-3 text-gray-400">{new Date(o.created_at).toLocaleString()}</td>
+                      <td className="px-5 py-3 text-gray-500 font-mono text-xs">{o.order_no}</td>
                       <td className="px-5 py-3 text-gray-300">{o.channel === 'alipay' ? '支付宝' : '微信'}</td>
                       <td className="px-5 py-3 text-white text-right">{fmt(o.amount_cents)}</td>
                       <td className="px-5 py-3 text-white text-right">{fmt(o.total_cents)}</td>
