@@ -333,19 +333,101 @@ Hook 位置: `/data/nydus/repos/starclaw.git/hooks/post-receive`
 
 ---
 
-## 8. Checklist Before Release
+## 8. macOS DMG 构建 (GitHub Actions)
 
-- [ ] All changes committed and pushed
-- [ ] `go build ./...` passes in `claw/api`
-- [ ] `npm run build` passes in `claw/web`
+Spore 安装包的 macOS DMG 通过 GitHub Actions 在 `macos-latest` runner 上用 `hdiutil` 构建（真正的 macOS DMG 格式）。
+
+**Workflow:** `.github/workflows/build-spore-dmg.yml` (手动触发)
+
+**流程：**
+```bash
+# 1. 触发 (从 OSS repo)
+cd E:\starclaw-oss
+gh workflow run build-spore-dmg.yml -f version=vXXXX.XXXX.XXXX
+
+# 2. 等待构建完成
+gh run watch <run-id> --exit-status
+
+# 3. Nydus 服务器下载 artifact并分发
+TOKEN=$(gh auth token)
+ssh root@43.106.158.26 "curl -sL -H 'Authorization: Bearer $TOKEN' \
+  'https://api.github.com/repos/yinhe/starclaw/actions/artifacts/<id>/zip' \
+  -o /tmp/dmg.zip && unzip -o /tmp/dmg.zip -d /tmp/"
+
+# 4. 复制到 Nydus releases + StarAI 镜像
+ssh root@43.106.158.26 "cp /tmp/StarClaw-Setup-*.dmg /opt/spore/releases/"
+ssh root@43.106.158.26 "scp /tmp/StarClaw-Setup-*.dmg root@47.103.51.32:/dnmp/www/downloads/"
+```
+
+> **注意：** `package-releases.sh` 也支持 `hdiutil`，在 macOS 上运行时自动使用真正 DMG 格式，Linux 上回退到 `genisoimage`。
+
+---
+
+## 9. 完整发布流程 (End-to-End)
+
+### Step 1: 构建 & 测试
+```bash
+# Claw API
+cd claw/api && go build ./... && go vet ./...
+# Claw Web
+cd claw/web && npm run build
+# Spore 安装包 (跨平台编译)
+cd spore/scripts && powershell ./build-release.ps1
+```
+
+### Step 2: Spore 包上传
+```bash
+# 上传到 Nydus (Server C)
+scp spore/dist/StarClaw-Setup-* root@43.106.158.26:/opt/spore/releases/
+# 上传到 StarAI 镜像 (Server B)
+scp spore/dist/StarClaw-Setup-* root@47.103.51.32:/dnmp/www/downloads/
+```
+
+### Step 3: macOS DMG (可选，但推荐)
+```bash
+# GitHub Actions 构建真正 DMG
+cd E:\starclaw-oss
+gh workflow run build-spore-dmg.yml -f version=vXXXX.XXXX.XXXX
+# 等待完成 → 下载 artifact → 上传到 Nydus + StarAI（见 Section 8）
+```
+
+### Step 4: Monorepo 推送
+```bash
+cd E:\starclaw
+git add -A && git commit -m "release: vXXXX.XXXX.XXXX"
+git tag vXXXX.XXXX.XXXX
+git push nydus master --tags   # 触发 Nydus 自动部署
+```
+
+### Step 5: OSS 同步 + GitHub Release
+```powershell
+# 同步到 OSS repo
+robocopy "E:\starclaw\claw" "E:\starclaw-oss" /MIR /XD node_modules .git data build /XF sync-oss.sh *.tar.gz
+
+# 推送 + 打 tag
+cd E:\starclaw-oss
+git add -A && git commit -m "sync: vXXXX.XXXX.XXXX"
+git tag vXXXX.XXXX.XXXX
+git push origin main --tags   # 触发 release.yml 自动创建 GitHub Release
+```
+
+### Step 6: 验证
+- [ ] `https://nydus.starclaw.net/releases/latest` 返回新 tag
+- [ ] `starclaw.me/download` 显示新版本号
+- [ ] Nydus 下载链接全部 200: .exe / .tar.gz / .dmg (arm64 + amd64)
+- [ ] StarAI 镜像下载链接全部 200
+- [ ] GitHub Release 页面正常，包含所有 assets
+- [ ] macOS DMG 双击测试 (Install StarClaw.command)
+
+---
+
+## 10. Checklist (快速参考)
+
+- [ ] `go build` + `npm run build` pass
 - [ ] CHANGELOG.md updated (English, Claw-scope only)
-- [ ] **Spore packages rebuilt** (`spore/scripts/build-release.ps1`)
-- [ ] **Spore packages uploaded** to Nydus `/opt/spore/releases/`
-- [ ] Sync monorepo → OSS repo (`robocopy` or `sync-oss.sh`)
-- [ ] `make tag` → `git push origin v...` (also push to nydus)
-- [ ] Verify GitHub Release: title, notes, 18 assets
-- [ ] Verify macOS assets: 2 tar.gz (API) + 2 tar.gz (MCP) + 2 DMG (MCP)
-- [ ] Verify Nydus `/releases/latest` returns new tag
-- [ ] Verify `starclaw.me/download` shows new version number
-- [ ] Test DMG install on macOS (double-click install.command)
+- [ ] Spore packages rebuilt & uploaded (Nydus + StarAI)
+- [ ] macOS DMG rebuilt via GitHub Actions & uploaded
+- [ ] `git push nydus master --tags`
+- [ ] OSS sync: `robocopy` → `git push origin main --tags`
+- [ ] Verify: Nydus `/releases/latest`, starclaw.me/download, all download links
 - [ ] **Audit**: no Queen/Overlord mentions in release notes or assets
