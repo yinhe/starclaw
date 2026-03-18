@@ -1,14 +1,17 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,15 +25,17 @@ type PaymentHandler struct {
 	db        *gorm.DB
 	aliCfg    config.AlipayConfig
 	wxCfg     config.WechatConfig
+	queenCfg  config.QueenConfig
 	aliClient *alipay.Client
 	wxClient  *WechatPayClient
 }
 
-func NewPaymentHandler(db *gorm.DB, aliCfg config.AlipayConfig, wxCfg config.WechatConfig) *PaymentHandler {
+func NewPaymentHandler(db *gorm.DB, aliCfg config.AlipayConfig, wxCfg config.WechatConfig, queenCfg config.QueenConfig) *PaymentHandler {
 	h := &PaymentHandler{
-		db:     db,
-		aliCfg: aliCfg,
-		wxCfg:  wxCfg,
+		db:       db,
+		aliCfg:   aliCfg,
+		wxCfg:    wxCfg,
+		queenCfg: queenCfg,
 	}
 
 	// Initialize Alipay client if configured
@@ -431,7 +436,7 @@ func (h *PaymentHandler) Orders(c *gin.Context) {
 
 // creditOrder credits the user's balance after successful payment
 func (h *PaymentHandler) creditOrder(orderNo, tradeNo string) error {
-	return h.db.Transaction(func(tx *gorm.DB) error {
+	err := h.db.Transaction(func(tx *gorm.DB) error {
 		var order model.PaymentOrder
 		if err := tx.Where("order_no = ? AND status = ?", orderNo, "pending").First(&order).Error; err != nil {
 			return fmt.Errorf("order not found or already processed: %w", err)
@@ -456,6 +461,67 @@ func (h *PaymentHandler) creditOrder(orderNo, tradeNo string) error {
 		log.Printf("[star-ai] credited %d cents to user %s (order %s)", order.TotalCents, order.UserID, orderNo)
 		return nil
 	})
+
+	if err == nil {
+		// Sync star energy to Queen credit ledger for Claw
+		go h.syncStarEnergy(orderNo)
+	}
+
+	return err
+}
+
+// syncStarEnergy grants star energy to the user's Claw node via Queen's internal API.
+// Conversion: 1 分 (cent) = 1 Star = 10000 internal units
+func (h *PaymentHandler) syncStarEnergy(orderNo string) {
+	queenURL := strings.TrimRight(h.queenCfg.URL, "/")
+	if queenURL == "" {
+		return
+	}
+
+	var order model.PaymentOrder
+	if err := h.db.Where("order_no = ?", orderNo).First(&order).Error; err != nil {
+		log.Printf("[star-ai] sync energy: order %s not found: %v", orderNo, err)
+		return
+	}
+
+	// Look up user's Claw ID
+	var user model.User
+	if err := h.db.Where("id = ?", order.UserID).First(&user).Error; err != nil || user.ClawID == "" {
+		log.Printf("[star-ai] sync energy: user %s has no claw_id, skipping", order.UserID)
+		return
+	}
+
+	// 1 cent = 1 Star = 10000 energy units
+	energyUnits := order.TotalCents * 10000
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"claw_id": user.ClawID,
+		"amount":  energyUnits,
+		"type":    "recharge",
+		"remark":  fmt.Sprintf("StarAI recharge order %s (¥%.2f)", orderNo, float64(order.TotalCents)/100),
+	})
+
+	req, _ := http.NewRequest("POST", queenURL+"/internal/credits/grant", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if h.queenCfg.Token != "" {
+		req.Header.Set("X-Node-Token", h.queenCfg.Token)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[star-ai] sync energy to Queen failed for %s: %v", user.ClawID, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 200 {
+		log.Printf("[star-ai] synced %d energy units (%.1f⚡) to claw %s (order %s)",
+			energyUnits, float64(energyUnits)/10000, user.ClawID, orderNo)
+	} else {
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("[star-ai] sync energy to Queen returned %d: %s", resp.StatusCode, string(respBody))
+	}
 }
 
 // --- helpers ---

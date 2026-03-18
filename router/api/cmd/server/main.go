@@ -112,7 +112,7 @@ func main() {
 	dash.GET("/balance", dashUsage.Balance)
 
 	// Payment (JWT auth for creating orders, public for callbacks)
-	payHandler := handler.NewPaymentHandler(db, cfg.Alipay, cfg.Wechat)
+	payHandler := handler.NewPaymentHandler(db, cfg.Alipay, cfg.Wechat, cfg.Queen)
 	dash.GET("/pay/packages", payHandler.Packages)
 	dash.POST("/pay/alipay", payHandler.CreateAlipay)
 	dash.POST("/pay/wechat", payHandler.CreateWechat)

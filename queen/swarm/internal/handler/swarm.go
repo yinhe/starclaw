@@ -170,10 +170,10 @@ func (h *SwarmHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Grant 100 ⚡ welcome bonus for new claw nodes
-	if req.ClawID != "" {
-		go grantWelcomeBonus(req.ClawID)
-	}
+	// Welcome bonus disabled — users recharge via star-ai.net
+	// if req.ClawID != "" {
+	// 	go grantWelcomeBonus(req.ClawID)
+	// }
 
 	c.JSON(http.StatusCreated, gin.H{
 		"node_id": node.ID,
