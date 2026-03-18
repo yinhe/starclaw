@@ -188,7 +188,7 @@ func (h *ClawAuthHandler) findOrCreateClawUser(clawID string) *model.User {
 		Email:     placeholder + "@claw.local",
 		Phone:     "c" + placeholder,
 		ClawID:    clawID,
-		FreeQuota: 1000000, // 1M free tokens
+		FreeQuota: 0,
 		Status:    "active",
 	}
 	if err := h.db.Create(&user).Error; err != nil {

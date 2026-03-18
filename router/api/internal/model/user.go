@@ -14,8 +14,8 @@ type User struct {
 	Phone        string         `json:"phone" gorm:"type:varchar(20);uniqueIndex"`
 	PasswordHash string         `json:"-" gorm:"type:varchar(100)"`
 	Name         string         `json:"name" gorm:"type:varchar(100)"`
-	Balance      int64          `json:"balance" gorm:"default:0"`          // balance in cents (分)
-	FreeQuota    int64          `json:"free_quota" gorm:"default:1000000"` // free tokens for new users
+	Balance      int64          `json:"balance" gorm:"default:0"`    // balance in cents (分)
+	FreeQuota    int64          `json:"free_quota" gorm:"default:0"` // free quota in cents (充值获得)
 	IsAdmin      bool           `json:"is_admin" gorm:"default:false"`
 	Status       string         `json:"status" gorm:"type:varchar(20);default:'active'"`
 	ClawID       string         `json:"claw_id" gorm:"type:varchar(60);uniqueIndex"` // claw:xxxx address (Ed25519 identity)

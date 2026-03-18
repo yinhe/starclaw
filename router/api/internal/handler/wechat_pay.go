@@ -99,16 +99,16 @@ func NewWechatPayClient(cfg config.WechatConfig) *WechatPayClient {
 
 // NativeOrderRequest is the request body for WeChat Pay V3 Native order.
 type NativeOrderRequest struct {
-	AppID       string              `json:"appid"`
-	MchID       string              `json:"mchid"`
-	Description string              `json:"description"`
-	OutTradeNo  string              `json:"out_trade_no"`
-	NotifyURL   string              `json:"notify_url"`
-	Amount      NativeOrderAmount   `json:"amount"`
+	AppID       string            `json:"appid"`
+	MchID       string            `json:"mchid"`
+	Description string            `json:"description"`
+	OutTradeNo  string            `json:"out_trade_no"`
+	NotifyURL   string            `json:"notify_url"`
+	Amount      NativeOrderAmount `json:"amount"`
 }
 
 type NativeOrderAmount struct {
-	Total    int    `json:"total"`    // amount in fen (分)
+	Total    int    `json:"total"` // amount in fen (分)
 	Currency string `json:"currency"`
 }
 
@@ -161,16 +161,43 @@ func (c *WechatPayClient) CreateNativeOrder(description, outTradeNo string, amou
 	return result.CodeURL, nil
 }
 
+// ── Order Query ──
+
+// QueryOrder queries WeChat Pay V3 for order status by out_trade_no.
+func (c *WechatPayClient) QueryOrder(outTradeNo string) (*WechatPayResult, error) {
+	apiURL := fmt.Sprintf("https://api.mch.weixin.qq.com/v3/pay/transactions/out-trade-no/%s?mchid=%s",
+		outTradeNo, c.cfg.MchID)
+
+	resp, err := c.doSignedRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("API request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("WeChat API %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result WechatPayResult
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
+	}
+
+	return &result, nil
+}
+
 // ── Callback Verification ──
 
 // WechatNotification is the outer envelope of a WeChat Pay V3 callback.
 type WechatNotification struct {
-	ID           string                   `json:"id"`
-	CreateTime   string                   `json:"create_time"`
-	EventType    string                   `json:"event_type"`
-	ResourceType string                   `json:"resource_type"`
+	ID           string                     `json:"id"`
+	CreateTime   string                     `json:"create_time"`
+	EventType    string                     `json:"event_type"`
+	ResourceType string                     `json:"resource_type"`
 	Resource     WechatNotificationResource `json:"resource"`
-	Summary      string                   `json:"summary"`
+	Summary      string                     `json:"summary"`
 }
 
 type WechatNotificationResource struct {

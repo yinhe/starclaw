@@ -91,7 +91,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Phone:        req.Phone,
 		PasswordHash: string(hash),
 		Name:         name,
-		FreeQuota:    1000000, // 1M free tokens for new users
+		FreeQuota:    0,
 		Status:       "active",
 	}
 

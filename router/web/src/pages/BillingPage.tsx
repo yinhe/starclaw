@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CreditCard, ExternalLink, Clock, X, QrCode } from 'lucide-react';
+import { ExternalLink, Clock, X, QrCode, RefreshCw } from 'lucide-react';
 import { dash } from '../lib/api';
 
 interface Package {
@@ -30,11 +30,31 @@ export default function BillingPage() {
   const [wxLoading, setWxLoading] = useState('');
   const [error, setError] = useState('');
   const [qrCode, setQrCode] = useState<{ orderNo: string; codeUrl: string; amount: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const refreshData = () => {
+    dash.orders().then(r => setOrders(r.orders || [])).catch(console.error);
+    dash.balance().then(setBalance).catch(console.error);
+  };
+
+  const syncPending = async () => {
+    setSyncing(true);
+    try {
+      const res = await dash.syncOrders();
+      if (res.synced > 0) refreshData();
+    } catch { /* ignore */ }
+    setSyncing(false);
+  };
 
   useEffect(() => {
     dash.packages().then(r => setPackages(r.packages)).catch(console.error);
-    dash.orders().then(r => setOrders(r.orders || [])).catch(console.error);
-    dash.balance().then(setBalance).catch(console.error);
+    refreshData();
+    // Auto-sync pending orders on page load
+    syncPending();
+    // Also sync when tab becomes visible (user returns from payment page)
+    const onFocus = () => syncPending();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   const fmt = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
@@ -67,17 +87,15 @@ export default function BillingPage() {
     }
   };
 
-  // Poll order status when QR modal is open
+  // Poll order status when QR modal is open (active query)
   useEffect(() => {
     if (!qrCode) return;
     const interval = setInterval(async () => {
       try {
-        const res = await dash.orders();
-        const order = (res.orders || []).find((o: Order) => o.order_no === qrCode.orderNo);
-        if (order?.status === 'paid') {
+        const res = await dash.queryOrder(qrCode.orderNo);
+        if (res.status === 'paid') {
           setQrCode(null);
-          dash.balance().then(setBalance).catch(console.error);
-          dash.orders().then(r => setOrders(r.orders || [])).catch(console.error);
+          refreshData();
         }
       } catch { /* ignore */ }
     }, 3000);
@@ -105,7 +123,15 @@ export default function BillingPage() {
           <div className="text-3xl font-bold text-white">{fmt(balance.balance_cents)}</div>
           <div className="text-xs text-gray-400 mt-1">免费额度: {fmt(balance.free_quota)}</div>
         </div>
-        <CreditCard className="w-12 h-12 text-amber-400/30" />
+        <button
+          onClick={syncPending}
+          disabled={syncing}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+          title="同步支付状态"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? '同步中...' : '刷新状态'}
+        </button>
       </div>
 
       {error && (

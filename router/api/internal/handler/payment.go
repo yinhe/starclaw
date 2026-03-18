@@ -346,7 +346,72 @@ func (h *PaymentHandler) QueryOrder(c *gin.Context) {
 		}
 	}
 
+	// WeChat active query
+	if order.Channel == "wechat" && h.wxClient != nil {
+		result, err := h.wxClient.QueryOrder(orderNo)
+		if err != nil {
+			log.Printf("[star-ai] WeChat query error for %s: %v", orderNo, err)
+			c.JSON(http.StatusOK, gin.H{"status": "pending", "order_no": orderNo, "message": "查询中"})
+			return
+		}
+
+		log.Printf("[star-ai] WeChat query: order=%s trade_state=%s transaction=%s",
+			orderNo, result.TradeState, result.TransactionID)
+
+		if result.TradeState == "SUCCESS" {
+			if err := h.creditOrder(orderNo, result.TransactionID); err != nil {
+				log.Printf("[star-ai] WeChat query credit error: %v", err)
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "paid", "order_no": orderNo})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "pending", "order_no": orderNo})
+}
+
+// SyncPendingOrders queries payment providers for all pending orders of the user
+func (h *PaymentHandler) SyncPendingOrders(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var orders []model.PaymentOrder
+	h.db.Where("user_id = ? AND status = ?", userID, "pending").Find(&orders)
+
+	synced := 0
+	for _, order := range orders {
+		if order.Channel == "alipay" && h.aliClient != nil {
+			trade := alipay.TradeQuery{
+				OutTradeNo: order.OrderNo,
+			}
+			result, err := h.aliClient.TradeQuery(context.Background(), trade)
+			if err != nil {
+				log.Printf("[star-ai] Alipay sync query error for %s: %v", order.OrderNo, err)
+				continue
+			}
+			if result.TradeStatus == "TRADE_SUCCESS" || result.TradeStatus == "TRADE_FINISHED" {
+				if err := h.creditOrder(order.OrderNo, result.TradeNo); err == nil {
+					synced++
+				}
+			}
+		}
+		if order.Channel == "wechat" && h.wxClient != nil {
+			result, err := h.wxClient.QueryOrder(order.OrderNo)
+			if err != nil {
+				log.Printf("[star-ai] WeChat sync query error for %s: %v", order.OrderNo, err)
+				continue
+			}
+			if result.TradeState == "SUCCESS" {
+				if err := h.creditOrder(order.OrderNo, result.TransactionID); err == nil {
+					synced++
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"synced":  synced,
+		"checked": len(orders),
+	})
 }
 
 // Orders returns the user's payment orders
