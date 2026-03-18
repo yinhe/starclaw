@@ -359,9 +359,29 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 	}
 
 	body := map[string]interface{}{
-		"prompt":   args.Prompt,
-		"duration": fmt.Sprintf("%d", duration),
+		"prompt": args.Prompt,
 	}
+
+	// Per-model duration formatting
+	switch args.Model {
+	case "kling-v2":
+		// kling-v2 accepts only "4s", "6s", "8s"
+		switch {
+		case duration <= 4:
+			body["duration"] = "4s"
+		case duration <= 6:
+			body["duration"] = "6s"
+		default:
+			body["duration"] = "8s"
+		}
+	case "veo3":
+		// veo3 auto-determines duration, don't send it
+	case "luma":
+		// luma auto-determines duration
+	default:
+		body["duration"] = fmt.Sprintf("%d", duration)
+	}
+
 	if args.ImgURL != "" {
 		body["image_url"] = args.ImgURL
 	}
@@ -530,7 +550,7 @@ func (t *VideoTool) listModels() (string, error) {
 		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "durations": "5s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相图生视频，需要img_url。用于尾帧衔接保持场景连续", "best_for": "场景衔接（上一场景尾帧→下一场景起始帧）"},
 		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质，最强画面质量", "best_for": "远景建立镜头、电影级MV、风景空镜"},
 		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2，强运动理解，支持长视频", "best_for": "复杂动作、长镜头、20秒连续画面"},
-		{"name": "kling-v2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s", "resolutions": "1280*720, 720*1280", "quality": "high", "speed": "medium", "description": "快手可灵 v2.1，人物一致性好，运动自然", "best_for": "人物特写、动态场景、角色动作"},
+		{"name": "kling-v2", "type": "text-to-video", "provider": "fal.ai", "durations": "4s, 6s, 8s", "resolutions": "1280*720, 720*1280", "quality": "high", "speed": "medium", "description": "快手可灵 v2.1，人物一致性好，运动自然", "best_for": "人物特写、动态场景、角色动作"},
 		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "1280*720", "quality": "good", "speed": "fast", "description": "MiniMax Video-01-Live，快速生成", "best_for": "快速出片、动画风格"},
 		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "最高1080p", "quality": "artistic", "speed": "medium", "description": "Luma Dream Machine，梦幻艺术风格", "best_for": "艺术风格、梦幻场景、概念视觉"},
 	}
