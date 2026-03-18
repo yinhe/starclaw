@@ -295,6 +295,60 @@ func (h *PaymentHandler) CallbackWechat(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "OK"})
 }
 
+// QueryOrder actively queries Alipay/WeChat for trade status and credits if paid
+func (h *PaymentHandler) QueryOrder(c *gin.Context) {
+	userID := c.GetString("user_id")
+	orderNo := c.Query("order_no")
+	if orderNo == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order_no required"})
+		return
+	}
+
+	// Find the order
+	var order model.PaymentOrder
+	if err := h.db.Where("order_no = ? AND user_id = ?", orderNo, userID).First(&order).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+		return
+	}
+
+	// Already paid — just return
+	if order.Status == "paid" {
+		c.JSON(http.StatusOK, gin.H{"status": "paid", "order_no": orderNo})
+		return
+	}
+
+	if order.Status != "pending" {
+		c.JSON(http.StatusOK, gin.H{"status": order.Status, "order_no": orderNo})
+		return
+	}
+
+	// Active query based on channel
+	if order.Channel == "alipay" && h.aliClient != nil {
+		trade := alipay.TradeQuery{
+			OutTradeNo: orderNo,
+		}
+		result, err := h.aliClient.TradeQuery(context.Background(), trade)
+		if err != nil {
+			log.Printf("[star-ai] Alipay query error for %s: %v", orderNo, err)
+			c.JSON(http.StatusOK, gin.H{"status": "pending", "order_no": orderNo, "message": "查询中"})
+			return
+		}
+
+		log.Printf("[star-ai] Alipay query: order=%s trade_status=%s trade_no=%s",
+			orderNo, result.TradeStatus, result.TradeNo)
+
+		if result.TradeStatus == "TRADE_SUCCESS" || result.TradeStatus == "TRADE_FINISHED" {
+			if err := h.creditOrder(orderNo, result.TradeNo); err != nil {
+				log.Printf("[star-ai] Alipay query credit error: %v", err)
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "paid", "order_no": orderNo})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "pending", "order_no": orderNo})
+}
+
 // Orders returns the user's payment orders
 func (h *PaymentHandler) Orders(c *gin.Context) {
 	userID := c.GetString("user_id")

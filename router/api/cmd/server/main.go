@@ -117,6 +117,7 @@ func main() {
 	dash.POST("/pay/alipay", payHandler.CreateAlipay)
 	dash.POST("/pay/wechat", payHandler.CreateWechat)
 	dash.GET("/pay/orders", payHandler.Orders)
+	dash.GET("/pay/query", payHandler.QueryOrder)
 
 	// Payment callbacks (called by Alipay/WeChat servers — no auth)
 	r.POST("/pay/callback/alipay", payHandler.CallbackAlipay)

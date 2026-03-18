@@ -15,25 +15,21 @@ export default function PayResultPage() {
 
     const checkOrder = async () => {
       try {
-        const res = await dash.orders();
-        const orders = res.orders || [];
-        const order = orders.find((o: { order_no: string }) => o.order_no === orderNo);
-        if (order) {
-          if (order.status === 'paid') {
-            setStatus('success');
-            return;
-          } else if (order.status === 'failed') {
-            setStatus('failed');
-            return;
-          }
+        // Active query: backend checks Alipay/WeChat for real-time trade status
+        const res = await dash.queryOrder(orderNo);
+        if (res.status === 'paid') {
+          setStatus('success');
+          return;
+        } else if (res.status === 'failed') {
+          setStatus('failed');
+          return;
         }
       } catch {
-        // ignore
+        // ignore — may not be logged in yet
       }
 
       attempts++;
       if (attempts >= maxAttempts) {
-        // After polling, if still not paid, show pending (Alipay callback may be delayed)
         setStatus('pending');
       } else {
         setTimeout(checkOrder, 2000);

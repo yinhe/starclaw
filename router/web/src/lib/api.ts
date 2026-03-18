@@ -96,6 +96,7 @@ export const dash = {
   payAlipay: (packageId: string) => request<{ order_no: string; pay_url: string }>('POST', '/dash/pay/alipay', { package_id: packageId }),
   payWechat: (packageId: string) => request<{ order_no: string; code_url: string; amount: string }>('POST', '/dash/pay/wechat', { package_id: packageId }),
   orders: () => request<{ orders: { id: string; order_no: string; channel: string; amount_cents: number; bonus_cents: number; total_cents: number; status: string; created_at: string; paid_at: string | null }[] }>('GET', '/dash/pay/orders'),
+  queryOrder: (orderNo: string) => request<{ status: string; order_no: string }>('GET', `/dash/pay/query?order_no=${encodeURIComponent(orderNo)}`),
   updateProfile: (data: { name?: string; email?: string }) => request<{ message: string }>('PUT', '/dash/profile', data),
   changePassword: (oldPassword: string, newPassword: string) => request<{ message: string }>('POST', '/dash/password', { old_password: oldPassword, new_password: newPassword }),
   logs: (params?: { page?: number; page_size?: number; model?: string; status?: string; from?: string; to?: string }) => {
