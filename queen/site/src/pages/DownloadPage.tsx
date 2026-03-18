@@ -17,7 +17,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}.exe`,
     setupSize: '26 MB',
     arch: 'x86_64',
-    setupLabel: `Setup-${V}.exe`,
+    setupLabel: 'StarClaw-Setup.exe',
     note: 'Download → Double-click → Done',
     scriptCmd: 'irm https://nydus.starclaw.net/spore/install.ps1 | iex',
     scriptLabel: 'PowerShell',
@@ -29,7 +29,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
     setupSize: '19 MB',
     arch: 'x86_64',
-    setupLabel: `Setup-${V}-linux.tar.gz`,
+    setupLabel: 'StarClaw-Setup.tar.gz',
     note: 'Download → Extract → Run',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Bash',
@@ -41,7 +41,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
     setupSize: '26 MB',
     arch: 'Apple Silicon (M1/M2/M3/M4)',
-    setupLabel: `Setup-${V}-arm64.dmg`,
+    setupLabel: 'StarClaw-Setup.dmg',
     note: 'Download → Open DMG → Install',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Terminal',
@@ -53,7 +53,7 @@ const PACKAGES = [
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
     setupSize: '27 MB',
     arch: 'Intel x86_64',
-    setupLabel: `Setup-${V}-intel.dmg`,
+    setupLabel: 'StarClaw-Setup.dmg',
     note: 'Download → Open DMG → Install',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
     scriptLabel: 'Terminal',
@@ -137,16 +137,16 @@ export function DownloadPage() {
                       <span className="text-xs text-gray-500">{pkg.arch}</span>
                     </div>
 
-                    {pkg.setupUrl ? (
+                    {pkg.setupUrl && (
                       <>
                         <a
                           href={pkg.mirrorUrl}
                           download
-                          className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-1.5"
+                          className="flex items-center justify-center gap-2 w-full h-12 px-4 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-1.5 whitespace-nowrap"
                         >
-                          <Download size={16} />
-                          {pkg.setupLabel}
-                          <span className="text-claw-200 text-xs">({pkg.setupSize})</span>
+                          <Download size={16} className="shrink-0" />
+                          <span className="truncate">{pkg.setupLabel}</span>
+                          <span className="text-claw-200 text-xs shrink-0">({pkg.setupSize})</span>
                         </a>
                         <div className="flex items-center justify-center gap-2 mb-3">
                           <span className="text-[10px] text-green-400">⚡ 国内加速</span>
@@ -155,8 +155,6 @@ export function DownloadPage() {
                         </div>
                         <p className="text-xs text-gray-500 text-center mb-4">{pkg.note}</p>
                       </>
-                    ) : (
-                      <p className="text-xs text-gray-500 mb-4">{pkg.note}</p>
                     )}
 
                     <div className="mt-auto">
