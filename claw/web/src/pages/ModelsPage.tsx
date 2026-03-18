@@ -44,11 +44,14 @@ const QWEN_REGIONS = [
 
 const MINIMAX_REGIONS = [
   { value: 'https://api.minimaxi.com/v1', label: '国内（api.minimaxi.com）' },
+  { value: 'https://api.minimax.io/v1', label: '国际（api.minimax.io）' },
+  { value: 'custom', label: '自定义 Base URL' },
 ]
 
 const normalizeMiniMaxBaseUrl = (provider: string, baseUrl: string) => {
-  if (provider === 'minimax') {
-    return 'https://api.minimaxi.com/v1'
+  if (provider === 'minimax' && baseUrl) {
+    // Auto-correct common typo: api.minimax.com → api.minimaxi.com
+    return baseUrl.replace('://api.minimax.com', '://api.minimaxi.com')
   }
   return baseUrl
 }
@@ -74,6 +77,7 @@ const REGION_LABELS: Record<string, string> = {
   'https://dashscope-intl.aliyuncs.com/compatible-mode/v1': '新加坡',
   'https://dashscope-us.aliyuncs.com/compatible-mode/v1': '美国',
   'https://api.minimaxi.com/v1': '国内',
+  'https://api.minimax.io/v1': '国际',
 }
 
 export default function ModelsPage() {
@@ -269,14 +273,22 @@ export default function ModelsPage() {
                               <>
                                 <label className="block text-xs text-gray-500 mb-1">端点</label>
                                 <select
-                                  value={editForm.base_url}
-                                  onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value })}
+                                  value={MINIMAX_REGIONS.some(r => r.value === editForm.base_url) ? editForm.base_url : 'custom'}
+                                  onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value === 'custom' ? '' : e.target.value })}
                                   className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                                 >
                                   {MINIMAX_REGIONS.map((r) => (
                                     <option key={r.value} value={r.value}>{r.label}</option>
                                   ))}
                                 </select>
+                                {!MINIMAX_REGIONS.some(r => r.value === editForm.base_url) && (
+                                  <input
+                                    value={editForm.base_url}
+                                    onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value })}
+                                    className="w-full mt-2 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                                    placeholder="https://api.minimaxi.com/v1"
+                                  />
+                                )}
                                 <p className="text-xs text-gray-400 mt-1">Base URL: {editForm.base_url}</p>
                               </>
                             ) : (
@@ -404,14 +416,22 @@ export default function ModelsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">端点</label>
                   <select
-                    value={form.base_url}
-                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    value={MINIMAX_REGIONS.some(r => r.value === form.base_url) ? form.base_url : 'custom'}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value === 'custom' ? '' : e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
                   >
                     {MINIMAX_REGIONS.map((r) => (
                       <option key={r.value} value={r.value}>{r.label}</option>
                     ))}
                   </select>
+                  {!MINIMAX_REGIONS.some(r => r.value === form.base_url) && (
+                    <input
+                      value={form.base_url}
+                      onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                      className="w-full mt-2 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                      placeholder="https://api.minimaxi.com/v1"
+                    />
+                  )}
                   <p className="text-xs text-gray-400 mt-1">Base URL: {form.base_url}</p>
                 </div>
               ) : (

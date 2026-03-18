@@ -950,9 +950,13 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 
 	// /model <name> → switch model
 	arg = strings.ToLower(arg)
+	// Normalize: strip hyphens/underscores for fuzzy matching (e.g. "starai" matches "star-ai")
+	argNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(arg)
 	var target *model.ModelConfig
 	for i := range models {
-		if strings.ToLower(models[i].Provider) == arg ||
+		provLower := strings.ToLower(models[i].Provider)
+		provNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(provLower)
+		if provLower == arg || provNorm == argNorm ||
 			strings.Contains(strings.ToLower(models[i].DisplayName), arg) ||
 			strings.Contains(strings.ToLower(models[i].ModelName), arg) {
 			target = &models[i]
