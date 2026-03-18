@@ -1,17 +1,38 @@
 #!/bin/bash
-# Package Spore releases into platform-specific formats
+# Package Spore releases into platform-specific formats (with version in filename)
+# Usage: package-releases.sh [version-tag]
 # Run on Nydus server after raw binaries are uploaded to /opt/spore/releases/
 set -e
 
 RELEASES="/opt/spore/releases"
+VTAG="${1:-}"
 TMPDIR="/tmp/spore-pkg"
 rm -rf "$TMPDIR"
 
+# Auto-detect version from uploaded files if not provided
+if [ -z "$VTAG" ]; then
+  VTAG=$(ls "$RELEASES"/StarClaw-Setup-v*.exe 2>/dev/null | head -1 | grep -oP 'v[\d.]+' || echo "")
+fi
+if [ -z "$VTAG" ]; then
+  echo "Error: version tag not found. Usage: $0 v2026.0318.0738"
+  exit 1
+fi
+echo "Version: $VTAG"
+
 echo "=== Packaging Linux tar.gz ==="
-mkdir -p "$TMPDIR/starclaw-setup-linux"
-cp "$RELEASES/StarClaw-Setup-linux-amd64" "$TMPDIR/starclaw-setup-linux/StarClaw-Setup"
-chmod +x "$TMPDIR/starclaw-setup-linux/StarClaw-Setup"
-cat > "$TMPDIR/starclaw-setup-linux/install.sh" << 'SCRIPT'
+LINUX_RAW="$RELEASES/StarClaw-Setup-${VTAG}-linux-amd64"
+if [ ! -f "$LINUX_RAW" ]; then
+  # Fallback: check for tar.gz already built by Windows script
+  if [ -f "$RELEASES/StarClaw-Setup-${VTAG}-linux-amd64.tar.gz" ]; then
+    echo "  -> Already packaged: StarClaw-Setup-${VTAG}-linux-amd64.tar.gz"
+  else
+    echo "  !! Linux raw binary not found: $LINUX_RAW"
+  fi
+else
+  mkdir -p "$TMPDIR/starclaw-setup-linux"
+  cp "$LINUX_RAW" "$TMPDIR/starclaw-setup-linux/StarClaw-Setup"
+  chmod +x "$TMPDIR/starclaw-setup-linux/StarClaw-Setup"
+  cat > "$TMPDIR/starclaw-setup-linux/install.sh" << 'SCRIPT'
 #!/bin/bash
 set -e
 cd "$(dirname "$0")"
@@ -19,69 +40,48 @@ chmod +x ./StarClaw-Setup
 echo "Starting StarClaw Setup..."
 ./StarClaw-Setup "$@"
 SCRIPT
-chmod +x "$TMPDIR/starclaw-setup-linux/install.sh"
-cat > "$TMPDIR/starclaw-setup-linux/README.txt" << 'README'
-StarClaw Setup (Linux x86_64)
-
-Quick start:
-  chmod +x StarClaw-Setup
-  ./StarClaw-Setup
-
-The installer will open a browser-based setup wizard.
-Use --cli flag for command-line mode: ./StarClaw-Setup --cli
-README
-cd "$TMPDIR"
-tar czf "$RELEASES/StarClaw-Setup-linux-amd64.tar.gz" -C "$TMPDIR" starclaw-setup-linux/
-echo "  -> StarClaw-Setup-linux-amd64.tar.gz ($(du -h "$RELEASES/StarClaw-Setup-linux-amd64.tar.gz" | cut -f1))"
+  chmod +x "$TMPDIR/starclaw-setup-linux/install.sh"
+  tar czf "$RELEASES/StarClaw-Setup-${VTAG}-linux-amd64.tar.gz" -C "$TMPDIR" starclaw-setup-linux/
+  echo "  -> StarClaw-Setup-${VTAG}-linux-amd64.tar.gz ($(du -h "$RELEASES/StarClaw-Setup-${VTAG}-linux-amd64.tar.gz" | cut -f1))"
+fi
 
 echo "=== Packaging macOS DMGs ==="
 for arch in arm64 amd64; do
-  if [ "$arch" = "arm64" ]; then
-    label="Apple Silicon"
-    suffix="darwin-arm64"
-  else
-    label="Intel"
-    suffix="darwin-amd64"
+  suffix="darwin-$arch"
+  RAW="$RELEASES/StarClaw-Setup-${VTAG}-$suffix"
+
+  if [ ! -f "$RAW" ]; then
+    echo "  !! macOS $suffix binary not found: $RAW"
+    continue
   fi
 
   DMG_DIR="$TMPDIR/dmg-$suffix"
   mkdir -p "$DMG_DIR/StarClaw Setup"
 
-  cp "$RELEASES/StarClaw-Setup-$suffix" "$DMG_DIR/StarClaw Setup/StarClaw-Setup"
+  cp "$RAW" "$DMG_DIR/StarClaw Setup/StarClaw-Setup"
   chmod +x "$DMG_DIR/StarClaw Setup/StarClaw-Setup"
 
-  # Create install.command (double-clickable on macOS)
   cat > "$DMG_DIR/StarClaw Setup/Install StarClaw.command" << SCRIPT
 #!/bin/bash
 set -e
 cd "\$(dirname "\$0")"
-# Remove macOS quarantine attribute
 xattr -d com.apple.quarantine ./StarClaw-Setup 2>/dev/null || true
 echo "Starting StarClaw Setup..."
 ./StarClaw-Setup
 SCRIPT
   chmod +x "$DMG_DIR/StarClaw Setup/Install StarClaw.command"
 
-  cat > "$DMG_DIR/StarClaw Setup/README.txt" << README
-StarClaw Setup (macOS $label)
-
-Option 1: Double-click "Install StarClaw.command"
-Option 2: Open Terminal and run: ./StarClaw-Setup
-
-The installer will open a browser-based setup wizard.
-Use --cli flag for command-line mode.
-README
-
-  # Create DMG using genisoimage (ISO9660 + Rock Ridge + Joliet)
   genisoimage -V "StarClaw" \
     -D -R -J \
     -no-pad \
-    -o "$RELEASES/StarClaw-Setup-$suffix.dmg" \
+    -o "$RELEASES/StarClaw-Setup-${VTAG}-$suffix.dmg" \
     "$DMG_DIR/StarClaw Setup/"
 
-  echo "  -> StarClaw-Setup-$suffix.dmg ($(du -h "$RELEASES/StarClaw-Setup-$suffix.dmg" | cut -f1))"
+  echo "  -> StarClaw-Setup-${VTAG}-$suffix.dmg ($(du -h "$RELEASES/StarClaw-Setup-${VTAG}-$suffix.dmg" | cut -f1))"
 done
 
 echo "=== Done ==="
 rm -rf "$TMPDIR"
-ls -lh "$RELEASES"/*.tar.gz "$RELEASES"/*.dmg 2>/dev/null
+echo ""
+echo "Release artifacts:"
+ls -lh "$RELEASES"/StarClaw-Setup-${VTAG}* 2>/dev/null

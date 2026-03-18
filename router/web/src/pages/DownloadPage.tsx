@@ -5,35 +5,47 @@ import { Monitor, Terminal, Apple, Download, ExternalLink, Zap } from 'lucide-re
 const STARAI_BASE = 'https://star-ai.net/downloads';
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases';
 
+const V = 'v2026.0318.0738';
+
 const PACKAGES = [
   {
     platform: 'Windows',
     icon: Monitor,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup.exe`,
-    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup.exe`,
+    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}.exe`,
+    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}.exe`,
     size: '~26 MB',
     arch: 'x86_64',
-    filename: 'StarClaw-Setup.exe',
+    filename: `StarClaw-Setup-${V}.exe`,
     note: '下载后双击运行，图形界面引导安装',
   },
   {
     platform: 'Linux',
     icon: Terminal,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-linux-amd64.tar.gz`,
-    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-linux-amd64.tar.gz`,
+    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
+    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
     size: '~19 MB',
     arch: 'x86_64',
-    filename: 'StarClaw-Setup-linux-amd64.tar.gz',
-    note: '下载解压后运行 StarClaw-Setup',
+    filename: `StarClaw-Setup-${V}-linux-amd64.tar.gz`,
+    note: '下载解压后运行 ./StarClaw-Setup',
   },
   {
-    platform: 'macOS',
+    platform: 'macOS (Apple 芯片)',
     icon: Apple,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-darwin-arm64.dmg`,
-    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-darwin-arm64.dmg`,
+    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
+    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
     size: '~26 MB',
-    arch: 'Apple Silicon',
-    filename: 'StarClaw-Setup-darwin-arm64.dmg',
+    arch: 'Apple Silicon (M1/M2/M3/M4)',
+    filename: `StarClaw-Setup-${V}-darwin-arm64.dmg`,
+    note: '下载后打开 DMG，双击 Install StarClaw',
+  },
+  {
+    platform: 'macOS (Intel)',
+    icon: Apple,
+    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
+    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
+    size: '~27 MB',
+    arch: 'Intel x86_64',
+    filename: `StarClaw-Setup-${V}-darwin-amd64.dmg`,
     note: '下载后打开 DMG，双击 Install StarClaw',
   },
 ];
