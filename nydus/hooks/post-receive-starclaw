@@ -1,0 +1,111 @@
+#!/bin/bash
+# Nydus post-receive hook: auto-deploy on push to master
+# Location: /data/nydus/repos/starclaw.git/hooks/post-receive
+
+REPO=/data/nydus/repos/starclaw.git
+CLAW_REPO=/data/nydus/repos/claw.git
+LOG=/var/log/nydus-deploy.log
+SERVER_A="root@starclaw.me"
+SERVER_B="root@47.103.51.32"
+
+while read oldrev newrev refname; do
+  # Sync tags to claw.git (for Molt release detection)
+  case "$refname" in
+    refs/tags/v*)
+      tag=$(echo "$refname" | sed 's|refs/tags/||')
+      if [ -d "$CLAW_REPO" ]; then
+        git --git-dir="$CLAW_REPO" tag "$tag" HEAD 2>/dev/null && \
+          echo "[nydus] synced tag $tag to claw.git" || \
+          echo "[nydus] tag $tag already exists in claw.git"
+      fi
+      continue
+      ;;
+  esac
+
+  branch=$(git rev-parse --symbolic --abbrev-ref "$refname" 2>/dev/null || echo "$refname")
+  if [ "$branch" != "master" ] && [ "$branch" != "refs/heads/master" ]; then
+    continue
+  fi
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Push to master: $oldrev -> $newrev" | tee -a "$LOG"
+
+  # Detect which directories changed
+  CHANGED=$(git --git-dir="$REPO" diff --name-only "$oldrev" "$newrev" 2>/dev/null || echo "all")
+
+  # --- Queen (Server C — local) ---
+  if echo "$CHANGED" | grep -q "^queen/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Queen changed — rebuilding on server C..." | tee -a "$LOG"
+    (
+      cd /opt/starclaw-queen
+      git --git-dir="$REPO" archive HEAD:queen | tar xf - 2>/dev/null || true
+
+      if echo "$CHANGED" | grep -q "^queen/api/"; then
+        docker compose -f docker-compose.prod.yml build --no-cache queen-api
+        docker compose -f docker-compose.prod.yml up -d queen-api
+        echo "  -> queen-api rebuilt" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^queen/site/"; then
+        git --git-dir="$REPO" archive HEAD:queen/site | ssh -o StrictHostKeyChecking=no "$SERVER_A" "mkdir -p /tmp/queen-site && cd /tmp/queen-site && rm -rf * && tar xf -"
+        ssh -o StrictHostKeyChecking=no "$SERVER_A" "cd /tmp/queen-site && docker build -t queen-site-build . && docker create --name queen-site-tmp queen-site-build && mkdir -p /var/www/starclaw/website && rm -rf /var/www/starclaw/website/* && docker cp queen-site-tmp:/usr/share/nginx/html/. /var/www/starclaw/website/ && docker rm queen-site-tmp && rm -rf /tmp/queen-site"
+        echo "  -> queen-site deployed to Server A (starclaw.me)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^queen/swarm/"; then
+        docker compose -f docker-compose.prod.yml build --no-cache swarm
+        docker compose -f docker-compose.prod.yml up -d swarm
+        echo "  -> queen-swarm rebuilt" | tee -a "$LOG"
+      fi
+    ) >> "$LOG" 2>&1 &
+  fi
+
+  # --- Claw (Server A — starclaw.me) ---
+  if echo "$CHANGED" | grep -q "^claw/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Claw changed — deploying to starclaw.me..." | tee -a "$LOG"
+    (
+      git --git-dir="$REPO" archive HEAD:claw | ssh -o StrictHostKeyChecking=no "$SERVER_A" "cd /opt/starclaw && tar xf -"
+      ssh -o StrictHostKeyChecking=no "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
+      echo "  -> claw deployed to starclaw.me" | tee -a "$LOG"
+    ) >> "$LOG" 2>&1 &
+  fi
+
+  # --- Router (Server B — star-ai.net) ---
+  if echo "$CHANGED" | grep -q "^router/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Router changed — deploying to server B..." | tee -a "$LOG"
+    (
+      git --git-dir="$REPO" archive HEAD:router | ssh -o StrictHostKeyChecking=no "$SERVER_B" "cd /opt/starclaw/router && tar xf -"
+
+      if echo "$CHANGED" | grep -q "^router/api/\|^router/docker-compose"; then
+        ssh -o StrictHostKeyChecking=no "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache api && docker compose up -d api"
+        echo "  -> router-api rebuilt on B" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^router/web/"; then
+        ssh -o StrictHostKeyChecking=no "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache web && docker compose up -d web"
+        echo "  -> router-web rebuilt on B" | tee -a "$LOG"
+      fi
+    ) >> "$LOG" 2>&1 &
+  fi
+
+  # --- Overlord (Server C — local) ---
+  if echo "$CHANGED" | grep -q "^overlord/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Overlord changed — rebuilding on server C..." | tee -a "$LOG"
+    (
+      mkdir -p /opt/starclaw-overlord
+      cd /opt/starclaw-overlord
+      git --git-dir="$REPO" archive HEAD:overlord | tar xf - 2>/dev/null || true
+      docker compose -f docker-compose.prod.yml up -d --build api console web
+      echo "  -> overlord rebuilt" | tee -a "$LOG"
+    ) >> "$LOG" 2>&1 &
+  fi
+
+  # --- Nydus config (reload if changed) ---
+  if echo "$CHANGED" | grep -q "^nydus/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Nydus config changed — syncing..." | tee -a "$LOG"
+    (
+      cd /opt/nydus
+      git --git-dir="$REPO" archive HEAD:nydus | tar xf - 2>/dev/null || true
+      docker compose restart api
+      echo "  -> nydus config synced & api restarted" | tee -a "$LOG"
+    ) >> "$LOG" 2>&1 &
+  fi
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED" | tee -a "$LOG"
+done

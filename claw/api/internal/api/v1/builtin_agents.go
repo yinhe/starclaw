@@ -45,9 +45,32 @@ func SeedBuiltinAgents(db *gorm.DB) {
 		})
 	}
 
-	// NOTE: Specialist agents (MV, 视频, 音乐, etc.) are no longer seeded locally.
-	// They are now published in Queen's marketplace and installed on demand.
-	// See queen/api/internal/handler/seed_marketplace.go
+	// Seed/update specialist agents (MV, 视频, 音乐, etc.)
+	for _, def := range builtinAgents {
+		var agent model.Agent
+		if err := db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, def.Name).First(&agent).Error; err != nil {
+			agent = model.Agent{
+				UserID:       ownerID,
+				Name:         def.Name,
+				Description:  def.Description,
+				Tools:        def.Tools,
+				SystemPrompt: def.Prompt,
+				Config:       `{"temperature":0.5,"max_tokens":8192}`,
+				IsPublic:     true,
+				IsBuiltin:    true,
+			}
+			db.Create(&agent)
+			log.Printf("[Seed] Created builtin agent: %s", def.Name)
+		} else {
+			db.Model(&agent).Updates(map[string]interface{}{
+				"system_prompt": def.Prompt,
+				"tools":         def.Tools,
+				"description":   def.Description,
+				"is_builtin":    true,
+				"is_public":     true,
+			})
+		}
+	}
 }
 
 // getOwnerOrSystemID returns the Owner's user ID if one exists, otherwise model.SystemUserID.
