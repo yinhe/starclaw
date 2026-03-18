@@ -1,0 +1,22 @@
+#!/bin/sh
+# Nydus post-receive hook — notify server on push + sync tags to claw.git
+CLAW_REPO=/data/nydus/repos/claw.git
+
+while read oldrev newrev refname; do
+  case "$refname" in
+    refs/tags/v*)
+      tag=$(echo "$refname" | sed 's|refs/tags/||')
+      if [ -d "$CLAW_REPO" ]; then
+        git --git-dir="$CLAW_REPO" tag "$tag" HEAD 2>/dev/null && \
+          echo "[nydus] synced tag $tag to claw.git" || \
+          echo "[nydus] tag $tag already exists in claw.git"
+      fi
+      ;;
+    refs/heads/*)
+      branch=$(echo "$refname" | sed 's|refs/heads/||')
+      curl -sf -X POST "http://127.0.0.1:8095/hooks/push?secret=nydus-sc2026-vKwRmT9xLpQjN3hB" \
+        -H "Content-Type: application/json" \
+        -d "{\"repo\":\"starclaw\",\"branch\":\"$branch\",\"newrev\":\"$newrev\"}" || true
+      ;;
+  esac
+done

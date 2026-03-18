@@ -2,7 +2,7 @@ server
 *.exe
 .git
 .env
-.version
+
 data/
 *.tar.gz
 mcp-bridge-*
