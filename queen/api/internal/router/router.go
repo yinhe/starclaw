@@ -1,6 +1,7 @@
 package router
 
 import (
+	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -314,11 +315,18 @@ func Setup() *gin.Engine {
 	return r
 }
 
-// nodeTokenAuth validates X-Node-Token header against INTERNAL_API_SECRET env or config
+// nodeTokenAuth validates X-Node-Token header against INTERNAL_API_SECRET env or JWT secret
 func nodeTokenAuth() gin.HandlerFunc {
+	// Prefer dedicated env var; fall back to JWT secret from config
+	secret := os.Getenv("INTERNAL_API_SECRET")
+	if secret == "" {
+		secret = os.Getenv("JWT_SECRET")
+	}
+	if secret == "" {
+		secret = config.C.JWT.Secret
+	}
 	return func(c *gin.Context) {
 		token := c.GetHeader("X-Node-Token")
-		secret := config.C.JWT.Secret // reuse JWT secret as internal token for now
 		if token == "" || token != secret {
 			middleware.Fail(c, 401, middleware.CodeUnauthorized, "unauthorized node")
 			c.Abort()
