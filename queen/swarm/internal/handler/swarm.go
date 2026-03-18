@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -327,6 +328,7 @@ func (h *SwarmHandler) GetConfig(c *gin.Context) {
 func (h *SwarmHandler) ListNodes(c *gin.Context) {
 	role := c.Query("role")
 	status := c.Query("status")
+	clawIDs := c.Query("claw_ids") // comma-separated claw_ids filter
 
 	q := h.db.Order("last_heartbeat DESC")
 	if role != "" {
@@ -334,6 +336,10 @@ func (h *SwarmHandler) ListNodes(c *gin.Context) {
 	}
 	if status != "" {
 		q = q.Where("status = ?", status)
+	}
+	if clawIDs != "" {
+		ids := strings.Split(clawIDs, ",")
+		q = q.Where("claw_id IN ?", ids)
 	}
 
 	var nodes []model.Node

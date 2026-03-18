@@ -13,20 +13,26 @@ const roleStyle: Record<string, string> = {
   overlord: 'bg-purple-500/10 text-purple-400',
 }
 
+type Scope = 'my' | 'all'
+
 export default function NodesPage() {
   const [nodes, setNodes] = useState<SwarmNode[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<{ role?: string; status?: string }>({})
+  const [scope, setScope] = useState<Scope>('my')
+  const [statusFilter, setStatusFilter] = useState<string | undefined>()
 
   const load = async () => {
+    setLoading(true)
     try {
-      const data = await partner.listNodes(filter)
+      const data = scope === 'my'
+        ? await partner.listMyNodes({ status: statusFilter })
+        : await partner.listNodes({ status: statusFilter })
       setNodes(data.nodes || [])
     } catch { /* */ }
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [filter.role, filter.status])
+  useEffect(() => { load() }, [scope, statusFilter])
 
   const stats = {
     total: nodes.length,
@@ -44,7 +50,7 @@ export default function NodesPage() {
     return `${Math.floor(diff / 86400)}d ago`
   }
 
-  const tabs = [
+  const statusTabs = [
     { label: '全部', value: undefined, count: stats.total },
     { label: '在线', value: 'online', count: stats.online },
     { label: '离线', value: 'offline', count: stats.offline },
@@ -54,12 +60,32 @@ export default function NodesPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-white mb-1">节点管理</h1>
-      <p className="text-sm text-gray-500 mb-6">查看和管理所有 Claw 节点</p>
+      <p className="text-sm text-gray-500 mb-6">查看和管理 Claw 节点</p>
+
+      {/* Scope tabs */}
+      <div className="flex gap-1 mb-6 bg-gray-900 border border-white/10 rounded-lg p-1 w-fit">
+        <button
+          onClick={() => { setScope('my'); setStatusFilter(undefined) }}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            scope === 'my' ? 'bg-claw-600 text-white' : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          我的节点
+        </button>
+        <button
+          onClick={() => { setScope('all'); setStatusFilter(undefined) }}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            scope === 'all' ? 'bg-claw-600 text-white' : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          全部节点
+        </button>
+      </div>
 
       {/* Stats cards */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-900 border border-white/10 rounded-xl p-4">
-          <div className="text-xs text-gray-500">总节点</div>
+          <div className="text-xs text-gray-500">{scope === 'my' ? '我的节点' : '总节点'}</div>
           <div className="text-2xl font-bold text-white mt-1">{stats.total}</div>
         </div>
         <div className="bg-gray-900 border border-white/10 rounded-xl p-4">
@@ -76,14 +102,14 @@ export default function NodesPage() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Status filters */}
       <div className="flex gap-2 mb-4">
-        {tabs.map(t => (
+        {statusTabs.map(t => (
           <button
             key={t.label}
-            onClick={() => setFilter({ ...filter, status: t.value })}
+            onClick={() => setStatusFilter(t.value)}
             className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              filter.status === t.value
+              statusFilter === t.value
                 ? 'bg-claw-500/10 text-claw-400'
                 : 'text-gray-400 hover:bg-white/5'
             }`}
@@ -101,7 +127,8 @@ export default function NodesPage() {
       ) : nodes.length === 0 ? (
         <div className="bg-gray-900 border border-white/10 border-dashed rounded-xl p-12 text-center">
           <Server className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400">暂无节点</p>
+          <p className="text-gray-400">{scope === 'my' ? '暂无关联节点' : '暂无节点'}</p>
+          {scope === 'my' && <p className="text-xs text-gray-600 mt-1">你和城市合伙人的 Claw 节点注册后会显示在这里</p>}
         </div>
       ) : (
         <div className="bg-gray-900 border border-white/10 rounded-xl overflow-hidden">

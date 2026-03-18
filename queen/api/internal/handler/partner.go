@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -615,6 +616,61 @@ func (h *PartnerHandler) AdminGrantEquity(c *gin.Context) {
 }
 
 // ── Core Partner: node management (proxy to swarm) ──
+
+func (h *PartnerHandler) ListMyNodes(c *gin.Context) {
+	partnerID := c.GetString("partner_id")
+
+	// Collect claw_ids: core partner's own + all city partners under them
+	var partner model.CorePartner
+	if err := database.DB.Where("id = ?", partnerID).First(&partner).Error; err != nil {
+		middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
+		return
+	}
+
+	clawIDs := []string{}
+	if partner.ClawID != "" {
+		clawIDs = append(clawIDs, partner.ClawID)
+	}
+
+	var cityPartners []model.CityPartner
+	database.DB.Where("status = ?", "approved").Find(&cityPartners)
+	for _, cp := range cityPartners {
+		if cp.ClawID != "" {
+			clawIDs = append(clawIDs, cp.ClawID)
+		}
+	}
+
+	if len(clawIDs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"nodes": []interface{}{}, "total": 0})
+		return
+	}
+
+	swarmURL := os.Getenv("SWARM_URL")
+	if swarmURL == "" {
+		swarmURL = "http://localhost:8090"
+	}
+
+	// Build query with claw_ids filter
+	joined := strings.Join(clawIDs, ",")
+	path := "/swarm/nodes?claw_ids=" + joined
+	if status := c.Query("status"); status != "" {
+		path += "&status=" + status
+	}
+
+	resp, err := http.Get(swarmURL + path)
+	if err != nil {
+		middleware.Fail(c, http.StatusBadGateway, middleware.CodeInternal, "failed to reach swarm")
+		return
+	}
+	defer resp.Body.Close()
+
+	var data interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		middleware.Fail(c, http.StatusBadGateway, middleware.CodeInternal, "invalid swarm response")
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
 
 func (h *PartnerHandler) ListNodes(c *gin.Context) {
 	swarmURL := os.Getenv("SWARM_URL")

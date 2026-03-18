@@ -152,6 +152,13 @@ export const partner = {
     return request<{ nodes: SwarmNode[]; total: number }>('GET', `/partner/nodes${s ? '?' + s : ''}`);
   },
 
+  listMyNodes: (params?: { status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    const s = qs.toString();
+    return request<{ nodes: SwarmNode[]; total: number }>('GET', `/partner/nodes/my${s ? '?' + s : ''}`);
+  },
+
   getNode: (id: string) =>
     request<SwarmNode>('GET', `/partner/nodes/${id}`),
 
