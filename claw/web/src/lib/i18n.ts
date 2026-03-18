@@ -218,13 +218,13 @@ const translations: Record<Locale, Record<string, string>> = {
     'notification.none': '暂无通知',
     // ── Auth modal ──
     'auth.request_title': '登录授权请求',
-    'auth.request_desc': 'Queen 虫群门户请求使用你的 Claw 身份登录',
+    'auth.request_desc': '算力中心 StarAI 请求使用你的 Claw 身份登录',
     'auth.source': '来源',
     'auth.challenge': '挑战码',
     'auth.reject': '拒绝',
     'auth.approve': '授权登录',
     'auth.signing': '签名中...',
-    'auth.approve_hint': '授权后将使用你的 Claw 身份签名登录 Queen 门户',
+    'auth.approve_hint': '授权后将使用你的 Claw 身份签名登录算力中心 StarAI',
     // ── Update banner ──
     'update.available': '新版本',
     'update.view_details': '查看详情',
