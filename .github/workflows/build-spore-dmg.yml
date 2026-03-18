@@ -53,7 +53,7 @@ jobs:
             cp "$RAW" "$SRC/.StarClaw-Setup"
             chmod +x "$SRC/.StarClaw-Setup"
 
-            # Install command — the only visible file, calls hidden binary
+            # Install command — right-click → Open to bypass Gatekeeper
             cat > "$SRC/Install StarClaw.command" << 'SCRIPT'
           #!/bin/bash
           cd "$(dirname "$0")"
@@ -61,7 +61,6 @@ jobs:
           chmod +x ./.StarClaw-Setup 2>/dev/null || true
           echo ""
           echo "  ✨ StarClaw Installer"
-          echo "  Double-click this file to install StarClaw."
           echo ""
           ./.StarClaw-Setup "$@"
           STATUS=$?
@@ -79,6 +78,32 @@ jobs:
           SCRIPT
             chmod +x "$SRC/Install StarClaw.command"
 
+            # README with Gatekeeper bypass instructions
+            cat > "$SRC/README - 请先阅读.txt" << 'README'
+          ╔══════════════════════════════════════════╗
+          ║     StarClaw Installer - 安装说明        ║
+          ╚══════════════════════════════════════════╝
+
+          macOS 会阻止未签名的安装脚本，请按以下步骤安装：
+
+          方法 1（推荐）：右键安装
+            1. 右键点击 "Install StarClaw.command"
+            2. 选择 "打开"
+            3. 在弹出对话框中点击 "打开"
+
+          方法 2：终端安装（最简单）
+            打开终端，粘贴以下命令：
+            curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh
+
+          方法 3：系统设置
+            1. 双击 "Install StarClaw.command"
+            2. 点击 "完成"
+            3. 打开 系统设置 → 隐私与安全性
+            4. 滚动到底部，点击 "仍要打开"
+
+          官网: https://starclaw.me
+          README
+
             DMG_OUT="releases/StarClaw-Setup-${V}-darwin-${arch}.dmg"
             rm -f "$DMG_OUT"
 
@@ -86,9 +111,10 @@ jobs:
             create-dmg \
               --volname "StarClaw Installer" \
               --window-pos 200 120 \
-              --window-size 500 320 \
-              --icon-size 80 \
-              --icon "Install StarClaw.command" 250 150 \
+              --window-size 540 380 \
+              --icon-size 72 \
+              --icon "Install StarClaw.command" 170 180 \
+              --icon "README - 请先阅读.txt" 370 180 \
               --hide-extension "Install StarClaw.command" \
               --no-internet-enable \
               "$DMG_OUT" \
