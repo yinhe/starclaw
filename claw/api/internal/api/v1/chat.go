@@ -254,9 +254,10 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		MaxTokens:   maxTok,
 	}
 
-	// Inject user_id and conversation_id into context so tools can access them
+	// Inject user_id, conversation_id, and provider into context so tools can access them
 	ctx := context.WithValue(c.Request.Context(), tool.CtxKeyUserID, userID)
 	ctx = context.WithValue(ctx, tool.CtxKeyConversationID, conversation.ID)
+	ctx = context.WithValue(ctx, tool.CtxKeyProvider, modelCfg.Provider)
 	c.Request = c.Request.WithContext(ctx)
 
 	// Store platform key flag for billing

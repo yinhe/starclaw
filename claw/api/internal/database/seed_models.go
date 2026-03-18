@@ -122,6 +122,11 @@ func SeedModelsForUser(db *gorm.DB, userID string) {
 // SeedStarAIModels ensures exactly ONE star-ai provider config exists for a user.
 // Available models come from StarAIProvider.Models() — no need for individual model rows.
 func SeedStarAIModels(db *gorm.DB, userID string) {
+	// Fix legacy base_url missing api. prefix
+	db.Model(&model.ModelConfig{}).
+		Where("user_id = ? AND provider = ? AND base_url = ?", userID, "star-ai", "https://star-ai.net/v1").
+		Update("base_url", "https://api.star-ai.net/v1")
+
 	var count int64
 	db.Model(&model.ModelConfig{}).Where("user_id = ? AND provider = ?", userID, "star-ai").Count(&count)
 	if count == 1 {
@@ -146,7 +151,7 @@ func SeedStarAIModels(db *gorm.DB, userID string) {
 		ModelName:   "default",
 		DisplayName: "Star AI",
 		APIKey:      "claw-identity", // marker: use Ed25519 signature auth
-		BaseURL:     "https://star-ai.net/v1",
+		BaseURL:     "https://api.star-ai.net/v1",
 		MaxTokens:   131072,
 		Temperature: 0.7,
 		IsEnabled:   true,

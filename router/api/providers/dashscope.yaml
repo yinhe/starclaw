@@ -1,0 +1,19 @@
+name: "DashScope (Raw API)"
+type: "compute"
+enabled: true
+endpoint: "https://dashscope.aliyuncs.com"
+description: "DashScope raw API for video/TTS/image generation (non-chat). Uses same key as Qwen."
+auth:
+  type: "bearer"
+  key_env: "DASHSCOPE_API_KEY"
+models:
+  - name: "dashscope/wan2.6-t2v-plus"
+    type: "video"
+    price_per_call_cny: 0.6
+  - name: "dashscope/wan2.6-i2v"
+    type: "video"
+    price_per_call_cny: 0.4
+  - name: "dashscope/cosyvoice-v1"
+    type: "tts"
+    price_per_char_cny: 0.00002
+regions: ["cn"]

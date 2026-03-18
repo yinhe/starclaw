@@ -172,6 +172,11 @@ func main() {
 	v1.POST("/audio/transcriptions", proxyHandler.Forward)
 	v1.POST("/embeddings", chatHandler.Embeddings)
 
+	// ── Provider Proxy (StarAI super router for all model types) ──
+	// Claw tools call /v1/proxy/:provider/*path, Router injects API key and forwards
+	providerProxy := handler.NewProviderProxyHandler(reg)
+	v1.Any("/proxy/:provider/*path", providerProxy.Forward)
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	log.Printf("[star-ai] API starting on %s (proxy → %s)", addr, cfg.Proxy.URL)
 	if err := r.Run(addr); err != nil {

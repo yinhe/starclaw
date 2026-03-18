@@ -95,14 +95,12 @@ func (t *ImageTool) Execute(ctx context.Context, argsJSON string) (string, error
 
 // getFalAPIKey retrieves the fal.ai API key from user's model config
 func (t *ImageTool) getFalAPIKey(userID string) string {
-	if userID == "" {
-		return ""
-	}
-	var cfg model.ModelConfig
-	if err := t.db.Where("user_id = ? AND provider = ? AND api_key != ''", userID, "fal").First(&cfg).Error; err != nil {
-		return ""
-	}
-	return cfg.APIKey
+	return GetFalAPIKey(t.db, userID)
+}
+
+// getFalAPIKeyCtx checks StarAI provider first, then falls back to user config
+func (t *ImageTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
+	return GetFalAPIKeyCtx(ctx, t.db, userID)
 }
 
 // modelToEndpoint maps user-facing model name to fal.ai endpoint
@@ -152,9 +150,9 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
 		userID = uid
 	}
-	apiKey := t.getFalAPIKey(userID)
+	apiKey := t.getFalAPIKeyCtx(ctx, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider in Model Settings first")
+		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider or use StarAI")
 	}
 
 	convID := ""
@@ -250,9 +248,9 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
 		userID = uid
 	}
-	apiKey := t.getFalAPIKey(userID)
+	apiKey := t.getFalAPIKeyCtx(ctx, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider in Model Settings first")
+		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider or use StarAI")
 	}
 
 	convID := ""

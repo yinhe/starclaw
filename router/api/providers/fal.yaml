@@ -3,7 +3,7 @@ type: "compute"
 enabled: true
 endpoint: "https://queue.fal.run"
 auth:
-  type: "bearer"
+  type: "key"
   key_env: "FAL_API_KEY"
 models:
   # Image Generation

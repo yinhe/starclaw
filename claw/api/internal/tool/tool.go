@@ -14,6 +14,7 @@ type contextKey string
 
 const CtxKeyUserID contextKey = "tool_user_id"
 const CtxKeyConversationID contextKey = "tool_conversation_id"
+const CtxKeyProvider contextKey = "tool_provider" // e.g. "star-ai", "qwen", "fal"
 
 // Tool is the interface that all tools must implement
 type Tool interface {

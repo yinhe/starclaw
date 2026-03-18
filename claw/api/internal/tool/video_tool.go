@@ -243,9 +243,9 @@ func (t *VideoTool) getLastFrameURL(recordOrTaskID string) (string, error) {
 // ── DashScope Wan Provider ──
 
 func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string, args videoArgs, duration int) (string, error) {
-	apiKey, baseHost := GetDashScopeAPIKey(t.db, userID)
+	apiKey, baseHost := GetDashScopeAPIKeyCtx(ctx, t.db, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no DashScope API key found. Please configure a qwen model first")
+		return "", fmt.Errorf("no DashScope API key found. Please configure a qwen model or use StarAI")
 	}
 
 	input := map[string]interface{}{"prompt": args.Prompt}
@@ -258,16 +258,31 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 	}
 	bodyBytes, _ := json.Marshal(body)
 
-	url := fmt.Sprintf("https://%s/api/v1/services/aigc/video-generation/video-synthesis", baseHost)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(bodyBytes)))
+	var reqURL string
+	var client *http.Client
+	if isStarAIKey(apiKey) {
+		reqURL = StarAIProxyURL("dashscope", "/api/v1/services/aigc/video-generation/video-synthesis")
+		c, _ := GetStarAIClient()
+		if c == nil {
+			return "", fmt.Errorf("StarAI proxy not initialized")
+		}
+		client = c
+		log.Printf("[StarAI] Wan submit via proxy: %s", reqURL)
+	} else {
+		reqURL = fmt.Sprintf("https://%s/api/v1/services/aigc/video-generation/video-synthesis", baseHost)
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if !isStarAIKey(apiKey) {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-DashScope-Async", "enable")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("API request failed: %v", err)
 	}
@@ -334,9 +349,9 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 // ── fal.ai Provider ──
 
 func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string, args videoArgs, duration int) (string, error) {
-	apiKey := GetFalAPIKey(t.db, userID)
+	apiKey := GetFalAPIKeyCtx(ctx, t.db, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider first")
+		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider or use StarAI")
 	}
 	endpoint, ok := falVideoEndpoints[args.Model]
 	if !ok {
@@ -1033,14 +1048,28 @@ func (t *VideoTool) pollDashScopeTask(ctx context.Context, apiKey, baseHost, tas
 }
 
 func (t *VideoTool) getDashScopeTaskStatus(ctx context.Context, apiKey, baseHost, taskID string) (string, string, error) {
-	url := fmt.Sprintf("https://%s/api/v1/tasks/%s", baseHost, taskID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	var reqURL string
+	var client *http.Client
+	if isStarAIKey(apiKey) {
+		reqURL = StarAIProxyURL("dashscope", "/api/v1/tasks/"+taskID)
+		c, _ := GetStarAIClient()
+		if c == nil {
+			return "", "", fmt.Errorf("StarAI proxy not initialized")
+		}
+		client = c
+	} else {
+		reqURL = fmt.Sprintf("https://%s/api/v1/tasks/%s", baseHost, taskID)
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if !isStarAIKey(apiKey) {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", "", err
 	}

@@ -7,6 +7,8 @@ CLAW_REPO=/data/nydus/repos/claw.git
 LOG=/var/log/nydus-deploy.log
 SERVER_A="root@starclaw.me"
 SERVER_B="root@47.103.51.32"
+SSH_KEY="/root/.ssh/id_ed25519"
+SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10"
 
 while read oldrev newrev refname; do
   # Sync tags to claw.git (for Molt release detection)
@@ -45,8 +47,8 @@ while read oldrev newrev refname; do
         echo "  -> queen-api rebuilt" | tee -a "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/site/"; then
-        git --git-dir="$REPO" archive HEAD:queen/site | ssh -o StrictHostKeyChecking=no "$SERVER_A" "mkdir -p /tmp/queen-site && cd /tmp/queen-site && rm -rf * && tar xf -"
-        ssh -o StrictHostKeyChecking=no "$SERVER_A" "cd /tmp/queen-site && docker build -t queen-site-build . && docker create --name queen-site-tmp queen-site-build && mkdir -p /var/www/starclaw/website && rm -rf /var/www/starclaw/website/* && docker cp queen-site-tmp:/usr/share/nginx/html/. /var/www/starclaw/website/ && docker rm queen-site-tmp && rm -rf /tmp/queen-site"
+        git --git-dir="$REPO" archive HEAD:queen/site | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /tmp/queen-site && cd /tmp/queen-site && rm -rf * && tar xf -"
+        ssh $SSH_OPTS "$SERVER_A" "cd /tmp/queen-site && docker build -t queen-site-build . && docker create --name queen-site-tmp queen-site-build && mkdir -p /var/www/starclaw/website && rm -rf /var/www/starclaw/website/* && docker cp queen-site-tmp:/usr/share/nginx/html/. /var/www/starclaw/website/ && docker rm queen-site-tmp && rm -rf /tmp/queen-site"
         echo "  -> queen-site deployed to Server A (starclaw.me)" | tee -a "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/swarm/"; then
@@ -61,8 +63,8 @@ while read oldrev newrev refname; do
   if echo "$CHANGED" | grep -q "^claw/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Claw changed — deploying to starclaw.me..." | tee -a "$LOG"
     (
-      git --git-dir="$REPO" archive HEAD:claw | ssh -o StrictHostKeyChecking=no "$SERVER_A" "cd /opt/starclaw && tar xf -"
-      ssh -o StrictHostKeyChecking=no "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
+      git --git-dir="$REPO" archive HEAD:claw | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && tar xf -"
+      ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
       echo "  -> claw deployed to starclaw.me" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
   fi
@@ -71,14 +73,14 @@ while read oldrev newrev refname; do
   if echo "$CHANGED" | grep -q "^router/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Router changed — deploying to server B..." | tee -a "$LOG"
     (
-      git --git-dir="$REPO" archive HEAD:router | ssh -o StrictHostKeyChecking=no "$SERVER_B" "cd /opt/starclaw/router && tar xf -"
+      git --git-dir="$REPO" archive HEAD:router | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/router && tar xf -"
 
       if echo "$CHANGED" | grep -q "^router/api/\|^router/docker-compose"; then
-        ssh -o StrictHostKeyChecking=no "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache api && docker compose up -d api"
+        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache api && docker compose up -d api"
         echo "  -> router-api rebuilt on B" | tee -a "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^router/web/"; then
-        ssh -o StrictHostKeyChecking=no "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache web && docker compose up -d web"
+        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache web && docker compose up -d web"
         echo "  -> router-web rebuilt on B" | tee -a "$LOG"
       fi
     ) >> "$LOG" 2>&1 &

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -28,6 +29,8 @@ func NewMiniMaxProvider(cfg MiniMaxConfig) *MiniMaxProvider {
 	if baseURL == "" {
 		baseURL = detectMiniMaxEndpoint()
 	}
+	// Auto-correct common URL mistakes: api.minimax.com is not a valid endpoint
+	baseURL = strings.Replace(baseURL, "://api.minimax.com", "://api.minimaxi.com", 1)
 	inner := NewOpenAIProvider(OpenAIConfig{
 		APIKey:  cfg.APIKey,
 		BaseURL: baseURL,
