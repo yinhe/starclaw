@@ -247,15 +247,104 @@ Existing servers with Molt auto-update will receive this version automatically.
 
 ---
 
-## 6. Checklist Before Release
+## 6. Spore Package Build & Upload
+
+Spore packages (the one-click installer served at `starclaw.me/download`) must be rebuilt whenever:
+- Claw API or Web code changes significantly
+- Spore runtime (`cmd/spore`) or setup installer (`cmd/setup`) changes
+- A new release tag is created
+
+### 6.1 Build All Platforms
+
+```powershell
+# From monorepo root — builds 4 setup installers + 4 spore runtimes
+cd spore
+powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
+```
+
+Output in `spore/dist/`:
+| File | Description |
+|------|-------------|
+| `StarClaw-Setup.exe` | Windows GUI/CLI installer (embeds spore + claw.spore + wizard) |
+| `StarClaw-Setup-linux-amd64` | Linux installer |
+| `StarClaw-Setup-darwin-arm64` | macOS Apple Silicon installer |
+| `StarClaw-Setup-darwin-amd64` | macOS Intel installer |
+| `spore-windows-amd64.exe` | Spore runtime (Windows) |
+| `spore-linux-amd64` | Spore runtime (Linux) |
+| `spore-darwin-arm64` | Spore runtime (macOS ARM) |
+| `spore-darwin-amd64` | Spore runtime (macOS Intel) |
+
+The build script automatically:
+1. Cross-compiles `spore` runtime for each platform
+2. Embeds the platform-matched runtime into `cmd/setup/embed/spore_bin`
+3. Cross-compiles the setup installer (includes GUI wizard HTML)
+
+### 6.2 Upload to Nydus
+
+```powershell
+# Upload all artifacts to Nydus server's /opt/spore/releases/
+scp -i $env:USERPROFILE\.ssh\queen_deploy spore/dist/StarClaw-Setup* spore/dist/spore-* spore/dist/install.* root@43.106.158.26:/opt/spore/releases/
+
+# Set execute permissions
+ssh -i $env:USERPROFILE\.ssh\queen_deploy root@43.106.158.26 "chmod +x /opt/spore/releases/StarClaw-Setup-* /opt/spore/releases/spore-*"
+```
+
+Nginx on Nydus serves `/opt/spore/` at `https://nydus.starclaw.net/spore/`.
+The download page at `starclaw.me/download` links to these files.
+
+### 6.3 Updating Embedded Claw Package
+
+The `claw.spore` package in `cmd/setup/embed/` contains the compiled Claw binary.
+To update it, use `hatchery`:
+
+```bash
+# Build latest Claw for all platforms
+hatchery build --all
+
+# Copy the target platform .spore to embed dir
+cp claw-v*.spore spore/cmd/setup/embed/claw.spore
+```
+
+### 6.4 Version Display on Download Page
+
+The download page (`queen/site/src/pages/DownloadPage.tsx`) fetches the latest version
+from `https://nydus.starclaw.net/releases/latest` and displays it next to the Spore title.
+This endpoint reads the latest git tag from `claw.git` bare repo on the Nydus server.
+CORS is enabled via nginx `location /releases/` block.
+
+---
+
+## 7. Nydus Deployment Flow
+
+When pushing to `nydus master`:
+1. Post-receive hook fires → Nydus API processes the push
+2. For `refs/tags/v*` → tags are auto-synced to `claw.git` (for `/releases/latest`)
+3. For `refs/heads/master` → configured targets are deployed:
+   - `queen-server-c` (queen/ → Queen server via worm)
+   - `claw-starclaw-me` (claw/ → starclaw.me via SSH)
+4. Router (star-ai.net) is deployed separately:
+   ```bash
+   # Sync code via Nydus git archive
+   ssh root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:router | ssh root@47.103.51.32 'cd /opt/starclaw/router && tar xf -'"
+   # Rebuild on server B
+   ssh root@47.103.51.32 "cd /opt/starclaw/router && docker compose build --no-cache api web && docker compose up -d api web"
+   ```
+
+---
+
+## 8. Checklist Before Release
 
 - [ ] All changes committed and pushed
 - [ ] `go build ./...` passes in `claw/api`
 - [ ] `npm run build` passes in `claw/web`
 - [ ] CHANGELOG.md updated (English, Claw-scope only)
+- [ ] **Spore packages rebuilt** (`spore/scripts/build-release.ps1`)
+- [ ] **Spore packages uploaded** to Nydus `/opt/spore/releases/`
 - [ ] Sync monorepo → OSS repo (`robocopy` or `sync-oss.sh`)
-- [ ] `make tag` → `git push origin v...`
+- [ ] `make tag` → `git push origin v...` (also push to nydus)
 - [ ] Verify GitHub Release: title, notes, 18 assets
 - [ ] Verify macOS assets: 2 tar.gz (API) + 2 tar.gz (MCP) + 2 DMG (MCP)
+- [ ] Verify Nydus `/releases/latest` returns new tag
+- [ ] Verify `starclaw.me/download` shows new version number
 - [ ] Test DMG install on macOS (double-click install.command)
 - [ ] **Audit**: no Queen/Overlord mentions in release notes or assets
