@@ -1,6 +1,7 @@
 package router
 
 import (
+	"log"
 	"os"
 	"time"
 
@@ -319,12 +320,16 @@ func Setup() *gin.Engine {
 func nodeTokenAuth() gin.HandlerFunc {
 	// Prefer dedicated env var; fall back to JWT secret from config
 	secret := os.Getenv("INTERNAL_API_SECRET")
+	src := "INTERNAL_API_SECRET"
 	if secret == "" {
 		secret = os.Getenv("JWT_SECRET")
+		src = "JWT_SECRET"
 	}
 	if secret == "" {
 		secret = config.C.JWT.Secret
+		src = "config.jwt.secret"
 	}
+	log.Printf("[api] nodeTokenAuth: using %s (len=%d, prefix=%s…)", src, len(secret), secret[:min(8, len(secret))])
 	return func(c *gin.Context) {
 		token := c.GetHeader("X-Node-Token")
 		if token == "" || token != secret {
