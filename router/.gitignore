@@ -1,0 +1,18 @@
+# Data / backups
+data/
+*.sql
+*.sql.gz
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+
+# Certs (sensitive)
+api/certs/
+
+# Docker volumes
+proxy/data/

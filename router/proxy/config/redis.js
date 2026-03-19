@@ -5,15 +5,19 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-const redisClient = createClient({
-	socket: {
-		host: process.env.REDIS_HOST || '127.0.0.1',
-		port: parseInt(process.env.REDIS_PORT, 10) || 6379,
-	},
-	password: process.env.REDIS_PASSWORD || undefined,
-	// 如果使用 ACL，添加用户名
-	// username: process.env.REDIS_USERNAME || undefined,
-})
+// Support both REDIS_URL (docker-compose) and REDIS_HOST/REDIS_PORT
+const redisUrl = process.env.REDIS_URL
+const redisOpts = redisUrl
+	? { url: redisUrl }
+	: {
+		socket: {
+			host: process.env.REDIS_HOST || '127.0.0.1',
+			port: parseInt(process.env.REDIS_PORT, 10) || 6379,
+		},
+		password: process.env.REDIS_PASSWORD || undefined,
+	}
+
+const redisClient = createClient(redisOpts)
 
 redisClient.on('error', (err) => console.error('Redis Client Error', err))
 
