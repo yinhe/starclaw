@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, Users, BarChart3, Receipt, Plus, Trash2, Shield, ArrowUpRight, ArrowDownRight } from 'lucide-react'
-import { billingAPI, tenantAPI } from '../lib/api'
+import { CreditCard, Users, BarChart3, Receipt, Plus, Trash2, Shield, ArrowUpRight, ArrowDownRight, Zap } from 'lucide-react'
+import { billingAPI, tenantAPI, systemAPI, nodeAPI } from '../lib/api'
 
 interface Tenant {
   id: string
@@ -34,10 +34,37 @@ interface Transaction {
   created_at: string
 }
 
+interface CreditData {
+  balance: number
+  total_in: number
+  total_out: number
+  frozen_energy: number
+  connected: boolean
+  hp_status: string
+  updated_at: string
+}
+
 type TabType = 'usage' | 'team' | 'transactions'
 
 const resourceLabels: Record<string, string> = {
   tokens: 'Tokens', video: '视频', image: '图片', music: '音乐',
+}
+
+const hpLabels: Record<string, string> = {
+  full: '充沛',
+  healthy: '健康',
+  low: '偏低',
+  critical: '危急',
+  hibernated: '休眠',
+}
+
+const ENERGY_UNIT = 10000
+
+function formatEnergy(units: number): string {
+  const stars = units / ENERGY_UNIT
+  if (stars >= 10000) return `${(stars / 10000).toFixed(2)}万`
+  if (stars >= 1000) return `${(stars / 1000).toFixed(2)}K`
+  return stars.toFixed(2)
 }
 
 export default function BillingPage() {
@@ -46,6 +73,8 @@ export default function BillingPage() {
   const [usage, setUsage] = useState<Record<string, number>>({})
   const [cost, setCost] = useState<Record<string, number>>({})
   const [period, setPeriod] = useState('')
+  const [credits, setCredits] = useState<CreditData | null>(null)
+  const [nodeInfo, setNodeInfo] = useState<any>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [usageHistory, setUsageHistory] = useState<UsageItem[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -58,7 +87,11 @@ export default function BillingPage() {
 
   const loadData = async () => {
     try {
-      const planRes = await billingAPI.getCurrentPlan().catch(() => null)
+      const [planRes, creditsRes, nodeRes] = await Promise.all([
+        billingAPI.getCurrentPlan().catch(() => null),
+        systemAPI.getCredits().catch(() => null),
+        nodeAPI.getInfo().catch(() => null),
+      ])
       if (planRes?.data) {
         setTenant(planRes.data.tenant)
         setUsage(planRes.data.usage || {})
@@ -66,6 +99,8 @@ export default function BillingPage() {
         setPeriod(planRes.data.period || '')
         setTeamName(planRes.data.tenant?.name || '')
       }
+      if (creditsRes?.data) setCredits(creditsRes.data)
+      if (nodeRes?.data) setNodeInfo(nodeRes.data)
     } finally {
     }
   }
@@ -126,6 +161,11 @@ export default function BillingPage() {
 
   const totalCost = Object.values(cost).reduce((s, v) => s + v, 0)
 
+  const connected = credits?.connected ?? false
+  const totalInStars = (credits?.total_in ?? 0) / ENERGY_UNIT
+  const totalOutStars = (credits?.total_out ?? 0) / ENERGY_UNIT
+  const frozenStars = credits?.frozen_energy ?? 0
+
   const tabs: { key: TabType; label: string; icon: typeof CreditCard }[] = [
     { key: 'usage', label: '用量', icon: BarChart3 },
     { key: 'transactions', label: '流水', icon: Receipt },
@@ -137,17 +177,17 @@ export default function BillingPage() {
       <div className="max-w-5xl mx-auto px-6 py-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">计费中心</h1>
-          <p className="text-sm text-gray-500 mt-1">查看真实用量、消耗流水和团队协作信息</p>
+          <p className="text-sm text-gray-500 mt-1">查看真实星能余额、消耗用量和团队协作信息</p>
         </div>
 
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-950/20">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">充值入口已统一收敛到 StarAI</p>
-              <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">Claw 这里不再使用本地假充值余额。需要购买星能时，请前往 StarAI 完成真实充值。</p>
+              <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">Claw 这里展示真实星能与真实用量。需要购买星能时，请前往 StarAI 完成统一充值。</p>
             </div>
             <a
-              href="https://star-ai.net/billing"
+              href={nodeInfo?.node_id ? `https://star-ai.net/login?claw_url=${encodeURIComponent(window.location.origin)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}` : 'https://star-ai.net/billing'}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
@@ -179,6 +219,37 @@ export default function BillingPage() {
         {/* Usage Tab */}
         {tab === 'usage' && (
           <div className="space-y-6">
+            <div className={`rounded-2xl p-6 text-white ${connected ? 'bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-r from-gray-500 to-gray-600'}`}>
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-300">真实星能余额</p>
+                  <div className="mt-2 flex items-end gap-3">
+                    <span className="text-4xl font-extrabold tracking-tight">{connected ? formatEnergy(credits?.balance ?? 0) : '—'}</span>
+                    <Zap className="mb-1 h-5 w-5 text-amber-400" fill="currentColor" />
+                  </div>
+                  <p className="mt-2 text-sm text-gray-300">
+                    {connected
+                      ? `状态：${hpLabels[credits?.hp_status || 'hibernated'] || '未知'}${credits?.updated_at ? ` · 更新于 ${new Date(credits.updated_at).toLocaleString()}` : ''}`
+                      : '当前未同步到 Queen 星能余额'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-3 lg:min-w-[360px]">
+                  <div className="rounded-xl bg-white/10 px-4 py-3">
+                    <p className="text-xs text-gray-300">累计收入</p>
+                    <p className="mt-1 text-lg font-bold">{connected ? totalInStars.toFixed(1) : '—'}<span className="ml-1 text-xs text-gray-300">⚡</span></p>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-4 py-3">
+                    <p className="text-xs text-gray-300">累计支出</p>
+                    <p className="mt-1 text-lg font-bold">{connected ? totalOutStars.toFixed(1) : '—'}<span className="ml-1 text-xs text-gray-300">⚡</span></p>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-4 py-3">
+                    <p className="text-xs text-gray-300">冻结中</p>
+                    <p className="mt-1 text-lg font-bold">{connected ? frozenStars.toFixed(1) : '—'}<span className="ml-1 text-xs text-gray-300">⚡</span></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
