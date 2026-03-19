@@ -90,7 +90,213 @@ models:
     type: "image"
     price_per_call: 0.02
     description: "Stable Diffusion 3.5 Large"
-  # Image Editing
+  # ── FLUX.2 Image Generation (text-to-image) ──
+  - name: "fal/flux-2"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] - 增强真实感、更清晰文字生成、原生编辑能力"
+  - name: "fal/flux-2-pro"
+    type: "image"
+    price_per_call: 0.05
+    description: "FLUX.2 [pro] - 最高质量，超级写实与艺术图片"
+  - name: "fal/flux-2-max"
+    type: "image"
+    price_per_call: 0.08
+    description: "FLUX.2 [max] - SOTA 图片生成，极致真实与精度"
+  - name: "fal/flux-2-flex"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 [flex] - 可调推理步数与引导比例，增强排版"
+  - name: "fal/flux-2/turbo"
+    type: "image"
+    price_per_call: 0.015
+    description: "FLUX.2 [dev] Turbo - 增强真实感，极速生成"
+  - name: "fal/flux-2/flash"
+    type: "image"
+    price_per_call: 0.01
+    description: "FLUX.2 [dev] Flash - 闪电级速度"
+  # ── FLUX.2 Image Editing (image-to-image) ──
+  - name: "fal/flux-2/edit"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] Edit - 自然语言精确修改图片"
+  - name: "fal/flux-2-pro/edit"
+    type: "image_edit"
+    price_per_call: 0.05
+    description: "FLUX.2 [pro] Edit - 高质量图片编辑、风格迁移"
+  - name: "fal/flux-2-max/edit"
+    type: "image_edit"
+    price_per_call: 0.08
+    description: "FLUX.2 [max] Edit - SOTA 图片编辑，极致精度"
+  - name: "fal/flux-2-flex/edit"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 [flex] Edit - 多参考图编辑，可调推理步数"
+  - name: "fal/flux-2/turbo/edit"
+    type: "image_edit"
+    price_per_call: 0.015
+    description: "FLUX.2 [dev] Turbo Edit - 极速图片编辑"
+  - name: "fal/flux-2/flash/edit"
+    type: "image_edit"
+    price_per_call: 0.01
+    description: "FLUX.2 [dev] Flash Edit - 闪电级图片编辑"
+  # ── FLUX.2 LoRA variants ──
+  - name: "fal/flux-2/lora"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] LoRA - 自定义风格文生图"
+  - name: "fal/flux-2/lora/edit"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] LoRA Edit - 自定义风格图片编辑"
+  # ── FLUX.2 Klein (轻量模型) ──
+  - name: "fal/flux-2/klein/4b"
+    type: "image"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B - 轻量高速文生图"
+  - name: "fal/flux-2/klein/4b/base"
+    type: "image"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B Base - 基础轻量文生图"
+  - name: "fal/flux-2/klein/4b/edit"
+    type: "image_edit"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B Edit - 轻量图片编辑"
+  - name: "fal/flux-2/klein/4b/lora"
+    type: "image"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B LoRA - 轻量自定义风格"
+  - name: "fal/flux-2/klein/4b/base/edit"
+    type: "image_edit"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B Base Edit"
+  - name: "fal/flux-2/klein/4b/base/lora"
+    type: "image"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B Base LoRA"
+  - name: "fal/flux-2/klein/4b/base/edit/lora"
+    type: "image_edit"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B Base Edit + LoRA"
+  - name: "fal/flux-2/klein/4b/edit/lora"
+    type: "image_edit"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B Edit + LoRA"
+  - name: "fal/flux-2/klein/9b"
+    type: "image"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B - 中等轻量文生图"
+  - name: "fal/flux-2/klein/9b/base"
+    type: "image"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B Base - 基础中等文生图"
+  - name: "fal/flux-2/klein/9b/edit"
+    type: "image_edit"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B Edit"
+  - name: "fal/flux-2/klein/9b/lora"
+    type: "image"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B LoRA"
+  - name: "fal/flux-2/klein/9b/base/edit"
+    type: "image_edit"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B Base Edit"
+  - name: "fal/flux-2/klein/9b/base/lora"
+    type: "image"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B Base LoRA"
+  - name: "fal/flux-2/klein/9b/base/edit/lora"
+    type: "image_edit"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B Base Edit + LoRA"
+  - name: "fal/flux-2/klein/9b/edit/lora"
+    type: "image_edit"
+    price_per_call: 0.01
+    description: "FLUX.2 [klein] 9B Edit + LoRA"
+  - name: "fal/flux-2/klein/realtime"
+    type: "image"
+    price_per_call: 0.003
+    description: "FLUX.2 [klein] Realtime - 实时生成"
+  # ── FLUX.2 LoRA Gallery (预训练风格) ──
+  - name: "fal/flux-2-lora-gallery/realism"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 写实增强"
+  - name: "fal/flux-2-lora-gallery/multiple-angles"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 多角度生成"
+  - name: "fal/flux-2-lora-gallery/apartment-staging"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 虚拟家居布置"
+  - name: "fal/flux-2-lora-gallery/virtual-tryon"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 虚拟试衣"
+  - name: "fal/flux-2-lora-gallery/face-to-full-portrait"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 面部扩展为全身像"
+  - name: "fal/flux-2-lora-gallery/add-background"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 添加背景"
+  - name: "fal/flux-2-lora-gallery/digital-comic-art"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 数字漫画风格"
+  - name: "fal/flux-2-lora-gallery/ballpoint-pen-sketch"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 圆珠笔素描风格"
+  - name: "fal/flux-2-lora-gallery/sepia-vintage"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 复古怀旧风格"
+  - name: "fal/flux-2-lora-gallery/satellite-view-style"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - 卫星/鸟瞰视角"
+  - name: "fal/flux-2-lora-gallery/hdr-style"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 LoRA Gallery - HDR 超现实色彩"
+  # ── FLUX.2 Training (模型微调) ──
+  - name: "fal/flux-2-trainer"
+    type: "training"
+    price_per_call: 1.00
+    description: "FLUX.2 [dev] 微调训练 - 自定义 LoRA"
+  - name: "fal/flux-2-trainer-v2"
+    type: "training"
+    price_per_call: 1.00
+    description: "FLUX.2 [dev] 微调训练 V2"
+  - name: "fal/flux-2-trainer/edit"
+    type: "training"
+    price_per_call: 1.00
+    description: "FLUX.2 [dev] 编辑模型微调"
+  - name: "fal/flux-2-trainer-v2/edit"
+    type: "training"
+    price_per_call: 1.00
+    description: "FLUX.2 [dev] 编辑模型微调 V2"
+  - name: "fal/flux-2-klein-9b-base-trainer"
+    type: "training"
+    price_per_call: 0.50
+    description: "FLUX.2 [klein] 9B 微调训练"
+  - name: "fal/flux-2-klein-9b-base-trainer/edit"
+    type: "training"
+    price_per_call: 0.50
+    description: "FLUX.2 [klein] 9B 编辑模型微调"
+  - name: "fal/flux-2-klein-4b-base-trainer"
+    type: "training"
+    price_per_call: 0.30
+    description: "FLUX.2 [klein] 4B 微调训练"
+  - name: "fal/flux-2-klein-4b-base-trainer/edit"
+    type: "training"
+    price_per_call: 0.30
+    description: "FLUX.2 [klein] 4B 编辑模型微调"
+  # Image Editing (legacy)
   - name: "fal/inpaint"
     type: "image_edit"
     price_per_call: 0.02
