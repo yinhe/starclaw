@@ -105,9 +105,9 @@ func (t *ImageTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
 func modelToEndpoint(m string) string {
 	switch m {
 	case "flux-schnell":
-		return "fal-ai/flux-schnell"
+		return "fal-ai/flux/schnell"
 	case "flux-dev":
-		return "fal-ai/flux-dev"
+		return "fal-ai/flux/dev"
 	case "flux-pro":
 		return "fal-ai/flux-pro/v1.1"
 	case "flux-realism":
@@ -115,7 +115,7 @@ func modelToEndpoint(m string) string {
 	case "stable-diffusion-v35-large":
 		return "fal-ai/stable-diffusion-v35-large"
 	default:
-		return "fal-ai/flux-schnell"
+		return "fal-ai/flux/schnell"
 	}
 }
 
