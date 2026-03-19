@@ -659,6 +659,50 @@ export default function ChatPage() {
     }
   }
 
+  // Extract media URLs from tool result JSON
+  const extractMediaFromToolResult = (result: string | undefined): { type: 'image' | 'video' | 'audio'; url: string } | null => {
+    if (!result) return null
+    try {
+      const parsed = JSON.parse(result)
+      if (parsed.image_url) return { type: 'image', url: parsed.image_url }
+      if (parsed.video_url) return { type: 'video', url: parsed.video_url }
+      if (parsed.audio_url) return { type: 'audio', url: parsed.audio_url }
+    } catch { /* ignore */ }
+    return null
+  }
+
+  // Render inline media preview below tool cards
+  const renderInlineMedia = (result: string | undefined) => {
+    const media = extractMediaFromToolResult(result)
+    if (!media) return null
+    const baseUrl = window.location.origin
+    const fullUrl = media.url.startsWith('/') ? baseUrl + media.url : media.url
+    switch (media.type) {
+      case 'image':
+        return (
+          <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 max-w-sm">
+            <a href={fullUrl} target="_blank" rel="noopener noreferrer">
+              <img src={fullUrl} alt="Generated image" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity" loading="lazy" />
+            </a>
+          </div>
+        )
+      case 'video':
+        return (
+          <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 max-w-md">
+            <video src={fullUrl} controls preload="metadata" className="w-full h-auto" />
+          </div>
+        )
+      case 'audio':
+        return (
+          <div className="mt-2 max-w-sm">
+            <audio src={fullUrl} controls preload="metadata" className="w-full" />
+          </div>
+        )
+      default:
+        return null
+    }
+  }
+
   const handleEditResend = async (msgId: string) => {
     if (!editingText.trim() || isLoading || !selectedAgentId) return
 
@@ -1399,6 +1443,7 @@ export default function ChatPage() {
                               )}
                             </div>
                           </div>
+                          {renderInlineMedia(ti.result)}
                         </div>
                       )
                     })}
@@ -1697,6 +1742,7 @@ export default function ChatPage() {
                       )}
                     </div>
                   </div>
+                  {renderInlineMedia(ti.result)}
                   </div>
                 )
               })}
