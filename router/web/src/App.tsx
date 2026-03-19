@@ -12,6 +12,7 @@ import ModelsPage from './pages/ModelsPage';
 import LogsPage from './pages/LogsPage';
 import AccountPage from './pages/AccountPage';
 import DownloadPage from './pages/DownloadPage';
+import GenerationsPage from './pages/GenerationsPage';
 import PayResultPage from './pages/PayResultPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/models" element={<ModelsPage />} />
           <Route path="/usage" element={<UsagePage />} />
           <Route path="/logs" element={<LogsPage />} />
+          <Route path="/generations" element={<GenerationsPage />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>

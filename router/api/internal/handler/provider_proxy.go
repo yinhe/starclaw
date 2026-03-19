@@ -22,15 +22,35 @@ import (
 //	     POST /v1/proxy/minimax/music_generation  → https://api.minimaxi.com/v1/music_generation
 type ProviderProxyHandler struct {
 	registry *provider.Registry
+	genH     *GenerationHandler
 }
 
 func NewProviderProxyHandler(reg *provider.Registry) *ProviderProxyHandler {
 	return &ProviderProxyHandler{registry: reg}
 }
 
+// SetGenerationHandler enables generation tracking for video/image proxy requests.
+func (h *ProviderProxyHandler) SetGenerationHandler(gh *GenerationHandler) {
+	h.genH = gh
+}
+
 func (h *ProviderProxyHandler) Forward(c *gin.Context) {
 	provSlug := c.Param("provider")
 	subPath := c.Param("path") // e.g. "/fal-ai/veo3" or "/music_generation"
+
+	// Intercept video generation requests for tracking
+	if h.genH != nil && c.Request.Method == "POST" {
+		if provSlug == "dashscope" && strings.Contains(subPath, "video-generation") {
+			body, _ := io.ReadAll(c.Request.Body)
+			h.genH.ProxyDashScopeVideo(c, provSlug, subPath, body)
+			return
+		}
+		if provSlug == "fal" && isVideoPath(subPath) {
+			body, _ := io.ReadAll(c.Request.Body)
+			h.genH.ProxyFalVideo(c, provSlug, subPath, body)
+			return
+		}
+	}
 
 	// Look up provider config
 	prov, ok := h.registry.GetProvider(provSlug)
@@ -137,4 +157,15 @@ func (h *ProviderProxyHandler) Forward(c *gin.Context) {
 // ForwardGET handles GET requests (e.g. fal.ai async status polling)
 func (h *ProviderProxyHandler) ForwardGET(c *gin.Context) {
 	h.Forward(c)
+}
+
+// isVideoPath checks if a fal.ai proxy path is a video generation endpoint
+func isVideoPath(path string) bool {
+	videoKeywords := []string{"veo3", "sora-2", "kling-video", "minimax-video", "luma-dream-machine"}
+	for _, kw := range videoKeywords {
+		if strings.Contains(path, kw) {
+			return true
+		}
+	}
+	return false
 }

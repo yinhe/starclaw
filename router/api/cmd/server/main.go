@@ -172,9 +172,20 @@ func main() {
 	v1.POST("/audio/transcriptions", proxyHandler.Forward)
 	v1.POST("/embeddings", chatHandler.Embeddings)
 
+	// ── Generations tracking ──
+	genHandler := handler.NewGenerationHandler(db, reg, meter)
+	v1.GET("/generations", genHandler.ListGenerations)
+	v1.GET("/generations/stats", genHandler.GenerationStats)
+	v1.GET("/generations/:id", genHandler.GetGeneration)
+
+	// Dashboard generations
+	dash.GET("/generations", genHandler.ListGenerations)
+	dash.GET("/generations/stats", genHandler.GenerationStats)
+
 	// ── Provider Proxy (StarAI super router for all model types) ──
 	// Claw tools call /v1/proxy/:provider/*path, Router injects API key and forwards
 	providerProxy := handler.NewProviderProxyHandler(reg)
+	providerProxy.SetGenerationHandler(genHandler)
 	v1.Any("/proxy/:provider/*path", providerProxy.Forward)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

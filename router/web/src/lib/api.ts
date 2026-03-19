@@ -84,6 +84,29 @@ export const models = {
   list: () => request<{ object: string; data: ModelInfo[] }>('GET', '/v1/models'),
 };
 
+// Generation type
+export interface Generation {
+  id: string;
+  user_id: string;
+  claw_id: string;
+  provider: string;
+  model: string;
+  type: string;
+  task_id: string;
+  prompt: string;
+  status: string;
+  result_url: string;
+  thumbnail_url: string;
+  cost_cents: number;
+  duration: number;
+  width: number;
+  height: number;
+  error_msg: string;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
 // Dashboard (JWT)
 export const dash = {
   profile: () => request<{ user: { id: string; email: string; name: string; balance: number; free_quota: number; status: string; created_at: string }; api_key_count: number }>('GET', '/dash/profile'),
@@ -100,6 +123,17 @@ export const dash = {
   syncOrders: () => request<{ synced: number; checked: number }>('POST', '/dash/pay/sync'),
   updateProfile: (data: { name?: string; email?: string }) => request<{ message: string }>('PUT', '/dash/profile', data),
   changePassword: (oldPassword: string, newPassword: string) => request<{ message: string }>('POST', '/dash/password', { old_password: oldPassword, new_password: newPassword }),
+  generations: (params?: { type?: string; status?: string; model?: string; limit?: number; offset?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.type) q.set('type', params.type);
+    if (params?.status) q.set('status', params.status);
+    if (params?.model) q.set('model', params.model);
+    if (params?.limit) q.set('limit', String(params.limit));
+    if (params?.offset) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return request<{ generations: Generation[]; total: number; limit: number; offset: number }>('GET', `/dash/generations${qs ? '?' + qs : ''}`);
+  },
+  generationStats: () => request<{ total: number; running: number; succeeded: number; failed: number; total_cost: number; by_model: { model: string; count: number }[] }>('GET', '/dash/generations/stats'),
   logs: (params?: { page?: number; page_size?: number; model?: string; status?: string; from?: string; to?: string }) => {
     const q = new URLSearchParams();
     if (params?.page) q.set('page', String(params.page));

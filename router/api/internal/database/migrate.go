@@ -13,6 +13,7 @@ func AutoMigrate(db *gorm.DB) {
 		&model.APIKey{},
 		&model.UsageRecord{},
 		&model.PaymentOrder{},
+		&model.Generation{},
 		&model.Role{},
 		&model.Permission{},
 		&model.UserRole{},

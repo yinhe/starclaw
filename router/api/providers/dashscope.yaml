@@ -7,12 +7,37 @@ auth:
   type: "bearer"
   key_env: "DASHSCOPE_API_KEY"
 models:
+  # ── 万象视频 (Wanxiang Video) ──
+  - name: "dashscope/wan2.6-t2v"
+    type: "video"
+    price_per_call_cny: 0.24
+    description: "万象 2.6 文生视频 (5s/720p)"
   - name: "dashscope/wan2.6-t2v-plus"
     type: "video"
-    price_per_call_cny: 0.6
+    price_per_call_cny: 0.60
+    description: "万象 2.6 Plus 文生视频 (更高画质)"
+  - name: "dashscope/wan2.6-t2v-turbo"
+    type: "video"
+    price_per_call_cny: 0.06
+    description: "万象 2.6 Turbo 文生视频 (快速)"
   - name: "dashscope/wan2.6-i2v"
     type: "video"
-    price_per_call_cny: 0.4
+    price_per_call_cny: 0.40
+    description: "万象 2.6 图生视频 (场景衔接)"
+  - name: "dashscope/wan2.6-i2v-turbo"
+    type: "video"
+    price_per_call_cny: 0.10
+    description: "万象 2.6 Turbo 图生视频 (快速)"
+  - name: "dashscope/wan2.6-i2v-plus"
+    type: "video"
+    price_per_call_cny: 0.60
+    description: "万象 2.6 Plus 图生视频 (高画质)"
+  # ── 万象图像 (Wanxiang Image) ──
+  - name: "dashscope/wanx-v1"
+    type: "image"
+    price_per_call_cny: 0.04
+    description: "万象 文生图"
+  # ── 语音 (TTS) ──
   - name: "dashscope/cosyvoice-v1"
     type: "tts"
     price_per_char_cny: 0.00002
