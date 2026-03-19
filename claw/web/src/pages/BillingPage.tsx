@@ -52,6 +52,8 @@ interface CreditData {
 }
 
 type TabType = 'overview' | 'usage' | 'transactions' | 'team'
+type DirectionFilter = 'all' | 'in' | 'out'
+type TxnTypeFilter = 'all' | 'transfer'
 
 const resourceLabels: Record<string, string> = {
   tokens: 'Tokens', video: '视频', image: '图片', music: '音乐',
@@ -101,6 +103,8 @@ export default function BillingPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [usageHistory, setUsageHistory] = useState<UsageItem[]>([])
   const [transactions, setTransactions] = useState<CreditTransaction[]>([])
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all')
+  const [txnTypeFilter, setTxnTypeFilter] = useState<TxnTypeFilter>('all')
   const [refreshing, setRefreshing] = useState(false)
   const [copied, setCopied] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -144,7 +148,7 @@ export default function BillingPage() {
   }
 
   const loadTransactions = async () => {
-    const res = await systemAPI.getCreditTransactions({ page: 1, page_size: 50 }).catch(() => null)
+    const res = await systemAPI.getCreditTransactions({ page: 1, page_size: 50, type: txnTypeFilter === 'all' ? undefined : txnTypeFilter }).catch(() => null)
     if (res?.data) setTransactions(res.data.transactions || [])
   }
 
@@ -153,7 +157,7 @@ export default function BillingPage() {
     if (tab === 'overview') loadData()
     if (tab === 'usage') loadUsageHistory()
     if (tab === 'transactions') loadTransactions()
-  }, [tab])
+  }, [tab, txnTypeFilter])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -207,6 +211,12 @@ export default function BillingPage() {
   const hpMeta = hpConfig[hp] || hpConfig.hibernated
   const trust = trustConfig[credits?.trust_level || 'newcomer'] || trustConfig.newcomer
   const pct = Math.min(100, ((credits?.balance_energy ?? 0) / 2000) * 100)
+  const filteredTransactions = transactions.filter((tx) => {
+    if (!nodeInfo?.node_id || directionFilter === 'all') return true
+    if (directionFilter === 'in') return tx.to_claw === nodeInfo.node_id
+    if (directionFilter === 'out') return tx.from_claw === nodeInfo.node_id
+    return true
+  })
 
   const tabs: { key: TabType; label: string; icon: typeof CreditCard }[] = [
     { key: 'overview', label: '概览', icon: Zap },
@@ -452,14 +462,41 @@ export default function BillingPage() {
         {/* Transactions Tab */}
         {tab === 'transactions' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-blue-500" /> 交易流水
-            </h3>
-            {transactions.length === 0 ? (
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-blue-500" /> 交易流水
+              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-700/50">
+                  {[
+                    { key: 'all', label: '全部' },
+                    { key: 'in', label: '转入' },
+                    { key: 'out', label: '转出' },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setDirectionFilter(item.key as DirectionFilter)}
+                      className={`rounded-md px-3 py-1 text-xs font-medium ${directionFilter === item.key ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  value={txnTypeFilter}
+                  onChange={(e) => setTxnTypeFilter(e.target.value as TxnTypeFilter)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="all">全部类型</option>
+                  <option value="transfer">Transfer</option>
+                </select>
+              </div>
+            </div>
+            {filteredTransactions.length === 0 ? (
               <p className="text-sm text-gray-400 py-8 text-center">暂无星能流水</p>
             ) : (
               <div className="space-y-2">
-                {transactions.map(tx => (
+                {filteredTransactions.map(tx => (
                   <div key={tx.id} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
