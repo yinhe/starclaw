@@ -1492,6 +1492,182 @@ app.post('/fal/kling-v3-standard-image-to-video', apiKeyValidation, async (req, 
 	}
 })
 
+// === Luma Ray-2 视频生成接口 ===
+
+function normalizeLumaAspectRatio(aspectRatio) {
+	const permitted = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21']
+	if (!aspectRatio) return '16:9'
+	const v = String(aspectRatio).trim()
+	return permitted.includes(v) ? v : null
+}
+
+function buildLumaRay2T2VInput(body) {
+	const { prompt, aspect_ratio, loop, resolution, ...otherParams } = body || {}
+	if (!prompt) return { error: { status: 400, payload: { error: 'prompt 参数是必需的' } } }
+	const normalizedAspect = normalizeLumaAspectRatio(aspect_ratio)
+	if (!normalizedAspect) return { error: { status: 400, payload: { error: 'aspect_ratio 参数不合法', permitted: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'], received: aspect_ratio } } }
+	const input = { prompt, aspect_ratio: normalizedAspect, ...otherParams }
+	if (loop !== undefined) input.loop = loop
+	if (resolution) input.resolution = resolution
+	return { input }
+}
+
+async function buildLumaRay2I2VInput(body) {
+	const { prompt, image_url, start_image_url, aspect_ratio, loop, resolution, ...otherParams } = body || {}
+	if (!prompt) return { error: { status: 400, payload: { error: 'prompt 参数是必需的' } } }
+	const rawImgUrl = image_url || start_image_url
+	if (!rawImgUrl) return { error: { status: 400, payload: { error: 'image_url 参数是必需的' } } }
+	const normalizedAspect = normalizeLumaAspectRatio(aspect_ratio)
+	if (!normalizedAspect) return { error: { status: 400, payload: { error: 'aspect_ratio 参数不合法', permitted: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'], received: aspect_ratio } } }
+	let fixedImgUrl
+	try { fixedImgUrl = await ensureFalAccessibleFileUrl(rawImgUrl) } catch (e) {
+		const status = e?.status || 400
+		return { error: { status, payload: e?.body || { error: 'image_url 无法访问', details: e?.message } } }
+	}
+	const input = { prompt, image_url: fixedImgUrl, aspect_ratio: normalizedAspect, ...otherParams }
+	if (loop !== undefined) input.loop = loop
+	if (resolution) input.resolution = resolution
+	return { input }
+}
+
+// Luma Ray-2 - 文生视频（同步）
+app.post('/fal/luma-ray2', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildLumaRay2T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Luma Ray-2 T2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/luma-dream-machine/ray-2', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Luma Ray-2 T2V 队列状态:', update.status) },
+		})
+		console.log('Luma Ray-2 T2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Luma Ray-2 T2V 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Luma Ray-2 文生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Luma Ray-2 - 文生视频（队列模式）：提交
+app.post('/fal/luma-ray2/submit', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildLumaRay2T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('提交 Luma Ray-2 T2V 队列任务，prompt:', built.input.prompt)
+		const result = await fal.queue.submit('fal-ai/luma-dream-machine/ray-2', { input: built.input })
+		res.status(202).json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Luma Ray-2 T2V Submit 失败:', error?.message)
+		res.status(status).json({ error: 'Luma Ray-2 提交任务失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Luma Ray-2 - 文生视频（队列模式）：状态
+app.get('/fal/luma-ray2/status/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const status = await fal.queue.status('fal-ai/luma-dream-machine/ray-2', { requestId: req.params.requestId, logs: true })
+		res.json(status)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Luma Ray-2 T2V Status 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Luma Ray-2 查询状态失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Luma Ray-2 - 文生视频（队列模式）：结果
+app.get('/fal/luma-ray2/result/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const result = await fal.queue.result('fal-ai/luma-dream-machine/ray-2', { requestId: req.params.requestId })
+		res.json(result)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Luma Ray-2 T2V Result 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Luma Ray-2 获取结果失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Luma Ray-2 - 图生视频（同步）
+app.post('/fal/luma-ray2-image-to-video', apiKeyValidation, async (req, res) => {
+	try {
+		const built = await buildLumaRay2I2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Luma Ray-2 I2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/luma-dream-machine/ray-2/image-to-video', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Luma Ray-2 I2V 队列状态:', update.status) },
+		})
+		console.log('Luma Ray-2 I2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Luma Ray-2 I2V 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Luma Ray-2 图生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Luma Ray-2 - 图生视频（队列模式）：提交
+app.post('/fal/luma-ray2-image-to-video/submit', apiKeyValidation, async (req, res) => {
+	try {
+		const built = await buildLumaRay2I2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('提交 Luma Ray-2 I2V 队列任务，prompt:', built.input.prompt)
+		const result = await fal.queue.submit('fal-ai/luma-dream-machine/ray-2/image-to-video', { input: built.input })
+		res.status(202).json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Luma Ray-2 I2V Submit 失败:', error?.message)
+		res.status(status).json({ error: 'Luma Ray-2 图生视频提交失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Luma Ray-2 - 图生视频（队列模式）：状态
+app.get('/fal/luma-ray2-image-to-video/status/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const status = await fal.queue.status('fal-ai/luma-dream-machine/ray-2/image-to-video', { requestId: req.params.requestId, logs: true })
+		res.json(status)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Luma Ray-2 I2V Status 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Luma Ray-2 图生视频查询状态失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Luma Ray-2 - 图生视频（队列模式）：结果
+app.get('/fal/luma-ray2-image-to-video/result/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const result = await fal.queue.result('fal-ai/luma-dream-machine/ray-2/image-to-video', { requestId: req.params.requestId })
+		res.json(result)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Luma Ray-2 I2V Result 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Luma Ray-2 图生视频获取结果失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Luma Ray-2 Flash - 文生视频（同步，快速版）
+app.post('/fal/luma-ray2-flash', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildLumaRay2T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Luma Ray-2 Flash T2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/luma-dream-machine/ray-2-flash', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Luma Ray-2 Flash T2V 队列状态:', update.status) },
+		})
+		console.log('Luma Ray-2 Flash T2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Luma Ray-2 Flash T2V 调用失败:', error?.message)
+		res.status(status).json({ error: 'Luma Ray-2 Flash 文生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
 // Flux Pro Kontext - 高质量图像生成
 app.post('/fal/flux-pro-kontext', apiKeyValidation, async (req, res) => {
 	try {

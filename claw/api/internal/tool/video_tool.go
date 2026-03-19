@@ -89,7 +89,7 @@ var falVideoEndpoints = map[string]string{
 	"sora2":         "fal-ai/sora",
 	"kling-v3":      "fal-ai/kling-video/v3/pro/text-to-video",
 	"minimax-video": "fal-ai/minimax-video/video-01-live",
-	"luma":          "fal-ai/luma-dream-machine",
+	"luma":          "fal-ai/luma-dream-machine/ray-2",
 }
 
 func (t *VideoTool) Execute(ctx context.Context, argsJSON string) (string, error) {
@@ -130,7 +130,12 @@ func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, 
 	if cid, ok := ctx.Value(CtxKeyConversationID).(string); ok {
 		convID = cid
 	}
-	if args.Model == "" {
+	// Auto-redirect deprecated/invalid model names
+	switch args.Model {
+	case "kling-v2", "kling-v1", "kling":
+		log.Printf("[VideoTool] Model %q is deprecated/invalid, auto-redirecting to kling-v3", args.Model)
+		args.Model = "kling-v3"
+	case "":
 		args.Model = "wan2.6-t2v"
 	}
 	if args.Size == "" {
@@ -358,9 +363,12 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		return "", fmt.Errorf("unknown fal.ai video model: %s", args.Model)
 	}
 
-	// kling-v3: switch to i2v endpoint when image is provided
+	// Switch to i2v endpoint when image is provided
 	if args.Model == "kling-v3" && args.ImgURL != "" {
 		endpoint = "fal-ai/kling-video/v3/pro/image-to-video"
+	}
+	if args.Model == "luma" && args.ImgURL != "" {
+		endpoint = "fal-ai/luma-dream-machine/ray-2/image-to-video"
 	}
 
 	body := map[string]interface{}{
@@ -384,20 +392,27 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 	case "veo3":
 		// veo3 auto-determines duration, don't send it
 	case "luma":
-		// luma auto-determines duration
+		// Luma Ray-2: uses aspect_ratio, no duration/width/height
+		delete(body, "duration")
 	default:
 		body["duration"] = fmt.Sprintf("%d", duration)
 	}
 
 	if args.ImgURL != "" {
-		if args.Model == "kling-v3" {
+		switch args.Model {
+		case "kling-v3":
 			body["start_image_url"] = args.ImgURL
-		} else {
+		case "luma":
+			body["image_url"] = args.ImgURL
+		default:
 			body["image_url"] = args.ImgURL
 		}
 	}
-	if args.Model == "kling-v3" {
-		// kling-v3 uses aspect_ratio instead of width/height
+
+	// Per-model resolution/aspect_ratio handling
+	switch args.Model {
+	case "kling-v3", "luma":
+		// These models use aspect_ratio instead of width/height
 		sizeParts := strings.Split(args.Size, "*")
 		if len(sizeParts) == 2 {
 			w, _ := strconv.Atoi(sizeParts[0])
@@ -410,7 +425,7 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 				body["aspect_ratio"] = "1:1"
 			}
 		}
-	} else {
+	default:
 		sizeParts := strings.Split(args.Size, "*")
 		if len(sizeParts) == 2 {
 			if w, err := strconv.Atoi(sizeParts[0]); err == nil {
@@ -440,17 +455,21 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 	}
 
 	go func() {
+		log.Printf("[VideoTool] fal.ai polling started: %s (model=%s, endpoint=%s)", requestID, args.Model, endpoint)
 		result, err := PollFalStatus(apiKey, endpoint, requestID, 10*time.Minute)
 		if err != nil {
-			log.Printf("[VideoTool] fal.ai %s failed: %v", requestID, err)
+			log.Printf("[VideoTool] fal.ai %s polling failed: %v", requestID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
 			return
 		}
+		log.Printf("[VideoTool] fal.ai %s poll completed, extracting video URL", requestID)
 		videoURL := extractFalVideoURL(result)
 		if videoURL == "" {
+			log.Printf("[VideoTool] fal.ai %s: extractFalVideoURL returned empty, marking failed", requestID)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
 			return
 		}
+		log.Printf("[VideoTool] fal.ai %s: got video URL, downloading to local...", requestID)
 		// Download to local storage
 		outputDir := "/app/merged_videos"
 		os.MkdirAll(outputDir, 0755)
@@ -500,7 +519,18 @@ func extractFalVideoURL(result map[string]interface{}) string {
 			}
 		}
 	}
+	// Debug: log the full result structure when no video URL found
+	resJSON, _ := json.Marshal(result)
+	log.Printf("[VideoTool] extractFalVideoURL: no video URL found in result keys=%v snippet=%.500s", keysOf(result), string(resJSON))
 	return ""
+}
+
+func keysOf(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // ── Check Status ──
