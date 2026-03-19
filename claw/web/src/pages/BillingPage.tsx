@@ -277,7 +277,7 @@ export default function BillingPage() {
   const hpMeta = hpConfig[hp] || hpConfig.hibernated
   const trust = trustConfig[credits?.trust_level || 'newcomer'] || trustConfig.newcomer
   const pct = Math.min(100, ((credits?.balance_energy ?? 0) / 2000) * 100)
-  const clawAuthUrl = normalizeClawUrl(nodeInfo?.address || window.location.origin)
+  const clawAuthUrl = normalizeClawUrl(window.location.origin)
   const topUpUrl = nodeInfo?.node_id
     ? `https://star-ai.net/login?claw_url=${encodeURIComponent(clawAuthUrl)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}`
     : 'https://star-ai.net/billing'
