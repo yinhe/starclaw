@@ -54,6 +54,7 @@ interface CreditData {
 type TabType = 'overview' | 'usage' | 'transactions' | 'team'
 type DirectionFilter = 'all' | 'in' | 'out'
 type TxnTypeFilter = 'all' | 'transfer'
+ type StatusFilter = 'all' | 'confirmed' | 'pending' | 'failed'
 
 const resourceLabels: Record<string, string> = {
   tokens: 'Tokens', video: '视频', image: '图片', music: '音乐',
@@ -93,6 +94,7 @@ function formatEnergy(units: number): string {
 }
 
 export default function BillingPage() {
+  const TRANSACTION_PAGE_SIZE = 20
   const [tab, setTab] = useState<TabType>('overview')
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [usage, setUsage] = useState<Record<string, number>>({})
@@ -105,6 +107,10 @@ export default function BillingPage() {
   const [transactions, setTransactions] = useState<CreditTransaction[]>([])
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all')
   const [txnTypeFilter, setTxnTypeFilter] = useState<TxnTypeFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [transactionsPage, setTransactionsPage] = useState(1)
+  const [transactionsTotal, setTransactionsTotal] = useState(0)
+  const [transactionsLoading, setTransactionsLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [copied, setCopied] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -147,22 +153,41 @@ export default function BillingPage() {
     if (res?.data) setUsageHistory(res.data.usage || [])
   }
 
-  const loadTransactions = async () => {
-    const res = await systemAPI.getCreditTransactions({ page: 1, page_size: 50, type: txnTypeFilter === 'all' ? undefined : txnTypeFilter }).catch(() => null)
-    if (res?.data) setTransactions(res.data.transactions || [])
+  const loadTransactions = async (page = 1, append = false) => {
+    setTransactionsLoading(true)
+    try {
+      const res = await systemAPI.getCreditTransactions({
+        page,
+        page_size: TRANSACTION_PAGE_SIZE,
+        type: txnTypeFilter === 'all' ? undefined : txnTypeFilter,
+      }).catch(() => null)
+      if (res?.data) {
+        const nextTransactions = res.data.transactions || []
+        setTransactions((prev) => append ? [...prev, ...nextTransactions] : nextTransactions)
+        setTransactionsPage(res.data.page || page)
+        setTransactionsTotal(res.data.total || nextTransactions.length)
+      }
+    } finally {
+      setTransactionsLoading(false)
+    }
   }
 
   useEffect(() => {
     if (tab === 'team') loadTeam()
     if (tab === 'overview') loadData()
     if (tab === 'usage') loadUsageHistory()
-    if (tab === 'transactions') loadTransactions()
+    if (tab === 'transactions') loadTransactions(1, false)
   }, [tab, txnTypeFilter])
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    await Promise.all([loadData(), loadTransactions()])
+    await Promise.all([loadData(), loadTransactions(1, false)])
     setRefreshing(false)
+  }
+
+  const handleLoadMoreTransactions = async () => {
+    if (transactionsLoading) return
+    await loadTransactions(transactionsPage + 1, true)
   }
 
   const copyToClipboard = (text: string, label: string) => {
@@ -216,7 +241,11 @@ export default function BillingPage() {
     if (directionFilter === 'in') return tx.to_claw === nodeInfo.node_id
     if (directionFilter === 'out') return tx.from_claw === nodeInfo.node_id
     return true
+  }).filter((tx) => {
+    if (statusFilter === 'all') return true
+    return (tx.status || 'confirmed') === statusFilter
   })
+  const hasMoreTransactions = transactions.length < transactionsTotal
 
   const tabs: { key: TabType; label: string; icon: typeof CreditCard }[] = [
     { key: 'overview', label: '概览', icon: Zap },
@@ -490,6 +519,16 @@ export default function BillingPage() {
                   <option value="all">全部类型</option>
                   <option value="transfer">Transfer</option>
                 </select>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="all">全部状态</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="pending">Pending</option>
+                  <option value="failed">Failed</option>
+                </select>
               </div>
             </div>
             {filteredTransactions.length === 0 ? (
@@ -521,6 +560,17 @@ export default function BillingPage() {
                     </div>
                   </div>
                 ))}
+                {hasMoreTransactions && (
+                  <div className="pt-3 text-center">
+                    <button
+                      onClick={handleLoadMoreTransactions}
+                      disabled={transactionsLoading}
+                      className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                    >
+                      {transactionsLoading ? '加载中...' : `加载更多（已加载 ${transactions.length} / ${transactionsTotal}）`}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
