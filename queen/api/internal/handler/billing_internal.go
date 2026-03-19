@@ -817,8 +817,8 @@ func (h *BillingHandler) InternalConsumptionRecords(c *gin.Context) {
 
 	since := time.Now().AddDate(0, 0, -days)
 	var records []model.CreditTransaction
-	database.DB.Where("from_claw = ? AND type = ? AND status = ? AND created_at >= ?",
-		clawID, "consume", "confirmed", since).
+	database.DB.Where("from_claw = ? AND type = ? AND status = ? AND created_at >= ? AND remark NOT LIKE ?",
+		clawID, "consume", "confirmed", since, "router %").
 		Order("created_at DESC").Limit(500).
 		Find(&records)
 
