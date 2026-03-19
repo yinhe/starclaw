@@ -994,6 +994,24 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 
 	// /model <name> → switch model or provider
 	arg = strings.ToLower(arg)
+
+	// Handle provider/model format (e.g. "starai/qwen3-max" or "star-ai/deepseek-chat")
+	if parts := strings.SplitN(arg, "/", 2); len(parts) == 2 && parts[1] != "" {
+		provPart := parts[0]
+		modelPart := parts[1]
+		provNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(provPart)
+		// Find matching provider
+		for i := range models {
+			pLower := strings.ToLower(models[i].Provider)
+			pNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(pLower)
+			if pLower == provPart || pNorm == provNorm {
+				// Provider found — switch to it with model override
+				h.switchStarAIModel(c, userID, req, &models[i], modelPart)
+				return
+			}
+		}
+	}
+
 	// Normalize: strip hyphens/underscores for fuzzy matching (e.g. "starai" matches "star-ai")
 	argNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(arg)
 
