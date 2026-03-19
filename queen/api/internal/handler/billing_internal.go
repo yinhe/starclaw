@@ -55,6 +55,7 @@ func userToClawID(userID string) string {
 func (h *BillingHandler) InternalCheckBalance(c *gin.Context) {
 	var req struct {
 		UserID       string `json:"user_id" binding:"required"`
+		ClawID       string `json:"claw_id"`       // direct claw_id from node (preferred)
 		ResourceType string `json:"resource_type"` // tokens / video / image / music
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -62,7 +63,11 @@ func (h *BillingHandler) InternalCheckBalance(c *gin.Context) {
 		return
 	}
 
-	clawID := userToClawID(req.UserID)
+	// Prefer direct claw_id from the request; fall back to user_id mapping
+	clawID := req.ClawID
+	if clawID == "" {
+		clawID = userToClawID(req.UserID)
+	}
 	if clawID == "" {
 		// No claw_id found — fallback to UserBalance for backward compat
 		bal := ensureBalance(req.UserID)
@@ -91,11 +96,12 @@ func (h *BillingHandler) InternalCheckBalance(c *gin.Context) {
 func (h *BillingHandler) InternalConsume(c *gin.Context) {
 	var req struct {
 		UserID       string `json:"user_id" binding:"required"`
+		ClawID       string `json:"claw_id"`                          // direct claw_id from billing gateway (preferred)
 		ResourceType string `json:"resource_type" binding:"required"` // tokens / video / image / music
 		Quantity     int64  `json:"quantity" binding:"required"`
 		Amount       int64  `json:"amount"` // cost in 分, if 0 auto-calculate
 		Remark       string `json:"remark"`
-		NodeID       string `json:"node_id"` // which Claw node
+		NodeID       string `json:"node_id"` // which Claw node (legacy)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
@@ -112,8 +118,14 @@ func (h *BillingHandler) InternalConsume(c *gin.Context) {
 		return
 	}
 
-	// Resolve user_id → claw_id
-	clawID := userToClawID(req.UserID)
+	// Prefer direct claw_id from the request; fall back to node_id then user_id mapping
+	clawID := req.ClawID
+	if clawID == "" {
+		clawID = req.NodeID
+	}
+	if clawID == "" {
+		clawID = userToClawID(req.UserID)
+	}
 	if clawID == "" {
 		// No claw_id — fallback to legacy UserBalance deduction
 		h.legacyConsume(c, req.UserID, amountFen, req.ResourceType, req.Quantity, req.Remark)

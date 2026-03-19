@@ -16,6 +16,7 @@ import (
 type QueenClient struct {
 	queenURL  string
 	nodeToken string
+	clawID    string // this node's claw_id, sent in billing requests
 	httpC     *http.Client
 	enabled   bool
 
@@ -33,11 +34,12 @@ type partnerCacheEntry struct {
 const partnerCacheTTL = 5 * time.Minute
 
 // NewQueenClient creates a new Queen API client for billing gateway.
-func NewQueenClient(queenURL, nodeToken string) *QueenClient {
+func NewQueenClient(queenURL, nodeToken, clawID string) *QueenClient {
 	enabled := queenURL != "" && nodeToken != ""
 	qc := &QueenClient{
 		queenURL:     queenURL,
 		nodeToken:    nodeToken,
+		clawID:       clawID,
 		httpC:        &http.Client{Timeout: 5 * time.Second},
 		enabled:      enabled,
 		partnerCache: make(map[string]*partnerCacheEntry),
@@ -59,7 +61,7 @@ func (qc *QueenClient) CheckBalance(userID string) (bool, int64, error) {
 		return true, 0, nil
 	}
 
-	body, _ := json.Marshal(map[string]string{"user_id": userID})
+	body, _ := json.Marshal(map[string]string{"user_id": userID, "claw_id": qc.clawID})
 	req, _ := http.NewRequest("POST", qc.queenURL+"/internal/billing/check", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Node-Token", qc.nodeToken)
@@ -87,6 +89,7 @@ func (qc *QueenClient) Consume(userID, resourceType string, quantity int64, rema
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"user_id":       userID,
+		"claw_id":       qc.clawID,
 		"resource_type": resourceType,
 		"quantity":      quantity,
 		"remark":        remark,

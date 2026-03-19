@@ -178,7 +178,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	if queenNodeToken == "" {
 		queenNodeToken = cfg.JWT.Secret
 	}
-	queenClient := billing.NewQueenClient(cfg.Swarm.QueenURL, queenNodeToken)
+	queenClient := billing.NewQueenClient(cfg.Swarm.QueenURL, queenNodeToken, identity.NodeID)
 	billingGW := billing.NewGateway(db, queenClient, identity.NodeID)
 	if billingGW.IsEnabled() {
 		toolRegistry.SetExecuteHook(billingGW.ExecuteHook)
