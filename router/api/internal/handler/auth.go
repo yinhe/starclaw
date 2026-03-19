@@ -3,10 +3,12 @@ package handler
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw-router/internal/billing"
 	"github.com/yinhe/starclaw-router/internal/middleware"
 	"github.com/yinhe/starclaw-router/internal/model"
 	"golang.org/x/crypto/bcrypt"
@@ -19,10 +21,16 @@ type AuthHandler struct {
 	db          *gorm.DB
 	jwtSecret   string
 	expireHours int
+	queenCredit *billing.QueenCreditClient
 }
 
 func NewAuthHandler(db *gorm.DB, jwtSecret string, expireHours int) *AuthHandler {
 	return &AuthHandler{db: db, jwtSecret: jwtSecret, expireHours: expireHours}
+}
+
+// SetQueenCredit enables star energy display in profile for Claw-authenticated users.
+func (h *AuthHandler) SetQueenCredit(qc *billing.QueenCreditClient) {
+	h.queenCredit = qc
 }
 
 type registerRequest struct {
@@ -288,17 +296,31 @@ func (h *AuthHandler) Profile(c *gin.Context) {
 	var keyCount int64
 	h.db.Model(&model.APIKey{}).Where("user_id = ?", userID).Count(&keyCount)
 
+	userInfo := gin.H{
+		"id":         user.ID,
+		"email":      user.Email,
+		"phone":      user.Phone,
+		"name":       user.Name,
+		"claw_id":    user.ClawID,
+		"balance":    user.Balance,
+		"free_quota": user.FreeQuota,
+		"status":     user.Status,
+		"created_at": user.CreatedAt,
+	}
+
+	// Fetch star energy from Queen if user has a Claw address
+	if user.ClawID != "" && h.queenCredit != nil && h.queenCredit.Enabled() {
+		if bal, err := h.queenCredit.GetBalance(user.ClawID); err == nil {
+			userInfo["star_energy"] = bal.Balance                            // internal units (1⚡ = 10000)
+			userInfo["star_energy_display"] = float64(bal.Balance) / 10000.0 // display ⚡
+			userInfo["star_status"] = bal.Status
+		} else {
+			log.Printf("[star-ai] queen balance check failed for %s: %v", user.ClawID, err)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"user": gin.H{
-			"id":         user.ID,
-			"email":      user.Email,
-			"phone":      user.Phone,
-			"name":       user.Name,
-			"balance":    user.Balance,
-			"free_quota": user.FreeQuota,
-			"status":     user.Status,
-			"created_at": user.CreatedAt,
-		},
+		"user":          userInfo,
 		"api_key_count": keyCount,
 	})
 }

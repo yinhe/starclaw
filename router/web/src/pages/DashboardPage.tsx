@@ -3,7 +3,7 @@ import { Zap, Key, BarChart3, Coins } from 'lucide-react';
 import { dash } from '../lib/api';
 
 export default function DashboardPage() {
-  const [profile, setProfile] = useState<{ user: { name: string; email: string; balance: number; free_quota: number; created_at: string }; api_key_count: number } | null>(null);
+  const [profile, setProfile] = useState<{ user: { name: string; email: string; claw_id?: string; balance: number; free_quota: number; star_energy?: number; star_energy_display?: number; star_status?: string; created_at: string }; api_key_count: number } | null>(null);
   const [usage, setUsage] = useState<{ total_tokens: number; total_cost: number; total_requests: number } | null>(null);
 
   useEffect(() => {
@@ -14,13 +14,22 @@ export default function DashboardPage() {
   const fmtYuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
   const fmtCost = (cents: number) => `¥${(cents / 100).toFixed(4)}`;
 
+  const hasStarEnergy = profile?.user.star_energy_display != null;
+  const balanceLabel = hasStarEnergy ? '星能' : '余额';
+  const balanceValue = hasStarEnergy
+    ? `${profile!.user.star_energy_display!.toFixed(1)} ⚡`
+    : profile ? fmtYuan(profile.user.balance) : '...';
+  const balanceSub = hasStarEnergy
+    ? (profile?.user.star_status === 'active' ? '充沛' : profile?.user.star_status || '')
+    : profile ? `免费额度: ${fmtYuan(profile.user.free_quota)}` : '';
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         {profile && (
           <p className="text-gray-400 text-sm mt-1">
-            欢迎，{profile.user.name}
+            欢迎，{profile.user.name}{profile.user.claw_id ? ` (${profile.user.claw_id.slice(0, 15)}...)` : ''}
           </p>
         )}
       </div>
@@ -28,11 +37,11 @@ export default function DashboardPage() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          icon={<Coins className="w-5 h-5 text-green-400" />}
-          label="余额"
-          value={profile ? fmtYuan(profile.user.balance) : '...'}
-          sub={profile ? `免费额度: ${fmtYuan(profile.user.free_quota)}` : ''}
-          color="green"
+          icon={hasStarEnergy ? <Zap className="w-5 h-5 text-yellow-400" /> : <Coins className="w-5 h-5 text-green-400" />}
+          label={balanceLabel}
+          value={balanceValue}
+          sub={balanceSub}
+          color={hasStarEnergy ? 'amber' : 'green'}
         />
         <StatCard
           icon={<Key className="w-5 h-5 text-blue-400" />}

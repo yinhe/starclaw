@@ -85,6 +85,9 @@ func main() {
 
 	// ── Auth routes (no auth required) ──
 	authHandler := handler.NewAuthHandler(db, cfg.JWT.Secret, cfg.JWT.ExpireHours)
+	if queenCredit.Enabled() {
+		authHandler.SetQueenCredit(queenCredit)
+	}
 	r.POST("/auth/register", authHandler.Register)
 	r.POST("/auth/login", authHandler.Login)
 
