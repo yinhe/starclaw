@@ -326,11 +326,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	result, err := PollFalStatus(apiKey, endpoint, requestID, 3*time.Minute)
 	if err != nil {
 		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
-		return toJSON(map[string]interface{}{
-			"action":  "generate_image",
-			"status":  "failed",
-			"message": "图片生成失败: " + err.Error(),
-		}), nil
+		return "", fmt.Errorf("图片生成失败: %v", err)
 	}
 
 	// Extract image URL from result

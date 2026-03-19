@@ -142,11 +142,16 @@ func (g *Gateway) ExecuteHook(ctx context.Context, t tool.Tool, name, args strin
 	elapsed := time.Since(start)
 
 	// ── After: Calculate cost + settle ──
-	subType := extractSubType(name, args)
-	price := g.getPrice(name, subType)
+	// Only charge for successful executions — failed tool calls are free
+	if execErr == nil {
+		subType := extractSubType(name, args)
+		price := g.getPrice(name, subType)
 
-	if price.UpstreamCNY > 0 {
-		go g.settle(ctx, userID, name, subType, price, elapsed, execErr)
+		if price.UpstreamCNY > 0 {
+			go g.settle(ctx, userID, name, subType, price, elapsed, execErr)
+		}
+	} else {
+		log.Printf("[billing-gateway] tool %s failed, not charging: %v", name, execErr)
 	}
 
 	return result, execErr
@@ -210,24 +215,24 @@ func (g *Gateway) settle(ctx context.Context, userID, toolName, subType string, 
 	convID, _ := ctx.Value(tool.CtxKeyConversationID).(string)
 
 	record := &ToolUsageRecord{
-		UserID:         userID,
-		ConversationID: convID,
-		ClawID:         g.clawID,
-		ToolName:       toolName,
-		SubType:        subType,
-		ResourceType:   price.ResourceType,
-		CostFen:        costFen,
-		UpstreamFen:    int64(upstream * 100),
-		MarginFen:      marginFen,
-		CityPartnerID:  cityID,
-		CorePartnerID:  coreID,
-		CityShareFen:   cityAmount,
-		CoreShareFen:   coreAmount,
+		UserID:           userID,
+		ConversationID:   convID,
+		ClawID:           g.clawID,
+		ToolName:         toolName,
+		SubType:          subType,
+		ResourceType:     price.ResourceType,
+		CostFen:          costFen,
+		UpstreamFen:      int64(upstream * 100),
+		MarginFen:        marginFen,
+		CityPartnerID:    cityID,
+		CorePartnerID:    coreID,
+		CityShareFen:     cityAmount,
+		CoreShareFen:     coreAmount,
 		PlatformShareFen: platformAmount,
 		InvestorShareFen: investorAmount,
-		DurationMs:     elapsed.Milliseconds(),
-		Success:        success,
-		ErrorMsg:       errMsg,
+		DurationMs:       elapsed.Milliseconds(),
+		Success:          success,
+		ErrorMsg:         errMsg,
 	}
 
 	if g.db != nil {
