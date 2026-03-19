@@ -35,7 +35,7 @@ func TestCalculateCost_ChatModel(t *testing.T) {
 		t.Error("expected marked-up cost > upstream cost")
 	}
 
-	t.Logf("openai/gpt-4o: 1000+500 tokens → cost=%d分 upstream=%d分", costCents, upstreamCents)
+	t.Logf("openai/gpt-4o: 1000+500 tokens → cost=%.4f分 upstream=%.4f分", costCents, upstreamCents)
 }
 
 func TestCalculateCost_DomesticModel(t *testing.T) {
@@ -52,7 +52,7 @@ func TestCalculateCost_DomesticModel(t *testing.T) {
 		t.Error("expected marked-up cost > upstream cost")
 	}
 
-	t.Logf("qwen/qwen-max: 1000+500 tokens → cost=%d分 upstream=%d分", costCents, upstreamCents)
+	t.Logf("qwen/qwen-max: 1000+500 tokens → cost=%.4f分 upstream=%.4f分", costCents, upstreamCents)
 }
 
 func TestCalculateCost_ImageModel(t *testing.T) {
@@ -69,7 +69,7 @@ func TestCalculateCost_ImageModel(t *testing.T) {
 		t.Error("expected marked-up cost > upstream cost")
 	}
 
-	t.Logf("fal/flux-pro: per call → cost=%d分 upstream=%d分", costCents, upstreamCents)
+	t.Logf("fal/flux-pro: per call → cost=%.4f分 upstream=%.4f分", costCents, upstreamCents)
 }
 
 func TestCalculateCost_UnknownModel(t *testing.T) {
@@ -79,6 +79,6 @@ func TestCalculateCost_UnknownModel(t *testing.T) {
 	costCents, upstreamCents := meter.CalculateCost("unknown/model", 1000, 500)
 
 	if costCents != 0 || upstreamCents != 0 {
-		t.Errorf("expected 0 cost for unknown model, got cost=%d upstream=%d", costCents, upstreamCents)
+		t.Errorf("expected 0 cost for unknown model, got cost=%.4f upstream=%.4f", costCents, upstreamCents)
 	}
 }

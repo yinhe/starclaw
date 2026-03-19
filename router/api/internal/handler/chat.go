@@ -26,6 +26,13 @@ type ChatHandler struct {
 	meter    *billing.Meter
 }
 
+// usageInfo holds actual token usage parsed from upstream response
+type usageInfo struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
 func NewChatHandler(db *gorm.DB, proxyClient *proxy.Client, reg *provider.Registry, meter *billing.Meter) *ChatHandler {
 	return &ChatHandler{db: db, proxy: proxyClient, registry: reg, meter: meter}
 }
@@ -88,10 +95,10 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	// Pre-calculate estimated cost and set headers so Claw can display consumption
 	estPrompt := 500
 	estCompletion := 200
-	costCents, _ := h.meter.CalculateCost(req.Model, estPrompt, estCompletion)
-	starUnits := h.meter.CalculateStarCost(costCents)
+	costEst, _ := h.meter.CalculateCost(req.Model, estPrompt, estCompletion)
+	starUnits := h.meter.CalculateStarCost(costEst)
 	c.Header("X-StarAI-Model", req.Model)
-	c.Header("X-StarAI-Cost-Cents", fmt.Sprintf("%d", costCents))
+	c.Header("X-StarAI-Cost-Yuan", fmt.Sprintf("%.4f", costEst/100.0))
 	c.Header("X-StarAI-Cost-Energy", fmt.Sprintf("%.1f", float64(starUnits)/10000.0))
 	if authType == "claw" && h.meter.QueenCredit() != nil && h.meter.QueenCredit().Enabled() {
 		if bal, err := h.meter.QueenCredit().GetBalance(clawID); err == nil {
@@ -100,8 +107,10 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 		}
 	}
 
+	var usage *usageInfo
+
 	if provider.IsDomestic(provSlug) {
-		h.forwardDomestic(c, provSlug, modelName, bodyBytes, req.Stream)
+		usage = h.forwardDomestic(c, provSlug, modelName, bodyBytes, req.Stream)
 	} else if _, ok := h.registry.GetProvider(provSlug); ok {
 		via = "proxy"
 		// Proxy expects raw provider model name (e.g. gpt-4o-mini), not "openai/gpt-4o-mini"
@@ -124,7 +133,7 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	// Record usage + billing (async)
 	// Use "provider/model" format for cost lookup (matches YAML registry keys)
 	fullModel := provSlug + "/" + modelName
-	go h.recordAndBill(authType, userID, apiKeyID, clawID, provSlug, fullModel, "/v1/chat/completions", via, time.Since(start))
+	go h.recordAndBill(authType, userID, apiKeyID, clawID, provSlug, fullModel, "/v1/chat/completions", via, time.Since(start), usage)
 }
 
 // Embeddings handles POST /v1/embeddings
@@ -149,12 +158,13 @@ func (h *ChatHandler) Embeddings(c *gin.Context) {
 	}
 }
 
-// forwardDomestic sends request directly to domestic LLM provider
-func (h *ChatHandler) forwardDomestic(c *gin.Context, provSlug, modelName string, body []byte, stream bool) {
+// forwardDomestic sends request directly to domestic LLM provider.
+// Returns actual token usage parsed from the upstream response (nil if parsing fails).
+func (h *ChatHandler) forwardDomestic(c *gin.Context, provSlug, modelName string, body []byte, stream bool) *usageInfo {
 	prov, ok := h.registry.GetProvider(provSlug)
 	if !ok {
 		c.JSON(http.StatusBadRequest, openAIError("unsupported domestic provider", "invalid_request_error"))
-		return
+		return nil
 	}
 	baseURL := prov.Endpoint
 
@@ -183,7 +193,7 @@ func (h *ChatHandler) forwardDomestic(c *gin.Context, provSlug, modelName string
 	upstreamReq, err := http.NewRequestWithContext(c.Request.Context(), "POST", url, bytes.NewReader(rewritten))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, openAIError("failed to create upstream request", "server_error"))
-		return
+		return nil
 	}
 
 	apiKey := h.registry.GetAPIKey(provSlug)
@@ -194,7 +204,7 @@ func (h *ChatHandler) forwardDomestic(c *gin.Context, provSlug, modelName string
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, openAIError("upstream provider unreachable: "+err.Error(), "server_error"))
-		return
+		return nil
 	}
 	defer resp.Body.Close()
 
@@ -207,7 +217,9 @@ func (h *ChatHandler) forwardDomestic(c *gin.Context, provSlug, modelName string
 	c.Writer.WriteHeader(resp.StatusCode)
 
 	if stream {
-		// Stream SSE chunks
+		// Stream SSE chunks, capture last data line for usage extraction
+		var lastDataLine string
+		var partial string // buffer for incomplete lines across reads
 		if f, ok := c.Writer.(http.Flusher); ok {
 			buf := make([]byte, 4096)
 			for {
@@ -215,15 +227,60 @@ func (h *ChatHandler) forwardDomestic(c *gin.Context, provSlug, modelName string
 				if n > 0 {
 					c.Writer.Write(buf[:n])
 					f.Flush()
+					// Track last SSE data line
+					partial += string(buf[:n])
+					for {
+						idx := strings.Index(partial, "\n")
+						if idx < 0 {
+							break
+						}
+						line := strings.TrimSpace(partial[:idx])
+						partial = partial[idx+1:]
+						if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
+							lastDataLine = line[6:]
+						}
+					}
 				}
 				if err != nil {
 					break
 				}
 			}
 		}
-	} else {
-		io.Copy(c.Writer, resp.Body)
+		return parseUsageFromJSON(lastDataLine)
 	}
+
+	// Non-streaming: read full body, parse usage, then write to client
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+	c.Writer.Write(respBody)
+	return parseUsageFromJSON(string(respBody))
+}
+
+// parseUsageFromJSON extracts token usage from an OpenAI-compatible JSON response
+func parseUsageFromJSON(data string) *usageInfo {
+	if data == "" {
+		return nil
+	}
+	var resp struct {
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal([]byte(data), &resp); err != nil {
+		return nil
+	}
+	if resp.Usage.TotalTokens > 0 || resp.Usage.PromptTokens > 0 {
+		return &usageInfo{
+			PromptTokens:     resp.Usage.PromptTokens,
+			CompletionTokens: resp.Usage.CompletionTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
+		}
+	}
+	return nil
 }
 
 // forwardToProxy sends request to the Node.js overseas relay proxy
@@ -238,15 +295,19 @@ func (h *ChatHandler) forwardToProxy(c *gin.Context, path string, body []byte) {
 	}
 }
 
-func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug, modelName, endpoint, via string, duration time.Duration) {
+func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug, modelName, endpoint, via string, duration time.Duration, usage *usageInfo) {
 	// Record inference metrics
 	middleware.InferenceLatency.WithLabelValues(provSlug, modelName).Observe(duration.Seconds())
 
-	// Estimate tokens (TODO: parse from upstream response for accuracy)
-	estPrompt := 500
-	estCompletion := 200
+	// Use actual tokens from upstream response, fall back to estimates
+	promptTokens := 500
+	completionTokens := 200
+	if usage != nil {
+		promptTokens = usage.PromptTokens
+		completionTokens = usage.CompletionTokens
+	}
 
-	costCents, upstreamCents := h.meter.CalculateCost(modelName, estPrompt, estCompletion)
+	costCents, upstreamCents := h.meter.CalculateCost(modelName, promptTokens, completionTokens)
 
 	record := &model.UsageRecord{
 		UserID:           userID,
@@ -254,9 +315,9 @@ func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug
 		Provider:         provSlug,
 		Model:            modelName,
 		Endpoint:         endpoint,
-		PromptTokens:     estPrompt,
-		CompletionTokens: estCompletion,
-		TotalTokens:      estPrompt + estCompletion,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      promptTokens + completionTokens,
 		Duration:         int(duration.Milliseconds()),
 		Via:              via,
 		Status:           "ok",
@@ -272,7 +333,7 @@ func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug
 		} else {
 			middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via+"/claw", "ok").Inc()
 			middleware.BillingDeductionsTotal.WithLabelValues("star_energy").Inc()
-			middleware.BillingDeductionAmount.WithLabelValues("star_energy").Add(float64(costCents))
+			middleware.BillingDeductionAmount.WithLabelValues("star_energy").Add(costCents)
 		}
 	} else {
 		// Traditional ¥ balance billing
@@ -286,7 +347,7 @@ func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug
 			} else {
 				middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via, "ok").Inc()
 				middleware.BillingDeductionsTotal.WithLabelValues("cny").Inc()
-				middleware.BillingDeductionAmount.WithLabelValues("cny").Add(float64(costCents))
+				middleware.BillingDeductionAmount.WithLabelValues("cny").Add(costCents)
 			}
 		} else {
 			h.db.Create(record)

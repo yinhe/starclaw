@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"log"
+	"math"
 	"strings"
 
 	"github.com/yinhe/starclaw-router/internal/model"
@@ -58,7 +59,8 @@ func (m *Meter) CheckBalance(userID string) error {
 
 // CalculateCost returns the cost in cents (分) for a given model usage.
 // modelName can be "provider/model" (preferred) or bare "model" (fallback scans all entries).
-func (m *Meter) CalculateCost(modelName string, promptTokens, completionTokens int) (costCents int64, upstreamCents int64) {
+// Returns float64 to support sub-cent precision for cheap models.
+func (m *Meter) CalculateCost(modelName string, promptTokens, completionTokens int) (costCents float64, upstreamCents float64) {
 	entry, ok := m.registry.GetModel(modelName)
 	if !ok {
 		// Fallback: try matching bare model name against all registered models
@@ -88,7 +90,7 @@ func (m *Meter) CalculateCost(modelName string, promptTokens, completionTokens i
 }
 
 // calculateTokenCost for token-based models (chat, reasoning, embedding)
-func (m *Meter) calculateTokenCost(mc provider.ModelConfig, promptTokens, completionTokens int) (costCents, upstreamCents int64) {
+func (m *Meter) calculateTokenCost(mc provider.ModelConfig, promptTokens, completionTokens int) (costCents, upstreamCents float64) {
 	var upstreamCNY float64
 
 	if mc.InputPriceCNY > 0 || mc.OutputPriceCNY > 0 {
@@ -102,15 +104,15 @@ func (m *Meter) calculateTokenCost(mc provider.ModelConfig, promptTokens, comple
 		upstreamCNY = upstreamUSD * m.rate
 	}
 
-	// Convert to cents (分): 1 CNY = 100 分
-	upstreamCents = int64(upstreamCNY * 100)
-	costCents = int64(upstreamCNY * 100 * m.markup)
+	// Convert to cents (分): 1 CNY = 100 分 (float64 preserves sub-cent precision)
+	upstreamCents = upstreamCNY * 100
+	costCents = upstreamCNY * 100 * m.markup
 
 	return costCents, upstreamCents
 }
 
 // calculateCallCost for per-call models (image, video, tts, etc.)
-func (m *Meter) calculateCallCost(mc provider.ModelConfig) (costCents, upstreamCents int64) {
+func (m *Meter) calculateCallCost(mc provider.ModelConfig) (costCents, upstreamCents float64) {
 	var upstreamCNY float64
 
 	if mc.PricePerCallCNY > 0 {
@@ -121,8 +123,8 @@ func (m *Meter) calculateCallCost(mc provider.ModelConfig) (costCents, upstreamC
 		return 0, 0
 	}
 
-	upstreamCents = int64(upstreamCNY * 100)
-	costCents = int64(upstreamCNY * 100 * m.markup)
+	upstreamCents = upstreamCNY * 100
+	costCents = upstreamCNY * 100 * m.markup
 
 	return costCents, upstreamCents
 }
@@ -142,12 +144,12 @@ func (m *Meter) CheckClawBalance(clawID string) error {
 
 // CalculateStarCost converts a CNY cost (cents/分) to star energy units.
 // Rate: 1分 = 1 Star = 10000 units
-func (m *Meter) CalculateStarCost(costCents int64) int64 {
-	return costCents * CnyFenToStarUnits
+func (m *Meter) CalculateStarCost(costCents float64) int64 {
+	return int64(math.Round(costCents * CnyFenToStarUnits))
 }
 
 // DeductClaw deducts star energy from a claw via Queen's internal API.
-func (m *Meter) DeductClaw(clawID string, costCents int64, modelName, endpoint string, record *model.UsageRecord) error {
+func (m *Meter) DeductClaw(clawID string, costCents float64, modelName, endpoint string, record *model.UsageRecord) error {
 	if m.queenCredit == nil || !m.queenCredit.Enabled() {
 		return fmt.Errorf("star energy billing not configured")
 	}
@@ -178,7 +180,12 @@ func (m *Meter) DeductClaw(clawID string, costCents int64, modelName, endpoint s
 }
 
 // Deduct subtracts cost from user balance (tries free quota first, then balance)
-func (m *Meter) Deduct(userID string, costCents, upstreamCents int64, record *model.UsageRecord) error {
+// costCents/upstreamCents are in 分 (float64 for sub-cent precision).
+// Balance deduction rounds up to nearest 分 (minimum charge ¥0.01 per billable request).
+func (m *Meter) Deduct(userID string, costCents, upstreamCents float64, record *model.UsageRecord) error {
+	// Round up to nearest 分 for actual balance deduction (balance is stored as int64 分)
+	deductFen := int64(math.Ceil(costCents))
+
 	return m.db.Transaction(func(tx *gorm.DB) error {
 		var user model.User
 		if err := tx.Where("id = ?", userID).First(&user).Error; err != nil {
@@ -186,17 +193,17 @@ func (m *Meter) Deduct(userID string, costCents, upstreamCents int64, record *mo
 		}
 
 		// Try free quota first
-		if user.FreeQuota >= costCents {
-			if err := tx.Model(&user).Update("free_quota", gorm.Expr("free_quota - ?", costCents)).Error; err != nil {
+		if user.FreeQuota >= deductFen {
+			if err := tx.Model(&user).Update("free_quota", gorm.Expr("free_quota - ?", deductFen)).Error; err != nil {
 				return err
 			}
-		} else if user.Balance >= costCents {
-			if err := tx.Model(&user).Update("balance", gorm.Expr("balance - ?", costCents)).Error; err != nil {
+		} else if user.Balance >= deductFen {
+			if err := tx.Model(&user).Update("balance", gorm.Expr("balance - ?", deductFen)).Error; err != nil {
 				return err
 			}
 		} else {
 			// Partial: use remaining free quota + balance
-			remaining := costCents
+			remaining := deductFen
 			if user.FreeQuota > 0 {
 				remaining -= user.FreeQuota
 				tx.Model(&user).Update("free_quota", 0)
@@ -208,7 +215,7 @@ func (m *Meter) Deduct(userID string, costCents, upstreamCents int64, record *mo
 			}
 		}
 
-		// Update usage record with cost
+		// Update usage record with cost (full float precision for display)
 		record.CostCents = costCents
 		record.UpstreamCost = upstreamCents
 		if err := tx.Create(record).Error; err != nil {

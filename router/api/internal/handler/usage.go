@@ -40,7 +40,7 @@ func (h *UsageHandler) Query(c *gin.Context) {
 
 	// Summary
 	var totalTokens int64
-	var totalCost int64
+	var totalCost float64
 	var totalRequests int64
 	for _, r := range records {
 		totalTokens += int64(r.TotalTokens)

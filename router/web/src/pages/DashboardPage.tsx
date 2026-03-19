@@ -11,7 +11,8 @@ export default function DashboardPage() {
     dash.usage(7).then(setUsage).catch(console.error);
   }, []);
 
-  const fmt = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+  const fmtYuan = (cents: number) => `¥${(cents / 100).toFixed(2)}`;
+  const fmtCost = (cents: number) => `¥${(cents / 100).toFixed(4)}`;
 
   return (
     <div className="space-y-8">
@@ -29,8 +30,8 @@ export default function DashboardPage() {
         <StatCard
           icon={<Coins className="w-5 h-5 text-green-400" />}
           label="余额"
-          value={profile ? fmt(profile.user.balance) : '...'}
-          sub={profile ? `免费额度: ${fmt(profile.user.free_quota)}` : ''}
+          value={profile ? fmtYuan(profile.user.balance) : '...'}
+          sub={profile ? `免费额度: ${fmtYuan(profile.user.free_quota)}` : ''}
           color="green"
         />
         <StatCard
@@ -50,7 +51,7 @@ export default function DashboardPage() {
         <StatCard
           icon={<Zap className="w-5 h-5 text-amber-400" />}
           label="7 天消费"
-          value={usage ? fmt(usage.total_cost) : '...'}
+          value={usage ? fmtCost(usage.total_cost) : '...'}
           sub="API 调用费用"
           color="amber"
         />
