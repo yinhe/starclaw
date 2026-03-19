@@ -182,6 +182,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	billingGW := billing.NewGateway(db, queenClient, identity.NodeID)
 	if billingGW.IsEnabled() {
 		toolRegistry.SetExecuteHook(billingGW.ExecuteHook)
+		v1.SetBillingQueenClient(queenClient)
 		log.Printf("[router] Billing gateway enabled for node %s", identity.NodeID)
 	}
 

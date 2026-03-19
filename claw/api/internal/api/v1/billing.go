@@ -16,9 +16,23 @@ import (
 // When set, checkQuota and recordUsage will also call Queen API.
 var queenBilling *swarm.BillingClient
 
+// billingQueenClient is the billing gateway's QueenClient (set from router setup)
+var billingQueenClient billingChecker
+
+// billingChecker is the interface for checking balance via Queen
+type billingChecker interface {
+	CheckBalance(userID string) (bool, int64, error)
+	IsEnabled() bool
+}
+
 // SetQueenBilling sets the centralized billing client (called from router setup)
 func SetQueenBilling(bc *swarm.BillingClient) {
 	queenBilling = bc
+}
+
+// SetBillingQueenClient sets the billing gateway's queen client for balance queries
+func SetBillingQueenClient(c billingChecker) {
+	billingQueenClient = c
 }
 
 // Resource pricing (兀per unit)
@@ -96,9 +110,17 @@ func (h *BillingHandler) GetCurrentPlan(c *gin.Context) {
 	usage := h.getMonthUsage(tenant.ID, month)
 	cost := h.getMonthCost(tenant.ID, month)
 
+	// Use Queen balance as authoritative source if available
+	balance := tenant.Balance
+	if billingQueenClient != nil && billingQueenClient.IsEnabled() {
+		if _, queenBalance, err := billingQueenClient.CheckBalance(userID); err == nil {
+			balance = float64(queenBalance) // Queen returns balance in 分 (stars)
+		}
+	}
+
 	c.JSON(200, gin.H{
 		"tenant":  tenant,
-		"balance": tenant.Balance,
+		"balance": balance,
 		"usage":   usage,
 		"cost":    cost,
 		"period":  month,
