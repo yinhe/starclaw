@@ -39,13 +39,13 @@ export function LandingPage() {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-claw-950/30 via-transparent to-transparent" />
-        <div className="mx-auto max-w-6xl px-6 pt-24 pb-20 text-center relative">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-16 sm:pt-24 pb-16 sm:pb-20 text-center relative">
           <div className="inline-flex items-center gap-2 rounded-full border border-claw-500/30 bg-claw-500/10 px-4 py-1.5 text-sm text-claw-400 mb-8">
             <Zap size={14} />
             {t('hero.badge')}
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-tight">
+          <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold tracking-tight leading-tight">
             {t('hero.title1')}
             <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-claw-400 to-orange-400">
@@ -100,10 +100,10 @@ export function LandingPage() {
       </section>
 
       {/* Features Grid */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="text-center mb-12 md:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
               {t('features.title')}
             </h2>
             <p className="mt-4 text-gray-400 text-lg">
@@ -129,10 +129,10 @@ export function LandingPage() {
       </section>
 
       {/* Architecture */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="text-center mb-12 md:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
               {t('scale.title')}
             </h2>
             <p className="mt-4 text-gray-400 text-lg">
@@ -161,9 +161,9 @@ export function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-3xl px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
             {t('cta.title')}
           </h2>
           <p className="mt-4 text-gray-400 text-lg">

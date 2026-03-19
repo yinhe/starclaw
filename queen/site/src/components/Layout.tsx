@@ -142,8 +142,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1">{children}</main>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 py-12">
-        <div className="mx-auto max-w-6xl px-6">
+      <footer className="border-t border-white/10 py-8 md:py-12">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div>
               <h3 className="text-sm font-semibold text-white mb-3">{t('footer.product')}</h3>

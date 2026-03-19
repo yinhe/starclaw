@@ -97,8 +97,8 @@ export function DownloadPage() {
 
   return (
     <Layout>
-      <section className="py-20">
-        <div className="mx-auto max-w-4xl px-6">
+      <section className="py-12 md:py-20">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6">
           <div className="text-center mb-16">
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
               {t('dl.title')}
@@ -109,7 +109,7 @@ export function DownloadPage() {
           </div>
 
           {/* Spore One-Click — Hero */}
-          <div className="rounded-2xl border-2 border-claw-500/40 bg-gradient-to-br from-claw-500/[0.08] to-transparent p-8 md:p-10 mb-12">
+          <div className="rounded-2xl border-2 border-claw-500/40 bg-gradient-to-br from-claw-500/[0.08] to-transparent p-4 sm:p-8 md:p-10 mb-12">
             <div className="flex items-center gap-3 mb-6">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-claw-500/20 text-claw-400">
                 <Zap size={24} />
@@ -142,10 +142,10 @@ export function DownloadPage() {
                         <a
                           href={pkg.mirrorUrl}
                           download
-                          className="flex items-center justify-center gap-2 w-full h-12 px-4 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-sm transition-colors mb-1.5 whitespace-nowrap"
+                          className="flex items-center justify-center gap-2 w-full min-h-[48px] px-3 sm:px-4 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-xs sm:text-sm transition-colors mb-1.5"
                         >
                           <Download size={16} className="shrink-0" />
-                          <span className="truncate">{pkg.setupLabel}</span>
+                          <span className="truncate">Setup-{V}</span>
                           <span className="text-claw-200 text-xs shrink-0">({pkg.setupSize})</span>
                         </a>
                         <div className="flex items-center justify-center gap-2 mb-3">
@@ -159,8 +159,8 @@ export function DownloadPage() {
 
                     <div className="mt-auto">
                       <div className="text-xs text-gray-500 mb-1.5">{pkg.scriptLabel}</div>
-                      <div className="flex items-center gap-2 rounded-lg bg-gray-900/80 px-3 py-2">
-                        <code className="text-xs text-gray-400 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                      <div className="flex items-center gap-2 rounded-lg bg-gray-900/80 px-2 sm:px-3 py-2">
+                        <code className="text-[11px] sm:text-xs text-gray-400 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                           {pkg.scriptCmd}
                         </code>
                         <CopyButton text={pkg.scriptCmd} />
@@ -177,7 +177,7 @@ export function DownloadPage() {
           </div>
 
           {/* Docker Method */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 mb-8">
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:p-8 mb-8">
             <div className="flex items-center gap-3 mb-4">
               <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-claw-500/10 text-claw-400">
                 <Container size={20} />
@@ -201,7 +201,7 @@ export function DownloadPage() {
           </div>
 
           {/* Requirements */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 mb-16">
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:p-8 mb-16">
             <h2 className="text-xl font-semibold text-white mb-6">{t('dl.reqs')}</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div><div className="text-gray-500 mb-1">RAM</div><div className="text-white font-medium">2 GB+</div></div>

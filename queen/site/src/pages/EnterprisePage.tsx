@@ -37,7 +37,7 @@ export function EnterprisePage() {
           <p className="mt-6 text-lg text-gray-400 max-w-2xl mx-auto">
             {t('ent.desc')}
           </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
               href="mailto:hello@starclaw.me"
               className="inline-flex items-center gap-2 rounded-lg bg-claw-600 px-8 py-3.5 text-sm font-semibold text-white hover:bg-claw-500 transition-colors"
@@ -56,9 +56,9 @@ export function EnterprisePage() {
       </section>
 
       {/* Features */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-6xl px-6">
-          <h2 className="text-3xl font-bold tracking-tight text-center mb-16">{t('ent.features')}</h2>
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-12 md:mb-16">{t('ent.features')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map(f => (
               <div key={f.key} className="rounded-xl border border-white/10 bg-white/[0.02] p-6 hover:border-claw-500/30 transition-colors">
@@ -74,9 +74,9 @@ export function EnterprisePage() {
       </section>
 
       {/* Tech Stack */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-4xl px-6">
-          <h2 className="text-3xl font-bold tracking-tight text-center mb-12">{t('ent.stack')}</h2>
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-12">{t('ent.stack')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {STACK.map(s => (
               <div key={s.label} className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center">
@@ -92,9 +92,9 @@ export function EnterprisePage() {
       </section>
 
       {/* CTA */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-3xl px-6 text-center">
-          <h2 className="text-3xl font-bold tracking-tight">{t('ent.cta')}</h2>
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('ent.cta')}</h2>
           <p className="mt-4 text-gray-400 text-lg">{t('ent.cta.desc')}</p>
           <div className="mt-8">
             <a

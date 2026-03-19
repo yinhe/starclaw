@@ -45,7 +45,7 @@ export function StarAIPage() {
           <p className="mt-6 text-lg text-gray-400 max-w-2xl mx-auto">
             {t('ai.desc')}
           </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
               href="https://star-ai.net"
               target="_blank"
@@ -63,8 +63,8 @@ export function StarAIPage() {
       </section>
 
       {/* Features */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-5xl px-6">
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {FEATURES.map(f => (
               <div key={f.key} className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
@@ -80,9 +80,9 @@ export function StarAIPage() {
       </section>
 
       {/* How it works */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-4xl px-6">
-          <h2 className="text-3xl font-bold tracking-tight text-center mb-12">{t('ai.how')}</h2>
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-12">{t('ai.how')}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {STEPS.map((s, i) => (
               <div key={s} className="text-center">
@@ -97,14 +97,14 @@ export function StarAIPage() {
       </section>
 
       {/* Models */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-5xl px-6">
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tight">{t('ai.models')}</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('ai.models')}</h2>
             <p className="mt-4 text-gray-400">{t('ai.models.desc')}</p>
           </div>
-          <div className="rounded-xl border border-white/10 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-xl border border-white/10 overflow-x-auto -mx-6 px-6 md:mx-0 md:px-0">
+            <table className="w-full text-sm min-w-[540px]">
               <thead>
                 <tr className="border-b border-white/10 text-gray-400 text-left">
                   <th className="px-5 py-3 font-medium">Model</th>
@@ -138,13 +138,13 @@ export function StarAIPage() {
       </section>
 
       {/* API example */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-3xl px-6">
-          <h2 className="text-3xl font-bold tracking-tight text-center mb-8">
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-8">
             <Code2 className="inline w-8 h-8 text-amber-400 mr-2" />
             OpenAI-Compatible API
           </h2>
-          <div className="rounded-xl border border-white/10 bg-gray-900 p-6 font-mono text-sm overflow-x-auto">
+          <div className="rounded-xl border border-white/10 bg-gray-900 p-4 sm:p-6 font-mono text-xs sm:text-sm overflow-x-auto">
             <pre className="text-gray-300">
 {`import openai
 

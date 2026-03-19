@@ -90,30 +90,32 @@ export function DocsPage() {
       <section className="py-12">
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-col md:flex-row gap-8">
-            {/* Sidebar */}
+            {/* Sidebar — horizontal scroll on mobile, vertical on desktop */}
             <aside className="md:w-56 shrink-0">
-              <div className="sticky top-24 space-y-1">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-3">
+              <div className="sticky top-16 md:top-24">
+                <div className="hidden md:block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-3">
                   {t('docs.title')}
                 </div>
-                {SECTION_IDS.map((id) => {
-                  const Icon = SECTION_ICONS[id]
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => setActive(id)}
-                      className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-left ${
-                        active === id
-                          ? 'bg-claw-500/10 text-claw-400'
-                          : 'text-gray-400 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <Icon size={16} />
-                      {docs[id].title}
-                      {active === id && <ChevronRight size={14} className="ml-auto" />}
-                    </button>
-                  )
-                })}
+                <div className="flex md:flex-col gap-1.5 md:gap-1 overflow-x-auto pb-3 md:pb-0 md:overflow-visible -mx-6 px-6 md:mx-0 md:px-0 scrollbar-thin">
+                  {SECTION_IDS.map((id) => {
+                    const Icon = SECTION_ICONS[id]
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setActive(id)}
+                        className={`flex items-center gap-2 md:gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors text-left shrink-0 md:w-full ${
+                          active === id
+                            ? 'bg-claw-500/10 text-claw-400'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <Icon size={16} />
+                        {docs[id].title}
+                        {active === id && <ChevronRight size={14} className="ml-auto hidden md:block" />}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </aside>
 

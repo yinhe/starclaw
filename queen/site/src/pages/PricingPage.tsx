@@ -20,8 +20,8 @@ export function PricingPage() {
 
   return (
     <Layout>
-      <section className="py-24">
-        <div className="mx-auto max-w-6xl px-6">
+      <section className="py-16 md:py-24">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="text-center mb-16">
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight">{t('pricing.title')}</h1>
             <p className="mt-4 text-lg text-gray-400 max-w-2xl mx-auto">{t('pricing.desc')}</p>
@@ -76,9 +76,9 @@ export function PricingPage() {
       </section>
 
       {/* FAQ */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-3xl px-6">
-          <h2 className="text-3xl font-bold tracking-tight text-center mb-12">{t('pricing.faq')}</h2>
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-12">{t('pricing.faq')}</h2>
           <div className="space-y-3">
             {FAQ_KEYS.map(k => (
               <div key={k} className="rounded-xl border border-white/10 bg-white/[0.02]">
@@ -105,11 +105,11 @@ export function PricingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-24 border-t border-white/5">
-        <div className="mx-auto max-w-3xl px-6 text-center">
-          <h2 className="text-3xl font-bold tracking-tight">{t('cta.title')}</h2>
+      <section className="py-16 md:py-24 border-t border-white/5">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('cta.title')}</h2>
           <p className="mt-4 text-gray-400 text-lg">{t('cta.desc')}</p>
-          <div className="mt-8 flex items-center justify-center gap-4">
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               to="/download"
               className="inline-flex items-center gap-2 rounded-lg bg-claw-600 px-8 py-3 text-sm font-semibold text-white hover:bg-claw-500 transition-colors"
