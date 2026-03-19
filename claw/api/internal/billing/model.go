@@ -1,9 +1,22 @@
 package billing
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
 
 // ToolUsageRecord tracks every tool execution for billing and analytics.
 // Stored locally in Claw's database.
+// BeforeCreate generates a UUID for the record ID.
+func (r *ToolUsageRecord) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == "" {
+		r.ID = uuid.New().String()
+	}
+	return nil
+}
+
 type ToolUsageRecord struct {
 	ID               string    `json:"id" gorm:"type:varchar(36);primaryKey"`
 	UserID           string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
@@ -12,9 +25,9 @@ type ToolUsageRecord struct {
 	ToolName         string    `json:"tool_name" gorm:"type:varchar(50);index;not null"`
 	SubType          string    `json:"sub_type" gorm:"type:varchar(50)"`
 	ResourceType     string    `json:"resource_type" gorm:"type:varchar(30);index;not null"`
-	CostFen          int64     `json:"cost_fen" gorm:"default:0"`           // user pays (分)
-	UpstreamFen      int64     `json:"upstream_fen" gorm:"default:0"`       // upstream cost (分)
-	MarginFen        int64     `json:"margin_fen" gorm:"default:0"`         // margin = cost - upstream (分)
+	CostFen          int64     `json:"cost_fen" gorm:"default:0"`     // user pays (分)
+	UpstreamFen      int64     `json:"upstream_fen" gorm:"default:0"` // upstream cost (分)
+	MarginFen        int64     `json:"margin_fen" gorm:"default:0"`   // margin = cost - upstream (分)
 	CityPartnerID    string    `json:"city_partner_id" gorm:"type:varchar(36);index"`
 	CorePartnerID    string    `json:"core_partner_id" gorm:"type:varchar(36);index"`
 	CityShareFen     int64     `json:"city_share_fen" gorm:"default:0"`     // city partner share (分)
