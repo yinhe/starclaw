@@ -93,18 +93,23 @@ func (qc *QueenClient) CheckBalance(userID string) (bool, int64, error) {
 }
 
 // Consume deducts balance for resource usage on Queen.
-func (qc *QueenClient) Consume(userID, resourceType string, quantity int64, remark string) (int64, error) {
+// amountFen is the actual cost in 分; if > 0, Queen uses it directly instead of auto-calculating.
+func (qc *QueenClient) Consume(userID, resourceType string, quantity int64, amountFen int64, remark string) (int64, error) {
 	if !qc.enabled {
 		return 0, nil
 	}
 
-	body, _ := json.Marshal(map[string]interface{}{
+	payload := map[string]interface{}{
 		"user_id":       userID,
 		"claw_id":       qc.clawID,
 		"resource_type": resourceType,
 		"quantity":      quantity,
 		"remark":        remark,
-	})
+	}
+	if amountFen > 0 {
+		payload["amount"] = amountFen
+	}
+	body, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("POST", qc.queenURL+"/internal/billing/consume", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

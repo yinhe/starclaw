@@ -87,6 +87,8 @@ func defaultModelForProvider(p string) string {
 	switch p {
 	case "qwen":
 		return "qwen3-max"
+	case "star-ai":
+		return "qwen3-max"
 	case "openai":
 		return "gpt-4o"
 	case "anthropic":

@@ -39,10 +39,10 @@ func NewStarAIProvider(cfg StarAIConfig) *StarAIProvider {
 		}
 	}
 	inner.models = []string{
+		// ── Qwen3 / 3.5 (newest first) ──
+		"qwen3-max", "qwen3.5-plus", "qwen3.5-flash",
 		// ── Qwen 通用对话 (domestic) ──
 		"qwen-max", "qwen-plus", "qwen-turbo", "qwen-flash", "qwen-long",
-		// ── Qwen3 / 3.5 ──
-		"qwen3.5-plus", "qwen3.5-flash", "qwen3-max",
 		// ── QwQ 推理 ──
 		"qwq-plus", "qwq-max", "qwq-32b",
 		// ── Qwen 视觉 (VL) ──

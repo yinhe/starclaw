@@ -168,7 +168,7 @@ func (g *Gateway) settle(ctx context.Context, userID, toolName, subType string, 
 	// 1. Deduct from user balance (amount in 分)
 	costFen := int64(userCost * 100)
 	remark := fmt.Sprintf("%s(%s) upstream=¥%.3f", toolName, subType, upstream)
-	if _, err := g.queenClient.Consume(userID, price.ResourceType, 1, remark); err != nil {
+	if _, err := g.queenClient.Consume(userID, price.ResourceType, 1, costFen, remark); err != nil {
 		log.Printf("[billing-gateway] consume failed: user=%s tool=%s err=%v", userID, toolName, err)
 	}
 
