@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -183,8 +181,8 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 		"num_images": n,
 	}
 
-	// Submit to fal.ai queue
-	requestID, err := t.submitToFal(apiKey, endpoint, body)
+	// Submit to fal.ai queue (supports StarAI proxy)
+	requestID, err := SubmitToFal(apiKey, endpoint, body)
 	if err != nil {
 		return "", fmt.Errorf("failed to submit image generation: %v", err)
 	}
@@ -206,17 +204,50 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	}
 	t.db.Create(&record)
 
-	// Poll in background
-	go t.pollAndDownload(apiKey, endpoint, requestID, record.ID)
+	// Block and wait for result (up to 3 min) to prevent LLM hallucinating fake URLs
+	result, err := PollFalStatus(apiKey, endpoint, requestID, 3*time.Minute)
+	if err != nil {
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		return toJSON(map[string]interface{}{
+			"action":  "generate_image",
+			"status":  "failed",
+			"message": "图片生成失败: " + err.Error(),
+		}), nil
+	}
+
+	// Extract image URL from result
+	imageURL := extractFalImageURL(result)
+	if imageURL == "" {
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		return toJSON(map[string]interface{}{
+			"action":  "generate_image",
+			"status":  "failed",
+			"message": "图片生成完成但无法提取图片 URL",
+		}), nil
+	}
+
+	localURL := t.downloadImage(imageURL, record.ID)
+	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
+	if localURL != "" {
+		updates["local_url"] = localURL
+	}
+	t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(updates)
+
+	displayURL := localURL
+	if displayURL == "" {
+		displayURL = imageURL
+	}
+	log.Printf("[ImageTool] Image %s completed: %s", record.ID, displayURL)
 
 	return toJSON(map[string]interface{}{
-		"action":   "generate_image",
-		"status":   "submitted",
-		"image_id": record.ID,
-		"model":    args.Model,
-		"scene":    args.Scene,
-		"size":     args.Size,
-		"message":  fmt.Sprintf("图片生成已提交（模型: %s）。flux-schnell约10秒完成，用 check_status 或 list_images 查看进度。", args.Model),
+		"action":    "generate_image",
+		"status":    "succeeded",
+		"image_id":  record.ID,
+		"image_url": displayURL,
+		"model":     args.Model,
+		"scene":     args.Scene,
+		"size":      args.Size,
+		"message":   fmt.Sprintf("图片已生成完成！下载地址: %s", displayURL),
 	}), nil
 }
 
@@ -290,7 +321,7 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 			"num_images": 1,
 		}
 
-		requestID, err := t.submitToFal(apiKey, endpoint, body)
+		requestID, err := SubmitToFal(apiKey, endpoint, body)
 		if err != nil {
 			log.Printf("[ImageTool] batch: failed to submit %s: %v", scene, err)
 			continue
@@ -312,7 +343,7 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 		t.db.Create(&record)
 
 		// Poll in background
-		go t.pollAndDownload(apiKey, endpoint, requestID, record.ID)
+		go t.pollAndDownload(apiKey, endpoint, requestID, record.ID) // batch: background poll is OK
 
 		results = append(results, map[string]interface{}{
 			"image_id": record.ID,
@@ -333,143 +364,48 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 	}), nil
 }
 
-// submitToFal submits a request to fal.ai queue API and returns the request_id
-func (t *ImageTool) submitToFal(apiKey, endpoint string, body map[string]interface{}) (string, error) {
-	bodyBytes, _ := json.Marshal(body)
-	url := fmt.Sprintf("https://queue.fal.run/%s", endpoint)
-
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Key "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("fal API error (HTTP %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("failed to parse response: %s", string(respBody))
-	}
-
-	requestID, _ := result["request_id"].(string)
-	if requestID == "" {
-		return "", fmt.Errorf("no request_id in response: %s", string(respBody))
-	}
-	return requestID, nil
-}
-
-// pollAndDownload polls fal.ai queue status and downloads the result image
-func (t *ImageTool) pollAndDownload(apiKey, endpoint, requestID, recordID string) {
-	deadline := time.Now().Add(5 * time.Minute)
-	interval := 3 * time.Second
-
-	for time.Now().Before(deadline) {
-		time.Sleep(interval)
-
-		statusURL := fmt.Sprintf("https://queue.fal.run/%s/requests/%s/status", endpoint, requestID)
-		req, _ := http.NewRequest("GET", statusURL, nil)
-		req.Header.Set("Authorization", "Key "+apiKey)
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Printf("[ImageTool] Poll error for %s: %v", requestID, err)
-			continue
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		var status map[string]interface{}
-		json.Unmarshal(body, &status)
-
-		statusStr, _ := status["status"].(string)
-		log.Printf("[ImageTool] Poll %s: status=%s", requestID, statusStr)
-
-		if statusStr == "COMPLETED" {
-			// Fetch result
-			imageURL, err := t.fetchResult(apiKey, endpoint, requestID)
-			if err != nil {
-				log.Printf("[ImageTool] Failed to fetch result for %s: %v", requestID, err)
-				t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-					"status": "failed",
-				})
-				return
-			}
-
-			// Download image locally
-			localURL := t.downloadImage(imageURL, recordID)
-
-			updates := map[string]interface{}{
-				"status":    "succeeded",
-				"image_url": imageURL,
-			}
-			if localURL != "" {
-				updates["local_url"] = localURL
-			}
-			t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
-			log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
-			return
-		}
-
-		if statusStr != "IN_QUEUE" && statusStr != "IN_PROGRESS" {
-			t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-				"status": "failed",
-			})
-			return
-		}
-	}
-
-	// Timeout
-	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-		"status": "failed",
-	})
-}
-
-// fetchResult gets the completed result from fal.ai
-func (t *ImageTool) fetchResult(apiKey, endpoint, requestID string) (string, error) {
-	url := fmt.Sprintf("https://queue.fal.run/%s/requests/%s", endpoint, requestID)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Key "+apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("fal API error (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	var result map[string]interface{}
-	json.Unmarshal(body, &result)
-
+// extractFalImageURL extracts the image URL from a fal.ai completed result.
+func extractFalImageURL(result map[string]interface{}) string {
 	// Flux models: result.images[0].url
 	if images, ok := result["images"].([]interface{}); ok && len(images) > 0 {
 		if img, ok := images[0].(map[string]interface{}); ok {
 			if u, ok := img["url"].(string); ok && u != "" {
-				return u, nil
+				return u
 			}
 		}
 	}
 	// SD models: result.image.url
 	if img, ok := result["image"].(map[string]interface{}); ok {
 		if u, ok := img["url"].(string); ok && u != "" {
-			return u, nil
+			return u
 		}
 	}
+	return ""
+}
 
-	return "", fmt.Errorf("no image URL in result: %s", string(body))
+// pollAndDownload polls fal.ai queue status and downloads the result image (used by batch_generate)
+func (t *ImageTool) pollAndDownload(apiKey, endpoint, requestID, recordID string) {
+	result, err := PollFalStatus(apiKey, endpoint, requestID, 5*time.Minute)
+	if err != nil {
+		log.Printf("[ImageTool] Poll failed for %s: %v", requestID, err)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		return
+	}
+
+	imageURL := extractFalImageURL(result)
+	if imageURL == "" {
+		log.Printf("[ImageTool] No image URL in result for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		return
+	}
+
+	localURL := t.downloadImage(imageURL, recordID)
+	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
+	if localURL != "" {
+		updates["local_url"] = localURL
+	}
+	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
+	log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
 }
 
 // downloadImage downloads a remote image to /app/images/ and returns the local serve URL
