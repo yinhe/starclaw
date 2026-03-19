@@ -106,27 +106,28 @@ func (p *OpenAIProvider) Models() []string {
 
 func (p *OpenAIProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatChunk, error) {
 	req.Stream = false
-	body, err := p.doRequest(ctx, req)
+	resp, err := p.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer resp.Body.Close()
 
-	var resp openAIChatResponse
-	if err := json.NewDecoder(body).Decode(&resp); err != nil {
+	var apiResp openAIChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if len(resp.Choices) == 0 {
+	if len(apiResp.Choices) == 0 {
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	choice := resp.Choices[0]
+	choice := apiResp.Choices[0]
 	chunk := &ChatChunk{
-		ID:      resp.ID,
+		ID:      apiResp.ID,
 		Content: contentToString(choice.Message.Content),
 		Role:    choice.Message.Role,
 		Done:    true,
+		Meta:    extractStarAIMeta(resp),
 	}
 
 	if len(choice.Message.ToolCalls) > 0 {
@@ -140,11 +141,11 @@ func (p *OpenAIProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatC
 		}
 	}
 
-	if resp.Usage != nil {
+	if apiResp.Usage != nil {
 		chunk.Usage = &TokenUsage{
-			PromptTokens:     resp.Usage.PromptTokens,
-			CompletionTokens: resp.Usage.CompletionTokens,
-			TotalTokens:      resp.Usage.TotalTokens,
+			PromptTokens:     apiResp.Usage.PromptTokens,
+			CompletionTokens: apiResp.Usage.CompletionTokens,
+			TotalTokens:      apiResp.Usage.TotalTokens,
 		}
 	}
 
@@ -153,18 +154,20 @@ func (p *OpenAIProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatC
 
 func (p *OpenAIProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *ChatChunk, error) {
 	req.Stream = true
-	body, err := p.doRequest(ctx, req)
+	resp, err := p.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
 	ch := make(chan *ChatChunk, 32)
+	meta := extractStarAIMeta(resp)
 
 	go func() {
 		defer close(ch)
-		defer body.Close()
+		defer resp.Body.Close()
 
-		scanner := bufio.NewScanner(body)
+		firstChunk := true
+		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data: ") {
@@ -190,6 +193,12 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *Ch
 				ID:      streamResp.ID,
 				Content: contentToString(delta.Content),
 				Role:    delta.Role,
+			}
+
+			// Attach upstream meta to first content chunk
+			if firstChunk && len(meta) > 0 {
+				chunk.Meta = meta
+				firstChunk = false
 			}
 
 			if len(delta.ToolCalls) > 0 {
@@ -223,7 +232,23 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *Ch
 	return ch, nil
 }
 
-func (p *OpenAIProvider) doRequest(ctx context.Context, req *ChatRequest) (io.ReadCloser, error) {
+// extractStarAIMeta pulls X-StarAI-* headers from the upstream response.
+func extractStarAIMeta(resp *http.Response) map[string]string {
+	meta := make(map[string]string)
+	for key, vals := range resp.Header {
+		if strings.HasPrefix(key, "X-Starai-") || strings.HasPrefix(key, "X-StarAI-") {
+			if len(vals) > 0 {
+				meta[key] = vals[0]
+			}
+		}
+	}
+	if len(meta) == 0 {
+		return nil
+	}
+	return meta
+}
+
+func (p *OpenAIProvider) doRequest(ctx context.Context, req *ChatRequest) (*http.Response, error) {
 	payload := openAIChatRequest{
 		Model:       req.Model,
 		Messages:    toOpenAIMessages(req.Messages),
@@ -264,7 +289,7 @@ func (p *OpenAIProvider) doRequest(ctx context.Context, req *ChatRequest) (io.Re
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(errBody))
 	}
 
-	return resp.Body, nil
+	return resp, nil
 }
 
 func toOpenAIMessages(msgs []ChatMessage) []openAIMessage {

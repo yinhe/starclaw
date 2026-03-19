@@ -61,6 +61,7 @@ func Setup() *gin.Engine {
 	clawAuth := handler.NewClawAuthHandler()
 	v1.POST("/auth/claw/challenge", authRL.Middleware(), clawAuth.Challenge)
 	v1.POST("/auth/claw/verify", authRL.Middleware(), clawAuth.Verify)
+	v1.POST("/auth/claw-register", authRL.Middleware(), clawAuth.ClawRegister)
 
 	// ---- Marketplace (public read) ----
 	mp := &handler.MarketplaceHandler{}
@@ -239,6 +240,7 @@ func Setup() *gin.Engine {
 		cityPortal.GET("/clients", city.ListClients)
 		cityPortal.POST("/clients", writeRL.UserRateLimit(), city.AddClient)
 		cityPortal.PUT("/clients/:id", writeRL.UserRateLimit(), city.UpdateClient)
+		cityPortal.GET("/client-stats", city.ClientStats)
 		cityPortal.GET("/commissions", city.ListCommissions)
 		cityPortal.GET("/payouts", city.ListPayouts)
 		cityPortal.GET("/materials", city.ListMaterials)

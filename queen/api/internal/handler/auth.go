@@ -71,16 +71,20 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if req.RefCode != "" {
 		var partner model.CityPartner
 		if err := database.DB.Where("ref_code = ? AND status = ?", req.RefCode, "approved").First(&partner).Error; err == nil {
-			client := model.CityClient{
-				ID:          uuid.New().String(),
-				PartnerID:   partner.ID,
-				ClientName:  req.Nickname,
-				ContactInfo: req.Email + " " + req.Phone,
-				Status:      "lead",
-				RefSource:   req.RefCode,
+			// Prevent self-referral
+			if partner.UserID != user.ID {
+				client := model.CityClient{
+					ID:          uuid.New().String(),
+					PartnerID:   partner.ID,
+					UserID:      user.ID,
+					ClientName:  req.Nickname,
+					ContactInfo: req.Email + " " + req.Phone,
+					Status:      "lead",
+					RefSource:   req.RefCode,
+				}
+				database.DB.Create(&client)
+				database.DB.Model(&partner).UpdateColumn("total_clients", partner.TotalClients+1)
 			}
-			database.DB.Create(&client)
-			database.DB.Model(&partner).UpdateColumn("total_clients", partner.TotalClients+1)
 		}
 	}
 

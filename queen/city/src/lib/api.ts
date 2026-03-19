@@ -121,6 +121,19 @@ export interface Material {
   created_at: string;
 }
 
+export interface ClientStat {
+  id: string;
+  client_name: string;
+  user_id: string;
+  status: string;
+  total_recharge: number;
+  month_recharge: number;
+  total_energy: number;
+  month_energy: number;
+  energy_balance: number;
+  last_active: string;
+}
+
 export interface MonthlySummary {
   month: string;
   total: number;
@@ -149,6 +162,16 @@ export const city = {
 
   updateClient: (id: string, data: { client_name?: string; contact_info?: string; plan?: string; status?: string }) =>
     request<{ client: Client }>('PUT', `/city/clients/${id}`, data),
+
+  clientStats: () =>
+    request<{
+      clients: ClientStat[];
+      total_clients: number;
+      total_recharge: number;
+      month_recharge: number;
+      total_energy: number;
+      month_energy: number;
+    }>('GET', '/city/client-stats'),
 
   listCommissions: (month?: string) =>
     request<{ commissions: CommissionItem[]; monthly_summary: MonthlySummary[] }>(

@@ -168,6 +168,199 @@ func (h *ClawAuthHandler) Verify(c *gin.Context) {
 	})
 }
 
+// ClawRegister handles direct Claw node self-registration without browser challenge flow.
+// POST /auth/claw-register
+// The Claw node signs a message "claw-register|{node_id}|{timestamp}" with its Ed25519 key.
+// This creates a Queen user + NodeBinding + CreditAccount with welcome bonus,
+// and optionally links the user to a city partner via ref_code.
+func (h *ClawAuthHandler) ClawRegister(c *gin.Context) {
+	var req struct {
+		NodeID    string `json:"node_id" binding:"required"`
+		PublicKey string `json:"public_key" binding:"required"`
+		Signature string `json:"signature" binding:"required"`
+		Timestamp int64  `json:"timestamp" binding:"required"`
+		RefCode   string `json:"ref_code"`
+		Nickname  string `json:"nickname"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
+		return
+	}
+
+	// 1. Check timestamp freshness (within 5 minutes)
+	ts := time.Unix(req.Timestamp, 0)
+	if time.Since(ts).Abs() > 5*time.Minute {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "时间戳过期，请检查系统时间"})
+		return
+	}
+
+	// 2. Decode and validate public key
+	pubKeyBytes, err := hex.DecodeString(req.PublicKey)
+	if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的公钥格式"})
+		return
+	}
+
+	// 3. Verify node_id matches public key
+	hash := sha256.Sum256(pubKeyBytes)
+	expectedNodeID := "claw:" + hex.EncodeToString(hash[:])[:40]
+	if req.NodeID != expectedNodeID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "节点 ID 与公钥不匹配"})
+		return
+	}
+
+	// 4. Verify Ed25519 signature over "claw-register|{node_id}|{timestamp}"
+	message := fmt.Sprintf("claw-register|%s|%d", req.NodeID, req.Timestamp)
+	sigBytes, err := hex.DecodeString(req.Signature)
+	if err != nil || len(sigBytes) != ed25519.SignatureSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的签名格式"})
+		return
+	}
+	if !ed25519.Verify(pubKeyBytes, []byte(message), sigBytes) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "签名验证失败"})
+		return
+	}
+
+	// 5. Find or create user + binding
+	user := h.findOrCreateClawUser(req.NodeID, req.PublicKey)
+	if user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建账号失败"})
+		return
+	}
+
+	// 6. Update nickname if provided
+	if req.Nickname != "" && user.Nickname != req.Nickname {
+		database.DB.Model(user).Update("nickname", req.Nickname)
+		user.Nickname = req.Nickname
+	}
+
+	// 7. Referral attribution
+	if req.RefCode != "" {
+		h.attributeReferral(req.RefCode, user)
+	}
+
+	// 8. Auto-link partner whitelist
+	h.autoLinkPartner(req.NodeID, user)
+
+	// 9. Grant welcome bonus (only for new accounts with zero balance)
+	h.grantWelcomeBonus(req.NodeID)
+
+	// 10. Issue JWT
+	token, err := middleware.GenerateToken(user.ID, user.Role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
+		return
+	}
+
+	// Fetch credit balance
+	var acct model.CreditAccount
+	database.DB.Where("claw_id = ?", req.NodeID).First(&acct)
+
+	log.Printf("[claw-auth] Claw register success: %s → user %s (%s), ref=%s", req.NodeID, user.ID, user.Nickname, req.RefCode)
+
+	c.JSON(http.StatusOK, gin.H{
+		"token": token,
+		"user": gin.H{
+			"id":       user.ID,
+			"email":    user.Email,
+			"phone":    user.Phone,
+			"nickname": user.Nickname,
+			"avatar":   user.Avatar,
+			"role":     user.Role,
+			"claw_id":  req.NodeID,
+		},
+		"credit": gin.H{
+			"balance":        acct.Balance,
+			"balance_energy": float64(acct.Balance) / 10000.0,
+			"status":         acct.Status,
+		},
+	})
+}
+
+// attributeReferral links the user to a city partner via ref_code
+func (h *ClawAuthHandler) attributeReferral(refCode string, user *model.User) {
+	db := database.DB
+
+	// Check if user is already attributed
+	var existingClient model.CityClient
+	if err := db.Where("user_id = ?", user.ID).First(&existingClient).Error; err == nil {
+		return // already attributed
+	}
+
+	// Find approved partner by ref_code
+	var partner model.CityPartner
+	if err := db.Where("ref_code = ? AND status = ?", refCode, "approved").First(&partner).Error; err != nil {
+		log.Printf("[claw-auth] ref_code %s not found or not approved", refCode)
+		return
+	}
+
+	// Prevent self-referral
+	if partner.UserID == user.ID {
+		log.Printf("[claw-auth] blocked self-referral: user %s → partner %s", user.ID, partner.ID)
+		return
+	}
+
+	// Create CityClient linkage
+	client := model.CityClient{
+		ID:          uuid.New().String(),
+		PartnerID:   partner.ID,
+		UserID:      user.ID,
+		ClientName:  user.Nickname,
+		ContactInfo: user.Email + " " + user.Phone,
+		Status:      "lead",
+		RefSource:   refCode,
+	}
+	db.Create(&client)
+	db.Model(&partner).UpdateColumn("total_clients", partner.TotalClients+1)
+
+	log.Printf("[claw-auth] Referral attributed: user %s → partner %s (ref=%s)", user.ID, partner.ID, refCode)
+}
+
+// grantWelcomeBonus grants star energy welcome bonus to new accounts
+func (h *ClawAuthHandler) grantWelcomeBonus(clawID string) {
+	db := database.DB
+
+	var acct model.CreditAccount
+	if err := db.Where("claw_id = ?", clawID).First(&acct).Error; err != nil {
+		// Create account with welcome bonus
+		acct = model.CreditAccount{
+			ID:      uuid.New().String(),
+			ClawID:  clawID,
+			Balance: 100 * 10000, // 100 ⚡
+			TotalIn: 100 * 10000,
+			Status:  "active",
+		}
+		db.Create(&acct)
+		db.Create(&model.CreditTransaction{
+			ID:       uuid.New().String(),
+			FromClaw: "system",
+			ToClaw:   clawID,
+			Amount:   100 * 10000,
+			Type:     "grant",
+			Remark:   "welcome bonus 100⚡",
+			Status:   "confirmed",
+		})
+		log.Printf("[claw-auth] Welcome bonus 100⚡ granted to %s", clawID)
+	} else if acct.Balance == 0 && acct.TotalIn == 0 {
+		// Account exists but never received anything — grant bonus
+		db.Model(&acct).Updates(map[string]interface{}{
+			"balance":  100 * 10000,
+			"total_in": 100 * 10000,
+			"status":   "active",
+		})
+		db.Create(&model.CreditTransaction{
+			ID:       uuid.New().String(),
+			FromClaw: "system",
+			ToClaw:   clawID,
+			Amount:   100 * 10000,
+			Type:     "grant",
+			Remark:   "welcome bonus 100⚡",
+			Status:   "confirmed",
+		})
+		log.Printf("[claw-auth] Welcome bonus 100⚡ granted to %s (existing empty account)", clawID)
+	}
+}
+
 // autoLinkPartner checks if the claw_id is whitelisted as a core partner or city partner.
 // If found and not yet linked to a user, it binds the user and updates their role.
 func (h *ClawAuthHandler) autoLinkPartner(clawID string, user *model.User) {

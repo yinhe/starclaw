@@ -85,6 +85,21 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 
 	via := "direct"
 
+	// Pre-calculate estimated cost and set headers so Claw can display consumption
+	estPrompt := 500
+	estCompletion := 200
+	costCents, _ := h.meter.CalculateCost(req.Model, estPrompt, estCompletion)
+	starUnits := h.meter.CalculateStarCost(costCents)
+	c.Header("X-StarAI-Model", req.Model)
+	c.Header("X-StarAI-Cost-Cents", fmt.Sprintf("%d", costCents))
+	c.Header("X-StarAI-Cost-Energy", fmt.Sprintf("%.1f", float64(starUnits)/10000.0))
+	if authType == "claw" && h.meter.QueenCredit() != nil && h.meter.QueenCredit().Enabled() {
+		if bal, err := h.meter.QueenCredit().GetBalance(clawID); err == nil {
+			c.Header("X-StarAI-Balance", fmt.Sprintf("%d", bal.Balance))
+			c.Header("X-StarAI-Balance-Energy", fmt.Sprintf("%.1f", float64(bal.Balance)/10000.0))
+		}
+	}
+
 	if provider.IsDomestic(provSlug) {
 		h.forwardDomestic(c, provSlug, modelName, bodyBytes, req.Stream)
 	} else if _, ok := h.registry.GetProvider(provSlug); ok {

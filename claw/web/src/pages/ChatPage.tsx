@@ -81,6 +81,7 @@ export default function ChatPage() {
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const [agentStep, setAgentStep] = useState<{ step: string; detail: string; index: number } | null>(null)
+  const [costMeta, setCostMeta] = useState<{ model?: string; costEnergy?: string; balanceEnergy?: string } | null>(null)
   const [runningFileId, setRunningFileId] = useState<string | null>(null)
   const [fileRunResults, setFileRunResults] = useState<Record<string, { stdout: string; stderr: string; exit_code: number; duration: string } | null>>({})
 
@@ -879,6 +880,7 @@ export default function ChatPage() {
     setBrowserScreenshots([])
     setToolInteractions([])
     setAgentStep(null)
+    setCostMeta(null)
     setMentionedAgent(null)
     setShowMentionPopup(false)
     setLoading(true)
@@ -1039,6 +1041,14 @@ export default function ChatPage() {
               } else if (data.content) {
                 fullContent += data.content
                 appendStreamingContent(data.content)
+              }
+              // Capture upstream cost metadata (X-StarAI-* headers)
+              if (data.meta) {
+                setCostMeta({
+                  model: data.meta['X-Starai-Model'] || data.meta['X-StarAI-Model'],
+                  costEnergy: data.meta['X-Starai-Cost-Energy'] || data.meta['X-StarAI-Cost-Energy'],
+                  balanceEnergy: data.meta['X-Starai-Balance-Energy'] || data.meta['X-StarAI-Balance-Energy'],
+                })
               }
             } catch { /* skip malformed lines */ }
           }
@@ -1926,6 +1936,14 @@ export default function ChatPage() {
               </button>
             </div>
           </div>
+          {/* Star Energy cost display */}
+          {costMeta && (costMeta.costEnergy || costMeta.balanceEnergy) && (
+            <div className="flex items-center justify-end gap-3 px-4 py-1 text-[11px] text-gray-400">
+              {costMeta.costEnergy && <span>本次消耗 <span className="text-amber-500 font-medium">⚡{costMeta.costEnergy}</span></span>}
+              {costMeta.balanceEnergy && <span>余额 <span className="text-emerald-500 font-medium">⚡{costMeta.balanceEnergy}</span></span>}
+              {costMeta.model && <span className="text-gray-300">{costMeta.model}</span>}
+            </div>
+          )}
         </div>
       </div>
 

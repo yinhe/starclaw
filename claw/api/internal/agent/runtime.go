@@ -214,8 +214,12 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 						ch <- &StreamChunk{Done: true, Usage: &totalUsage}
 						return
 					}
-					if chunk.Content != "" {
-						ch <- &StreamChunk{Content: chunk.Content}
+					sc := &StreamChunk{Content: chunk.Content}
+					if chunk.Meta != nil {
+						sc.Meta = chunk.Meta
+					}
+					if sc.Content != "" || sc.Meta != nil {
+						ch <- sc
 					}
 				}
 				return
@@ -374,4 +378,5 @@ type StreamChunk struct {
 	AgentStep       string               `json:"agent_step,omitempty"`        // e.g. "thinking", "tool_calling", "summarizing"
 	AgentStepDetail string               `json:"agent_step_detail,omitempty"` // human-readable description
 	AgentStepIndex  int                  `json:"agent_step_index,omitempty"`  // 1-based step counter
+	Meta            map[string]string    `json:"meta,omitempty"`              // upstream metadata (e.g. X-StarAI-* cost headers)
 }

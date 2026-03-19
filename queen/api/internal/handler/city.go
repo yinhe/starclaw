@@ -206,6 +206,109 @@ func (h *CityHandler) UpdateClient(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"client": client})
 }
 
+// ── Client Activity / Consumption Stats ──
+
+func (h *CityHandler) ClientStats(c *gin.Context) {
+	partnerID := c.GetString("partner_id")
+
+	type ClientStat struct {
+		ID            string `json:"id"`
+		ClientName    string `json:"client_name"`
+		UserID        string `json:"user_id"`
+		Status        string `json:"status"`
+		TotalRecharge int64  `json:"total_recharge"` // 累计充值（分）
+		MonthRecharge int64  `json:"month_recharge"` // 本月充值（分）
+		TotalEnergy   int64  `json:"total_energy"`   // 累计星能消耗（units）
+		MonthEnergy   int64  `json:"month_energy"`   // 本月星能消耗（units）
+		EnergyBalance int64  `json:"energy_balance"` // 当前星能余额（units）
+		LastActive    string `json:"last_active"`
+	}
+
+	month := time.Now().Format("2006-01")
+
+	// Get all clients for this partner
+	var clients []model.CityClient
+	database.DB.Where("partner_id = ?", partnerID).Order("created_at DESC").Find(&clients)
+
+	var stats []ClientStat
+	for _, cl := range clients {
+		stat := ClientStat{
+			ID:         cl.ID,
+			ClientName: cl.ClientName,
+			UserID:     cl.UserID,
+			Status:     cl.Status,
+		}
+
+		if cl.UserID == "" {
+			stats = append(stats, stat)
+			continue
+		}
+
+		// Total recharge (from BalanceTransaction type=recharge)
+		database.DB.Model(&model.BalanceTransaction{}).
+			Where("user_id = ? AND type = ?", cl.UserID, "recharge").
+			Select("COALESCE(SUM(amount), 0)").Scan(&stat.TotalRecharge)
+
+		// Month recharge
+		database.DB.Model(&model.BalanceTransaction{}).
+			Where("user_id = ? AND type = ? AND created_at >= ?", cl.UserID, "recharge", month+"-01").
+			Select("COALESCE(SUM(amount), 0)").Scan(&stat.MonthRecharge)
+
+		// Find bound claw nodes for this user
+		var bindings []model.NodeBinding
+		database.DB.Where("queen_user_id = ? AND status = ?", cl.UserID, "active").Find(&bindings)
+
+		for _, b := range bindings {
+			// Total energy consumed
+			var consumed int64
+			database.DB.Model(&model.CreditTransaction{}).
+				Where("from_claw = ? AND type = ?", b.NodeID, "consume").
+				Select("COALESCE(SUM(amount), 0)").Scan(&consumed)
+			stat.TotalEnergy += consumed
+
+			// Month energy consumed
+			var monthConsumed int64
+			database.DB.Model(&model.CreditTransaction{}).
+				Where("from_claw = ? AND type = ? AND created_at >= ?", b.NodeID, "consume", month+"-01").
+				Select("COALESCE(SUM(amount), 0)").Scan(&monthConsumed)
+			stat.MonthEnergy += monthConsumed
+
+			// Current balance
+			var acct model.CreditAccount
+			if err := database.DB.Where("claw_id = ?", b.NodeID).First(&acct).Error; err == nil {
+				stat.EnergyBalance += acct.Balance
+			}
+
+			// Last active (latest transaction)
+			var lastTx model.CreditTransaction
+			if err := database.DB.Where("from_claw = ? OR to_claw = ?", b.NodeID, b.NodeID).
+				Order("created_at DESC").First(&lastTx).Error; err == nil {
+				stat.LastActive = lastTx.CreatedAt.Format("2006-01-02 15:04")
+			}
+		}
+
+		stats = append(stats, stat)
+	}
+
+	// Aggregate totals
+	var totalRecharge, monthRecharge, totalEnergy, monthEnergy int64
+	for _, s := range stats {
+		totalRecharge += s.TotalRecharge
+		monthRecharge += s.MonthRecharge
+		totalEnergy += s.TotalEnergy
+		monthEnergy += s.MonthEnergy
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"clients":        stats,
+		"total_clients":  len(stats),
+		"total_recharge": totalRecharge,
+		"month_recharge": monthRecharge,
+		"total_energy":   totalEnergy,
+		"month_energy":   monthEnergy,
+	})
+}
+
 // ── Commissions ──
 
 func (h *CityHandler) ListCommissions(c *gin.Context) {
@@ -431,10 +534,10 @@ func CityPartnerRequired() gin.HandlerFunc {
 // ── Commission auto-generation (called from billing.completeOrder) ──
 
 func generateCityCommission(tx *gorm.DB, userID, orderNo string, amount int64) {
-	// Find if this user was referred by a city partner
+	// Find if this user was referred by a city partner (prefer user_id lookup, fallback to contact_info)
 	var client model.CityClient
-	if err := tx.Where("contact_info LIKE ?", "%"+userID+"%").First(&client).Error; err != nil {
-		// Try by ref_source matching through join: find partner's client whose contact matches user email
+	if err := tx.Where("user_id = ?", userID).First(&client).Error; err != nil {
+		// Fallback: try by contact_info for legacy records without user_id
 		var user model.User
 		if err := tx.Where("id = ?", userID).First(&user).Error; err != nil {
 			return
@@ -449,6 +552,8 @@ func generateCityCommission(tx *gorm.DB, userID, orderNo string, amount int64) {
 		if err := tx.Where("contact_info LIKE ?", "%"+searchTerm+"%").First(&client).Error; err != nil {
 			return // user not referred by any partner
 		}
+		// Backfill user_id for future lookups
+		tx.Model(&client).Update("user_id", userID)
 	}
 
 	// Get partner and their commission rate

@@ -18,7 +18,56 @@ func (h *AdminAnalyticsHandler) QueenAnalytics(c *gin.Context) {
 	thisMonth := now.Format("2006-01")
 	lastMonth := now.AddDate(0, -1, 0).Format("2006-01")
 
-	// --- GMV (Gross Merchandise Value) from CRM deals ---
+	// --- Recharge GMV (actual payments) ---
+	var rechargeTotal int64
+	database.DB.Model(&model.RechargeOrder{}).Where("status = ?", "paid").
+		Select("COALESCE(SUM(amount), 0)").Scan(&rechargeTotal)
+
+	var rechargeMonth int64
+	database.DB.Model(&model.RechargeOrder{}).
+		Where("status = ? AND paid_at >= ? AND paid_at < ?", "paid", thisMonth+"-01", nextMonthStr(thisMonth)+"-01").
+		Select("COALESCE(SUM(amount), 0)").Scan(&rechargeMonth)
+
+	var rechargeLastMonth int64
+	database.DB.Model(&model.RechargeOrder{}).
+		Where("status = ? AND paid_at >= ? AND paid_at < ?", "paid", lastMonth+"-01", thisMonth+"-01").
+		Select("COALESCE(SUM(amount), 0)").Scan(&rechargeLastMonth)
+
+	var rechargeOrderCount int64
+	database.DB.Model(&model.RechargeOrder{}).Where("status = ?", "paid").Count(&rechargeOrderCount)
+
+	// --- Star Energy stats ---
+	var totalEnergyGranted int64
+	database.DB.Model(&model.CreditTransaction{}).Where("type IN ?", []string{"recharge", "grant"}).
+		Select("COALESCE(SUM(amount), 0)").Scan(&totalEnergyGranted)
+
+	var totalEnergyConsumed int64
+	database.DB.Model(&model.CreditTransaction{}).Where("type = ?", "consume").
+		Select("COALESCE(SUM(amount), 0)").Scan(&totalEnergyConsumed)
+
+	var monthEnergyConsumed int64
+	database.DB.Model(&model.CreditTransaction{}).
+		Where("type = ? AND created_at >= ?", "consume", thisMonth+"-01").
+		Select("COALESCE(SUM(amount), 0)").Scan(&monthEnergyConsumed)
+
+	// --- User stats ---
+	var totalUsers int64
+	database.DB.Model(&model.User{}).Count(&totalUsers)
+
+	var monthNewUsers int64
+	database.DB.Model(&model.User{}).Where("created_at >= ?", thisMonth+"-01").Count(&monthNewUsers)
+
+	var payingUsers int64
+	database.DB.Model(&model.RechargeOrder{}).Where("status = ?", "paid").
+		Distinct("user_id").Count(&payingUsers)
+
+	// ARPU = total recharge / paying users
+	var arpu float64
+	if payingUsers > 0 {
+		arpu = float64(rechargeTotal) / float64(payingUsers) / 100.0 // in ¥
+	}
+
+	// --- CRM GMV (deal pipeline) ---
 	var totalGMV int64
 	database.DB.Model(&model.CRMDeal{}).
 		Where("stage IN ?", []string{"signed", "delivery", "active", "renewal"}).
@@ -140,25 +189,73 @@ func (h *AdminAnalyticsHandler) QueenAnalytics(c *gin.Context) {
 		Order("total_earned DESC").Limit(10).
 		Find(&channels)
 
-	_ = lastMonth // reserved for MoM comparison later
+	// --- Monthly recharge trend (last 6 months) ---
+	type RechargeTrend struct {
+		Month    string `json:"month"`
+		Recharge int64  `json:"recharge"`
+		Orders   int64  `json:"orders"`
+		Users    int64  `json:"users"`
+	}
+	var rechargeTrend []RechargeTrend
+	for i := 5; i >= 0; i-- {
+		m := now.AddDate(0, -i, 0).Format("2006-01")
+		var recharge int64
+		var orders int64
+		var users int64
+		database.DB.Model(&model.RechargeOrder{}).
+			Where("status = ? AND paid_at >= ? AND paid_at < ?", "paid", m+"-01", nextMonthStr(m)+"-01").
+			Select("COALESCE(SUM(amount), 0)").Scan(&recharge)
+		database.DB.Model(&model.RechargeOrder{}).
+			Where("status = ? AND paid_at >= ? AND paid_at < ?", "paid", m+"-01", nextMonthStr(m)+"-01").
+			Count(&orders)
+		database.DB.Model(&model.RechargeOrder{}).
+			Where("status = ? AND paid_at >= ? AND paid_at < ?", "paid", m+"-01", nextMonthStr(m)+"-01").
+			Distinct("user_id").Count(&users)
+		rechargeTrend = append(rechargeTrend, RechargeTrend{Month: m, Recharge: recharge, Orders: orders, Users: users})
+	}
+
+	// MoM growth
+	rechargeGrowth := float64(0)
+	if rechargeLastMonth > 0 {
+		rechargeGrowth = float64(rechargeMonth-rechargeLastMonth) / float64(rechargeLastMonth) * 100
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"gmv":              totalGMV,
-		"month_gmv":        monthGMV,
-		"mrr":              mrr,
-		"arr":              arr,
-		"total_clients":    totalClients,
-		"active_clients":   activeClients,
-		"city_clients":     totalCityClients,
-		"renewal_rate":     renewalRate,
+		// Recharge metrics
+		"recharge_total":  rechargeTotal,
+		"recharge_month":  rechargeMonth,
+		"recharge_growth": rechargeGrowth,
+		"recharge_orders": rechargeOrderCount,
+		"recharge_trend":  rechargeTrend,
+		// Star Energy
+		"energy_granted":   totalEnergyGranted,
+		"energy_consumed":  totalEnergyConsumed,
+		"energy_month":     monthEnergyConsumed,
+		"energy_retention": float64(totalEnergyGranted-totalEnergyConsumed) / float64(max(totalEnergyGranted, 1)) * 100,
+		// User metrics
+		"total_users":     totalUsers,
+		"month_new_users": monthNewUsers,
+		"paying_users":    payingUsers,
+		"arpu":            arpu,
+		// CRM pipeline
+		"gmv":            totalGMV,
+		"month_gmv":      monthGMV,
+		"mrr":            mrr,
+		"arr":            arr,
+		"total_clients":  totalClients,
+		"active_clients": activeClients,
+		"city_clients":   totalCityClients,
+		"renewal_rate":   renewalRate,
+		// Partners
 		"core_partners":    corePartners,
 		"city_partners":    cityPartners,
 		"pending_cities":   pendingCityPartners,
 		"total_comm_paid":  totalCommPaid,
 		"month_commission": monthComm,
-		"pipeline":         pipeline,
-		"trend":            trend,
-		"channels":         channels,
+		// Detailed breakdowns
+		"pipeline": pipeline,
+		"trend":    trend,
+		"channels": channels,
 	})
 }
 

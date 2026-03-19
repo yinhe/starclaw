@@ -74,7 +74,7 @@ func (h *SettlementHandler) generateCorePartnerBill(cp model.CorePartner, month 
 	db := database.DB
 	billID := uuid.New().String()
 	var items []model.SettlementLineItem
-	var totalAmount, salaryAmount, directAmount, manageAmount int64
+	var totalAmount, salaryAmount, directAmount, manageAmount, equityAmount int64
 
 	tier := model.GetCommissionTier(cp.TotalRevenue)
 
@@ -136,7 +136,37 @@ func (h *SettlementHandler) generateCorePartnerBill(cp model.CorePartner, month 
 		})
 	}
 
-	totalAmount = salaryAmount + directAmount + manageAmount
+	// D. Equity profit sharing: net_income × equity_ratio
+	// net_income = total recharge - upstream API cost (approximated) - city commissions - operating cost
+	var equity model.EquityGrant
+	if err := db.Where("partner_id = ? AND status = ?", cp.ID, "active").First(&equity).Error; err == nil {
+		if equity.TotalShares > 0 {
+			// Calculate platform monthly net income
+			netIncome := h.calculateMonthlyNetIncome(month)
+			if netIncome > 0 {
+				// equity_ratio = partner's shares / total platform shares (10,000 base)
+				var totalShares int64
+				db.Model(&model.EquityGrant{}).Where("status = ?", "active").
+					Select("COALESCE(SUM(total_shares), 0)").Scan(&totalShares)
+
+				if totalShares > 0 {
+					equityRatio := float64(equity.TotalShares) / float64(totalShares)
+					equityAmount = int64(float64(netIncome) * equityRatio)
+					if equityAmount > 0 {
+						items = append(items, model.SettlementLineItem{
+							ID: uuid.New().String(), BillID: billID, PartnerID: cp.ID,
+							SourceType: "equity_share", BaseAmount: netIncome,
+							Rate: equityRatio, Amount: equityAmount,
+							Description: fmt.Sprintf("股权分润 %d/%d 股 (%.1f%%) × 净利润 ¥%.2f",
+								equity.TotalShares, totalShares, equityRatio*100, float64(netIncome)/100),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	totalAmount = salaryAmount + directAmount + manageAmount + equityAmount
 	if totalAmount == 0 && len(items) == 0 {
 		return nil // skip empty bills
 	}
@@ -144,7 +174,7 @@ func (h *SettlementHandler) generateCorePartnerBill(cp model.CorePartner, month 
 	bill := model.SettlementBill{
 		ID: billID, PartnerID: cp.ID, PartnerType: "core", PartnerName: cp.Name,
 		Month: month, TotalAmount: totalAmount, SalaryAmount: salaryAmount,
-		DirectAmount: directAmount, ManageAmount: manageAmount,
+		DirectAmount: directAmount, ManageAmount: manageAmount, EquityAmount: equityAmount,
 		ItemCount: len(items), Status: "draft",
 	}
 
@@ -414,6 +444,39 @@ func (h *SettlementHandler) SettlementStats(c *gin.Context) {
 		"total_paid":     totalPaid,
 		"pending_amount": pendingAmount,
 	})
+}
+
+// calculateMonthlyNetIncome computes platform net income for a given month:
+// net = total_recharge - upstream_cost_estimate - city_commissions
+// upstream_cost_estimate ≈ 30% of recharge (based on typical API cost ratio)
+func (h *SettlementHandler) calculateMonthlyNetIncome(month string) int64 {
+	db := database.DB
+
+	// Total recharge revenue this month
+	var totalRecharge int64
+	db.Model(&model.RechargeOrder{}).
+		Where("status = ? AND paid_at >= ? AND paid_at < ?", "paid", month+"-01", nextMonth(month)+"-01").
+		Select("COALESCE(SUM(amount), 0)").Scan(&totalRecharge)
+
+	if totalRecharge == 0 {
+		return 0
+	}
+
+	// Upstream API cost estimate (30% of recharge)
+	upstreamCost := totalRecharge * 30 / 100
+
+	// City partner commissions this month
+	var cityCommissions int64
+	db.Model(&model.Commission{}).
+		Where("month = ? AND status IN ?", month, []string{"pending", "approved", "paid"}).
+		Select("COALESCE(SUM(amount), 0)").Scan(&cityCommissions)
+
+	netIncome := totalRecharge - upstreamCost - cityCommissions
+	if netIncome < 0 {
+		netIncome = 0
+	}
+
+	return netIncome
 }
 
 func nextMonth(month string) string {

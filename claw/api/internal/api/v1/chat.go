@@ -509,7 +509,11 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 			}
 
 			fullContent += chunk.Content
-			data, _ := json.Marshal(gin.H{"content": chunk.Content, "conversation_id": convID})
+			sseFields := gin.H{"content": chunk.Content, "conversation_id": convID}
+			if chunk.Meta != nil {
+				sseFields["meta"] = chunk.Meta
+			}
+			data, _ := json.Marshal(sseFields)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			if flusher != nil {
 				flusher.Flush()

@@ -27,6 +27,7 @@ type CityPartner struct {
 type CityClient struct {
 	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	PartnerID   string     `json:"partner_id" gorm:"type:varchar(36);index;not null"`
+	UserID      string     `json:"user_id" gorm:"type:varchar(36);index"` // linked Queen user ID
 	ClientName  string     `json:"client_name" gorm:"type:varchar(200)"`
 	ContactInfo string     `json:"contact_info" gorm:"type:varchar(200)"`
 	Plan        string     `json:"plan" gorm:"type:varchar(50)"`                // community / starter / pro / enterprise / unlimited

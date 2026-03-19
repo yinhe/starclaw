@@ -314,6 +314,131 @@ func (h *QueenAccountHandler) LinkWithClaw(c *gin.Context) {
 	})
 }
 
+// AutoRegister registers this Claw node with Queen in a single step.
+// Uses the direct /auth/claw-register endpoint — no challenge/verify needed.
+// Optionally accepts a ref_code for referral attribution.
+func (h *QueenAccountHandler) AutoRegister(c *gin.Context) {
+	if h.identity == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "节点身份未初始化"})
+		return
+	}
+
+	queenAPI := h.getQueenAPIURL()
+	if queenAPI == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未配置 Queen 地址，请先加入虫群"})
+		return
+	}
+
+	// Already linked?
+	h.mu.RLock()
+	if h.queenUserID != "" && h.queenToken != "" {
+		h.mu.RUnlock()
+		// Verify token is still valid
+		if _, err := h.fetchProfile(); err == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"message":       "已关联 Queen 账号",
+				"queen_user_id": h.queenUserID,
+				"status":        "linked",
+			})
+			return
+		}
+		// Token expired, re-register
+	} else {
+		h.mu.RUnlock()
+	}
+
+	var req struct {
+		RefCode  string `json:"ref_code"`
+		Nickname string `json:"nickname"`
+	}
+	c.ShouldBindJSON(&req)
+
+	clawID := h.identity.NodeID
+	pubKeyHex := h.identity.PublicKeyHex()
+	ts := fmt.Sprintf("%d", time.Now().Unix())
+	message := fmt.Sprintf("claw-register|%s|%s", clawID, ts)
+	signature := fmt.Sprintf("%x", h.identity.Sign([]byte(message)))
+
+	nickname := req.Nickname
+	if nickname == "" {
+		nickname = h.cfg.Swarm.NodeName
+	}
+	if nickname == "" {
+		nickname = "Claw-" + clawID[5:13]
+	}
+
+	body := map[string]string{
+		"node_id":    clawID,
+		"public_key": pubKeyHex,
+		"signature":  signature,
+		"timestamp":  ts,
+		"nickname":   nickname,
+	}
+	if req.RefCode != "" {
+		body["ref_code"] = req.RefCode
+	}
+
+	bodyData, _ := json.Marshal(body)
+	resp, err := h.httpC.Post(queenAPI+"/v1/auth/claw-register", "application/json", bytes.NewReader(bodyData))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("无法连接 Queen: %v", err)})
+		return
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		errMsg := "自动注册失败"
+		if e, ok := result["error"].(string); ok {
+			errMsg = e
+		}
+		c.JSON(resp.StatusCode, gin.H{"error": errMsg})
+		return
+	}
+
+	// Extract token and user info
+	queenToken, _ := result["token"].(string)
+	if queenToken == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Queen 未返回 token"})
+		return
+	}
+
+	var queenUserID, queenNickname string
+	if user, ok := result["user"].(map[string]interface{}); ok {
+		queenUserID, _ = user["id"].(string)
+		queenNickname, _ = user["nickname"].(string)
+	}
+	if queenUserID == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Queen 未返回 user_id"})
+		return
+	}
+
+	// Save credentials
+	h.mu.Lock()
+	h.queenUserID = queenUserID
+	h.queenToken = queenToken
+	h.queenEmail = queenNickname
+	h.mu.Unlock()
+	h.saveCredentials()
+
+	isNew, _ := result["is_new"].(bool)
+	log.Printf("[queen] auto-registered with Queen: user=%s claw=%s new=%v", queenUserID, clawID, isNew)
+
+	resp2 := gin.H{
+		"message":       "已自动注册 Queen 账号",
+		"queen_user_id": queenUserID,
+		"nickname":      queenNickname,
+		"is_new":        isNew,
+		"status":        "linked",
+	}
+	if credit, ok := result["credit"].(map[string]interface{}); ok {
+		resp2["credit"] = credit
+	}
+	c.JSON(http.StatusOK, resp2)
+}
+
 // Unlink removes the Queen account association from this Claw.
 func (h *QueenAccountHandler) Unlink(c *gin.Context) {
 	h.mu.Lock()

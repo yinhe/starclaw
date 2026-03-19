@@ -123,13 +123,13 @@ export function DownloadPage() {
               </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {PACKAGES.map((pkg) => {
                 const Icon = pkg.icon
                 return (
                   <div
                     key={pkg.platform}
-                    className="rounded-xl border p-6 flex flex-col border-white/10 bg-white/[0.03] hover:border-claw-500/30 transition-colors"
+                    className="rounded-xl border p-4 sm:p-6 flex flex-col border-white/10 bg-white/[0.03] hover:border-claw-500/30 transition-colors overflow-hidden"
                   >
                     <div className="flex items-center gap-2 mb-4">
                       <Icon size={20} className="text-gray-400" />
@@ -145,7 +145,7 @@ export function DownloadPage() {
                           className="flex items-center justify-center gap-2 w-full min-h-[48px] px-3 sm:px-4 rounded-lg bg-claw-500 hover:bg-claw-400 text-white font-medium text-xs sm:text-sm transition-colors mb-1.5"
                         >
                           <Download size={16} className="shrink-0" />
-                          <span className="truncate">Setup-{V}</span>
+                          <span className="truncate">{pkg.setupLabel}</span>
                           <span className="text-claw-200 text-xs shrink-0">({pkg.setupSize})</span>
                         </a>
                         <div className="flex items-center justify-center gap-2 mb-3">
@@ -159,8 +159,8 @@ export function DownloadPage() {
 
                     <div className="mt-auto">
                       <div className="text-xs text-gray-500 mb-1.5">{pkg.scriptLabel}</div>
-                      <div className="flex items-center gap-2 rounded-lg bg-gray-900/80 px-2 sm:px-3 py-2">
-                        <code className="text-[11px] sm:text-xs text-gray-400 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                      <div className="rounded-lg bg-gray-900/80 px-2 sm:px-3 py-2">
+                        <code className="block text-[11px] sm:text-xs text-gray-400 break-all whitespace-pre-wrap mb-2">
                           {pkg.scriptCmd}
                         </code>
                         <CopyButton text={pkg.scriptCmd} />

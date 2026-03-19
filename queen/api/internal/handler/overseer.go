@@ -82,11 +82,59 @@ func (h *OverseerHandler) Dashboard(c *gin.Context) {
 	var itemCount int64
 	database.DB.Model(&model.MarketplaceItem{}).Where("status IN ?", []string{"approved", "published"}).Count(&itemCount)
 
+	thisMonth := time.Now().Format("2006-01")
+
+	// Recharge stats
+	var rechargeStats struct {
+		TotalAmount   int64 `json:"total_amount"`
+		MonthAmount   int64 `json:"month_amount"`
+		TotalOrders   int64 `json:"total_orders"`
+		PendingOrders int64 `json:"pending_orders"`
+	}
+	database.DB.Model(&model.RechargeOrder{}).Where("status = ?", "paid").
+		Select("COALESCE(SUM(amount), 0)").Scan(&rechargeStats.TotalAmount)
+	database.DB.Model(&model.RechargeOrder{}).
+		Where("status = ? AND paid_at >= ?", "paid", thisMonth+"-01").
+		Select("COALESCE(SUM(amount), 0)").Scan(&rechargeStats.MonthAmount)
+	database.DB.Model(&model.RechargeOrder{}).Where("status = ?", "paid").Count(&rechargeStats.TotalOrders)
+	database.DB.Model(&model.RechargeOrder{}).Where("status = ?", "pending").Count(&rechargeStats.PendingOrders)
+
+	// Commission stats
+	var commissionStats struct {
+		TotalPaid    int64 `json:"total_paid"`
+		MonthPending int64 `json:"month_pending"`
+		CityPartners int64 `json:"city_partners"`
+		CorePartners int64 `json:"core_partners"`
+	}
+	database.DB.Model(&model.Commission{}).Where("status = ?", "paid").
+		Select("COALESCE(SUM(amount), 0)").Scan(&commissionStats.TotalPaid)
+	database.DB.Model(&model.Commission{}).Where("status = ? AND month = ?", "pending", thisMonth).
+		Select("COALESCE(SUM(amount), 0)").Scan(&commissionStats.MonthPending)
+	database.DB.Model(&model.CityPartner{}).Where("status = ?", "approved").Count(&commissionStats.CityPartners)
+	database.DB.Model(&model.CorePartner{}).Where("status = ?", "active").Count(&commissionStats.CorePartners)
+
+	// Settlement stats
+	var settlementStats struct {
+		PendingBills int64 `json:"pending_bills"`
+		PendingTotal int64 `json:"pending_total"`
+		PaidThisYear int64 `json:"paid_this_year"`
+	}
+	database.DB.Model(&model.SettlementBill{}).Where("status IN ?", []string{"draft", "pending_review"}).
+		Count(&settlementStats.PendingBills)
+	database.DB.Model(&model.SettlementBill{}).Where("status IN ?", []string{"draft", "pending_review"}).
+		Select("COALESCE(SUM(total_amount), 0)").Scan(&settlementStats.PendingTotal)
+	yearStart := time.Now().Format("2006") + "-01-01"
+	database.DB.Model(&model.SettlementBill{}).Where("status = ? AND paid_at >= ?", "paid", yearStart).
+		Select("COALESCE(SUM(total_amount), 0)").Scan(&settlementStats.PaidThisYear)
+
 	c.JSON(200, gin.H{
 		"nodes":       nodeStats,
 		"energy":      energyStats,
 		"users":       userCount,
 		"marketplace": itemCount,
+		"recharge":    rechargeStats,
+		"commissions": commissionStats,
+		"settlement":  settlementStats,
 	})
 }
 
@@ -124,7 +172,10 @@ func (h *OverseerHandler) Services(c *gin.Context) {
 	}
 
 	results := make([]ServiceStatus, len(services))
-	ch := make(chan struct{ idx int; ss ServiceStatus }, len(services))
+	ch := make(chan struct {
+		idx int
+		ss  ServiceStatus
+	}, len(services))
 
 	for i, svc := range services {
 		go func(idx int, name, url string) {
@@ -136,7 +187,10 @@ func (h *OverseerHandler) Services(c *gin.Context) {
 				status = "up"
 				resp.Body.Close()
 			}
-			ch <- struct{ idx int; ss ServiceStatus }{idx, ServiceStatus{name, status, latency}}
+			ch <- struct {
+				idx int
+				ss  ServiceStatus
+			}{idx, ServiceStatus{name, status, latency}}
 		}(i, svc.Name, svc.URL)
 	}
 
@@ -195,9 +249,9 @@ func (h *OverseerHandler) Energy(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"top_accounts":  topAccounts,
-		"recent_tx":     recentTx,
-		"type_stats":    typeStats,
+		"top_accounts":    topAccounts,
+		"recent_tx":       recentTx,
+		"type_stats":      typeStats,
 		"hp_distribution": hpBuckets,
 	})
 }
