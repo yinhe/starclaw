@@ -122,7 +122,9 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	// Record usage + billing (async)
-	go h.recordAndBill(authType, userID, apiKeyID, clawID, provSlug, req.Model, "/v1/chat/completions", via, time.Since(start))
+	// Use "provider/model" format for cost lookup (matches YAML registry keys)
+	fullModel := provSlug + "/" + modelName
+	go h.recordAndBill(authType, userID, apiKeyID, clawID, provSlug, fullModel, "/v1/chat/completions", via, time.Since(start))
 }
 
 // Embeddings handles POST /v1/embeddings

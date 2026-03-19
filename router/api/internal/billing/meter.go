@@ -3,6 +3,7 @@ package billing
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/yinhe/starclaw-router/internal/model"
 	"github.com/yinhe/starclaw-router/internal/provider"
@@ -55,11 +56,23 @@ func (m *Meter) CheckBalance(userID string) error {
 	return fmt.Errorf("insufficient balance")
 }
 
-// CalculateCost returns the cost in cents (分) for a given model usage
+// CalculateCost returns the cost in cents (分) for a given model usage.
+// modelName can be "provider/model" (preferred) or bare "model" (fallback scans all entries).
 func (m *Meter) CalculateCost(modelName string, promptTokens, completionTokens int) (costCents int64, upstreamCents int64) {
 	entry, ok := m.registry.GetModel(modelName)
 	if !ok {
-		return 0, 0
+		// Fallback: try matching bare model name against all registered models
+		for _, e := range m.registry.ListModels() {
+			// e.g. "qwen/qwen-plus" ends with "/qwen-plus", match "qwen-plus"
+			if strings.HasSuffix(e.Model.Name, "/"+modelName) || e.Model.Name == modelName {
+				entry = e
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return 0, 0
+		}
 	}
 
 	mc := entry.Model
