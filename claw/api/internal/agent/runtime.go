@@ -17,8 +17,9 @@ const maxAutoContinue = 10 // max consecutive auto-continue rounds without tool 
 
 // shouldAutoContinue checks if the LLM response indicates more work is planned
 // and the agent should automatically continue instead of stopping.
+// Returns (should_continue, injection_message).
+// When hallucinated tool execution is detected, a corrective prompt is returned.
 var autoContinueSignals = []string{
-	"⏳", "⌛",
 	"正在为您", "正在生成", "正在撰写", "正在创建", "正在制作",
 	"正在处理", "正在分析", "正在准备", "正在编写",
 	"下一步", "接下来我将", "接下来将",
@@ -27,13 +28,31 @@ var autoContinueSignals = []string{
 	"请稍候", "请稍等",
 }
 
-func shouldAutoContinue(content string) bool {
-	for _, signal := range autoContinueSignals {
+// Patterns that indicate the LLM is describing tool execution instead of calling tools
+var hallucinatedToolSignals = []string{
+	"正在执行", "已注入", "合成中",
+	"compose_pro", "compose_mv", "generate_video", "generate_music",
+	"analyze", "generate_srt", "check_status",
+}
+
+func shouldAutoContinue(content string) (bool, string) {
+	// Check for hallucinated tool execution first (higher priority)
+	for _, signal := range hallucinatedToolSignals {
 		if strings.Contains(content, signal) {
-			return true
+			return true, "你刚才只是用文字描述了工具调用过程，但并没有实际发起 function call。请立即通过 function call 调用对应的工具来真正执行操作。不要用文字描述，直接调用工具。"
 		}
 	}
-	return false
+	// Check for normal continuation signals
+	for _, signal := range autoContinueSignals {
+		if strings.Contains(content, signal) {
+			return true, "继续"
+		}
+	}
+	// Also check hourglass emojis
+	if strings.Contains(content, "\u23f3") || strings.Contains(content, "\u231b") {
+		return true, "继续"
+	}
+	return false, ""
 }
 
 // Runtime orchestrates the Agent execution loop with Tool Calling
@@ -108,12 +127,12 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 				Content: result.Content,
 			})
 
-			if autoContinueCount < maxAutoContinue && shouldAutoContinue(result.Content) {
+			if shouldCont, injection := shouldAutoContinue(result.Content); shouldCont && autoContinueCount < maxAutoContinue {
 				autoContinueCount++
-				log.Printf("[Agent] Auto-continue #%d triggered (content signals more work)", autoContinueCount)
+				log.Printf("[Agent] Auto-continue #%d triggered (injection: %.60s)", autoContinueCount, injection)
 				messages = append(messages, provider.ChatMessage{
 					Role:    "user",
-					Content: "继续",
+					Content: injection,
 				})
 				continue
 			}
@@ -230,21 +249,21 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 
 			// No tool call — check if we should auto-continue
 			if result.Tool == nil {
-				if autoContinueCount < maxAutoContinue && shouldAutoContinue(result.Content) {
+				if shouldCont, injection := shouldAutoContinue(result.Content); shouldCont && autoContinueCount < maxAutoContinue {
 					autoContinueCount++
-					log.Printf("[Agent/Stream] Auto-continue #%d triggered (content signals more work)", autoContinueCount)
+					log.Printf("[Agent/Stream] Auto-continue #%d triggered (injection: %.60s)", autoContinueCount, injection)
 
 					// Stream the intermediate content to the client so they see progress
 					ch <- &StreamChunk{Content: result.Content}
 
-					// Add assistant message + inject "继续" to keep the loop going
+					// Add assistant message + inject corrective/continue prompt
 					messages = append(messages, provider.ChatMessage{
 						Role:    "assistant",
 						Content: result.Content,
 					})
 					messages = append(messages, provider.ChatMessage{
 						Role:    "user",
-						Content: "继续",
+						Content: injection,
 					})
 					continue
 				}
