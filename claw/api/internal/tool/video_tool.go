@@ -40,10 +40,11 @@ func (t *VideoTool) Description() string {
 - wan2.6-t2v: 阿里云万相文生视频（默认），最高10秒
 - wan2.6-i2v: 阿里云万相图生视频，需要img_url
 - veo3: Google Veo 3 文生视频 (fal.ai)，电影级画质
-- sora2: OpenAI Sora 2 文生视频 (fal.ai)
+- veo3.1: Google Veo 3.1 文生视频 (fal.ai)，最新最强，支持4-8秒，原生音频
+- sora2: OpenAI Sora 2 Pro 文生视频 (fal.ai)，支持5-20秒，原生音频
 - kling-v3: 快手可灵 v3 文生视频 (fal.ai)，支持3-15秒，原生音频
 - minimax-video: MiniMax 视频生成 (fal.ai)
-- luma: Luma Dream Machine (fal.ai)
+- luma: Luma Dream Machine Ray-2 (fal.ai)
 
 操作：generate_video、check_status、merge_videos、list_models、extract_last_frame
 制作流程：1) 编写脚本 2) 逐场景调用 generate_video（用 ref_video_id 衔接上一场景尾帧，用 style_prefix 统一风格） 3) 所有场景完成后自动合成最终视频（带 crossfade 转场效果）。`
@@ -55,7 +56,7 @@ func (t *VideoTool) Parameters() interface{} {
 		Properties: map[string]Property{
 			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame"},
 			"prompt":       {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
-			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, sora2, kling-v3, minimax-video, luma"},
+			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, veo3.1, sora2, kling-v3, minimax-video, luma"},
 			"img_url":      {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
 			"size":         {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
 			"duration":     {Type: "string", Description: "Video duration in seconds: 5 or 10. Default: 5"},
@@ -86,7 +87,8 @@ type videoArgs struct {
 // fal.ai video model endpoints
 var falVideoEndpoints = map[string]string{
 	"veo3":          "fal-ai/veo3",
-	"sora2":         "fal-ai/sora",
+	"veo3.1":        "fal-ai/veo3.1",
+	"sora2":         "fal-ai/sora-2/text-to-video/pro",
 	"kling-v3":      "fal-ai/kling-video/v3/pro/text-to-video",
 	"minimax-video": "fal-ai/minimax-video/video-01-live",
 	"luma":          "fal-ai/luma-dream-machine/ray-2",
@@ -370,6 +372,12 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 	if args.Model == "luma" && args.ImgURL != "" {
 		endpoint = "fal-ai/luma-dream-machine/ray-2/image-to-video"
 	}
+	if args.Model == "sora2" && args.ImgURL != "" {
+		endpoint = "fal-ai/sora-2/image-to-video/pro"
+	}
+	if args.Model == "veo3.1" && args.ImgURL != "" {
+		endpoint = "fal-ai/veo3.1/image-to-video"
+	}
 
 	body := map[string]interface{}{
 		"prompt": args.Prompt,
@@ -391,6 +399,29 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		body["cfg_scale"] = 0.5
 	case "veo3":
 		// veo3 auto-determines duration, don't send it
+	case "veo3.1":
+		// veo3.1 accepts "4s", "6s", "8s"
+		if duration <= 4 {
+			body["duration"] = "4s"
+		} else if duration <= 6 {
+			body["duration"] = "6s"
+		} else {
+			body["duration"] = "8s"
+		}
+		body["generate_audio"] = true
+	case "sora2":
+		// sora2 accepts "5s", "10s", "15s", "20s"
+		switch {
+		case duration <= 5:
+			body["duration"] = "5s"
+		case duration <= 10:
+			body["duration"] = "10s"
+		case duration <= 15:
+			body["duration"] = "15s"
+		default:
+			body["duration"] = "20s"
+		}
+		body["generate_audio"] = true
 	case "luma":
 		// Luma Ray-2: uses aspect_ratio, no duration/width/height
 		delete(body, "duration")
@@ -411,7 +442,7 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 
 	// Per-model resolution/aspect_ratio handling
 	switch args.Model {
-	case "kling-v3", "luma":
+	case "kling-v3", "luma", "veo3.1", "sora2":
 		// These models use aspect_ratio instead of width/height
 		sizeParts := strings.Split(args.Size, "*")
 		if len(sizeParts) == 2 {
@@ -605,8 +636,9 @@ func (t *VideoTool) listModels() (string, error) {
 	models := []map[string]interface{}{
 		{"name": "wan2.6-t2v", "type": "text-to-video", "provider": "dashscope", "durations": "5s, 10s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相文生视频。通用首选，速度快，3种画幅", "best_for": "通用场景、第一个镜头、快速迭代"},
 		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "durations": "5s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相图生视频，需要img_url。用于尾帧衔接保持场景连续", "best_for": "场景衔接（上一场景尾帧→下一场景起始帧）"},
-		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质，最强画面质量", "best_for": "远景建立镜头、电影级MV、风景空镜"},
-		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2，强运动理解，支持长视频", "best_for": "复杂动作、长镜头、20秒连续画面"},
+		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质", "best_for": "远景建立镜头、电影级MV、风景空镜"},
+		{"name": "veo3.1", "type": "text-to-video", "provider": "fal.ai", "durations": "4s, 6s, 8s", "resolutions": "720p/1080p", "quality": "cinematic+", "speed": "medium", "description": "Google Veo 3.1，最新最强视频模型，支持原生音频、图生视频", "best_for": "电影级画质+音频、高质量i2v场景衔接"},
+		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2 Pro，强运动理解，支持长视频，原生音频", "best_for": "复杂动作、长镜头、20秒连续画面"},
 		{"name": "kling-v3", "type": "text-to-video", "provider": "fal.ai", "durations": "3-15s", "resolutions": "16:9, 9:16, 1:1", "quality": "cinematic", "speed": "medium", "description": "快手可灵 v3 Pro，电影级画质，原生音频生成，支持3-15秒", "best_for": "人物特写、动态场景、角色动作、带声音视频"},
 		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "1280*720", "quality": "good", "speed": "fast", "description": "MiniMax Video-01-Live，快速生成", "best_for": "快速出片、动画风格"},
 		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "最高1080p", "quality": "artistic", "speed": "medium", "description": "Luma Dream Machine，梦幻艺术风格", "best_for": "艺术风格、梦幻场景、概念视觉"},

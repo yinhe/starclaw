@@ -1668,6 +1668,314 @@ app.post('/fal/luma-ray2-flash', apiKeyValidation, async (req, res) => {
 	}
 })
 
+// === Sora 2 视频生成接口 ===
+
+function normalizeSora2Duration(duration) {
+	const permitted = ['5s', '10s', '15s', '20s']
+	if (duration === undefined || duration === null || duration === '') return '5s'
+	if (typeof duration === 'string') {
+		const d = duration.trim()
+		if (permitted.includes(d)) return d
+		const num = Number(d.replace(/s$/i, ''))
+		if (!Number.isNaN(num)) {
+			if (num <= 5) return '5s'
+			if (num <= 10) return '10s'
+			if (num <= 15) return '15s'
+			return '20s'
+		}
+		return null
+	}
+	if (typeof duration === 'number') {
+		if (duration <= 5) return '5s'
+		if (duration <= 10) return '10s'
+		if (duration <= 15) return '15s'
+		return '20s'
+	}
+	return null
+}
+
+function normalizeSora2AspectRatio(aspectRatio) {
+	const permitted = ['16:9', '9:16', '1:1']
+	if (!aspectRatio) return '16:9'
+	const v = String(aspectRatio).trim()
+	return permitted.includes(v) ? v : null
+}
+
+function buildSora2T2VInput(body) {
+	const { prompt, duration, aspect_ratio, generate_audio, ...otherParams } = body || {}
+	if (!prompt) return { error: { status: 400, payload: { error: 'prompt 参数是必需的' } } }
+	const normalizedDuration = normalizeSora2Duration(duration)
+	if (!normalizedDuration) return { error: { status: 400, payload: { error: 'duration 参数不合法', permitted: ['5s', '10s', '15s', '20s'], received: duration } } }
+	const normalizedAspect = normalizeSora2AspectRatio(aspect_ratio)
+	if (!normalizedAspect) return { error: { status: 400, payload: { error: 'aspect_ratio 参数不合法', permitted: ['16:9', '9:16', '1:1'], received: aspect_ratio } } }
+	return {
+		input: {
+			prompt,
+			duration: normalizedDuration,
+			aspect_ratio: normalizedAspect,
+			generate_audio: generate_audio ?? true,
+			...otherParams,
+		},
+	}
+}
+
+async function buildSora2I2VInput(body) {
+	const { prompt, image_url, start_image_url, duration, aspect_ratio, generate_audio, ...otherParams } = body || {}
+	if (!prompt) return { error: { status: 400, payload: { error: 'prompt 参数是必需的' } } }
+	const rawImgUrl = image_url || start_image_url
+	if (!rawImgUrl) return { error: { status: 400, payload: { error: 'image_url 参数是必需的' } } }
+	const normalizedDuration = normalizeSora2Duration(duration)
+	if (!normalizedDuration) return { error: { status: 400, payload: { error: 'duration 参数不合法', permitted: ['5s', '10s', '15s', '20s'], received: duration } } }
+	let fixedImgUrl
+	try { fixedImgUrl = await ensureFalAccessibleFileUrl(rawImgUrl) } catch (e) {
+		const status = e?.status || 400
+		return { error: { status, payload: e?.body || { error: 'image_url 无法访问', details: e?.message } } }
+	}
+	return {
+		input: {
+			prompt,
+			image_url: fixedImgUrl,
+			duration: normalizedDuration,
+			aspect_ratio: normalizeSora2AspectRatio(aspect_ratio) || '16:9',
+			generate_audio: generate_audio ?? true,
+			...otherParams,
+		},
+	}
+}
+
+// Sora 2 Pro - 文生视频（同步）
+app.post('/fal/sora2-pro', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildSora2T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Sora 2 Pro T2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/sora-2/text-to-video/pro', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Sora 2 Pro T2V 队列状态:', update.status) },
+		})
+		console.log('Sora 2 Pro T2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Sora 2 Pro T2V 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Sora 2 Pro 文生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Sora 2 Pro - 文生视频（队列模式）：提交
+app.post('/fal/sora2-pro/submit', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildSora2T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('提交 Sora 2 Pro T2V 队列任务，prompt:', built.input.prompt)
+		const result = await fal.queue.submit('fal-ai/sora-2/text-to-video/pro', { input: built.input })
+		res.status(202).json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Sora 2 Pro T2V Submit 失败:', error?.message)
+		res.status(status).json({ error: 'Sora 2 Pro 提交任务失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Sora 2 Pro - 文生视频（队列模式）：状态
+app.get('/fal/sora2-pro/status/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const status = await fal.queue.status('fal-ai/sora-2/text-to-video/pro', { requestId: req.params.requestId, logs: true })
+		res.json(status)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Sora 2 Pro T2V Status 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Sora 2 Pro 查询状态失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Sora 2 Pro - 文生视频（队列模式）：结果
+app.get('/fal/sora2-pro/result/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const result = await fal.queue.result('fal-ai/sora-2/text-to-video/pro', { requestId: req.params.requestId })
+		res.json(result)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Sora 2 Pro T2V Result 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Sora 2 Pro 获取结果失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Sora 2 Pro - 图生视频（同步）
+app.post('/fal/sora2-pro-image-to-video', apiKeyValidation, async (req, res) => {
+	try {
+		const built = await buildSora2I2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Sora 2 Pro I2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/sora-2/image-to-video/pro', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Sora 2 Pro I2V 队列状态:', update.status) },
+		})
+		console.log('Sora 2 Pro I2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Sora 2 Pro I2V 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Sora 2 Pro 图生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Sora 2 Pro - 图生视频（队列模式）：提交
+app.post('/fal/sora2-pro-image-to-video/submit', apiKeyValidation, async (req, res) => {
+	try {
+		const built = await buildSora2I2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('提交 Sora 2 Pro I2V 队列任务，prompt:', built.input.prompt)
+		const result = await fal.queue.submit('fal-ai/sora-2/image-to-video/pro', { input: built.input })
+		res.status(202).json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Sora 2 Pro I2V Submit 失败:', error?.message)
+		res.status(status).json({ error: 'Sora 2 Pro 图生视频提交失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Sora 2 Pro - 图生视频（队列模式）：状态
+app.get('/fal/sora2-pro-image-to-video/status/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const status = await fal.queue.status('fal-ai/sora-2/image-to-video/pro', { requestId: req.params.requestId, logs: true })
+		res.json(status)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Sora 2 Pro I2V Status 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Sora 2 Pro 图生视频查询状态失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Sora 2 Pro - 图生视频（队列模式）：结果
+app.get('/fal/sora2-pro-image-to-video/result/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const result = await fal.queue.result('fal-ai/sora-2/image-to-video/pro', { requestId: req.params.requestId })
+		res.json(result)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Sora 2 Pro I2V Result 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Sora 2 Pro 图生视频获取结果失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Sora 2 Standard - 文生视频（同步）
+app.post('/fal/sora2', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildSora2T2VInput(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Sora 2 T2V API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/sora-2/text-to-video', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Sora 2 T2V 队列状态:', update.status) },
+		})
+		console.log('Sora 2 T2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Sora 2 T2V 调用失败:', error?.message)
+		res.status(status).json({ error: 'Sora 2 文生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// === Veo 3.1 Full (非 Fast) 视频生成接口 ===
+
+// Veo 3.1 - 文生视频（同步，完整版）
+app.post('/fal/veo3.1', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildVeo31Input(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('调用 Veo 3.1 Full API，prompt:', built.input.prompt)
+		const result = await fal.subscribe('fal-ai/veo3.1', {
+			input: built.input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Veo 3.1 Full 队列状态:', update.status) },
+		})
+		console.log('Veo 3.1 Full 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Veo 3.1 Full 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Veo 3.1 视频生成失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Veo 3.1 - 文生视频（队列模式）：提交
+app.post('/fal/veo3.1/submit', apiKeyValidation, async (req, res) => {
+	try {
+		const built = buildVeo31Input(req.body)
+		if (built.error) return res.status(built.error.status).json(built.error.payload)
+		console.log('提交 Veo 3.1 Full 队列任务，prompt:', built.input.prompt)
+		const result = await fal.queue.submit('fal-ai/veo3.1', { input: built.input })
+		res.status(202).json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Veo 3.1 Full Submit 失败:', error?.message)
+		res.status(status).json({ error: 'Veo 3.1 提交任务失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
+// Veo 3.1 - 文生视频（队列模式）：状态
+app.get('/fal/veo3.1/status/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const status = await fal.queue.status('fal-ai/veo3.1', { requestId: req.params.requestId, logs: true })
+		res.json(status)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Veo 3.1 Full Status 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Veo 3.1 查询状态失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Veo 3.1 - 文生视频（队列模式）：结果
+app.get('/fal/veo3.1/result/:requestId', apiKeyValidation, async (req, res) => {
+	try {
+		const result = await fal.queue.result('fal-ai/veo3.1', { requestId: req.params.requestId })
+		res.json(result)
+	} catch (error) {
+		const statusCode = error?.status || 500
+		console.error('Veo 3.1 Full Result 失败:', error?.message)
+		res.status(statusCode).json({ error: 'Veo 3.1 获取结果失败', details: error?.body?.detail || error?.body || error?.message })
+	}
+})
+
+// Veo 3.1 - 图生视频（同步）
+app.post('/fal/veo3.1-image-to-video', apiKeyValidation, async (req, res) => {
+	try {
+		const { prompt, image_url, duration, aspect_ratio, resolution, generate_audio, ...otherParams } = req.body || {}
+		if (!prompt) return res.status(400).json({ error: 'prompt 参数是必需的' })
+		if (!image_url) return res.status(400).json({ error: 'image_url 参数是必需的' })
+		const fixedImg = await ensureFalAccessibleFileUrl(image_url)
+		const normalizedDuration = normalizeVeoDuration(duration)
+		const normalizedAspect = normalizeAspectRatioVeo31(aspect_ratio)
+		const normalizedResolution = normalizeResolutionVeo31(resolution)
+		const input = {
+			prompt,
+			image_url: fixedImg,
+			duration: normalizedDuration || '6s',
+			aspect_ratio: normalizedAspect || '16:9',
+			resolution: normalizedResolution || '720p',
+			generate_audio: generate_audio ?? true,
+			...otherParams,
+		}
+		console.log('调用 Veo 3.1 I2V API，prompt:', prompt)
+		const result = await fal.subscribe('fal-ai/veo3.1/image-to-video', {
+			input,
+			logs: true,
+			onQueueUpdate: (update) => { console.log('Veo 3.1 I2V 队列状态:', update.status) },
+		})
+		console.log('Veo 3.1 I2V 生成完成')
+		res.json(result)
+	} catch (error) {
+		const status = error?.status || 500
+		console.error('Veo 3.1 I2V 调用失败:', util.inspect({ status, requestId: error?.requestId, detail: error?.body?.detail, body: error?.body, message: error?.message }, { depth: null, maxArrayLength: null }))
+		res.status(status).json({ error: 'Veo 3.1 图生视频失败', details: error?.body?.detail || error?.body || error?.message, requestId: error?.requestId })
+	}
+})
+
 // Flux Pro Kontext - 高质量图像生成
 app.post('/fal/flux-pro-kontext', apiKeyValidation, async (req, res) => {
 	try {
