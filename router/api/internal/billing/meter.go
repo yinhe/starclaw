@@ -42,11 +42,20 @@ func (m *Meter) QueenCredit() *QueenCreditClient {
 	return m.queenCredit
 }
 
-// CheckBalance returns nil if the user has sufficient balance to proceed
+// CheckBalance returns nil if the user has sufficient balance to proceed.
+// For users with a linked ClawID, checks Queen CreditAccount (star energy).
 func (m *Meter) CheckBalance(userID string) error {
 	var user model.User
 	if err := m.db.Where("id = ?", userID).First(&user).Error; err != nil {
 		return fmt.Errorf("user not found: %w", err)
+	}
+
+	// If user has ClawID, check Queen star energy as primary source
+	if user.ClawID != "" && m.queenCredit != nil && m.queenCredit.Enabled() {
+		if err := m.queenCredit.CheckBalance(user.ClawID); err == nil {
+			return nil
+		}
+		// Fall through to check local balance as fallback
 	}
 
 	// Allow if user has balance OR free quota remaining
@@ -179,15 +188,36 @@ func (m *Meter) DeductClaw(clawID string, costCents float64, modelName, endpoint
 	return err
 }
 
-// Deduct subtracts cost from user balance (tries free quota first, then balance)
+// Deduct subtracts cost from user balance.
+// If the user has a linked ClawID and Queen credit is available, deducts from
+// Queen's CreditAccount (star energy) as the single source of truth.
+// Falls back to local balance for users without a ClawID.
 // costCents/upstreamCents are in 分 (float64 for sub-cent precision).
-// Balance deduction rounds up to nearest 分 (minimum charge ¥0.01 per billable request).
 func (m *Meter) Deduct(userID string, costCents, upstreamCents float64, record *model.UsageRecord) error {
-	// Round up to nearest 分 for actual balance deduction (balance is stored as int64 分)
+	// Check if user has a linked ClawID — if so, use Queen star energy
+	var user model.User
+	if err := m.db.Where("id = ?", userID).First(&user).Error; err != nil {
+		return err
+	}
+
+	if user.ClawID != "" && m.queenCredit != nil && m.queenCredit.Enabled() {
+		// Deduct from Queen CreditAccount (star energy) — single source of truth
+		err := m.DeductClaw(user.ClawID, costCents, record.Model, record.Endpoint, record)
+		if err != nil {
+			log.Printf("[star-ai] Queen star energy deduct failed for %s (claw=%s): %v, falling back to local", userID, user.ClawID, err)
+			// Fall through to local deduction as fallback
+		} else {
+			// Also deduct from local balance to keep Router dashboard in sync
+			deductFen := int64(math.Ceil(costCents))
+			m.db.Model(&user).Update("balance", gorm.Expr("GREATEST(balance - ?, 0)", deductFen))
+			return nil
+		}
+	}
+
+	// Local balance deduction (legacy path for users without ClawID)
 	deductFen := int64(math.Ceil(costCents))
 
 	return m.db.Transaction(func(tx *gorm.DB) error {
-		var user model.User
 		if err := tx.Where("id = ?", userID).First(&user).Error; err != nil {
 			return err
 		}
