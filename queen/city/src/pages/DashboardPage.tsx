@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { TrendingUp, Users, Coins, UserPlus, Copy, Check } from 'lucide-react'
+import { TrendingUp, Users, Coins, UserPlus, Copy, Check, Wallet, Zap } from 'lucide-react'
 import { city } from '../lib/api'
 
 export default function DashboardPage() {
@@ -27,10 +27,15 @@ export default function DashboardPage() {
 
   const fmt = (cents: number) => `¥${(cents / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
 
+  const fmtEnergy = (units: number) => units >= 10000 ? `${(units / 10000).toFixed(1)} ⭐` : `${units.toLocaleString()} ⚡`
+
   const cards = [
     { label: '本月佣金', value: fmt(data.month_commission), icon: TrendingUp, color: 'text-green-400 bg-green-500/10' },
     { label: '累计佣金', value: fmt(data.total_earned), icon: Coins, color: 'text-amber-400 bg-amber-500/10' },
     { label: '待结算', value: fmt(data.pending_commission), icon: Coins, color: 'text-blue-400 bg-blue-500/10' },
+    { label: '下游本月充值', value: fmt(data.month_recharge || 0), icon: Wallet, color: 'text-emerald-400 bg-emerald-500/10' },
+    { label: '下游累计充值', value: fmt(data.total_recharge || 0), icon: Wallet, color: 'text-teal-400 bg-teal-500/10' },
+    { label: '本月星能消耗', value: fmtEnergy(data.month_energy || 0), icon: Zap, color: 'text-orange-400 bg-orange-500/10' },
     { label: '总客户数', value: String(data.total_clients), icon: Users, color: 'text-purple-400 bg-purple-500/10' },
     { label: '活跃客户', value: String(data.active_clients), icon: Users, color: 'text-claw-400 bg-claw-500/10' },
     { label: '本月新增', value: String(data.month_new_clients), icon: UserPlus, color: 'text-cyan-400 bg-cyan-500/10' },
@@ -46,7 +51,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
         {cards.map(card => (
           <div key={card.label} className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
             <div className="flex items-center gap-3 mb-3">

@@ -151,6 +151,10 @@ export const city = {
       active_clients: number;
       total_earned: number;
       pending_commission: number;
+      total_recharge: number;
+      month_recharge: number;
+      total_energy: number;
+      month_energy: number;
       ref_url: string;
     }>('GET', '/city/dashboard'),
 

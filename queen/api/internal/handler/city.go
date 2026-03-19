@@ -101,6 +101,38 @@ func (h *CityHandler) Dashboard(c *gin.Context) {
 		Where("partner_id = ? AND status IN ?", partnerID, []string{"pending", "approved"}).
 		Select("COALESCE(SUM(amount), 0)").Scan(&pendingCommission)
 
+	// Downstream recharge & energy aggregates (across all clients with user_id)
+	var clientUserIDs []string
+	database.DB.Model(&model.CityClient{}).Where("partner_id = ? AND user_id != ''", partnerID).
+		Pluck("user_id", &clientUserIDs)
+
+	var totalRecharge, monthRecharge int64
+	if len(clientUserIDs) > 0 {
+		database.DB.Model(&model.RechargeOrder{}).
+			Where("user_id IN ? AND status = ?", clientUserIDs, "paid").
+			Select("COALESCE(SUM(amount), 0)").Scan(&totalRecharge)
+		database.DB.Model(&model.RechargeOrder{}).
+			Where("user_id IN ? AND status = ? AND paid_at >= ?", clientUserIDs, "paid", month+"-01").
+			Select("COALESCE(SUM(amount), 0)").Scan(&monthRecharge)
+	}
+
+	// Downstream energy consumed (all bound claw nodes of all clients)
+	var totalEnergy, monthEnergy int64
+	if len(clientUserIDs) > 0 {
+		var nodeIDs []string
+		database.DB.Model(&model.NodeBinding{}).
+			Where("queen_user_id IN ? AND status = ?", clientUserIDs, "active").
+			Pluck("node_id", &nodeIDs)
+		if len(nodeIDs) > 0 {
+			database.DB.Model(&model.CreditTransaction{}).
+				Where("from_claw IN ? AND type = ?", nodeIDs, "consume").
+				Select("COALESCE(SUM(amount), 0)").Scan(&totalEnergy)
+			database.DB.Model(&model.CreditTransaction{}).
+				Where("from_claw IN ? AND type = ? AND created_at >= ?", nodeIDs, "consume", month+"-01").
+				Select("COALESCE(SUM(amount), 0)").Scan(&monthEnergy)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"partner":            partner,
 		"month":              month,
@@ -110,6 +142,10 @@ func (h *CityHandler) Dashboard(c *gin.Context) {
 		"active_clients":     activeClients,
 		"total_earned":       partner.TotalEarned,
 		"pending_commission": pendingCommission,
+		"total_recharge":     totalRecharge,
+		"month_recharge":     monthRecharge,
+		"total_energy":       totalEnergy,
+		"month_energy":       monthEnergy,
 		"ref_url":            fmt.Sprintf("https://starclaw.me/download?ref=%s", partner.RefCode),
 	})
 }
@@ -244,14 +280,14 @@ func (h *CityHandler) ClientStats(c *gin.Context) {
 			continue
 		}
 
-		// Total recharge (from BalanceTransaction type=recharge)
-		database.DB.Model(&model.BalanceTransaction{}).
-			Where("user_id = ? AND type = ?", cl.UserID, "recharge").
+		// Total recharge (from RechargeOrder — consistent with AdminAnalytics/Overseer)
+		database.DB.Model(&model.RechargeOrder{}).
+			Where("user_id = ? AND status = ?", cl.UserID, "paid").
 			Select("COALESCE(SUM(amount), 0)").Scan(&stat.TotalRecharge)
 
 		// Month recharge
-		database.DB.Model(&model.BalanceTransaction{}).
-			Where("user_id = ? AND type = ? AND created_at >= ?", cl.UserID, "recharge", month+"-01").
+		database.DB.Model(&model.RechargeOrder{}).
+			Where("user_id = ? AND status = ? AND paid_at >= ?", cl.UserID, "paid", month+"-01").
 			Select("COALESCE(SUM(amount), 0)").Scan(&stat.MonthRecharge)
 
 		// Find bound claw nodes for this user
