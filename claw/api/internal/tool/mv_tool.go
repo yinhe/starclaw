@@ -45,7 +45,7 @@ func (t *MVTool) Parameters() interface{} {
 			"music_id":       {Type: "string", Description: "Music record ID from music_generation tool"},
 			"audio_url":      {Type: "string", Description: "Direct audio file URL/path (alternative to music_id, e.g. uploaded .wav file)"},
 			"video_id":       {Type: "string", Description: "For compose_mv: specific video record ID to use."},
-			"scenes":         {Type: "string", Description: `For compose_pro: JSON array of scenes. Each scene: {"video_id":"xxx", "trim_duration":5.0, "transition":"crossfade", "transition_duration":0.5}. Transitions: cut (hard cut, default), crossfade (dissolve), flash (white flash), fadewhite, fadeblack, wipeleft, slideleft, circlecrop. transition_duration defaults to 0.5s.`},
+			"scenes":         {Type: "string", Description: `For compose_pro: JSON array of scenes. Each scene: {"video_id":"xxx", "trim_duration":5.0, "transition":"crossfade", "transition_duration":0.5}. video_id accepts: record_id (from check_status), task_id, or scene label (e.g. "scene_1"). Transitions: cut (hard cut, default), crossfade (dissolve), flash (white flash), fadewhite, fadeblack, wipeleft, slideleft, circlecrop. transition_duration defaults to 0.5s.`},
 			"lyrics_srt":     {Type: "string", Description: "SRT-format lyrics for subtitle burning. Optional."},
 			"subtitle_style": {Type: "string", Description: "Subtitle style: auto (default), small, large, none"},
 		},
@@ -304,9 +304,9 @@ func (t *MVTool) composePro(ctx context.Context, args mvArgs) (string, error) {
 		if scene.VideoID == "" {
 			return "", fmt.Errorf("scene %d: video_id is required", i+1)
 		}
-		var video model.VideoRecord
-		if err := t.db.Where("id = ?", scene.VideoID).First(&video).Error; err != nil {
-			return "", fmt.Errorf("scene %d: video not found: %s", i+1, scene.VideoID)
+		video, err := t.resolveVideoRecord(scene.VideoID, convID, userID)
+		if err != nil {
+			return "", fmt.Errorf("scene %d: %v", i+1, err)
 		}
 
 		// Download/resolve clip
@@ -591,6 +591,21 @@ func (t *MVTool) resolveAudioURL(args mvArgs, tmpDir string) (string, error) {
 				return localPath, nil
 			}
 		}
+		// Full app URL → extract local path (avoid unnecessary download)
+		if strings.Contains(args.AudioURL, "/v1/uploads/") {
+			idx := strings.Index(args.AudioURL, "/v1/uploads/")
+			localPath := "/app/uploads/" + args.AudioURL[idx+len("/v1/uploads/"):]
+			if _, err := os.Stat(localPath); err == nil {
+				return localPath, nil
+			}
+		}
+		if strings.Contains(args.AudioURL, "/v1/music/") {
+			idx := strings.Index(args.AudioURL, "/v1/music/")
+			localPath := "/app/music/" + args.AudioURL[idx+len("/v1/music/"):]
+			if _, err := os.Stat(localPath); err == nil {
+				return localPath, nil
+			}
+		}
 		// Remote URL
 		if strings.HasPrefix(args.AudioURL, "http://") || strings.HasPrefix(args.AudioURL, "https://") {
 			ext := ".wav"
@@ -610,6 +625,64 @@ func (t *MVTool) resolveAudioURL(args mvArgs, tmpDir string) (string, error) {
 		return "", fmt.Errorf("cannot resolve audio_url: %s", args.AudioURL)
 	}
 	return "", fmt.Errorf("music_id or audio_url is required")
+}
+
+// resolveVideoRecord flexibly looks up a video by id, task_id, scene label,
+// or direct video URL/path. This allows compose_pro to work regardless of
+// what identifier the LLM passes as video_id.
+func (t *MVTool) resolveVideoRecord(ref, convID, userID string) (model.VideoRecord, error) {
+	var video model.VideoRecord
+
+	// 1. Try exact match by record ID (UUID)
+	if t.db.Where("id = ?", ref).First(&video).Error == nil {
+		return video, nil
+	}
+
+	// 2. Try by task_id (fal.ai request_id or DashScope task_id)
+	if t.db.Where("task_id = ?", ref).First(&video).Error == nil {
+		return video, nil
+	}
+
+	// 3. Try by scene label within the same conversation (e.g. "scene_1", "scene_01")
+	if convID != "" {
+		q := t.db.Where("conversation_id = ? AND scene = ? AND status = 'succeeded'", convID, ref)
+		if userID != "" {
+			q = q.Where("user_id = ?", userID)
+		}
+		if q.Order("created_at DESC").First(&video).Error == nil {
+			return video, nil
+		}
+		// Also try with underscore normalization: "scene_1" ↔ "scene_01"
+		normalized := ref
+		if parts := strings.SplitN(ref, "_", 2); len(parts) == 2 {
+			if n, err := strconv.Atoi(parts[1]); err == nil {
+				normalized = fmt.Sprintf("%s_%02d", parts[0], n)
+			}
+		}
+		if normalized != ref {
+			q2 := t.db.Where("conversation_id = ? AND scene = ? AND status = 'succeeded'", convID, normalized)
+			if userID != "" {
+				q2 = q2.Where("user_id = ?", userID)
+			}
+			if q2.Order("created_at DESC").First(&video).Error == nil {
+				return video, nil
+			}
+		}
+	}
+
+	// 4. Try by video_url path (e.g. "/v1/videos/merged/fal_xxx.mp4")
+	if strings.HasPrefix(ref, "/v1/videos/") || strings.HasPrefix(ref, "http") {
+		if t.db.Where("video_url = ?", ref).First(&video).Error == nil {
+			return video, nil
+		}
+	}
+
+	// 5. Try matching by video_url containing the ref as filename
+	if t.db.Where("video_url LIKE ?", "%"+ref+"%").First(&video).Error == nil {
+		return video, nil
+	}
+
+	return video, fmt.Errorf("video not found: %s (tried: id, task_id, scene label, video_url)", ref)
 }
 
 // suppress unused import

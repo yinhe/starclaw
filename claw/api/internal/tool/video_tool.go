@@ -576,13 +576,15 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 		if rec.Status == "succeeded" {
 			return toJSON(map[string]interface{}{
 				"action": "check_status", "task_id": rec.TaskID,
+				"record_id": rec.ID, "scene": rec.Scene,
 				"task_status": "SUCCEEDED", "video_url": rec.VideoURL,
-				"message": "视频已就绪！",
+				"message": fmt.Sprintf("视频已就绪！record_id=%s 可直接用于 compose_pro 的 video_id", rec.ID),
 			}), nil
 		}
 		if rec.Status == "failed" {
 			return toJSON(map[string]interface{}{
 				"action": "check_status", "task_id": rec.TaskID,
+				"record_id": rec.ID, "scene": rec.Scene,
 				"task_status": "FAILED", "message": "视频生成失败",
 			}), nil
 		}
@@ -605,9 +607,13 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 				t.db.Model(&model.VideoRecord{}).Where("task_id = ?", args.TaskID).Updates(map[string]interface{}{
 					"video_url": videoURL, "status": "succeeded",
 				})
+				var updated model.VideoRecord
+				t.db.Where("task_id = ?", args.TaskID).First(&updated)
 				return toJSON(map[string]interface{}{
 					"action": "check_status", "task_id": args.TaskID,
-					"task_status": "SUCCEEDED", "video_url": videoURL, "message": "视频已就绪！",
+					"record_id": updated.ID, "scene": updated.Scene,
+					"task_status": "SUCCEEDED", "video_url": videoURL,
+					"message": fmt.Sprintf("视频已就绪！record_id=%s 可直接用于 compose_pro 的 video_id", updated.ID),
 				}), nil
 			}
 			if status == "FAILED" {

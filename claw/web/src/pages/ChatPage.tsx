@@ -1308,8 +1308,8 @@ export default function ChatPage() {
       {/* Chat area */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Header */}
-        <div className="px-6 py-3 border-b bg-white flex items-center gap-4">
-          <h2 className="font-semibold text-gray-800">对话</h2>
+        <div className="px-6 py-3 border-b bg-white dark:bg-gray-800 dark:border-gray-700 flex items-center gap-4">
+          <h2 className="font-semibold text-gray-800 dark:text-gray-100">对话</h2>
           {mentionedAgent && (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium border border-primary-200">
               <Bot className="w-3 h-3" />
@@ -1376,7 +1376,7 @@ export default function ChatPage() {
                         <div key={ti.id} className="space-y-1">
                           {ti.reasoning && (
                             <div className="flex justify-start">
-                              <div className="max-w-[85%] px-3 py-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg italic">
+                              <div className="max-w-[85%] px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg italic">
                                 💭 {ti.reasoning.length > 200 ? ti.reasoning.slice(0, 200) + '...' : ti.reasoning}
                               </div>
                             </div>
@@ -1498,12 +1498,12 @@ export default function ChatPage() {
                       className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                         msg.role === 'user'
                           ? 'bg-primary-600 text-white rounded-br-md'
-                          : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
                       }`}
                     >
                       {msg.role === 'assistant' ? (
                         <>
-                          <div className="prose prose-sm max-w-none break-words overflow-hidden">
+                          <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
                             <ReactMarkdown components={{
                               code({ className, children, ...props }) {
                                 const match = /language-(\w+)/.exec(className || '')
@@ -1522,7 +1522,7 @@ export default function ChatPage() {
                                     >{text}</CodeBlock>
                                   )
                                 }
-                                return <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm" {...props}>{children}</code>
+                                return <code className="bg-gray-200 dark:bg-gray-700 dark:text-gray-200 px-1 py-0.5 rounded text-sm" {...props}>{children}</code>
                               }
                             }}>{msg.content}</ReactMarkdown>
                           </div>
@@ -1621,8 +1621,8 @@ export default function ChatPage() {
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-red-400 to-orange-500 flex items-center justify-center shadow-sm mt-0.5">
                 <CrawfishIcon className="w-5 h-5 text-white" />
               </div>
-              <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 text-gray-800 text-sm leading-relaxed">
-                <div className="prose prose-sm max-w-none break-words overflow-hidden">
+              <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
+                <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
                   <ReactMarkdown>{streamingContent}</ReactMarkdown>
                 </div>
               </div>
@@ -1869,7 +1869,7 @@ export default function ChatPage() {
           <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(e.target.files)} />
 
           {/* Grok-style unified input bar */}
-          <div className="relative flex items-center bg-gray-100 rounded-full border border-gray-200 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 transition-all">
+          <div className="relative flex items-center bg-gray-100 dark:bg-gray-800 rounded-full border border-gray-200 dark:border-gray-700 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/50 transition-all">
             {/* Left: Attach button */}
             <div className="relative flex-shrink-0">
               <button
@@ -1953,7 +1953,7 @@ export default function ChatPage() {
                 onDragOver={(e) => e.preventDefault()}
                 rows={1}
                 placeholder={isRecording ? '录音中，说完自动识别...' : isTranscribing ? '语音识别中...' : '询问任何内容，@ 可指定 Agent...'}
-                className="w-full bg-transparent resize-none py-3 outline-none text-sm text-gray-800 placeholder-gray-400"
+                className="w-full bg-transparent resize-none py-3 outline-none text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400"
                 style={{ minHeight: '24px', maxHeight: '120px' }}
               />
             </div>
