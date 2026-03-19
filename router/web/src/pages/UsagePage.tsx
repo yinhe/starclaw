@@ -79,6 +79,46 @@ export default function UsagePage() {
         </div>
       </div>
 
+      {/* Daily usage bar chart */}
+      {records.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4 text-amber-400" />
+            <span className="text-sm font-medium text-gray-300">近 {days} 天用量</span>
+          </div>
+          {(() => {
+            // Aggregate tokens by day
+            const byDay: Record<string, number> = {};
+            const now = new Date();
+            for (let i = days - 1; i >= 0; i--) {
+              const d = new Date(now);
+              d.setDate(d.getDate() - i);
+              byDay[d.toISOString().slice(0, 10)] = 0;
+            }
+            records.forEach(r => {
+              const day = r.created_at.slice(0, 10);
+              if (day in byDay) byDay[day] += r.total_tokens;
+            });
+            const entries = Object.entries(byDay);
+            const maxVal = Math.max(...entries.map(([, v]) => v), 1);
+            return (
+              <div className="flex items-end gap-1.5" style={{ height: 120 }}>
+                {entries.map(([day, val]) => (
+                  <div key={day} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                    <span className="text-[10px] text-gray-500">{val > 0 ? (val > 999999 ? `${(val / 1000000).toFixed(1)}M` : val > 999 ? `${(val / 1000).toFixed(0)}K` : val) : ''}</span>
+                    <div
+                      className="w-full rounded-t bg-gradient-to-t from-amber-600 to-amber-400 min-w-[8px] transition-all duration-300"
+                      style={{ height: `${Math.max((val / maxVal) * 90, val > 0 ? 4 : 0)}px` }}
+                    />
+                    <span className="text-[10px] text-gray-500">{day.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Tab switcher */}
       <div className="flex gap-2">
         <button

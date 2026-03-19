@@ -40,7 +40,7 @@ func NewStarAIProvider(cfg StarAIConfig) *StarAIProvider {
 	}
 	inner.models = []string{
 		// ── Qwen 通用对话 (domestic) ──
-		"qwen-plus", "qwen-max", "qwen-turbo", "qwen-flash", "qwen-long",
+		"qwen-max", "qwen-plus", "qwen-turbo", "qwen-flash", "qwen-long",
 		// ── Qwen3 / 3.5 ──
 		"qwen3.5-plus", "qwen3.5-flash", "qwen3-max",
 		// ── QwQ 推理 ──

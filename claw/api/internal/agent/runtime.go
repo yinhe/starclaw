@@ -12,8 +12,8 @@ import (
 	"github.com/yinhe/starclaw/internal/tool"
 )
 
-const maxToolIterations = 50
-const maxAutoContinue = 10 // max consecutive auto-continue rounds without tool calls
+const maxToolIterations = 500 // effectively unlimited for long workflows like MV creation
+const maxAutoContinue = 10    // max consecutive auto-continue rounds without tool calls
 
 // shouldAutoContinue checks if the LLM response indicates more work is planned
 // and the agent should automatically continue instead of stopping.
