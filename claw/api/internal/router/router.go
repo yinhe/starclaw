@@ -69,6 +69,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		corsConfig.AllowOrigins = []string{
 			"https://starclaw.me", "https://app.starclaw.me",
 			"https://api.starclaw.me", "https://www.starclaw.me",
+			"https://star-ai.net", "https://www.star-ai.net",
+			"https://app.star-ai.net", "https://api.star-ai.net",
 			"https://starclaw.net", "https://www.starclaw.net",
 			"http://localhost:5173", "http://localhost:3000",
 		}

@@ -94,6 +94,12 @@ function formatEnergy(units: number): string {
   return stars.toFixed(2)
 }
 
+function normalizeClawUrl(address?: string): string {
+  if (!address) return window.location.origin
+  if (/^https?:\/\//i.test(address)) return address.replace(/\/+$/, '')
+  return `https://${address.replace(/\/+$/, '')}`
+}
+
 export default function BillingPage() {
   const TRANSACTION_PAGE_SIZE = 20
   const [tab, setTab] = useState<TabType>('overview')
@@ -271,6 +277,10 @@ export default function BillingPage() {
   const hpMeta = hpConfig[hp] || hpConfig.hibernated
   const trust = trustConfig[credits?.trust_level || 'newcomer'] || trustConfig.newcomer
   const pct = Math.min(100, ((credits?.balance_energy ?? 0) / 2000) * 100)
+  const clawAuthUrl = normalizeClawUrl(nodeInfo?.address || window.location.origin)
+  const topUpUrl = nodeInfo?.node_id
+    ? `https://star-ai.net/login?claw_url=${encodeURIComponent(clawAuthUrl)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}`
+    : 'https://star-ai.net/billing'
   const filteredTransactions = transactions.filter((tx) => {
     if (!nodeInfo?.node_id || directionFilter === 'all') return true
     if (directionFilter === 'in') return tx.to_claw === nodeInfo.node_id
@@ -306,7 +316,7 @@ export default function BillingPage() {
               <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">Claw 这里展示真实星能与真实用量。需要购买星能时，请前往 StarAI 完成统一充值。</p>
             </div>
             <a
-              href={nodeInfo?.node_id ? `https://star-ai.net/login?claw_url=${encodeURIComponent(window.location.origin)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}` : 'https://star-ai.net/billing'}
+              href={topUpUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
@@ -390,7 +400,7 @@ export default function BillingPage() {
                     {credits?.status && <span className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-700/50 px-2.5 py-1 text-xs font-medium text-gray-300"><Shield className="h-3 w-3" /> {credits.status}</span>}
                   </div>
                   {nodeInfo?.node_id && (
-                    <a href={`https://star-ai.net/login?claw_url=${encodeURIComponent(window.location.origin)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/30 hover:from-amber-500 hover:to-orange-600">
+                    <a href={topUpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/30 hover:from-amber-500 hover:to-orange-600">
                       <Zap className="h-3.5 w-3.5" fill="white" /> 充值星能
                     </a>
                   )}
