@@ -31,6 +31,9 @@ services:
       - STAR_AI_PROXY_URL=${STAR_AI_PROXY_URL:-http://proxy:8000}
       - STAR_AI_PROXY_SECRET_KEY=${STAR_AI_PROXY_SECRET_KEY:-star-ai-internal-secret}
       - STAR_AI_JWT_SECRET=${JWT_SECRET:-star-ai-jwt-change-me}
+      # Queen credit billing (star energy)
+      - STAR_AI_QUEEN_URL=${STAR_AI_QUEEN_URL:-}
+      - STAR_AI_QUEEN_TOKEN=${STAR_AI_QUEEN_TOKEN:-}
       # Provider API Keys（直接作为 env，provider registry 通过 key_env 读取）
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}

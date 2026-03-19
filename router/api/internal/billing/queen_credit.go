@@ -42,12 +42,12 @@ type CreditBalance struct {
 
 // GetBalance checks the star energy balance for a claw address.
 func (q *QueenCreditClient) GetBalance(clawID string) (*CreditBalance, error) {
-	url := fmt.Sprintf("%s/api/v1/internal/credits/balance/%s", q.baseURL, clawID)
+	url := fmt.Sprintf("%s/internal/credits/balance/%s", q.baseURL, clawID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+q.token)
+	req.Header.Set("X-Node-Token", q.token)
 
 	resp, err := q.client.Do(req)
 	if err != nil {
@@ -87,7 +87,7 @@ type ConsumeRequest struct {
 	ClawID       string `json:"claw_id"`
 	Amount       int64  `json:"amount"`
 	ResourceType string `json:"resource_type"` // tokens / image / video
-	Quantity     int64  `json:"quantity"`       // e.g. token count
+	Quantity     int64  `json:"quantity"`      // e.g. token count
 	Remark       string `json:"remark"`
 }
 
@@ -100,12 +100,12 @@ type ConsumeResponse struct {
 // Consume deducts star energy from a claw account via Queen's internal API.
 func (q *QueenCreditClient) Consume(req *ConsumeRequest) (*ConsumeResponse, error) {
 	body, _ := json.Marshal(req)
-	url := fmt.Sprintf("%s/api/v1/internal/credits/consume", q.baseURL)
+	url := fmt.Sprintf("%s/internal/credits/consume", q.baseURL)
 	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+q.token)
+	httpReq.Header.Set("X-Node-Token", q.token)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := q.client.Do(httpReq)
