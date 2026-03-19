@@ -70,7 +70,9 @@ func (g *Gateway) seedPrices() {
 		{ToolName: "video_generation", SubType: "sora2", ResourceType: "video", UpstreamCNY: 1.50},
 		{ToolName: "video_generation", SubType: "kling-v3", ResourceType: "video", UpstreamCNY: 1.00},
 		{ToolName: "video_generation", SubType: "luma", ResourceType: "video", UpstreamCNY: 0.80},
-		{ToolName: "video_generation", SubType: "", ResourceType: "video", UpstreamCNY: 1.50},
+		{ToolName: "video_generation", SubType: "wan2.6-t2v", ResourceType: "video", UpstreamCNY: 0.20},
+		{ToolName: "video_generation", SubType: "wan2.6-i2v", ResourceType: "video", UpstreamCNY: 0.20},
+		{ToolName: "video_generation", SubType: "", ResourceType: "video", UpstreamCNY: 0.20},
 		// Image generation
 		{ToolName: "image_generation", SubType: "flux-pro", ResourceType: "image", UpstreamCNY: 0.30},
 		{ToolName: "image_generation", SubType: "flux-kontext", ResourceType: "image", UpstreamCNY: 0.20},
@@ -142,15 +144,15 @@ func (g *Gateway) ExecuteHook(ctx context.Context, t tool.Tool, name, args strin
 	elapsed := time.Since(start)
 
 	// ── After: Calculate cost + settle ──
-	// Only charge for successful executions — failed tool calls are free
-	if execErr == nil {
+	// Only charge for successful generative executions — non-generative actions are free
+	if execErr == nil && isBillableAction(name, args) {
 		subType := extractSubType(name, args)
 		price := g.getPrice(name, subType)
 
 		if price.UpstreamCNY > 0 {
 			go g.settle(ctx, userID, name, subType, price, elapsed, execErr)
 		}
-	} else {
+	} else if execErr != nil {
 		log.Printf("[billing-gateway] tool %s failed, not charging: %v", name, execErr)
 	}
 
@@ -243,6 +245,32 @@ func (g *Gateway) settle(ctx context.Context, userID, toolName, subType string, 
 
 	log.Printf("[billing-gateway] settled: user=%s tool=%s(%s) cost=¥%.3f margin=¥%.3f city=%d core=%d platform=%d investor=%d",
 		userID, toolName, subType, userCost, margin, cityAmount, coreAmount, platformAmount, investorAmount)
+}
+
+// isBillableAction checks if a tool action should be billed.
+// Only generative actions are billed; status checks, listings, etc. are free.
+func isBillableAction(toolName, args string) bool {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(args), &parsed); err != nil {
+		return true // can't parse → bill by default
+	}
+	action, _ := parsed["action"].(string)
+	if action == "" {
+		return true // no action field → bill by default
+	}
+
+	// Non-billable actions per tool
+	freeActions := map[string]map[string]bool{
+		"video_generation": {"check_status": true, "list_models": true, "merge_videos": true, "extract_last_frame": true},
+		"music_generation": {"check_status": true, "list_voices": true},
+		"audio_analysis":   {"detect_beats": true, "get_energy_curve": true, "generate_srt": true},
+		"mv_production":    {}, // compose_mv and compose_pro are both billable
+	}
+
+	if free, ok := freeActions[toolName]; ok {
+		return !free[action]
+	}
+	return true
 }
 
 // extractSubType extracts the sub-type (e.g. model name) from tool args.
