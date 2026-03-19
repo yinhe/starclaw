@@ -372,7 +372,7 @@ func parseModelName(model string) (string, string) {
 		return "deepseek", model
 	case strings.HasPrefix(lower, "minimax"):
 		return "minimax", model
-	case strings.HasPrefix(lower, "gpt") || strings.HasPrefix(lower, "o1") || strings.HasPrefix(lower, "o3") || strings.HasPrefix(lower, "o4"):
+	case strings.HasPrefix(lower, "gpt") || strings.HasPrefix(lower, "chatgpt") || strings.HasPrefix(lower, "codex") || strings.HasPrefix(lower, "o1") || strings.HasPrefix(lower, "o3") || strings.HasPrefix(lower, "o4"):
 		return "openai", model
 	case strings.HasPrefix(lower, "claude"):
 		return "anthropic", model
