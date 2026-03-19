@@ -121,7 +121,7 @@ func (h *AdminAnalyticsHandler) QueenAnalytics(c *gin.Context) {
 
 	// --- Partner stats ---
 	var corePartners int64
-	database.DB.Model(&model.CorePartner{}).Where("status = ?", "active").Count(&corePartners)
+	database.DB.Model(&model.TeamPartner{}).Where("status = ?", "active").Count(&corePartners)
 
 	var cityPartners int64
 	database.DB.Model(&model.CityPartner{}).Where("status = ?", "approved").Count(&cityPartners)
@@ -289,7 +289,7 @@ func (h *AdminAnalyticsHandler) AdminListAllClients(c *gin.Context) {
 
 	// Build partner name map
 	partnerMap := map[string]string{}
-	var partners []model.CorePartner
+	var partners []model.TeamPartner
 	database.DB.Find(&partners)
 	for _, p := range partners {
 		partnerMap[p.ID] = p.Name
@@ -353,7 +353,7 @@ func (h *AdminAnalyticsHandler) AdminPartnerPerformance(c *gin.Context) {
 	var result []PartnerPerf
 
 	// Core partners
-	var corePartners []model.CorePartner
+	var corePartners []model.TeamPartner
 	database.DB.Order("total_revenue DESC").Find(&corePartners)
 	for _, p := range corePartners {
 		var dealCount int64

@@ -367,7 +367,7 @@ func (h *ClawAuthHandler) autoLinkPartner(clawID string, user *model.User) {
 	db := database.DB
 
 	// Check core partner whitelist
-	var cp model.CorePartner
+	var cp model.TeamPartner
 	if err := db.Where("claw_id = ? AND status = ?", clawID, "active").First(&cp).Error; err == nil {
 		if cp.UserID == "" || cp.UserID != user.ID {
 			db.Model(&cp).Updates(map[string]interface{}{"user_id": user.ID})

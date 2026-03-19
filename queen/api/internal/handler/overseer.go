@@ -104,14 +104,14 @@ func (h *OverseerHandler) Dashboard(c *gin.Context) {
 		TotalPaid    int64 `json:"total_paid"`
 		MonthPending int64 `json:"month_pending"`
 		CityPartners int64 `json:"city_partners"`
-		CorePartners int64 `json:"core_partners"`
+		TeamPartners int64 `json:"core_partners"`
 	}
 	database.DB.Model(&model.Commission{}).Where("status = ?", "paid").
 		Select("COALESCE(SUM(amount), 0)").Scan(&commissionStats.TotalPaid)
 	database.DB.Model(&model.Commission{}).Where("status = ? AND month = ?", "pending", thisMonth).
 		Select("COALESCE(SUM(amount), 0)").Scan(&commissionStats.MonthPending)
 	database.DB.Model(&model.CityPartner{}).Where("status = ?", "approved").Count(&commissionStats.CityPartners)
-	database.DB.Model(&model.CorePartner{}).Where("status = ?", "active").Count(&commissionStats.CorePartners)
+	database.DB.Model(&model.TeamPartner{}).Where("status = ?", "active").Count(&commissionStats.TeamPartners)
 
 	// Settlement stats
 	var settlementStats struct {

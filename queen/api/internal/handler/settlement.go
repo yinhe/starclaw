@@ -42,11 +42,11 @@ func (h *SettlementHandler) GenerateBills(c *gin.Context) {
 	var bills []model.SettlementBill
 
 	// 1. Generate bills for core partners
-	var corePartners []model.CorePartner
+	var corePartners []model.TeamPartner
 	database.DB.Where("status = ?", "active").Find(&corePartners)
 
 	for _, cp := range corePartners {
-		bill := h.generateCorePartnerBill(cp, req.Month)
+		bill := h.generateTeamPartnerBill(cp, req.Month)
 		if bill != nil {
 			bills = append(bills, *bill)
 		}
@@ -70,7 +70,7 @@ func (h *SettlementHandler) GenerateBills(c *gin.Context) {
 	})
 }
 
-func (h *SettlementHandler) generateCorePartnerBill(cp model.CorePartner, month string) *model.SettlementBill {
+func (h *SettlementHandler) generateTeamPartnerBill(cp model.TeamPartner, month string) *model.SettlementBill {
 	db := database.DB
 	billID := uuid.New().String()
 	var items []model.SettlementLineItem

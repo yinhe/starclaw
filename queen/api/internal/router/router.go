@@ -198,7 +198,7 @@ func Setup() *gin.Engine {
 
 	// Partner portal (core partners only)
 	partnerPortal := v1.Group("/partner")
-	partnerPortal.Use(middleware.AuthRequired(), handler.CorePartnerRequired())
+	partnerPortal.Use(middleware.AuthRequired(), handler.TeamPartnerRequired())
 	{
 		partnerPortal.GET("/dashboard", ph.Dashboard)
 		partnerPortal.GET("/deals", ph.ListDeals)
@@ -218,13 +218,24 @@ func Setup() *gin.Engine {
 		partnerPortal.POST("/deployments/:id/stop", writeRL.UserRateLimit(), ph.StopDeployment)
 		partnerPortal.POST("/city-partners/claw", writeRL.UserRateLimit(), ph.AddCityPartnerClaw)
 		partnerPortal.DELETE("/city-partners/:id/claw", writeRL.UserRateLimit(), ph.RemoveCityPartnerClaw)
+		// Cerebrate elections (team partners vote)
+		election := &handler.ElectionHandler{}
+		partnerPortal.GET("/election", election.GetCurrentElection)
+		partnerPortal.GET("/election/candidates", election.ListCandidates)
+		partnerPortal.POST("/election/vote", writeRL.UserRateLimit(), election.Vote)
 	}
 
-	// Admin: core partner management
+	// Admin: team partner management
 	admin.GET("/partners", ph.AdminListPartners)
 	admin.POST("/partners", ph.AdminCreatePartner)
 	admin.PUT("/partners/:id", ph.AdminUpdatePartner)
 	admin.POST("/partners/:id/equity", ph.AdminGrantEquity)
+	// Admin: Cerebrate elections
+	electionAdmin := &handler.ElectionHandler{}
+	admin.POST("/election", electionAdmin.AdminCreateElection)
+	admin.GET("/election", electionAdmin.AdminListElections)
+	admin.POST("/election/:id/close", electionAdmin.AdminCloseElection)
+	admin.DELETE("/election/:id", electionAdmin.AdminCancelElection)
 
 	// ---- City Partner Portal ----
 	city := &handler.CityHandler{}
@@ -290,6 +301,27 @@ func Setup() *gin.Engine {
 	v1.GET("/credits/transactions", credit.ListTransactions)
 	v1.POST("/credits/transfer", writeRL.Middleware(), credit.Transfer)
 
+	// ---- Investor Pool (投资人池) ----
+	investor := &handler.InvestorHandler{}
+	// Public: pool info (no auth needed)
+	v1.GET("/investor/pool", investor.PublicPoolInfo)
+	// Investor portal (authenticated)
+	authed.POST("/investor/register", writeRL.UserRateLimit(), investor.Register)
+	authed.POST("/investor/agree", writeRL.UserRateLimit(), investor.SignAgreement)
+	authed.POST("/investor/recharge", writeRL.UserRateLimit(), investor.Recharge)
+	authed.GET("/investor/me", investor.MyProfile)
+	authed.GET("/investor/earnings", investor.DailyEarnings)
+	// Admin investor management
+	admin.POST("/investor/pool/init", investor.InitPool)
+	admin.GET("/investor/pool", investor.GetPool)
+	admin.POST("/investor/airdrop", investor.Airdrop)
+	admin.GET("/investor/list", investor.ListInvestors)
+	admin.POST("/investor/distribute", investor.Distribute)
+	admin.GET("/investor/dividends", investor.ListDividends)
+	admin.GET("/investor/deposits", investor.ListDeposits)
+	admin.POST("/investor/round/open", investor.OpenRound)
+	admin.GET("/investor/rounds", investor.ListRounds)
+
 	// ---- Internal API (for Claw nodes, authenticated via X-Node-Token header) ----
 	internal := r.Group("/internal")
 	internal.Use(nodeTokenAuth())
@@ -300,6 +332,7 @@ func Setup() *gin.Engine {
 		internal.POST("/billing/freeze", billing.InternalFreeze)
 		internal.POST("/billing/unfreeze", billing.InternalUnfreeze)
 		internal.POST("/billing/settle", billing.InternalSettle)
+		internal.GET("/billing/resolve-partners", billing.InternalResolvePartners)
 
 		// Star Energy (internal — for Router/Swarm services)
 		internal.POST("/credits/grant", credit.InternalGrant)
@@ -315,6 +348,9 @@ func Setup() *gin.Engine {
 		internal.POST("/user/bind", nbInternal.InternalBind)
 		internal.GET("/user/resolve/:node_id", nbInternal.InternalResolve)
 		internal.POST("/user/heartbeat", nbInternal.InternalHeartbeat)
+
+		// Investor pool (internal — for Billing Gateway profit deposit)
+		internal.POST("/investor/deposit", investor.InternalDeposit)
 	}
 
 	return r

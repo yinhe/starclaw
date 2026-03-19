@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	agentpkg "github.com/yinhe/starclaw/internal/agent"
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
+	"github.com/yinhe/starclaw/internal/billing"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
@@ -169,8 +170,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Auto-detect and register MCP Bridge (host control)
 	mcp.AutoRegisterBridge(toolRegistry)
 
+	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
+	queenClient := billing.NewQueenClient(cfg.Swarm.QueenURL, cfg.JWT.Secret)
+	billingGW := billing.NewGateway(db, queenClient, identity.NodeID)
+	if billingGW.IsEnabled() {
+		toolRegistry.SetExecuteHook(billingGW.ExecuteHook)
+		log.Printf("[router] Billing gateway enabled for node %s", identity.NodeID)
+	}
+
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &billing.ToolUsageRecord{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")

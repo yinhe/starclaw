@@ -4,23 +4,24 @@ import "time"
 
 // CityPartner represents a city-level distribution partner
 type CityPartner struct {
-	ID           string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	UserID       string     `json:"user_id" gorm:"type:varchar(36);index"`       // linked Queen user
-	ClawID       string     `json:"claw_id" gorm:"type:varchar(60);uniqueIndex"` // claw:xxxx node address
-	Name         string     `json:"name" gorm:"type:varchar(100)"`
-	Company      string     `json:"company" gorm:"type:varchar(200)"`
-	City         string     `json:"city" gorm:"type:varchar(100);index"`
-	Phone        string     `json:"phone" gorm:"type:varchar(20)"`
-	Email        string     `json:"email" gorm:"type:varchar(200)"`
-	Experience   string     `json:"experience" gorm:"type:text"`
-	RefCode      string     `json:"ref_code" gorm:"type:varchar(32);uniqueIndex"`   // UTM referral code
-	CommRate     float64    `json:"comm_rate" gorm:"default:0.20"`                  // commission rate (0.20 = 20%)
-	Status       string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / approved / rejected / suspended
-	ApprovedAt   *time.Time `json:"approved_at"`
-	TotalEarned  int64      `json:"total_earned" gorm:"default:0"`  // lifetime commission earned (分)
-	TotalClients int        `json:"total_clients" gorm:"default:0"` // total referred clients
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID            string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID        string     `json:"user_id" gorm:"type:varchar(36);index"`       // linked Queen user
+	ClawID        string     `json:"claw_id" gorm:"type:varchar(60);uniqueIndex"` // claw:xxxx node address
+	Name          string     `json:"name" gorm:"type:varchar(100)"`
+	Company       string     `json:"company" gorm:"type:varchar(200)"`
+	City          string     `json:"city" gorm:"type:varchar(100);index"`
+	TeamPartnerID string     `json:"core_partner_id" gorm:"type:varchar(36);index"` // explicit link to managing TeamPartner
+	Phone         string     `json:"phone" gorm:"type:varchar(20)"`
+	Email         string     `json:"email" gorm:"type:varchar(200)"`
+	Experience    string     `json:"experience" gorm:"type:text"`
+	RefCode       string     `json:"ref_code" gorm:"type:varchar(32);uniqueIndex"`   // UTM referral code
+	CommRate      float64    `json:"comm_rate" gorm:"default:0.20"`                  // commission rate (0.20 = 20%)
+	Status        string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / approved / rejected / suspended
+	ApprovedAt    *time.Time `json:"approved_at"`
+	TotalEarned   int64      `json:"total_earned" gorm:"default:0"`  // lifetime commission earned (分)
+	TotalClients  int        `json:"total_clients" gorm:"default:0"` // total referred clients
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // CityClient tracks clients referred by a city partner

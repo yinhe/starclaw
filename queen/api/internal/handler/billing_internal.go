@@ -19,7 +19,39 @@ import (
 // Internal API — called by Claw nodes (authenticated via node token)
 // ============================================================
 
-// POST /internal/billing/check — check if user has sufficient balance
+// energyUnit is the conversion factor: 1 分 (¥0.01) = 1⚡ = 10000 internal units.
+const energyUnit = 10000
+
+// userToClawID resolves a Queen user_id to a claw_id for star energy billing.
+// Priority: OAuthID (claw wallet login) → NodeBinding.
+func userToClawID(userID string) string {
+	db := database.DB
+
+	// 1. Check if user logged in via Claw wallet (OAuthProvider = "claw")
+	var user struct {
+		OAuthProvider string
+		OAuthID       string
+	}
+	if err := db.Table("users").Where("id = ?", userID).
+		Select("o_auth_provider, o_auth_id").Scan(&user).Error; err == nil {
+		if user.OAuthProvider == "claw" && user.OAuthID != "" {
+			return user.OAuthID
+		}
+	}
+
+	// 2. Fallback: NodeBinding (node_id = claw_id → queen_user_id)
+	var binding struct {
+		NodeID string
+	}
+	if err := db.Table("node_bindings").Where("queen_user_id = ? AND status = ?", userID, "active").
+		Select("node_id").First(&binding).Error; err == nil {
+		return binding.NodeID
+	}
+
+	return ""
+}
+
+// POST /internal/billing/check — check if user has sufficient star energy
 func (h *BillingHandler) InternalCheckBalance(c *gin.Context) {
 	var req struct {
 		UserID       string `json:"user_id" binding:"required"`
@@ -30,15 +62,32 @@ func (h *BillingHandler) InternalCheckBalance(c *gin.Context) {
 		return
 	}
 
-	bal := ensureBalance(req.UserID)
+	clawID := userToClawID(req.UserID)
+	if clawID == "" {
+		// No claw_id found — fallback to UserBalance for backward compat
+		bal := ensureBalance(req.UserID)
+		c.JSON(http.StatusOK, gin.H{
+			"user_id":   req.UserID,
+			"balance":   bal.Balance,
+			"has_quota": bal.Balance > 0,
+		})
+		return
+	}
+
+	acct := ensureCreditAccount(clawID)
+	// Convert energy units to 分 for backward compat response
+	balanceFen := acct.Balance / energyUnit
 	c.JSON(http.StatusOK, gin.H{
 		"user_id":   req.UserID,
-		"balance":   bal.Balance,
-		"has_quota": bal.Balance > 0,
+		"claw_id":   clawID,
+		"balance":   balanceFen,
+		"has_quota": acct.Balance > 0,
 	})
 }
 
-// POST /internal/billing/consume — deduct balance for resource usage
+// POST /internal/billing/consume — deduct star energy for resource usage
+// Accepts user_id, auto-resolves to claw_id, deducts from CreditAccount.
+// Amount is in 分; internally converted to energy units (× 10000).
 func (h *BillingHandler) InternalConsume(c *gin.Context) {
 	var req struct {
 		UserID       string `json:"user_id" binding:"required"`
@@ -53,28 +102,95 @@ func (h *BillingHandler) InternalConsume(c *gin.Context) {
 		return
 	}
 
-	// Auto-calculate amount if not provided
-	amount := req.Amount
-	if amount == 0 {
-		amount = calculateCost(req.ResourceType, req.Quantity)
+	// Auto-calculate amount (in 分) if not provided
+	amountFen := req.Amount
+	if amountFen == 0 {
+		amountFen = calculateCost(req.ResourceType, req.Quantity)
 	}
-
-	if amount <= 0 {
-		c.JSON(http.StatusOK, gin.H{"deducted": 0, "balance": ensureBalance(req.UserID).Balance})
+	if amountFen <= 0 {
+		c.JSON(http.StatusOK, gin.H{"deducted": 0, "balance": int64(0)})
 		return
 	}
 
+	// Resolve user_id → claw_id
+	clawID := userToClawID(req.UserID)
+	if clawID == "" {
+		// No claw_id — fallback to legacy UserBalance deduction
+		h.legacyConsume(c, req.UserID, amountFen, req.ResourceType, req.Quantity, req.Remark)
+		return
+	}
+
+	// Convert 分 → energy units (1 分 = 10000 units = 1⚡)
+	energy := amountFen * energyUnit
+
+	db := database.DB
+	var newBalance int64
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var acct model.CreditAccount
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("claw_id = ?", clawID).First(&acct).Error; err != nil {
+			return fmt.Errorf("星能账户不存在: %s", clawID)
+		}
+
+		if acct.Balance < energy {
+			return fmt.Errorf("星能不足（需要 %d⚡，可用 %d⚡）", amountFen, acct.Balance/energyUnit)
+		}
+
+		tx.Model(&acct).Updates(map[string]interface{}{
+			"balance":   gorm.Expr("balance - ?", energy),
+			"total_out": gorm.Expr("total_out + ?", energy),
+		})
+
+		// Update HP status
+		remaining := acct.Balance - energy
+		if remaining <= 0 && acct.Status != "hibernated" {
+			tx.Model(&acct).Update("status", "hibernated")
+		}
+
+		remark := req.Remark
+		if remark == "" {
+			remark = fmt.Sprintf("%s x%d (¥%.2f)", req.ResourceType, req.Quantity, float64(amountFen)/100)
+		}
+
+		tx.Create(&model.CreditTransaction{
+			ID:       uuid.New().String(),
+			FromClaw: clawID,
+			ToClaw:   "system",
+			Amount:   energy,
+			Type:     "consume",
+			Remark:   remark,
+			Status:   "confirmed",
+		})
+
+		newBalance = remaining
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return balance in 分 for backward compat
+	c.JSON(http.StatusOK, gin.H{
+		"deducted": amountFen,
+		"balance":  newBalance / energyUnit,
+	})
+}
+
+// legacyConsume is the fallback for users without a claw_id (deducts from UserBalance).
+func (h *BillingHandler) legacyConsume(c *gin.Context, userID string, amount int64, resourceType string, quantity int64, remark string) {
 	db := database.DB
 	var newBalance int64
 
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var bal model.UserBalance
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("user_id = ?", req.UserID).First(&bal).Error; err != nil {
-			// Create balance if not exists
+			Where("user_id = ?", userID).First(&bal).Error; err != nil {
 			bal = model.UserBalance{
 				ID:     uuid.New().String(),
-				UserID: req.UserID,
+				UserID: userID,
 			}
 			tx.Create(&bal)
 		}
@@ -91,14 +207,12 @@ func (h *BillingHandler) InternalConsume(c *gin.Context) {
 			return err
 		}
 
-		remark := req.Remark
 		if remark == "" {
-			remark = fmt.Sprintf("消费 %s x%d", req.ResourceType, req.Quantity)
+			remark = fmt.Sprintf("消费 %s x%d", resourceType, quantity)
 		}
-
 		tx.Create(&model.BalanceTransaction{
 			ID:     uuid.New().String(),
-			UserID: req.UserID,
+			UserID: userID,
 			Type:   "consume",
 			Amount: -amount,
 			Before: before,
@@ -113,16 +227,26 @@ func (h *BillingHandler) InternalConsume(c *gin.Context) {
 		c.JSON(http.StatusPaymentRequired, gin.H{"error": err.Error()})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"deducted": amount,
-		"balance":  newBalance,
-	})
+	c.JSON(http.StatusOK, gin.H{"deducted": amount, "balance": newBalance})
 }
 
 // GET /internal/billing/balance/:user_id — get user balance (for Claw sync)
 func (h *BillingHandler) InternalGetBalance(c *gin.Context) {
 	userID := c.Param("user_id")
+
+	clawID := userToClawID(userID)
+	if clawID != "" {
+		acct := ensureCreditAccount(clawID)
+		c.JSON(http.StatusOK, gin.H{
+			"user_id":   userID,
+			"claw_id":   clawID,
+			"balance":   acct.Balance / energyUnit,
+			"total_in":  acct.TotalIn / energyUnit,
+			"total_out": acct.TotalOut / energyUnit,
+		})
+		return
+	}
+
 	bal := ensureBalance(userID)
 	c.JSON(http.StatusOK, gin.H{
 		"user_id":   userID,
@@ -364,6 +488,71 @@ func (h *BillingHandler) InternalSettle(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"settled": req.Amount, "payout": payout, "fee": fee})
+}
+
+// GET /internal/billing/resolve-partners?claw_id=xxx
+// Resolves the partner chain for a given Claw node: claw_id → user → CityPartner → TeamPartner
+// Used by Billing Gateway for revenue split routing.
+func (h *BillingHandler) InternalResolvePartners(c *gin.Context) {
+	clawID := c.Query("claw_id")
+	if clawID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "claw_id required"})
+		return
+	}
+
+	db := database.DB
+	result := gin.H{
+		"claw_id":           clawID,
+		"city_partner_id":   "",
+		"city_partner_name": "",
+		"core_partner_id":   "",
+		"core_partner_name": "",
+	}
+
+	// 1. NodeBinding: claw_id → queen user_id
+	var binding model.NodeBinding
+	if err := db.Where("node_id = ? AND status = ?", clawID, "active").First(&binding).Error; err != nil {
+		// No binding — might be direct connection without Queen account
+		c.JSON(http.StatusOK, result)
+		return
+	}
+	userID := binding.QueenUserID
+
+	// 2. CityClient: user_id → partner_id (CityPartner)
+	var cityClient model.CityClient
+	if err := db.Where("user_id = ?", userID).First(&cityClient).Error; err != nil {
+		// No city partner attribution — direct user
+		c.JSON(http.StatusOK, result)
+		return
+	}
+
+	// 3. CityPartner: get the city partner
+	var cityPartner model.CityPartner
+	if err := db.Where("id = ? AND status = ?", cityClient.PartnerID, "approved").First(&cityPartner).Error; err != nil {
+		c.JSON(http.StatusOK, result)
+		return
+	}
+	result["city_partner_id"] = cityPartner.ID
+	result["city_partner_name"] = cityPartner.Name
+
+	// 4. TeamPartner: explicit link first, then fallback to region match
+	var corePartner model.TeamPartner
+	if cityPartner.TeamPartnerID != "" {
+		// Explicit link (set when core partner adds city partner via AddCityPartnerClaw)
+		if err := db.Where("id = ? AND status = ?", cityPartner.TeamPartnerID, "active").First(&corePartner).Error; err == nil {
+			result["core_partner_id"] = corePartner.ID
+			result["core_partner_name"] = corePartner.Name
+		}
+	} else if cityPartner.City != "" {
+		// Fallback: region match
+		if err := db.Where("region = ? AND status = ?", cityPartner.City, "active").First(&corePartner).Error; err == nil {
+			result["core_partner_id"] = corePartner.ID
+			result["core_partner_name"] = corePartner.Name
+		}
+	}
+
+	log.Printf("[billing] resolve-partners: claw=%s → city=%s core=%s", clawID, result["city_partner_id"], result["core_partner_id"])
+	c.JSON(http.StatusOK, result)
 }
 
 // Resource pricing: amount in 分 per unit

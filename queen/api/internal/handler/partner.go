@@ -18,9 +18,9 @@ import (
 
 type PartnerHandler struct{}
 
-// ── Middleware: CorePartnerRequired ──
+// ── Middleware: TeamPartnerRequired ──
 
-func CorePartnerRequired() gin.HandlerFunc {
+func TeamPartnerRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("user_id")
 		role := c.GetString("role")
@@ -30,7 +30,7 @@ func CorePartnerRequired() gin.HandlerFunc {
 			return
 		}
 
-		var partner model.CorePartner
+		var partner model.TeamPartner
 		if err := database.DB.Where("user_id = ? AND status = ?", userID, "active").First(&partner).Error; err != nil {
 			middleware.Fail(c, http.StatusForbidden, middleware.CodeForbidden, "not a core partner")
 			c.Abort()
@@ -47,7 +47,7 @@ func CorePartnerRequired() gin.HandlerFunc {
 func (h *PartnerHandler) Dashboard(c *gin.Context) {
 	partnerID := c.GetString("partner_id")
 
-	var partner model.CorePartner
+	var partner model.TeamPartner
 	if err := database.DB.Where("id = ?", partnerID).First(&partner).Error; err != nil {
 		middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
 		return
@@ -261,7 +261,7 @@ func (h *PartnerHandler) GetDeal(c *gin.Context) {
 func (h *PartnerHandler) ListCityPartners(c *gin.Context) {
 	partnerID := c.GetString("partner_id")
 
-	var partner model.CorePartner
+	var partner model.TeamPartner
 	database.DB.Where("id = ?", partnerID).First(&partner)
 
 	var cities []model.CityPartner
@@ -465,7 +465,7 @@ func (h *PartnerHandler) StopDeployment(c *gin.Context) {
 // ── Admin: manage core partners ──
 
 func (h *PartnerHandler) AdminListPartners(c *gin.Context) {
-	var partners []model.CorePartner
+	var partners []model.TeamPartner
 	database.DB.Order("created_at DESC").Find(&partners)
 	c.JSON(http.StatusOK, gin.H{"partners": partners})
 }
@@ -488,7 +488,7 @@ func (h *PartnerHandler) AdminCreatePartner(c *gin.Context) {
 		return
 	}
 
-	partner := model.CorePartner{
+	partner := model.TeamPartner{
 		ID:             uuid.New().String(),
 		UserID:         req.UserID,
 		ClawID:         req.ClawID,
@@ -562,7 +562,7 @@ func (h *PartnerHandler) AdminUpdatePartner(c *gin.Context) {
 		updates["manage_fee_rate"] = req.ManageFeeRate
 	}
 
-	if err := database.DB.Model(&model.CorePartner{}).Where("id = ?", partnerID).Updates(updates).Error; err != nil {
+	if err := database.DB.Model(&model.TeamPartner{}).Where("id = ?", partnerID).Updates(updates).Error; err != nil {
 		middleware.Fail(c, http.StatusInternalServerError, middleware.CodeInternal)
 		return
 	}
@@ -621,7 +621,7 @@ func (h *PartnerHandler) ListMyNodes(c *gin.Context) {
 	partnerID := c.GetString("partner_id")
 
 	// Collect claw_ids: core partner's own + all city partners under them
-	var partner model.CorePartner
+	var partner model.TeamPartner
 	if err := database.DB.Where("id = ?", partnerID).First(&partner).Error; err != nil {
 		middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
 		return
@@ -741,7 +741,7 @@ func (h *PartnerHandler) AddCityPartnerClaw(c *gin.Context) {
 	}
 
 	// Verify this core partner's region
-	var partner model.CorePartner
+	var partner model.TeamPartner
 	if err := database.DB.Where("id = ?", partnerID).First(&partner).Error; err != nil {
 		middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
 		return
@@ -755,16 +755,17 @@ func (h *PartnerHandler) AddCityPartnerClaw(c *gin.Context) {
 	refCode := fmt.Sprintf("city_%s", uuid.New().String()[:8])
 
 	cityPartner := model.CityPartner{
-		ID:       uuid.New().String(),
-		ClawID:   req.ClawID,
-		Name:     req.Name,
-		Company:  req.Company,
-		City:     req.City,
-		Phone:    req.Phone,
-		Email:    req.Email,
-		RefCode:  refCode,
-		CommRate: commRate,
-		Status:   "approved",
+		ID:            uuid.New().String(),
+		ClawID:        req.ClawID,
+		Name:          req.Name,
+		Company:       req.Company,
+		City:          req.City,
+		TeamPartnerID: partnerID,
+		Phone:         req.Phone,
+		Email:         req.Email,
+		RefCode:       refCode,
+		CommRate:      commRate,
+		Status:        "approved",
 	}
 
 	if err := database.DB.Create(&cityPartner).Error; err != nil {

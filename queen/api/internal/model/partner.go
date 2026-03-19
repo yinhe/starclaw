@@ -2,17 +2,21 @@ package model
 
 import "time"
 
-// CorePartner represents an internal core partner (核心合伙人)
-type CorePartner struct {
+// MaxCerebrates is the maximum number of Cerebrate (核心) seats in the team.
+const MaxCerebrates = 5
+
+// TeamPartner represents a team partner (团队合伙人).
+// Two levels: Overlord (领主, regular) and Cerebrate (脑虫, core — max 5, elected by team vote).
+type TeamPartner struct {
 	ID     string `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	UserID string `json:"user_id" gorm:"type:varchar(36);index"`
 	ClawID string `json:"claw_id" gorm:"type:varchar(60);uniqueIndex"` // claw:xxxx node address
 	Name   string `json:"name" gorm:"type:varchar(100)"`
 	Phone  string `json:"phone" gorm:"type:varchar(20)"`
 	Email  string `json:"email" gorm:"type:varchar(200)"`
-	Region string `json:"region" gorm:"type:varchar(100)"`               // responsible region
-	Level  string `json:"level" gorm:"type:varchar(20);default:partner"` // partner / senior / director
-	Status string `json:"status" gorm:"type:varchar(20);default:active"` // active / suspended / terminated
+	Region string `json:"region" gorm:"type:varchar(100)"`                // responsible region
+	Level  string `json:"level" gorm:"type:varchar(20);default:overlord"` // overlord (领主) / cerebrate (脑虫, max 5)
+	Status string `json:"status" gorm:"type:varchar(20);default:active"`  // active / suspended / terminated
 
 	// Dual-track compensation
 	BaseSalary     int64   `json:"base_salary" gorm:"default:0"`         // monthly base (分)
@@ -29,6 +33,9 @@ type CorePartner struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// TableName keeps the DB table as core_partners for backward compatibility.
+func (TeamPartner) TableName() string { return "core_partners" }
 
 // CRMDeal represents a client deal in the sales pipeline
 type CRMDeal struct {
@@ -53,7 +60,7 @@ type CRMDeal struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
-// PartnerCommission tracks dual-track commission for core partners
+// PartnerCommission tracks dual-track commission for team partners
 type PartnerCommission struct {
 	ID         string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	PartnerID  string    `json:"partner_id" gorm:"type:varchar(36);index;not null"`
@@ -70,7 +77,7 @@ type PartnerCommission struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// EquityGrant represents stock option / equity grants to core partners
+// EquityGrant represents stock option / equity grants to team partners
 type EquityGrant struct {
 	ID            string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	PartnerID     string    `json:"partner_id" gorm:"type:varchar(36);index;not null"`
@@ -105,4 +112,28 @@ type Deployment struct {
 	StartedAt  *time.Time `json:"started_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+// TeamVote records votes for Cerebrate (脑虫) elections.
+// Team partners (Overlords) vote to elect up to 5 Cerebrates.
+type TeamVote struct {
+	ID          string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	ElectionID  string    `json:"election_id" gorm:"type:varchar(36);index;not null"`  // which election round
+	VoterID     string    `json:"voter_id" gorm:"type:varchar(36);index;not null"`     // TeamPartner.ID who voted
+	CandidateID string    `json:"candidate_id" gorm:"type:varchar(36);index;not null"` // TeamPartner.ID being voted for
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// TeamElection represents a Cerebrate election round.
+type TeamElection struct {
+	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	Title       string     `json:"title" gorm:"type:varchar(200)"`
+	Description string     `json:"description" gorm:"type:text"`
+	Seats       int        `json:"seats" gorm:"default:5"`                      // number of Cerebrate seats
+	Status      string     `json:"status" gorm:"type:varchar(20);default:open"` // open / closed / cancelled
+	StartAt     time.Time  `json:"start_at"`
+	EndAt       time.Time  `json:"end_at"`
+	ClosedAt    *time.Time `json:"closed_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }

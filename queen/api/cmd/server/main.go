@@ -75,8 +75,8 @@ func main() {
 		&model.Commission{},
 		&model.Payout{},
 		&model.MarketingMaterial{},
-		// Core Partner Hub
-		&model.CorePartner{},
+		// Team Partner Hub
+		&model.TeamPartner{},
 		&model.CRMDeal{},
 		&model.PartnerCommission{},
 		&model.EquityGrant{},
@@ -85,6 +85,16 @@ func main() {
 		&model.SettlementBill{},
 		&model.SettlementLineItem{},
 		&model.SettlementConfig{},
+		// Investor Pool
+		&model.InvestorPool{},
+		&model.Investor{},
+		&model.InvestorTransaction{},
+		&model.InvestorDividend{},
+		&model.PoolDeposit{},
+		&model.FundingRound{},
+		// Team Elections
+		&model.TeamVote{},
+		&model.TeamElection{},
 	)
 
 	seedAdmin()
