@@ -22,6 +22,16 @@ models:
     context_length: 1000000
     input_price_cny: 0.001
     output_price_cny: 0.01
+  - name: "minimax/MiniMax-M2"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.001
+    output_price_cny: 0.01
+  - name: "minimax/MiniMax-Text-01"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.001
+    output_price_cny: 0.005
   - name: "minimax/MiniMax-VL-01"
     type: "vision"
     context_length: 128000

@@ -1,0 +1,41 @@
+name: "Grok (xAI)"
+type: "llm"
+enabled: true
+endpoint: "https://api.x.ai/v1"
+auth:
+  type: "bearer"
+  key_env: "XAI_API_KEY"
+models:
+  # ── Grok 3 ──
+  - name: "grok/grok-3"
+    type: "chat"
+    context_length: 131072
+    input_price: 3.00       # per 1M tokens (USD)
+    output_price: 15.00
+  - name: "grok/grok-3-mini"
+    type: "reasoning"
+    context_length: 131072
+    input_price: 0.30
+    output_price: 0.50
+  - name: "grok/grok-3-fast"
+    type: "chat"
+    context_length: 131072
+    input_price: 5.00
+    output_price: 25.00
+  # ── Grok 2 ──
+  - name: "grok/grok-2"
+    type: "chat"
+    context_length: 131072
+    input_price: 2.00
+    output_price: 10.00
+  - name: "grok/grok-2-mini"
+    type: "chat"
+    context_length: 131072
+    input_price: 0.20
+    output_price: 1.00
+  - name: "grok/grok-2-vision"
+    type: "vision"
+    context_length: 32768
+    input_price: 2.00
+    output_price: 10.00
+regions: ["us"]

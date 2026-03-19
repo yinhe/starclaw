@@ -6,6 +6,7 @@ auth:
   type: "bearer"
   key_env: "DASHSCOPE_API_KEY"
 models:
+  # ── 通用对话 ──
   - name: "qwen/qwen-max"
     type: "chat"
     context_length: 32768
@@ -21,6 +22,17 @@ models:
     context_length: 1000000
     input_price_cny: 0.0003
     output_price_cny: 0.0006
+  - name: "qwen/qwen-flash"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.0
+    output_price_cny: 0.0
+  - name: "qwen/qwen-long"
+    type: "chat"
+    context_length: 10000000
+    input_price_cny: 0.0005
+    output_price_cny: 0.002
+  # ── Qwen3 / 3.5 ──
   - name: "qwen/qwen3.5-plus"
     type: "chat"
     context_length: 131072
@@ -31,11 +43,98 @@ models:
     context_length: 131072
     input_price_cny: 0.0
     output_price_cny: 0.0
+  - name: "qwen/qwen3-max"
+    type: "chat"
+    context_length: 32768
+    input_price_cny: 0.02
+    output_price_cny: 0.06
+  # ── QwQ (推理) ──
+  - name: "qwen/qwq-plus"
+    type: "reasoning"
+    context_length: 131072
+    input_price_cny: 0.0008
+    output_price_cny: 0.002
+  - name: "qwen/qwq-max"
+    type: "reasoning"
+    context_length: 32768
+    input_price_cny: 0.02
+    output_price_cny: 0.06
+  - name: "qwen/qwq-32b"
+    type: "reasoning"
+    context_length: 32768
+    input_price_cny: 0.002
+    output_price_cny: 0.006
+  # ── 视觉 (VL) ──
+  - name: "qwen/qwen3-vl-plus"
+    type: "vision"
+    context_length: 131072
+    input_price_cny: 0.0008
+    output_price_cny: 0.002
+  - name: "qwen/qwen3-vl-flash"
+    type: "vision"
+    context_length: 131072
+    input_price_cny: 0.0
+    output_price_cny: 0.0
   - name: "qwen/qwen-vl-max"
     type: "vision"
     context_length: 32768
     input_price_cny: 0.003
     output_price_cny: 0.009
+  - name: "qwen/qwen-vl-plus"
+    type: "vision"
+    context_length: 131072
+    input_price_cny: 0.0008
+    output_price_cny: 0.002
+  # ── 代码 (Coder) ──
+  - name: "qwen/qwen3-coder-plus"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.0008
+    output_price_cny: 0.002
+  - name: "qwen/qwen3-coder-flash"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.0
+    output_price_cny: 0.0
+  - name: "qwen/qwen-coder-plus"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.0008
+    output_price_cny: 0.002
+  - name: "qwen/qwen-coder-turbo"
+    type: "chat"
+    context_length: 131072
+    input_price_cny: 0.002
+    output_price_cny: 0.006
+  # ── 数学 (Math) ──
+  - name: "qwen/qwen-math-plus"
+    type: "chat"
+    context_length: 4096
+    input_price_cny: 0.002
+    output_price_cny: 0.006
+  - name: "qwen/qwen-math-turbo"
+    type: "chat"
+    context_length: 4096
+    input_price_cny: 0.002
+    output_price_cny: 0.006
+  # ── 多模态 (Omni) ──
+  - name: "qwen/qwen3-omni-flash"
+    type: "vision"
+    context_length: 131072
+    input_price_cny: 0.0
+    output_price_cny: 0.0
+  - name: "qwen/qwen-omni-turbo"
+    type: "vision"
+    context_length: 32768
+    input_price_cny: 0.0006
+    output_price_cny: 0.002
+  # ── 深度研究 ──
+  - name: "qwen/qwen-deep-research"
+    type: "reasoning"
+    context_length: 131072
+    input_price_cny: 0.002
+    output_price_cny: 0.008
+  # ── 视频 / 图像 / 语音 / 嵌入 ──
   - name: "qwen/wan2.6-t2v-plus"
     type: "video"
     price_per_call_cny: 0.6

@@ -23,6 +23,18 @@ models:
     type: "image"
     price_per_call: 0.01
   # Video Generation
+  - name: "fal/veo3"
+    type: "video"
+    price_per_call: 0.50
+    description: "Google Veo 3 - 电影级文生视频 (8s, 原生音频)"
+  - name: "fal/veo3.1"
+    type: "video"
+    price_per_call: 0.50
+    description: "Google Veo 3.1 - 最新最强文生视频 (4-8s, 原生音频)"
+  - name: "fal/sora2"
+    type: "video"
+    price_per_call: 0.40
+    description: "OpenAI Sora 2 Pro - 文生视频 (5-20s, 原生音频)"
   - name: "fal/kling-video/v3/pro/text-to-video"
     type: "video"
     price_per_call: 0.10
@@ -46,11 +58,38 @@ models:
   - name: "fal/luma-dream-machine"
     type: "video"
     price_per_call: 0.10
-  # Audio
+    description: "Luma Dream Machine Ray-2 - 视频生成"
+  # Music Generation
+  - name: "fal/ace-step"
+    type: "music"
+    price_per_call: 0.10
+    description: "ACE-Step 歌词转歌曲 (5-240s, 支持 verse/chorus/bridge)"
+  - name: "fal/minimax-music-v2"
+    type: "music"
+    price_per_call: 0.10
+    description: "MiniMax Music V2 高质量音乐生成"
+  - name: "fal/diffrhythm"
+    type: "music"
+    price_per_call: 0.05
+    description: "DiffRhythm 歌词转歌曲 (带时间戳, 95s/285s)"
+  - name: "fal/stable-audio"
+    type: "music"
+    price_per_call: 0.05
+    description: "Stable Audio 纯音乐/音效生成 (≤47s)"
+  # Audio / TTS
   - name: "fal/f5-tts"
     type: "tts"
     price_per_call: 0.01
     description: "F5-TTS 语音合成"
+  # Image Generation (additional)
+  - name: "fal/flux-realism"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX Realism - 写实风格文生图"
+  - name: "fal/stable-diffusion-v35-large"
+    type: "image"
+    price_per_call: 0.02
+    description: "Stable Diffusion 3.5 Large"
   # Image Editing
   - name: "fal/inpaint"
     type: "image_edit"

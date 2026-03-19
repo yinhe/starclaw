@@ -6,19 +6,37 @@ auth:
   type: "bearer"
   key_env: "GOOGLE_API_KEY"
 models:
+  # ── Gemini 2.5 ──
   - name: "google/gemini-2.5-pro"
     type: "chat"
     context_length: 1048576
-    input_price: 1.25
+    input_price: 1.25       # per 1M tokens (USD)
     output_price: 10.00
   - name: "google/gemini-2.5-flash"
     type: "chat"
     context_length: 1048576
     input_price: 0.15
     output_price: 0.60
+  # ── Gemini 2.0 ──
   - name: "google/gemini-2.0-flash"
     type: "chat"
     context_length: 1048576
     input_price: 0.10
     output_price: 0.40
+  - name: "google/gemini-2.0-flash-lite"
+    type: "chat"
+    context_length: 1048576
+    input_price: 0.075
+    output_price: 0.30
+  # ── Gemini 1.5 (legacy) ──
+  - name: "google/gemini-1.5-pro"
+    type: "chat"
+    context_length: 2097152
+    input_price: 1.25
+    output_price: 5.00
+  - name: "google/gemini-1.5-flash"
+    type: "chat"
+    context_length: 1048576
+    input_price: 0.075
+    output_price: 0.30
 regions: ["us", "eu", "asia"]

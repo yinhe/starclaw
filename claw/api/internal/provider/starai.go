@@ -41,7 +41,7 @@ func NewStarAIProvider(cfg StarAIConfig) *StarAIProvider {
 	inner.models = []string{
 		// ── Qwen (domestic, default) ──
 		"qwen-plus", "qwen-max", "qwen-turbo", "qwen-flash", "qwen-long",
-		"qwen3.5-plus", "qwen3-max",
+		"qwen3.5-plus", "qwen3.5-flash", "qwen3-max",
 		"qwq-plus", "qwq-max", "qwq-32b",
 		"qwen3-vl-plus", "qwen3-vl-flash", "qwen-vl-max", "qwen-vl-plus",
 		"qwen3-coder-plus", "qwen3-coder-flash", "qwen-coder-plus", "qwen-coder-turbo",
