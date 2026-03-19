@@ -55,6 +55,7 @@ type TabType = 'overview' | 'usage' | 'transactions' | 'team'
 type DirectionFilter = 'all' | 'in' | 'out'
 type TxnTypeFilter = 'all' | 'transfer'
  type StatusFilter = 'all' | 'confirmed' | 'pending' | 'failed'
+ type TimeRangeFilter = 'all' | 'today' | '7d' | '30d' | 'custom'
 
 const resourceLabels: Record<string, string> = {
   tokens: 'Tokens', video: '视频', image: '图片', music: '音乐',
@@ -108,6 +109,9 @@ export default function BillingPage() {
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all')
   const [txnTypeFilter, setTxnTypeFilter] = useState<TxnTypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [timeRangeFilter, setTimeRangeFilter] = useState<TimeRangeFilter>('all')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
   const [transactionsPage, setTransactionsPage] = useState(1)
   const [transactionsTotal, setTransactionsTotal] = useState(0)
   const [transactionsLoading, setTransactionsLoading] = useState(false)
@@ -228,6 +232,37 @@ export default function BillingPage() {
 
   const totalCost = Object.values(cost).reduce((s, v) => s + v, 0)
 
+  const isTransactionInTimeRange = (createdAt: string) => {
+    if (timeRangeFilter === 'all') return true
+    const txDate = new Date(createdAt)
+    if (Number.isNaN(txDate.getTime())) return false
+
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    if (timeRangeFilter === 'today') {
+      return txDate >= startOfToday
+    }
+
+    if (timeRangeFilter === '7d' || timeRangeFilter === '30d') {
+      const days = timeRangeFilter === '7d' ? 7 : 30
+      const start = new Date(startOfToday)
+      start.setDate(start.getDate() - (days - 1))
+      return txDate >= start
+    }
+
+    if (timeRangeFilter === 'custom') {
+      if (!customStartDate && !customEndDate) return true
+      const start = customStartDate ? new Date(`${customStartDate}T00:00:00`) : null
+      const end = customEndDate ? new Date(`${customEndDate}T23:59:59.999`) : null
+      if (start && txDate < start) return false
+      if (end && txDate > end) return false
+      return true
+    }
+
+    return true
+  }
+
   const connected = credits?.connected ?? false
   const totalInStars = (credits?.total_in ?? 0) / ENERGY_UNIT
   const totalOutStars = (credits?.total_out ?? 0) / ENERGY_UNIT
@@ -244,6 +279,8 @@ export default function BillingPage() {
   }).filter((tx) => {
     if (statusFilter === 'all') return true
     return (tx.status || 'confirmed') === statusFilter
+  }).filter((tx) => {
+    return isTransactionInTimeRange(tx.created_at)
   })
   const hasMoreTransactions = transactions.length < transactionsTotal
 
@@ -529,6 +566,34 @@ export default function BillingPage() {
                   <option value="pending">Pending</option>
                   <option value="failed">Failed</option>
                 </select>
+                <select
+                  value={timeRangeFilter}
+                  onChange={(e) => setTimeRangeFilter(e.target.value as TimeRangeFilter)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="all">全部时间</option>
+                  <option value="today">今天</option>
+                  <option value="7d">近 7 天</option>
+                  <option value="30d">近 30 天</option>
+                  <option value="custom">自定义时间</option>
+                </select>
+                {timeRangeFilter === 'custom' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    />
+                    <span className="text-xs text-gray-400">至</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                )}
               </div>
             </div>
             {filteredTransactions.length === 0 ? (
