@@ -252,7 +252,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 		"model":     args.Model,
 		"scene":     args.Scene,
 		"size":      args.Size,
-		"message":   fmt.Sprintf("图片已生成完成！下载地址: %s", displayURL),
+		"message":   "图片已生成完成，结果已保存到本地图片服务。",
 	}), nil
 }
 

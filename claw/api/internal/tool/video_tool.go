@@ -349,7 +349,7 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 	return toJSON(map[string]interface{}{
 		"action": "generate_video", "status": "submitted", "task_id": taskID,
 		"model": args.Model, "scene": args.Scene,
-		"message": fmt.Sprintf("视频任务已提交！任务ID: %s，模型: %s。片段完成后会自动合成。", taskID, args.Model),
+		"message": fmt.Sprintf("视频任务已提交。任务ID: %s，模型: %s。可用 check_status 查看进度。", taskID, args.Model),
 	}), nil
 }
 
@@ -525,7 +525,7 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 	return toJSON(map[string]interface{}{
 		"action": "generate_video", "status": "submitted", "task_id": requestID,
 		"model": args.Model, "scene": args.Scene,
-		"message": fmt.Sprintf("视频任务已提交！请求ID: %s，模型: %s (fal.ai)。", requestID, args.Model),
+		"message": fmt.Sprintf("视频任务已提交。任务ID: %s，模型: %s。可用 check_status 查看进度。", requestID, args.Model),
 	}), nil
 }
 
