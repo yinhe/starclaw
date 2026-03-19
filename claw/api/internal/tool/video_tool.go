@@ -572,7 +572,8 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 	}
 	// Check DB first
 	var rec model.VideoRecord
-	if err := t.db.Where("task_id = ? OR id = ?", args.TaskID, args.TaskID).First(&rec).Error; err == nil {
+	dbFound := t.db.Where("task_id = ? OR id = ?", args.TaskID, args.TaskID).First(&rec).Error == nil
+	if dbFound {
 		if rec.Status == "succeeded" {
 			return toJSON(map[string]interface{}{
 				"action": "check_status", "task_id": rec.TaskID,
@@ -588,9 +589,43 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 				"task_status": "FAILED", "message": "视频生成失败",
 			}), nil
 		}
+		// Record exists with running/pending status — wait for background goroutine
+		// For fal.ai models, background goroutine is already polling; just re-check DB.
+		// For DashScope models, we also re-check DB (background goroutine polls too).
+		deadline := time.Now().Add(3 * time.Minute)
+		for time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+			var updated model.VideoRecord
+			if err := t.db.Where("task_id = ? OR id = ?", args.TaskID, args.TaskID).First(&updated).Error; err == nil {
+				if updated.Status == "succeeded" {
+					return toJSON(map[string]interface{}{
+						"action": "check_status", "task_id": updated.TaskID,
+						"record_id": updated.ID, "scene": updated.Scene,
+						"task_status": "SUCCEEDED", "video_url": updated.VideoURL,
+						"message": fmt.Sprintf("视频已就绪！record_id=%s 可直接用于 compose_pro 的 video_id", updated.ID),
+					}), nil
+				}
+				if updated.Status == "failed" {
+					return toJSON(map[string]interface{}{
+						"action": "check_status", "task_id": updated.TaskID,
+						"record_id": updated.ID, "scene": updated.Scene,
+						"task_status": "FAILED", "message": "视频生成失败",
+					}), nil
+				}
+			}
+		}
+		return toJSON(map[string]interface{}{
+			"action": "check_status", "task_id": rec.TaskID,
+			"record_id": rec.ID, "scene": rec.Scene,
+			"task_status": "RUNNING", "message": "视频仍在生成中（后台轮询中），请稍后再查。",
+		}), nil
 	}
 
-	// Poll DashScope
+	// No DB record — try DashScope polling as fallback (old-style tasks without DB record)
 	userID := ""
 	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
 		userID = uid
