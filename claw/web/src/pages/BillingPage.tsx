@@ -176,7 +176,7 @@ export default function BillingPage() {
     <div className="h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto px-6 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">计费中心</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">星能中心</h1>
           <p className="text-sm text-gray-500 mt-1">查看真实星能余额、消耗用量和团队协作信息</p>
         </div>
 
