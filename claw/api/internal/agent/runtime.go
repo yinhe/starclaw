@@ -13,6 +13,28 @@ import (
 )
 
 const maxToolIterations = 50
+const maxAutoContinue = 10 // max consecutive auto-continue rounds without tool calls
+
+// shouldAutoContinue checks if the LLM response indicates more work is planned
+// and the agent should automatically continue instead of stopping.
+var autoContinueSignals = []string{
+	"⏳", "⌛",
+	"正在为您", "正在生成", "正在撰写", "正在创建", "正在制作",
+	"正在处理", "正在分析", "正在准备", "正在编写",
+	"下一步", "接下来我将", "接下来将",
+	"即将开始", "即将生成", "即将为您",
+	"开始生成", "开始制作", "开始创建",
+	"请稍候", "请稍等",
+}
+
+func shouldAutoContinue(content string) bool {
+	for _, signal := range autoContinueSignals {
+		if strings.Contains(content, signal) {
+			return true
+		}
+	}
+	return false
+}
 
 // Runtime orchestrates the Agent execution loop with Tool Calling
 type Runtime struct {
@@ -56,6 +78,7 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 	}
 
 	var totalUsage provider.TokenUsage
+	autoContinueCount := 0
 
 	for i := 0; i < maxToolIterations; i++ {
 		chatReq := &provider.ChatRequest{
@@ -78,12 +101,22 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 			totalUsage.TotalTokens += result.Usage.TotalTokens
 		}
 
-		// No tool call  we're done
+		// No tool call — check if we should auto-continue
 		if result.Tool == nil {
 			messages = append(messages, provider.ChatMessage{
 				Role:    "assistant",
 				Content: result.Content,
 			})
+
+			if autoContinueCount < maxAutoContinue && shouldAutoContinue(result.Content) {
+				autoContinueCount++
+				log.Printf("[Agent] Auto-continue #%d triggered (content signals more work)", autoContinueCount)
+				messages = append(messages, provider.ChatMessage{
+					Role:    "user",
+					Content: "继续",
+				})
+				continue
+			}
 
 			return &RunResult{
 				Content:  result.Content,
@@ -120,6 +153,7 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 		if err != nil {
 			toolResult = fmt.Sprintf("Tool execution error: %v", err)
 		}
+		autoContinueCount = 0 // reset after successful tool call
 
 		log.Printf("[Agent] Tool result: %s (%.100s...)", result.Tool.Function.Name, toolResult)
 
@@ -152,6 +186,7 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 
 		var totalUsage provider.TokenUsage
 		stepIndex := 0
+		autoContinueCount := 0
 
 		for i := 0; i < maxToolIterations; i++ {
 			chatReq := &provider.ChatRequest{
@@ -193,8 +228,28 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 				totalUsage.TotalTokens += result.Usage.TotalTokens
 			}
 
-			// No tool call → stream the final response
+			// No tool call — check if we should auto-continue
 			if result.Tool == nil {
+				if autoContinueCount < maxAutoContinue && shouldAutoContinue(result.Content) {
+					autoContinueCount++
+					log.Printf("[Agent/Stream] Auto-continue #%d triggered (content signals more work)", autoContinueCount)
+
+					// Stream the intermediate content to the client so they see progress
+					ch <- &StreamChunk{Content: result.Content}
+
+					// Add assistant message + inject "继续" to keep the loop going
+					messages = append(messages, provider.ChatMessage{
+						Role:    "assistant",
+						Content: result.Content,
+					})
+					messages = append(messages, provider.ChatMessage{
+						Role:    "user",
+						Content: "继续",
+					})
+					continue
+				}
+
+				// Truly final response — stream it
 				stepIndex++
 				if i > 0 {
 					ch <- &StreamChunk{AgentStep: "summarizing", AgentStepDetail: "正在生成最终回复...", AgentStepIndex: stepIndex}
@@ -260,6 +315,7 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 			if err != nil {
 				toolResult = fmt.Sprintf("Tool execution error: %v", err)
 			}
+			autoContinueCount = 0 // reset after successful tool call
 			log.Printf("[Agent/Stream] Tool result from %s: %d bytes", result.Tool.Function.Name, len(toolResult))
 
 			ch <- &StreamChunk{
