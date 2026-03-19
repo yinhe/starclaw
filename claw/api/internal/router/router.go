@@ -173,7 +173,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	mcp.AutoRegisterBridge(toolRegistry)
 
 	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
-	queenClient := billing.NewQueenClient(cfg.Swarm.QueenURL, cfg.JWT.Secret)
+	// Prefer dedicated swarm.node_token for Queen internal API; fall back to jwt.secret
+	queenNodeToken := cfg.Swarm.NodeToken
+	if queenNodeToken == "" {
+		queenNodeToken = cfg.JWT.Secret
+	}
+	queenClient := billing.NewQueenClient(cfg.Swarm.QueenURL, queenNodeToken)
 	billingGW := billing.NewGateway(db, queenClient, identity.NodeID)
 	if billingGW.IsEnabled() {
 		toolRegistry.SetExecuteHook(billingGW.ExecuteHook)

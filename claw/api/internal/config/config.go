@@ -29,6 +29,7 @@ type NodeConfig struct {
 type SwarmConfig struct {
 	Enabled           bool   `mapstructure:"enabled"`            // enable swarm registration
 	QueenURL          string `mapstructure:"queen_url"`          // e.g. https://api.starclaw.me
+	NodeToken         string `mapstructure:"node_token"`         // Queen internal API token (X-Node-Token); falls back to jwt.secret
 	NodeName          string `mapstructure:"node_name"`          // display name for this Claw
 	Region            string `mapstructure:"region"`             // e.g. cn-east, us-west
 	HeartbeatInterval int    `mapstructure:"heartbeat_interval"` // seconds, default 30
@@ -134,6 +135,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("openai.base_url", "")
 	viper.SetDefault("swarm.enabled", false)
 	viper.SetDefault("swarm.queen_url", "")
+	viper.SetDefault("swarm.node_token", "")
 	viper.SetDefault("swarm.node_name", "")
 	viper.SetDefault("swarm.region", "")
 	viper.SetDefault("swarm.heartbeat_interval", 30)
