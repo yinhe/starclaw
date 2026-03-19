@@ -28,6 +28,17 @@ repos:
         subdir: "queen/api"
         branch: "master"
 
+      # ========== ROUTER (star-ai.net AI 算力路由 — Server B) ==========
+
+      - name: "router-server-b"
+        ssh_host: "root@47.103.51.32"
+        ssh_key: "/root/.ssh/id_ed25519"
+        worm_url: "http://127.0.0.1:8097"
+        deploy_path: "/opt/starclaw/router"
+        deploy_cmd: "docker compose up -d --build api web"
+        subdir: "router"
+        branch: "master"
+
       # ========== OVERLORD (企业 AI 管控平台 — Server C 本地) ==========
 
       - name: "overlord-server-c"
