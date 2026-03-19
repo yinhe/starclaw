@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -73,11 +74,21 @@ func (qc *QueenClient) CheckBalance(userID string) (bool, int64, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("[queen-client] check balance HTTP %d: %s (fail open)", resp.StatusCode, string(respBody))
+		return true, 0, nil // fail open on non-200
+	}
+
 	var result struct {
 		Balance  int64 `json:"balance"`
 		HasQuota bool  `json:"has_quota"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[queen-client] check balance decode error: %v (fail open)", err)
+		return true, 0, nil
+	}
+	log.Printf("[queen-client] check balance: user=%s claw=%s has_quota=%v balance=%d", userID, qc.clawID, result.HasQuota, result.Balance)
 	return result.HasQuota, result.Balance, nil
 }
 
