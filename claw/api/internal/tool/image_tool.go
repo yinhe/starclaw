@@ -227,6 +227,14 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	}
 
 	localURL := t.downloadImage(imageURL, record.ID)
+	if localURL == "" {
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		return toJSON(map[string]interface{}{
+			"action":  "generate_image",
+			"status":  "failed",
+			"message": "图片已生成，但同步到本地图片服务失败，请重试。",
+		}), nil
+	}
 	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
 	if localURL != "" {
 		updates["local_url"] = localURL
@@ -234,9 +242,6 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(updates)
 
 	displayURL := localURL
-	if displayURL == "" {
-		displayURL = imageURL
-	}
 	log.Printf("[ImageTool] Image %s completed: %s", record.ID, displayURL)
 
 	return toJSON(map[string]interface{}{
@@ -400,6 +405,11 @@ func (t *ImageTool) pollAndDownload(apiKey, endpoint, requestID, recordID string
 	}
 
 	localURL := t.downloadImage(imageURL, recordID)
+	if localURL == "" {
+		log.Printf("[ImageTool] Local sync failed for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		return
+	}
 	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
 	if localURL != "" {
 		updates["local_url"] = localURL
