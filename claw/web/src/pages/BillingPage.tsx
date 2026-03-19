@@ -1,16 +1,6 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, Users, BarChart3, Receipt, Plus, Trash2, Shield, Wallet, Gift, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { CreditCard, Users, BarChart3, Receipt, Plus, Trash2, Shield, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { billingAPI, tenantAPI } from '../lib/api'
-
-interface Plan {
-  id: string
-  name: string
-  display_name: string
-  price: number
-  credits: number
-  bonus_pct: number
-  tag: string
-}
 
 interface Tenant {
   id: string
@@ -44,25 +34,21 @@ interface Transaction {
   created_at: string
 }
 
-type TabType = 'balance' | 'usage' | 'team' | 'transactions'
+type TabType = 'usage' | 'team' | 'transactions'
 
 const resourceLabels: Record<string, string> = {
   tokens: 'Tokens', video: '视频', image: '图片', music: '音乐',
 }
 
 export default function BillingPage() {
-  const [tab, setTab] = useState<TabType>('balance')
-  const [plans, setPlans] = useState<Plan[]>([])
+  const [tab, setTab] = useState<TabType>('usage')
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [usage, setUsage] = useState<Record<string, number>>({})
   const [cost, setCost] = useState<Record<string, number>>({})
-  const [pricing, setPricing] = useState<Record<string, number>>({})
   const [period, setPeriod] = useState('')
   const [members, setMembers] = useState<Member[]>([])
   const [usageHistory, setUsageHistory] = useState<UsageItem[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [recharging, setRecharging] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
   const [teamName, setTeamName] = useState('')
@@ -71,26 +57,16 @@ export default function BillingPage() {
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-    setLoading(true)
     try {
-      const [planRes, plansRes] = await Promise.all([
-        billingAPI.getCurrentPlan().catch(() => null),
-        billingAPI.listPlans().catch(() => null),
-      ])
+      const planRes = await billingAPI.getCurrentPlan().catch(() => null)
       if (planRes?.data) {
         setTenant(planRes.data.tenant)
         setUsage(planRes.data.usage || {})
         setCost(planRes.data.cost || {})
-        setPricing(planRes.data.pricing || {})
         setPeriod(planRes.data.period || '')
         setTeamName(planRes.data.tenant?.name || '')
       }
-      if (plansRes?.data) {
-        setPlans(plansRes.data.plans || [])
-        if (plansRes.data.pricing) setPricing(plansRes.data.pricing)
-      }
     } finally {
-      setLoading(false)
     }
   }
 
@@ -117,21 +93,6 @@ export default function BillingPage() {
     if (tab === 'usage') loadUsageHistory()
     if (tab === 'transactions') loadTransactions()
   }, [tab])
-
-  const handleRecharge = async (planId: string) => {
-    setRecharging(true)
-    try {
-      const res = await billingAPI.recharge(planId)
-      if (res?.data) {
-        alert(`充值成功！到账 ¥${res.data.credits}，当前余额 ¥${res.data.balance.toFixed(2)}`)
-        loadData()
-      }
-    } catch (e: any) {
-      alert(e.response?.data?.error || '充值失败')
-    } finally {
-      setRecharging(false)
-    }
-  }
 
   const handleInvite = async () => {
     if (!inviteEmail) return
@@ -166,26 +127,35 @@ export default function BillingPage() {
   const totalCost = Object.values(cost).reduce((s, v) => s + v, 0)
 
   const tabs: { key: TabType; label: string; icon: typeof CreditCard }[] = [
-    { key: 'balance', label: '充值', icon: Wallet },
     { key: 'usage', label: '用量', icon: BarChart3 },
     { key: 'transactions', label: '流水', icon: Receipt },
     { key: 'team', label: '团队', icon: Users },
   ]
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
-    )
-  }
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto px-6 py-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">计费中心</h1>
-          <p className="text-sm text-gray-500 mt-1">充值余额、查看用量和管理团队</p>
+          <p className="text-sm text-gray-500 mt-1">查看真实用量、消耗流水和团队协作信息</p>
+        </div>
+
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-950/20">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">充值入口已统一收敛到 StarAI</p>
+              <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">Claw 这里不再使用本地假充值余额。需要购买星能时，请前往 StarAI 完成真实充值。</p>
+            </div>
+            <a
+              href="https://star-ai.net/billing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+            >
+              去 StarAI 充值
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -206,92 +176,26 @@ export default function BillingPage() {
           ))}
         </div>
 
-        {/* Balance / Recharge Tab */}
-        {tab === 'balance' && (
-          <div className="space-y-6">
-            {/* Balance Card */}
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-6 text-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-emerald-200 text-sm">当前余额</p>
-                  <h2 className="text-4xl font-bold mt-1">¥{(tenant?.balance ?? 0).toFixed(2)}</h2>
-                  <p className="text-emerald-200 text-sm mt-2">本月已消费 ¥{totalCost.toFixed(2)}</p>
-                </div>
-                <Wallet className="w-14 h-14 text-emerald-200/30" />
-              </div>
-
-              {/* Monthly cost breakdown */}
-              <div className="grid grid-cols-4 gap-3 mt-5">
-                {['tokens', 'video', 'image', 'music'].map(key => (
-                  <div key={key} className="bg-white/10 rounded-lg px-3 py-2">
-                    <p className="text-xs text-emerald-200">{resourceLabels[key]}</p>
-                    <p className="text-sm font-semibold">{formatNum(usage[key] || 0)} <span className="text-xs font-normal text-emerald-200">/ ¥{(cost[key] || 0).toFixed(2)}</span></p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pricing Info */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">资源单价</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                {[
-                  { key: 'tokens', unit: '1K Tokens' },
-                  { key: 'video', unit: '1 个视频' },
-                  { key: 'image', unit: '1 张图片' },
-                  { key: 'music', unit: '1 首音乐' },
-                ].map(item => (
-                  <div key={item.key} className="flex justify-between py-1.5 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                    <span className="text-gray-500">{item.unit}</span>
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      ¥{item.key === 'tokens' ? ((pricing[item.key] || 0) * 1000).toFixed(2) : (pricing[item.key] || 0).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recharge Packages */}
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">选择充值套餐</h3>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {plans.map(plan => (
-                  <div
-                    key={plan.id}
-                    className="relative rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:border-emerald-400 transition-all cursor-pointer group"
-                    onClick={() => !recharging && handleRecharge(plan.id)}
-                  >
-                    {plan.tag && (
-                      <span className="absolute -top-2.5 right-3 text-[10px] px-2 py-0.5 rounded-full bg-orange-500 text-white font-medium">
-                        {plan.tag}
-                      </span>
-                    )}
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">¥{plan.price}</p>
-                    {plan.bonus_pct > 0 ? (
-                      <div className="flex items-center gap-1 mt-1">
-                        <Gift className="w-3 h-3 text-orange-500" />
-                        <span className="text-xs text-orange-500 font-medium">送{plan.bonus_pct}%</span>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-400 mt-1">&nbsp;</p>
-                    )}
-                    <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium mt-2">到账 ¥{plan.credits}</p>
-                    <button
-                      disabled={recharging}
-                      className="w-full mt-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors group-hover:bg-emerald-600 disabled:opacity-50"
-                    >
-                      {recharging ? '处理中...' : '充值'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Usage Tab */}
         {tab === 'usage' && (
           <div className="space-y-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-blue-500" /> 本月总消耗
+                  </h3>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">¥{totalCost.toFixed(2)}</p>
+                  <p className="text-sm text-gray-500 mt-1">统计周期：{period || '--'}</p>
+                </div>
+                {tenant && (
+                  <div className="text-right text-sm text-gray-500">
+                    <p>团队：<span className="font-medium text-gray-900 dark:text-white">{tenant.name}</span></p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
               <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-blue-500" /> 本月用量 ({period})
