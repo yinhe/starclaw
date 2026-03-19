@@ -130,3 +130,40 @@ func (q *QueenCreditClient) Consume(req *ConsumeRequest) (*ConsumeResponse, erro
 	log.Printf("[star-ai] consumed %d star units from %s (remaining: %d)", result.Deducted, req.ClawID, result.Balance)
 	return &result, nil
 }
+
+// ConsumptionRecord represents a single tool consumption record from Queen.
+type ConsumptionRecord struct {
+	ID        string    `json:"id"`
+	Remark    string    `json:"remark"`
+	Amount    int64     `json:"amount"` // energy units (1⚡ = 10000)
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GetConsumption fetches recent tool consumption records for a claw from Queen.
+func (q *QueenCreditClient) GetConsumption(clawID string, days int) ([]ConsumptionRecord, error) {
+	url := fmt.Sprintf("%s/internal/billing/consumption?claw_id=%s&days=%d", q.baseURL, clawID, days)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Node-Token", q.token)
+
+	resp, err := q.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("queen unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("queen consumption query failed (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Records []ConsumptionRecord `json:"records"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("queen response parse error: %w", err)
+	}
+	return result.Records, nil
+}

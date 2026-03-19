@@ -798,3 +798,40 @@ func (h *BillingHandler) AdminUpdatePackage(c *gin.Context) {
 	database.DB.Model(&model.RechargePackage{}).Where("id = ?", id).Updates(updates)
 	c.JSON(http.StatusOK, gin.H{"message": "套餐已更新"})
 }
+
+// InternalConsumptionRecords returns recent consume-type CreditTransactions for a claw.
+// GET /internal/billing/consumption?claw_id=xxx&days=7
+func (h *BillingHandler) InternalConsumptionRecords(c *gin.Context) {
+	clawID := c.Query("claw_id")
+	if clawID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "claw_id required"})
+		return
+	}
+
+	days := 7
+	if d := c.Query("days"); d != "" {
+		if n, err := strconv.Atoi(d); err == nil && n > 0 && n <= 90 {
+			days = n
+		}
+	}
+
+	since := time.Now().AddDate(0, 0, -days)
+	var records []model.CreditTransaction
+	database.DB.Where("from_claw = ? AND type = ? AND status = ? AND created_at >= ?",
+		clawID, "consume", "confirmed", since).
+		Order("created_at DESC").Limit(500).
+		Find(&records)
+
+	type record struct {
+		ID        string    `json:"id"`
+		Remark    string    `json:"remark"`
+		Amount    int64     `json:"amount"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	out := make([]record, len(records))
+	for i, r := range records {
+		out[i] = record{ID: r.ID, Remark: r.Remark, Amount: r.Amount, CreatedAt: r.CreatedAt}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"records": out, "total": len(out)})
+}

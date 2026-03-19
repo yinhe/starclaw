@@ -115,6 +115,7 @@ export const dash = {
   deleteKey: (id: string) => request<void>('DELETE', `/dash/keys/${id}`),
   usage: (days?: number) => request<{ records: { id: string; model: string; prompt_tokens: number; completion_tokens: number; total_tokens: number; cost_cents: number; created_at: string }[]; total_tokens: number; total_cost: number; total_requests: number; days: number }>('GET', `/dash/usage${days ? `?days=${days}` : ''}`),
   balance: () => request<{ balance_cents: number; free_quota: number }>('GET', '/dash/balance'),
+  toolUsage: (days?: number) => request<{ records: { id: string; remark: string; amount: number; created_at: string }[]; total: number }>('GET', `/dash/tool-usage${days ? `?days=${days}` : ''}`),
   packages: () => request<{ packages: { id: string; name: string; amount_cents: number; bonus_cents: number; total_cents: number }[] }>('GET', '/dash/pay/packages'),
   payAlipay: (packageId: string) => request<{ order_no: string; pay_url: string }>('POST', '/dash/pay/alipay', { package_id: packageId }),
   payWechat: (packageId: string) => request<{ order_no: string; code_url: string; amount: string }>('POST', '/dash/pay/wechat', { package_id: packageId }),

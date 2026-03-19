@@ -109,10 +109,11 @@ func main() {
 	dash.POST("/keys", dashKeys.Create)
 	dash.DELETE("/keys/:id", dashKeys.Delete)
 
-	dashUsage := handler.NewUsageHandler(db)
+	dashUsage := handler.NewUsageHandler(db, queenCredit)
 	dash.GET("/usage", dashUsage.Query)
 	dash.GET("/logs", dashUsage.Logs)
 	dash.GET("/balance", dashUsage.Balance)
+	dash.GET("/tool-usage", dashUsage.ToolUsage)
 
 	// Payment (JWT auth for creating orders, public for callbacks)
 	payHandler := handler.NewPaymentHandler(db, cfg.Alipay, cfg.Wechat, cfg.Queen)
@@ -165,9 +166,10 @@ func main() {
 	v1.POST("/keys", keysHandler.Create)
 	v1.DELETE("/keys/:id", keysHandler.Delete)
 
-	usageHandler := handler.NewUsageHandler(db)
+	usageHandler := handler.NewUsageHandler(db, queenCredit)
 	v1.GET("/usage", usageHandler.Query)
 	v1.GET("/balance", usageHandler.Balance)
+	v1.GET("/tool-usage", usageHandler.ToolUsage)
 
 	proxyHandler := handler.NewProxyHandler(proxyClient)
 	v1.POST("/images/generations", proxyHandler.Forward)

@@ -3,19 +3,22 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw-router/internal/billing"
 	"github.com/yinhe/starclaw-router/internal/model"
 	"gorm.io/gorm"
 )
 
 type UsageHandler struct {
-	db *gorm.DB
+	db          *gorm.DB
+	queenCredit *billing.QueenCreditClient
 }
 
-func NewUsageHandler(db *gorm.DB) *UsageHandler {
-	return &UsageHandler{db: db}
+func NewUsageHandler(db *gorm.DB, queenCredit *billing.QueenCreditClient) *UsageHandler {
+	return &UsageHandler{db: db, queenCredit: queenCredit}
 }
 
 // Query returns usage records for the authenticated user
@@ -114,6 +117,38 @@ func (h *UsageHandler) Logs(c *gin.Context) {
 		"page_size": pageSize,
 		"pages":     (total + int64(pageSize) - 1) / int64(pageSize),
 	})
+}
+
+// ToolUsage returns tool consumption records (image/video/music) from Queen.
+// GET /dash/tool-usage?days=7
+func (h *UsageHandler) ToolUsage(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var user model.User
+	if err := h.db.Where("id = ?", userID).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	if user.ClawID == "" || h.queenCredit == nil || !h.queenCredit.Enabled() {
+		c.JSON(http.StatusOK, gin.H{"records": []interface{}{}, "total": 0})
+		return
+	}
+
+	days := 7
+	if d := c.Query("days"); d != "" {
+		if n, err := strconv.Atoi(d); err == nil && n > 0 && n <= 90 {
+			days = n
+		}
+	}
+
+	records, err := h.queenCredit.GetConsumption(user.ClawID, days)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"records": []interface{}{}, "total": 0, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"records": records, "total": len(records)})
 }
 
 // Balance returns the user's current balance
