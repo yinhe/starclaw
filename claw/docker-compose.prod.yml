@@ -70,6 +70,7 @@ services:
       - ./data/music:/app/music
       - ./data/images:/app/images
       - ./data/workspaces:/app/workspaces
+      - ./data/uploads:/app/uploads
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
