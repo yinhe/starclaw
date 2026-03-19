@@ -35,12 +35,19 @@ var hallucinatedToolSignals = []string{
 	"analyze", "generate_srt", "check_status",
 }
 
-func shouldAutoContinue(content string) (bool, string) {
-	// Check for hallucinated tool execution first (higher priority)
+func isHallucinatedToolNarration(content string) bool {
 	for _, signal := range hallucinatedToolSignals {
 		if strings.Contains(content, signal) {
-			return true, "你刚才只是用文字描述了工具调用过程，但并没有实际发起 function call。请立即通过 function call 调用对应的工具来真正执行操作。不要用文字描述，直接调用工具。"
+			return true
 		}
+	}
+	return false
+}
+
+func shouldAutoContinue(content string) (bool, string) {
+	// Check for hallucinated tool execution first (higher priority)
+	if isHallucinatedToolNarration(content) {
+		return true, "你刚才只是用文字描述了工具调用过程，但并没有实际发起 function call。下一条消息必须直接发起一个工具调用；如果前置条件不满足，只能调用 check_status/list 这类查询工具，不要再输出流程说明文字。"
 	}
 	// Check for normal continuation signals
 	for _, signal := range autoContinueSignals {
@@ -122,20 +129,27 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 
 		// No tool call — check if we should auto-continue
 		if result.Tool == nil {
-			messages = append(messages, provider.ChatMessage{
-				Role:    "assistant",
-				Content: result.Content,
-			})
-
+			hallucinated := isHallucinatedToolNarration(result.Content)
 			if shouldCont, injection := shouldAutoContinue(result.Content); shouldCont && autoContinueCount < maxAutoContinue {
 				autoContinueCount++
-				log.Printf("[Agent] Auto-continue #%d triggered (injection: %.60s)", autoContinueCount, injection)
+				log.Printf("[Agent] Auto-continue #%d triggered (hallucinated=%v, injection: %.60s)", autoContinueCount, hallucinated, injection)
+				if !hallucinated {
+					messages = append(messages, provider.ChatMessage{
+						Role:    "assistant",
+						Content: result.Content,
+					})
+				}
 				messages = append(messages, provider.ChatMessage{
 					Role:    "user",
 					Content: injection,
 				})
 				continue
 			}
+
+			messages = append(messages, provider.ChatMessage{
+				Role:    "assistant",
+				Content: result.Content,
+			})
 
 			return &RunResult{
 				Content:  result.Content,
@@ -249,18 +263,24 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 
 			// No tool call — check if we should auto-continue
 			if result.Tool == nil {
+				hallucinated := isHallucinatedToolNarration(result.Content)
 				if shouldCont, injection := shouldAutoContinue(result.Content); shouldCont && autoContinueCount < maxAutoContinue {
 					autoContinueCount++
-					log.Printf("[Agent/Stream] Auto-continue #%d triggered (injection: %.60s)", autoContinueCount, injection)
+					log.Printf("[Agent/Stream] Auto-continue #%d triggered (hallucinated=%v, injection: %.60s)", autoContinueCount, hallucinated, injection)
 
-					// Stream the intermediate content to the client so they see progress
-					ch <- &StreamChunk{Content: result.Content}
+					// For hallucinated tool narration, do not stream fake progress text.
+					// Keep UI clean and force the model to output real tool calls.
+					if !hallucinated {
+						ch <- &StreamChunk{Content: result.Content}
+					}
 
 					// Add assistant message + inject corrective/continue prompt
-					messages = append(messages, provider.ChatMessage{
-						Role:    "assistant",
-						Content: result.Content,
-					})
+					if !hallucinated {
+						messages = append(messages, provider.ChatMessage{
+							Role:    "assistant",
+							Content: result.Content,
+						})
+					}
 					messages = append(messages, provider.ChatMessage{
 						Role:    "user",
 						Content: injection,
