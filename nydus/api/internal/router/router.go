@@ -56,6 +56,7 @@ func Setup() *gin.Engine {
 	releases := r.Group("/releases")
 	{
 		releases.GET("/latest", handler.GetLatestRelease)
+		releases.GET("/spore/latest", handler.GetSporeLatest)
 		releases.GET("/download/:filename", handler.DownloadRelease)
 		releases.GET("/source.tar.gz", handler.GetSourceTarball)
 	}

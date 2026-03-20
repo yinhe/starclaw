@@ -150,6 +150,21 @@ func DownloadRelease(c *gin.Context) {
 	c.File(localPath)
 }
 
+// GetSporeLatest serves the latest Spore release info (spore-latest.json).
+func GetSporeLatest(c *gin.Context) {
+	localPath := filepath.Join(config.C.Server.ReposDir, "releases", "spore-latest.json")
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		c.JSON(404, gin.H{"error": "no spore releases yet"})
+		return
+	}
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to read spore release info"})
+		return
+	}
+	c.Data(200, "application/json; charset=utf-8", data)
+}
+
 // GetSourceTarball serves a tarball of the claw OSS repo.
 func GetSourceTarball(c *gin.Context) {
 	bareRepo := clawBareRepoPath()

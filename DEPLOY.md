@@ -137,7 +137,52 @@ v2026.0315.2316
 
 ---
 
-## 四、手动部署（备用）
+## 四、Spore 桌面客户端发布
+
+### 什么是 Spore 发布
+
+**Spore = 桌面安装包（Windows/Linux/macOS），内嵌 Claw API + Web 前端。**
+
+Spore 不走 Nydus 自动部署（构建链复杂：Go 交叉编译 + embed 嵌入），采用**本地构建 + 上传**模式。
+
+### 发布步骤（1 条命令）
+
+```powershell
+# 在 monorepo 根目录执行（需要 Go 工具链 + SSH key）
+.\spore\scripts\release-spore.ps1
+```
+
+**自动完成：**
+1. 调用 `build-release.ps1` 交叉编译 4 个平台（Windows/Linux/macOS×2）
+2. SCP 上传安装包到 Nydus `/data/nydus/repos/releases/`
+3. 更新 `spore-latest.json` 版本清单
+
+### 输出产物
+
+| 平台 | 文件名 | 下载地址 |
+|------|--------|----------|
+| Windows | `StarClaw-Setup-v2026.MMDD.HHMM.exe` | `https://nydus.starclaw.net/releases/download/...` |
+| Linux | `StarClaw-Setup-v2026.MMDD.HHMM-linux-amd64.tar.gz` | 同上 |
+| macOS ARM | `StarClaw-Setup-v2026.MMDD.HHMM-darwin-arm64` | 同上 |
+| macOS Intel | `StarClaw-Setup-v2026.MMDD.HHMM-darwin-amd64` | 同上 |
+
+### 版本检查 API
+
+```bash
+# Spore 最新版本信息
+curl -sf https://nydus.starclaw.net/releases/spore/latest
+```
+
+### 可选参数
+
+```powershell
+.\spore\scripts\release-spore.ps1 -SkipBuild    # 仅上传（已有 dist/）
+.\spore\scripts\release-spore.ps1 -SkipUpload   # 仅构建（不上传）
+```
+
+---
+
+## 五、手动部署（备用）
 
 仅在 Nydus 故障时使用。
 
@@ -168,7 +213,7 @@ cd /opt/starclaw/gateway
 
 ---
 
-## 五、Nydus 管理
+## 六、Nydus 管理
 
 ### 配置文件
 
@@ -212,7 +257,7 @@ curl -s 'http://127.0.0.1:8095/api/deploys' \
 
 ---
 
-## 六、故障排查
+## 七、故障排查
 
 ```bash
 # Nydus 容器状态
