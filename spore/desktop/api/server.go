@@ -23,16 +23,21 @@ type Server struct {
 	mgr     *runtime.Manager
 	mux     *http.ServeMux
 	webFS   fs.FS // embedded frontend
+	version string
 	logSubs map[string][]chan string
 	logMu   sync.Mutex
 }
 
 // NewServer creates a new Desktop API server.
-func NewServer(mgr *runtime.Manager, webFS fs.FS) *Server {
+func NewServer(mgr *runtime.Manager, webFS fs.FS, version string) *Server {
+	if version == "" {
+		version = "dev"
+	}
 	s := &Server{
 		mgr:     mgr,
 		mux:     http.NewServeMux(),
 		webFS:   webFS,
+		version: version,
 		logSubs: make(map[string][]chan string),
 	}
 	s.registerRoutes()
@@ -49,6 +54,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/instances/", s.corsWrap(s.handleInstanceAction))
 	s.mux.HandleFunc("/api/platform", s.corsWrap(s.handlePlatform))
 	s.mux.HandleFunc("/api/install", s.corsWrap(s.handleInstall))
+	s.mux.HandleFunc("/api/update/check", s.corsWrap(s.handleUpdateCheck))
 	s.mux.HandleFunc("/api/logs/", s.handleLogStream) // SSE, no CORS wrap needed
 
 	// Serve embedded frontend (SPA)
@@ -363,8 +369,57 @@ func (s *Server) handlePlatform(w http.ResponseWriter, r *http.Request) {
 		"hostname":   p.Hostname,
 		"init":       p.InitSystem,
 		"spore_home": p.SporeHome,
-		"version":    "0.1.0",
+		"version":    s.version,
 	})
+}
+
+// ── Update Check ──
+
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		jsonErr(w, 405, "method not allowed")
+		return
+	}
+
+	result := map[string]interface{}{
+		"current_version":  s.version,
+		"update_available": false,
+	}
+
+	// Check Nydus release server for latest version
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("https://nydus.starclaw.net/releases/latest")
+	if err != nil {
+		result["error"] = "check failed: " + err.Error()
+		jsonResp(w, result)
+		return
+	}
+	defer resp.Body.Close()
+
+	var release struct {
+		TagName     string `json:"tag_name"`
+		DownloadURL string `json:"download_url"`
+		PublishedAt string `json:"published_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		result["error"] = "parse failed: " + err.Error()
+		jsonResp(w, result)
+		return
+	}
+
+	latestVersion := strings.TrimPrefix(release.TagName, "v")
+	result["latest_version"] = latestVersion
+	result["download_url"] = release.DownloadURL
+	result["published_at"] = release.PublishedAt
+
+	if latestVersion != "" && latestVersion != s.version {
+		result["update_available"] = true
+		result["message"] = fmt.Sprintf("新版本可用: v%s (当前: v%s)", latestVersion, s.version)
+	} else {
+		result["message"] = "已是最新版本"
+	}
+
+	jsonResp(w, result)
 }
 
 // ── Log Streaming (SSE) ──

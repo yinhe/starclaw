@@ -203,6 +203,7 @@ jwt:
 	os.WriteFile(iconPath, iconData, 0644)
 
 	createDesktopShortcut(url, sporePath, iconPath)
+	registerAutoStart(sporePath, "claw")
 
 	elapsed := time.Since(start)
 
@@ -323,6 +324,65 @@ func createDesktopShortcut(url, sporePath, iconPath string) {
 	default:
 		content := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=%s\nComment=AI Agent Platform\nIcon=%s\nExec=sh -c '%s start claw; sleep 1; xdg-open %s'\nTerminal=false\nCategories=Development;\n", name, iconPath, sporePath, url)
 		os.WriteFile(filepath.Join(desktop, name+".desktop"), []byte(content), 0755)
+	}
+}
+
+func registerAutoStart(sporePath, instName string) {
+	switch goruntime.GOOS {
+	case "windows":
+		// Add to HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+		startCmd := fmt.Sprintf(`"%s" start %s`, sporePath, instName)
+		exec.Command("reg", "add",
+			`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
+			"/v", "StarClaw-"+instName,
+			"/t", "REG_SZ",
+			"/d", startCmd,
+			"/f").Run()
+	case "linux":
+		// Create systemd user service if available
+		home, _ := os.UserHomeDir()
+		unitDir := filepath.Join(home, ".config", "systemd", "user")
+		os.MkdirAll(unitDir, 0755)
+		unit := fmt.Sprintf(`[Unit]
+Description=StarClaw %s
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=%s start %s
+ExecStop=%s stop %s
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+`, instName, sporePath, instName, sporePath, instName)
+		unitPath := filepath.Join(unitDir, "starclaw-"+instName+".service")
+		os.WriteFile(unitPath, []byte(unit), 0644)
+		exec.Command("systemctl", "--user", "enable", "starclaw-"+instName).Run()
+	case "darwin":
+		// Create LaunchAgent plist
+		home, _ := os.UserHomeDir()
+		agentDir := filepath.Join(home, "Library", "LaunchAgents")
+		os.MkdirAll(agentDir, 0755)
+		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>me.starclaw.%s</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>%s</string>
+        <string>start</string>
+        <string>%s</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+`, instName, sporePath, instName)
+		plistPath := filepath.Join(agentDir, "me.starclaw."+instName+".plist")
+		os.WriteFile(plistPath, []byte(plist), 0644)
 	}
 }
 

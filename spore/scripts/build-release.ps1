@@ -36,7 +36,7 @@ $vTag = "v$gitVersion"
 Write-Host "Version: $vTag" -ForegroundColor Yellow
 
 # Patch version const in setup/main.go and spore/main.go
-foreach ($f in @("cmd\setup\main.go", "cmd\spore\main.go")) {
+foreach ($f in @("cmd\setup\main.go", "cmd\spore\main.go", "cmd\desktop\main.go")) {
     $fp = Join-Path $SporeDir $f
     $src = [IO.File]::ReadAllText($fp)
     $patched = $src -replace 'const version = "[^"]+"', "const version = `"$gitVersion`""

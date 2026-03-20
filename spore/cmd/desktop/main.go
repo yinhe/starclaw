@@ -13,6 +13,7 @@ import (
 	sporeRuntime "github.com/yinhe/starclaw-spore/pkg/runtime"
 )
 
+const version = "2026.0318.0738"
 const defaultAddr = "127.0.0.1:7890"
 
 func main() {
@@ -28,7 +29,7 @@ func main() {
 		}
 	}
 
-	srv := api.NewServer(mgr, webFS)
+	srv := api.NewServer(mgr, webFS, version)
 
 	// Auto-open browser
 	go func() {
@@ -38,7 +39,7 @@ func main() {
 	}()
 
 	fmt.Println("╔══════════════════════════════════════════╗")
-	fmt.Println("║         Spore Desktop v0.1.0             ║")
+	fmt.Printf("║   Spore Desktop v%-23s ║\n", version)
 	fmt.Println("║   http://127.0.0.1:7890                  ║")
 	fmt.Println("║   Press Ctrl+C to quit                   ║")
 	fmt.Println("╚══════════════════════════════════════════╝")

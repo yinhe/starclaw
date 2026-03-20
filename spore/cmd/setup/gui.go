@@ -242,6 +242,7 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	iconPath := filepath.Join(installDir, "starclaw.ico")
 	os.WriteFile(iconPath, iconData, 0644)
 	createDesktopShortcut(url, sporePath, iconPath)
+	registerAutoStart(sporePath, instName)
 
 	if startErr != nil {
 		sse.log(fmt.Sprintf("Warning: start failed: %v (can start manually later)", startErr), 90)
