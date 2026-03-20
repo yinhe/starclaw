@@ -635,11 +635,17 @@ func (t *MVTool) resolveVideoRecord(ref, convID, userID string) (model.VideoReco
 
 	// 1. Try exact match by record ID (UUID)
 	if t.db.Where("id = ?", ref).First(&video).Error == nil {
+		if video.Status != "succeeded" {
+			return video, fmt.Errorf("video %s status is '%s' (not ready). Use video_generation.check_status to check progress, or use a different video", ref, video.Status)
+		}
 		return video, nil
 	}
 
 	// 2. Try by task_id (fal.ai request_id or DashScope task_id)
 	if t.db.Where("task_id = ?", ref).First(&video).Error == nil {
+		if video.Status != "succeeded" {
+			return video, fmt.Errorf("video task %s status is '%s' (not ready). Use video_generation.check_status to check progress, or use a different video", ref, video.Status)
+		}
 		return video, nil
 	}
 
@@ -672,13 +678,13 @@ func (t *MVTool) resolveVideoRecord(ref, convID, userID string) (model.VideoReco
 
 	// 4. Try by video_url path (e.g. "/v1/videos/merged/fal_xxx.mp4")
 	if strings.HasPrefix(ref, "/v1/videos/") || strings.HasPrefix(ref, "http") {
-		if t.db.Where("video_url = ?", ref).First(&video).Error == nil {
+		if t.db.Where("video_url = ? AND status = 'succeeded'", ref).First(&video).Error == nil {
 			return video, nil
 		}
 	}
 
 	// 5. Try matching by video_url containing the ref as filename
-	if t.db.Where("video_url LIKE ?", "%"+ref+"%").First(&video).Error == nil {
+	if t.db.Where("video_url LIKE ? AND status = 'succeeded'", "%"+ref+"%").First(&video).Error == nil {
 		return video, nil
 	}
 

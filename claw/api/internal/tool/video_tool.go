@@ -688,7 +688,7 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 
 	return toJSON(map[string]interface{}{
 		"action": "check_status", "task_id": args.TaskID,
-		"task_status": "RUNNING", "message": "视频仍在生成中，请稍后再查。",
+		"task_status": "NOT_FOUND", "message": fmt.Sprintf("未找到任务 %s，请检查 task_id 是否正确。可能已过期或从未创建。", args.TaskID),
 	}), nil
 }
 
