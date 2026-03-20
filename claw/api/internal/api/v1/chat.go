@@ -145,6 +145,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	// RAG: retrieve relevant context from knowledge bases
 	systemPrompt := agent.SystemPrompt
+	// Inject current date so LLM knows the real year (prevents searching "2024" etc.)
+	systemPrompt += fmt.Sprintf("\n\n当前日期: %s", time.Now().Format("2006年1月2日 15:04 (Monday)"))
 	// Collect all KB IDs: agent's default KB + user-selected KBs
 	kbIDs := make(map[string]bool)
 	if agent.KnowledgeBaseID != "" {

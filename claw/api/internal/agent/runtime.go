@@ -328,6 +328,9 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 						ch <- sc
 					}
 				}
+				// Stream closed without explicit Done — ensure Done is sent
+				// (required for cerebrate memory extraction in chat handler)
+				ch <- &StreamChunk{Done: true, Usage: &totalUsage}
 				return
 			}
 

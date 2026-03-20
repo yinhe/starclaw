@@ -3,6 +3,7 @@ import { Send, Loader2, FolderOpen, FileText, Terminal, Code2, RefreshCw, Chevro
 import { codingAPI } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import CodeBlock from '../components/CodeBlock'
 
 interface FileNode {
@@ -303,7 +304,7 @@ export default function CodingAgentPage() {
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
               }`}>
                 {msg.role === 'assistant' ? (
-                  <ReactMarkdown components={{ code: CodeBlock as any }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock as any }}>
                     {msg.content}
                   </ReactMarkdown>
                 ) : (
@@ -333,7 +334,7 @@ export default function CodingAgentPage() {
           {streamingContent && (
             <div className="flex justify-start">
               <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-800 dark:text-gray-200">
-                <ReactMarkdown components={{ code: CodeBlock as any }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock as any }}>
                   {streamingContent}
                 </ReactMarkdown>
               </div>

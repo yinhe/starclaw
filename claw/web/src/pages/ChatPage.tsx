@@ -16,6 +16,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
 import { useChatStore } from '../stores/chatStore'
 import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI, knowledgeBaseAPI, memoryAPI } from '../lib/api'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import CodeBlock from '../components/CodeBlock'
 import Skeleton from '../components/Skeleton'
 
@@ -1527,7 +1528,7 @@ export default function ChatPage() {
                       {msg.role === 'assistant' ? (
                         <>
                           <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
-                            <ReactMarkdown components={{
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                               code({ className, children, ...props }) {
                                 const match = /language-(\w+)/.exec(className || '')
                                 const text = String(children).replace(/\n$/, '')
@@ -1646,7 +1647,7 @@ export default function ChatPage() {
               </div>
               <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
                 <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
-                  <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                 </div>
               </div>
             </div>

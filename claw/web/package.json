@@ -25,6 +25,7 @@
     "react-markdown": "^9.0.1",
     "react-router-dom": "^6.23.1",
     "react-syntax-highlighter": "^15.5.0",
+    "remark-gfm": "^4.0.1",
     "three": "^0.169.0",
     "zustand": "^4.5.2"
   },
