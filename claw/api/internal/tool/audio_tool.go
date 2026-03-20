@@ -40,26 +40,28 @@ func (t *AudioTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":   {Type: "string", Description: "Action: analyze, detect_beats, get_energy_curve, generate_srt"},
-			"music_id": {Type: "string", Description: "Music record ID (from music_generation or uploaded). Used for analyze/detect_beats/get_energy_curve."},
-			"file_url": {Type: "string", Description: "Direct URL or local path to audio file. Alternative to music_id."},
-			"lyrics":   {Type: "string", Description: "For generate_srt: full lyrics text with section markers like [verse1], [chorus], [bridge], [outro]."},
-			"duration": {Type: "string", Description: "For generate_srt: total audio duration in seconds (from analyze result)."},
-			"sections": {Type: "string", Description: "For generate_srt: JSON array of sections from analyze, e.g. [{\"type\":\"verse1\",\"start\":15.2,\"end\":45.8}]"},
-			"interval": {Type: "string", Description: "For get_energy_curve: sampling interval in seconds (default: 1.0)"},
+			"action":      {Type: "string", Description: "Action: analyze, detect_beats, get_energy_curve, generate_srt"},
+			"music_id":    {Type: "string", Description: "Music record ID (from music_generation or uploaded). Used for analyze/detect_beats/get_energy_curve."},
+			"file_url":    {Type: "string", Description: "Direct URL or local path to audio file. Alternative to music_id."},
+			"lyrics":      {Type: "string", Description: "For generate_srt: full lyrics text with section markers like [verse1], [chorus], [bridge], [outro]."},
+			"duration":    {Type: "string", Description: "For generate_srt: total audio duration in seconds (from analyze result)."},
+			"vocal_start": {Type: "string", Description: "For generate_srt: seconds when vocals/singing actually begin (e.g. after instrumental intro). Credit lines (词曲/演唱/制作人) will display before this point. Default: auto-detect."},
+			"sections":    {Type: "string", Description: "For generate_srt: JSON array of sections from analyze, e.g. [{\"type\":\"verse1\",\"start\":15.2,\"end\":45.8}]"},
+			"interval":    {Type: "string", Description: "For get_energy_curve: sampling interval in seconds (default: 1.0)"},
 		},
 		Required: []string{"action"},
 	}
 }
 
 type audioArgs struct {
-	Action   string `json:"action"`
-	MusicID  string `json:"music_id"`
-	FileURL  string `json:"file_url"`
-	Lyrics   string `json:"lyrics"`
-	Duration string `json:"duration"`
-	Sections string `json:"sections"`
-	Interval string `json:"interval"`
+	Action     string `json:"action"`
+	MusicID    string `json:"music_id"`
+	FileURL    string `json:"file_url"`
+	Lyrics     string `json:"lyrics"`
+	Duration   string `json:"duration"`
+	VocalStart string `json:"vocal_start"`
+	Sections   string `json:"sections"`
+	Interval   string `json:"interval"`
 }
 
 func (t *AudioTool) Execute(ctx context.Context, argsJSON string) (string, error) {
@@ -559,6 +561,17 @@ func summarizeEnergy(curve []float64, duration float64) string {
 }
 
 // generateSRT creates an SRT subtitle file from lyrics + timing info
+// isCreditLine checks if a line is a song credit/metadata (not singing)
+func isCreditLine(line string) bool {
+	creditKeywords := []string{"词曲", "演唱", "制作人", "作词", "作曲", "编曲", "混音", "录音", "母带", "出品", "监制", "Lyrics", "Composer", "Producer", "Singer", "Vocal"}
+	for _, kw := range creditKeywords {
+		if strings.Contains(line, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, error) {
 	if args.Lyrics == "" {
 		return "", fmt.Errorf("lyrics text is required")
@@ -572,9 +585,18 @@ func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, er
 		return "", fmt.Errorf("invalid duration: %v", err)
 	}
 
+	// Parse vocal_start if provided
+	vocalStart := 0.0
+	if args.VocalStart != "" {
+		if vs, err := strconv.ParseFloat(args.VocalStart, 64); err == nil {
+			vocalStart = vs
+		}
+	}
+
 	// Parse lyrics into lines, stripping section markers
-	var lines []string
-	var sectionMarkers []string
+	// Separate credit lines (词曲/演唱/制作人) from singing lyrics
+	var credits []string
+	var singLines []string
 	for _, line := range strings.Split(args.Lyrics, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -582,7 +604,6 @@ func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, er
 		}
 		// Detect section markers
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			sectionMarkers = append(sectionMarkers, line)
 			continue
 		}
 		// Strip inline section markers
@@ -592,10 +613,14 @@ func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, er
 				continue
 			}
 		}
-		lines = append(lines, line)
+		if isCreditLine(line) {
+			credits = append(credits, line)
+		} else {
+			singLines = append(singLines, line)
+		}
 	}
 
-	if len(lines) == 0 {
+	if len(singLines) == 0 {
 		return "", fmt.Errorf("no lyrics lines found after parsing")
 	}
 
@@ -610,27 +635,59 @@ func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, er
 		json.Unmarshal([]byte(args.Sections), &sections)
 	}
 
-	// Distribute lyrics evenly across duration with a small intro offset
-	introOffset := 2.0 // seconds before first lyric
-	if duration > 180 {
-		introOffset = 5.0
-	}
-
-	availableDuration := duration - introOffset - 3.0 // leave 3s for outro
-	if availableDuration < float64(len(lines))*2.0 {
-		availableDuration = duration - 1.0
-		introOffset = 0.5
-	}
-
-	lineInterval := availableDuration / float64(len(lines))
-	if lineInterval < 1.5 {
-		lineInterval = 1.5
+	// Auto-detect vocal_start if not provided
+	if vocalStart <= 0 {
+		// Default: estimate intro based on song duration
+		if duration > 180 {
+			vocalStart = 12.0 // typical pop song intro ~12s
+		} else if duration > 60 {
+			vocalStart = 5.0
+		} else {
+			vocalStart = 2.0
+		}
 	}
 
 	// Build SRT
 	var srt strings.Builder
-	for i, line := range lines {
-		start := introOffset + float64(i)*lineInterval
+	seq := 1
+
+	// Place credit lines in the intro period (0 to vocalStart)
+	if len(credits) > 0 {
+		creditInterval := vocalStart / float64(len(credits))
+		if creditInterval < 2.0 {
+			creditInterval = 2.0
+		}
+		for i, credit := range credits {
+			start := float64(i) * creditInterval
+			end := start + creditInterval - 0.1
+			if end > vocalStart {
+				end = vocalStart - 0.1
+			}
+			if start >= vocalStart {
+				break
+			}
+			srt.WriteString(fmt.Sprintf("%d\n", seq))
+			srt.WriteString(fmt.Sprintf("%s --> %s\n", formatSRTTime(start), formatSRTTime(end)))
+			srt.WriteString(credit + "\n\n")
+			seq++
+		}
+	}
+
+	// Distribute singing lyrics from vocalStart to (duration - outro)
+	outro := 3.0
+	singDuration := duration - vocalStart - outro
+	if singDuration < float64(len(singLines))*1.5 {
+		singDuration = duration - vocalStart - 0.5
+		outro = 0.5
+	}
+
+	lineInterval := singDuration / float64(len(singLines))
+	if lineInterval < 1.5 {
+		lineInterval = 1.5
+	}
+
+	for i, line := range singLines {
+		start := vocalStart + float64(i)*lineInterval
 		end := start + lineInterval - 0.1
 
 		if end > duration {
@@ -640,20 +697,25 @@ func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, er
 			break
 		}
 
-		srt.WriteString(fmt.Sprintf("%d\n", i+1))
+		srt.WriteString(fmt.Sprintf("%d\n", seq))
 		srt.WriteString(fmt.Sprintf("%s --> %s\n", formatSRTTime(start), formatSRTTime(end)))
 		srt.WriteString(line + "\n\n")
+		seq++
 	}
 
 	srtContent := srt.String()
+	totalLines := len(credits) + len(singLines)
 
 	return toJSON(map[string]interface{}{
-		"action":      "generate_srt",
-		"status":      "success",
-		"total_lines": len(lines),
-		"duration":    duration,
-		"srt":         srtContent,
-		"message":     fmt.Sprintf("已生成 %d 行歌词字幕，总时长 %s。可直接用于 mv_production 的 lyrics_srt 参数。", len(lines), fmt.Sprintf("%d:%02d", int(duration)/60, int(duration)%60)),
+		"action":       "generate_srt",
+		"status":       "success",
+		"credit_lines": len(credits),
+		"sing_lines":   len(singLines),
+		"total_lines":  totalLines,
+		"vocal_start":  vocalStart,
+		"duration":     duration,
+		"srt":          srtContent,
+		"message":      fmt.Sprintf("已生成 %d 行字幕（%d行署名+%d行歌词），人声起始 %.1fs，总时长 %s。可直接用于 mv_production 的 lyrics_srt 参数。", totalLines, len(credits), len(singLines), vocalStart, fmt.Sprintf("%d:%02d", int(duration)/60, int(duration)%60)),
 	}), nil
 }
 
