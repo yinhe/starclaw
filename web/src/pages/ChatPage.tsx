@@ -16,6 +16,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
 import { useChatStore } from '../stores/chatStore'
 import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI, knowledgeBaseAPI, memoryAPI } from '../lib/api'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import CodeBlock from '../components/CodeBlock'
 import Skeleton from '../components/Skeleton'
 
@@ -81,6 +82,7 @@ export default function ChatPage() {
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const [agentStep, setAgentStep] = useState<{ step: string; detail: string; index: number } | null>(null)
+  const [costMeta, setCostMeta] = useState<{ model?: string; costEnergy?: string; balanceEnergy?: string } | null>(null)
   const [runningFileId, setRunningFileId] = useState<string | null>(null)
   const [fileRunResults, setFileRunResults] = useState<Record<string, { stdout: string; stderr: string; exit_code: number; duration: string } | null>>({})
 
@@ -235,6 +237,18 @@ export default function ChatPage() {
       try {
         const res = await multimodalAPI.uploadImage(file)
         setAttachedImages((prev) => [...prev, { url: res.data.url, name: res.data.filename }])
+        // Also add to files so backend knows the disk path for AI tools
+        if (res.data.stored) {
+          setAttachedFiles((prev) => [...prev, {
+            id: res.data.id,
+            filename: res.data.filename,
+            url: res.data.file_url || res.data.url,
+            size: res.data.size || 0,
+            mime: res.data.mime || file.type,
+            category: 'image',
+            stored: res.data.stored,
+          }])
+        }
       } catch { /* ignore */ }
     }
   }
@@ -243,11 +257,22 @@ export default function ChatPage() {
     if (!files) return
     setFileUploading(true)
     for (const file of Array.from(files)) {
-      // Skip images — those go through handleImageUpload
+      // Images: upload via multimodal (for base64 vision) + save to files (for AI tool access)
       if (file.type.startsWith('image/')) {
         try {
           const res = await multimodalAPI.uploadImage(file)
           setAttachedImages((prev) => [...prev, { url: res.data.url, name: res.data.filename }])
+          if (res.data.stored) {
+            setAttachedFiles((prev) => [...prev, {
+              id: res.data.id,
+              filename: res.data.filename,
+              url: res.data.file_url || res.data.url,
+              size: res.data.size || 0,
+              mime: res.data.mime || file.type,
+              category: 'image',
+              stored: res.data.stored,
+            }])
+          }
         } catch { /* ignore */ }
         continue
       }
@@ -658,6 +683,50 @@ export default function ChatPage() {
     }
   }
 
+  // Extract media URLs from tool result JSON
+  const extractMediaFromToolResult = (result: string | undefined): { type: 'image' | 'video' | 'audio'; url: string } | null => {
+    if (!result) return null
+    try {
+      const parsed = JSON.parse(result)
+      if (parsed.image_url) return { type: 'image', url: parsed.image_url }
+      if (parsed.video_url) return { type: 'video', url: parsed.video_url }
+      if (parsed.audio_url) return { type: 'audio', url: parsed.audio_url }
+    } catch { /* ignore */ }
+    return null
+  }
+
+  // Render inline media preview below tool cards
+  const renderInlineMedia = (result: string | undefined) => {
+    const media = extractMediaFromToolResult(result)
+    if (!media) return null
+    const baseUrl = window.location.origin
+    const fullUrl = media.url.startsWith('/') ? baseUrl + media.url : media.url
+    switch (media.type) {
+      case 'image':
+        return (
+          <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 max-w-sm">
+            <a href={fullUrl} target="_blank" rel="noopener noreferrer">
+              <img src={fullUrl} alt="Generated image" className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity" loading="lazy" />
+            </a>
+          </div>
+        )
+      case 'video':
+        return (
+          <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 max-w-md">
+            <video src={fullUrl} controls preload="metadata" className="w-full h-auto" />
+          </div>
+        )
+      case 'audio':
+        return (
+          <div className="mt-2 max-w-sm">
+            <audio src={fullUrl} controls preload="metadata" className="w-full" />
+          </div>
+        )
+      default:
+        return null
+    }
+  }
+
   const handleEditResend = async (msgId: string) => {
     if (!editingText.trim() || isLoading || !selectedAgentId) return
 
@@ -879,6 +948,7 @@ export default function ChatPage() {
     setBrowserScreenshots([])
     setToolInteractions([])
     setAgentStep(null)
+    setCostMeta(null)
     setMentionedAgent(null)
     setShowMentionPopup(false)
     setLoading(true)
@@ -1039,6 +1109,14 @@ export default function ChatPage() {
               } else if (data.content) {
                 fullContent += data.content
                 appendStreamingContent(data.content)
+              }
+              // Capture upstream cost metadata (X-StarAI-* headers)
+              if (data.meta) {
+                setCostMeta({
+                  model: data.meta['X-Starai-Model'] || data.meta['X-StarAI-Model'],
+                  costEnergy: data.meta['X-Starai-Cost-Energy'] || data.meta['X-StarAI-Cost-Energy'],
+                  balanceEnergy: data.meta['X-Starai-Balance-Energy'] || data.meta['X-StarAI-Balance-Energy'],
+                })
               }
             } catch { /* skip malformed lines */ }
           }
@@ -1254,8 +1332,8 @@ export default function ChatPage() {
       {/* Chat area */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Header */}
-        <div className="px-6 py-3 border-b bg-white flex items-center gap-4">
-          <h2 className="font-semibold text-gray-800">对话</h2>
+        <div className="px-6 py-3 border-b bg-white dark:bg-gray-800 dark:border-gray-700 flex items-center gap-4">
+          <h2 className="font-semibold text-gray-800 dark:text-gray-100">对话</h2>
           {mentionedAgent && (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium border border-primary-200">
               <Bot className="w-3 h-3" />
@@ -1322,7 +1400,7 @@ export default function ChatPage() {
                         <div key={ti.id} className="space-y-1">
                           {ti.reasoning && (
                             <div className="flex justify-start">
-                              <div className="max-w-[85%] px-3 py-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg italic">
+                              <div className="max-w-[85%] px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-lg italic">
                                 💭 {ti.reasoning.length > 200 ? ti.reasoning.slice(0, 200) + '...' : ti.reasoning}
                               </div>
                             </div>
@@ -1389,6 +1467,7 @@ export default function ChatPage() {
                               )}
                             </div>
                           </div>
+                          {renderInlineMedia(ti.result)}
                         </div>
                       )
                     })}
@@ -1443,13 +1522,13 @@ export default function ChatPage() {
                       className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                         msg.role === 'user'
                           ? 'bg-primary-600 text-white rounded-br-md'
-                          : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
                       }`}
                     >
                       {msg.role === 'assistant' ? (
                         <>
-                          <div className="prose prose-sm max-w-none break-words overflow-hidden">
-                            <ReactMarkdown components={{
+                          <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                               code({ className, children, ...props }) {
                                 const match = /language-(\w+)/.exec(className || '')
                                 const text = String(children).replace(/\n$/, '')
@@ -1467,7 +1546,7 @@ export default function ChatPage() {
                                     >{text}</CodeBlock>
                                   )
                                 }
-                                return <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm" {...props}>{children}</code>
+                                return <code className="bg-gray-200 dark:bg-gray-700 dark:text-gray-200 px-1 py-0.5 rounded text-sm" {...props}>{children}</code>
                               }
                             }}>{msg.content}</ReactMarkdown>
                           </div>
@@ -1566,9 +1645,9 @@ export default function ChatPage() {
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-red-400 to-orange-500 flex items-center justify-center shadow-sm mt-0.5">
                 <CrawfishIcon className="w-5 h-5 text-white" />
               </div>
-              <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 text-gray-800 text-sm leading-relaxed">
-                <div className="prose prose-sm max-w-none break-words overflow-hidden">
-                  <ReactMarkdown>{streamingContent}</ReactMarkdown>
+              <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
+                <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                 </div>
               </div>
             </div>
@@ -1687,6 +1766,7 @@ export default function ChatPage() {
                       )}
                     </div>
                   </div>
+                  {renderInlineMedia(ti.result)}
                   </div>
                 )
               })}
@@ -1813,7 +1893,7 @@ export default function ChatPage() {
           <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(e.target.files)} />
 
           {/* Grok-style unified input bar */}
-          <div className="relative flex items-center bg-gray-100 rounded-full border border-gray-200 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 transition-all">
+          <div className="relative flex items-center bg-gray-100 dark:bg-gray-800 rounded-full border border-gray-200 dark:border-gray-700 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/50 transition-all">
             {/* Left: Attach button */}
             <div className="relative flex-shrink-0">
               <button
@@ -1897,7 +1977,7 @@ export default function ChatPage() {
                 onDragOver={(e) => e.preventDefault()}
                 rows={1}
                 placeholder={isRecording ? '录音中，说完自动识别...' : isTranscribing ? '语音识别中...' : '询问任何内容，@ 可指定 Agent...'}
-                className="w-full bg-transparent resize-none py-3 outline-none text-sm text-gray-800 placeholder-gray-400"
+                className="w-full bg-transparent resize-none py-3 outline-none text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400"
                 style={{ minHeight: '24px', maxHeight: '120px' }}
               />
             </div>
@@ -1926,6 +2006,14 @@ export default function ChatPage() {
               </button>
             </div>
           </div>
+          {/* Star Energy cost display */}
+          {costMeta && (costMeta.costEnergy || costMeta.balanceEnergy) && (
+            <div className="flex items-center justify-end gap-3 px-4 py-1 text-[11px] text-gray-400">
+              {costMeta.costEnergy && <span>本次消耗 <span className="text-amber-500 font-medium">⚡{costMeta.costEnergy}</span></span>}
+              {costMeta.balanceEnergy && <span>余额 <span className="text-emerald-500 font-medium">⚡{costMeta.balanceEnergy}</span></span>}
+              {costMeta.model && <span className="text-gray-300">{costMeta.model}</span>}
+            </div>
+          )}
         </div>
       </div>
 

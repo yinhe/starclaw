@@ -27,7 +27,6 @@ func SeedPlatformModels(db *gorm.DB) {
 	defs := []platformDef{
 		{ID: "platform-qwen", Provider: "qwen", ModelName: "qwen3-max", DisplayName: "通义千问 (平台)", EnvKey: "PLATFORM_QWEN_API_KEY"},
 		{ID: "platform-openai", Provider: "openai", ModelName: "gpt-4o", DisplayName: "OpenAI (平台)", EnvKey: "PLATFORM_OPENAI_API_KEY"},
-		{ID: "platform-fal", Provider: "fal", ModelName: "fal-ai/flux/schnell", DisplayName: "fal.ai (平台)", EnvKey: "PLATFORM_FAL_API_KEY"},
 		{ID: "platform-deepseek", Provider: "deepseek", ModelName: "deepseek-chat", DisplayName: "DeepSeek (平台)", EnvKey: "PLATFORM_DEEPSEEK_API_KEY"},
 	}
 
@@ -76,7 +75,7 @@ type CreateModelRequest struct {
 	Provider    string  `json:"provider" binding:"required"`
 	ModelName   string  `json:"model_name"`
 	DisplayName string  `json:"display_name"`
-	APIKey      string  `json:"api_key" binding:"required"`
+	APIKey      string  `json:"api_key"`
 	BaseURL     string  `json:"base_url"`
 	MaxTokens   int     `json:"max_tokens"`
 	Temperature float64 `json:"temperature"`
@@ -86,6 +85,8 @@ type CreateModelRequest struct {
 func defaultModelForProvider(p string) string {
 	switch p {
 	case "qwen":
+		return "qwen3-max"
+	case "star-ai":
 		return "qwen3-max"
 	case "openai":
 		return "gpt-4o"

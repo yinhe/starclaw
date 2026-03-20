@@ -145,6 +145,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	// RAG: retrieve relevant context from knowledge bases
 	systemPrompt := agent.SystemPrompt
+	// Inject current date so LLM knows the real year (prevents searching "2024" etc.)
+	systemPrompt += fmt.Sprintf("\n\n当前日期: %s", time.Now().Format("2006年1月2日 15:04 (Monday)"))
 	// Collect all KB IDs: agent's default KB + user-selected KBs
 	kbIDs := make(map[string]bool)
 	if agent.KnowledgeBaseID != "" {
@@ -190,11 +192,22 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			systemPrompt += "\n\n" + fileContext
 		}
 
-		// Extract images and video frames from file attachments for vision analysis
-		visionURLs := extractVisionFromFiles(req.Files, 4)
+		// Extract vision from file attachments (videos: extract frames; images: convert to base64)
+		// Skip image files if base64 URLs were already provided via req.Images (avoid duplicates)
+		filesToExtract := req.Files
+		if len(req.Images) > 0 {
+			var nonImageFiles []FileAttachment
+			for _, f := range req.Files {
+				if !strings.HasPrefix(strings.ToLower(f.Mime), "image/") {
+					nonImageFiles = append(nonImageFiles, f)
+				}
+			}
+			filesToExtract = nonImageFiles
+		}
+		visionURLs := extractVisionFromFiles(filesToExtract, 4)
 		if len(visionURLs) > 0 {
 			req.Images = append(req.Images, visionURLs...)
-			log.Printf("[vision] injected %d image/video-frame URLs from %d file attachments", len(visionURLs), len(req.Files))
+			log.Printf("[vision] injected %d image/video-frame URLs from %d file attachments", len(visionURLs), len(filesToExtract))
 		}
 	}
 
@@ -206,6 +219,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			log.Printf("[cerebrate] injected %d memories for user %s", len(memories), userID)
 		}
 	}
+
+	// Inject resource directory info so AI knows where media files are stored
+	systemPrompt += "\n\n" + tool.DataDirSummary()
 
 	messages := buildProviderMessages(systemPrompt, history, req.Images)
 
@@ -225,6 +241,10 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	chatModel := modelCfg.ModelName
 	if agent.ModelName != "" {
 		chatModel = agent.ModelName
+	}
+	// Per-conversation model override (e.g. /model deepseek-chat within star-ai)
+	if conversation.ModelOverride != "" {
+		chatModel = conversation.ModelOverride
 	}
 	// If model_name is empty or "default", auto-select the provider's first model
 	if chatModel == "" || chatModel == "default" {
@@ -480,8 +500,14 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				// Cerebrate: async extract memories + summary from this conversation
 				if h.cerebrate != nil {
 					aid := c.GetString("agent_id_for_cerebrate")
-					go h.cerebrate.ExtractAndStore(context.Background(), userID, aid, req.Messages, convID)
-					go h.cerebrate.GenerateSummary(context.Background(), userID, aid, convID, req.Messages)
+					// Build full message list: input messages + assistant response
+					allMsgs := make([]provider.ChatMessage, len(req.Messages), len(req.Messages)+1)
+					copy(allMsgs, req.Messages)
+					if fullContent != "" {
+						allMsgs = append(allMsgs, provider.ChatMessage{Role: "assistant", Content: fullContent})
+					}
+					go h.cerebrate.ExtractAndStore(context.Background(), userID, aid, allMsgs, convID)
+					go h.cerebrate.GenerateSummary(context.Background(), userID, aid, convID, allMsgs)
 				}
 
 				// Long-running conversation notification (>30s)
@@ -509,7 +535,11 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 			}
 
 			fullContent += chunk.Content
-			data, _ := json.Marshal(gin.H{"content": chunk.Content, "conversation_id": convID})
+			sseFields := gin.H{"content": chunk.Content, "conversation_id": convID}
+			if chunk.Meta != nil {
+				sseFields["meta"] = chunk.Meta
+			}
+			data, _ := json.Marshal(sseFields)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			if flusher != nil {
 				flusher.Flush()
@@ -753,8 +783,13 @@ func buildFileContext(files []FileAttachment) string {
 		parts = append(parts, fmt.Sprintf("%d. %s (%s, %s, %s)", i+1, f.Filename, f.Category, f.Mime, sizeStr))
 
 		// For text-readable files, try to read and include content
-		if isTextReadable(f.Mime, f.Filename) && f.Stored != "" {
-			content, err := readUploadedFileContent("/app/uploads/" + f.Stored)
+		stored := f.Stored
+		if stored == "" && f.URL != "" {
+			// Derive stored filename from URL: /v1/uploads/<uuid>.<ext> → <uuid>.<ext>
+			stored = filepath.Base(f.URL)
+		}
+		if isTextReadable(f.Mime, f.Filename) && stored != "" {
+			content, err := readUploadedFileContent("/app/uploads/" + stored)
 			if err == nil && content != "" {
 				// Limit to 10000 chars to avoid prompt overflow
 				if len(content) > 10000 {
@@ -896,8 +931,9 @@ func (h *ChatHandler) resolveModelConfig(userID, conversationModelID, agentModel
 }
 
 // handleModelCommand processes /model commands:
-//   - /model         → list available models and current selection
-//   - /model <name>  → switch current conversation to that model provider
+//   - /model              → list available models and current selection
+//   - /model <provider>   → switch current conversation to that model provider
+//   - /model <model-name> → switch model within star-ai super router (e.g. /model deepseek-chat)
 func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req ChatCompletionRequest) {
 	arg := strings.TrimSpace(strings.TrimPrefix(req.Message, "/model"))
 
@@ -913,22 +949,35 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 		return
 	}
 
+	// Find the star-ai provider config (if any) for super-router model switching
+	var starAICfg *model.ModelConfig
+	for i := range models {
+		if models[i].Provider == "star-ai" || models[i].Provider == "starai" {
+			starAICfg = &models[i]
+			break
+		}
+	}
+
 	// /model (no arg) → list models
 	if arg == "" {
-		// Get current conversation model if exists
+		// Get current conversation state
 		currentProvider := ""
+		currentOverride := ""
 		if req.ConversationID != "" {
 			var conv model.Conversation
-			if err := h.db.Where("id = ? AND user_id = ?", req.ConversationID, userID).First(&conv).Error; err == nil && conv.ModelID != "" {
-				var current model.ModelConfig
-				if h.db.Where("id = ?", conv.ModelID).First(&current).Error == nil {
-					currentProvider = current.Provider
+			if err := h.db.Where("id = ? AND user_id = ?", req.ConversationID, userID).First(&conv).Error; err == nil {
+				currentOverride = conv.ModelOverride
+				if conv.ModelID != "" {
+					var current model.ModelConfig
+					if h.db.Where("id = ?", conv.ModelID).First(&current).Error == nil {
+						currentProvider = current.Provider
+					}
 				}
 			}
 		}
 
 		var sb strings.Builder
-		sb.WriteString("**可用模型：**\n")
+		sb.WriteString("**可用模型供应商：**\n")
 		for _, m := range models {
 			marker := "  "
 			if m.Provider == currentProvider {
@@ -940,7 +989,28 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 			}
 			sb.WriteString(fmt.Sprintf("%s`%s` — %s\n", marker, m.Provider, name))
 		}
-		sb.WriteString("\n切换命令：`/model <provider名>`，例如 `/model minimax`")
+
+		// Show star-ai available models if star-ai is configured
+		if starAICfg != nil {
+			p := h.getProvider(*starAICfg)
+			starModels := p.Models()
+			if len(starModels) > 0 {
+				sb.WriteString("\n**Star AI 可用模型（超级路由）：**\n")
+				for _, m := range starModels {
+					marker := "  "
+					if m == currentOverride {
+						marker = "▶ "
+					}
+					sb.WriteString(fmt.Sprintf("%s`%s`\n", marker, m))
+				}
+			}
+		}
+
+		sb.WriteString("\n**切换命令：**\n")
+		sb.WriteString("- `/model <provider>` — 切换供应商，如 `/model deepseek`\n")
+		if starAICfg != nil {
+			sb.WriteString("- `/model <模型名>` — Star AI 内切换模型，如 `/model deepseek-chat`\n")
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"message": sb.String(),
@@ -949,10 +1019,30 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 		return
 	}
 
-	// /model <name> → switch model
+	// /model <name> → switch model or provider
 	arg = strings.ToLower(arg)
+
+	// Handle provider/model format (e.g. "starai/qwen3-max" or "star-ai/deepseek-chat")
+	if parts := strings.SplitN(arg, "/", 2); len(parts) == 2 && parts[1] != "" {
+		provPart := parts[0]
+		modelPart := parts[1]
+		provNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(provPart)
+		// Find matching provider
+		for i := range models {
+			pLower := strings.ToLower(models[i].Provider)
+			pNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(pLower)
+			if pLower == provPart || pNorm == provNorm {
+				// Provider found — switch to it with model override
+				h.switchStarAIModel(c, userID, req, &models[i], modelPart)
+				return
+			}
+		}
+	}
+
 	// Normalize: strip hyphens/underscores for fuzzy matching (e.g. "starai" matches "star-ai")
 	argNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(arg)
+
+	// First: try matching a provider config
 	var target *model.ModelConfig
 	for i := range models {
 		provLower := strings.ToLower(models[i].Provider)
@@ -965,19 +1055,38 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 		}
 	}
 
+	// Second: if no provider match but star-ai exists, check star-ai's model list
+	if target == nil && starAICfg != nil {
+		p := h.getProvider(*starAICfg)
+		for _, m := range p.Models() {
+			mLower := strings.ToLower(m)
+			mNorm := strings.NewReplacer("-", "", "_", "", " ", "").Replace(mLower)
+			if mLower == arg || mNorm == argNorm || strings.Contains(mLower, arg) {
+				// Match! Switch to star-ai provider + set model override
+				h.switchStarAIModel(c, userID, req, starAICfg, m)
+				return
+			}
+		}
+	}
+
 	if target == nil {
+		// Build helpful message
 		providers := make([]string, len(models))
 		for i, m := range models {
 			providers[i] = m.Provider
 		}
+		msg := fmt.Sprintf("未找到模型「%s」。\n\n可用供应商：%s", arg, strings.Join(providers, ", "))
+		if starAICfg != nil {
+			msg += "\n\n💡 Star AI 支持所有模型，试试 `/model deepseek-chat` 或 `/model qwen-max`"
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"message": fmt.Sprintf("未找到模型「%s」。可用：%s", arg, strings.Join(providers, ", ")),
+			"message": msg,
 			"command": true,
 		})
 		return
 	}
 
-	// Need a conversation to store the override
+	// Switching provider — clear any model override
 	if req.ConversationID == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"message":  fmt.Sprintf("已选择 **%s** (%s)，发送消息后生效。", target.Provider, target.ModelName),
@@ -987,8 +1096,9 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 		return
 	}
 
-	// Update conversation model override
-	h.db.Model(&model.Conversation{}).Where("id = ? AND user_id = ?", req.ConversationID, userID).Update("model_id", target.ID)
+	// Update conversation: set provider, clear model override
+	h.db.Model(&model.Conversation{}).Where("id = ? AND user_id = ?", req.ConversationID, userID).
+		Updates(map[string]interface{}{"model_id": target.ID, "model_override": ""})
 
 	name := target.DisplayName
 	if name == "" {
@@ -998,5 +1108,27 @@ func (h *ChatHandler) handleModelCommand(c *gin.Context, userID string, req Chat
 		"message":  fmt.Sprintf("✅ 已切换到 **%s** (%s)", name, target.Provider),
 		"command":  true,
 		"model_id": target.ID,
+	})
+}
+
+// switchStarAIModel handles switching to a specific model within the star-ai super router.
+func (h *ChatHandler) switchStarAIModel(c *gin.Context, userID string, req ChatCompletionRequest, starAICfg *model.ModelConfig, modelName string) {
+	if req.ConversationID == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"message":  fmt.Sprintf("已选择 Star AI → **%s**，发送消息后生效。", modelName),
+			"command":  true,
+			"model_id": starAICfg.ID,
+		})
+		return
+	}
+
+	// Update conversation: set star-ai provider + model override
+	h.db.Model(&model.Conversation{}).Where("id = ? AND user_id = ?", req.ConversationID, userID).
+		Updates(map[string]interface{}{"model_id": starAICfg.ID, "model_override": modelName})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  fmt.Sprintf("✅ 已切换到 Star AI → **%s**", modelName),
+		"command":  true,
+		"model_id": starAICfg.ID,
 	})
 }
