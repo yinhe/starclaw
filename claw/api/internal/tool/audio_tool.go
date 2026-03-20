@@ -40,7 +40,7 @@ func (t *AudioTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":      {Type: "string", Description: "Action: analyze, detect_beats, get_energy_curve, generate_srt"},
+			"action":      {Type: "string", Description: "Action: analyze, detect_beats, get_energy_curve, generate_srt, detect_vocal_start"},
 			"music_id":    {Type: "string", Description: "Music record ID (from music_generation or uploaded). Used for analyze/detect_beats/get_energy_curve."},
 			"file_url":    {Type: "string", Description: "Direct URL or local path to audio file. Alternative to music_id."},
 			"lyrics":      {Type: "string", Description: "For generate_srt: full lyrics text with section markers like [verse1], [chorus], [bridge], [outro]."},
@@ -78,8 +78,10 @@ func (t *AudioTool) Execute(ctx context.Context, argsJSON string) (string, error
 		return t.getEnergyCurve(ctx, args)
 	case "generate_srt":
 		return t.generateSRT(ctx, args)
+	case "detect_vocal_start":
+		return t.detectVocalStart(ctx, args)
 	default:
-		return "", fmt.Errorf("unknown action: %s. Use: analyze, detect_beats, get_energy_curve, generate_srt", args.Action)
+		return "", fmt.Errorf("unknown action: %s. Use: analyze, detect_beats, get_energy_curve, generate_srt, detect_vocal_start", args.Action)
 	}
 }
 
@@ -560,7 +562,167 @@ func summarizeEnergy(curve []float64, duration float64) string {
 		min*100, max*100, avg*100, peakStr)
 }
 
-// generateSRT creates an SRT subtitle file from lyrics + timing info
+// detectVocalStart uses frequency-band analysis to find when vocals begin.
+// Compares energy in vocal range (300-3000Hz) vs full band; a spike in
+// the ratio indicates vocal onset.
+func (t *AudioTool) detectVocalStart(ctx context.Context, args audioArgs) (string, error) {
+	tmpDir, _ := os.MkdirTemp("", "vocal-detect-*")
+	defer os.RemoveAll(tmpDir)
+
+	audioPath, err := t.resolveAudioPath(args, tmpDir)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve audio: %v", err)
+	}
+
+	// Get total duration first
+	probe := exec.CommandContext(ctx, "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", audioPath)
+	probeOut, err := probe.Output()
+	if err != nil {
+		return "", fmt.Errorf("ffprobe failed: %v", err)
+	}
+	var probeData struct {
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
+	}
+	json.Unmarshal(probeOut, &probeData)
+	totalDuration, _ := strconv.ParseFloat(probeData.Format.Duration, 64)
+
+	// Extract per-second RMS for full band
+	fullCmd := exec.CommandContext(ctx, "ffmpeg", "-i", audioPath,
+		"-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
+		"-f", "null", "-")
+	fullOut, _ := fullCmd.CombinedOutput()
+	fullLevels := parseRMSLevels(string(fullOut))
+
+	// Extract per-second RMS for vocal band (300-3000Hz)
+	vocalCmd := exec.CommandContext(ctx, "ffmpeg", "-i", audioPath,
+		"-af", "bandpass=f=1200:width_type=h:width=2700,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
+		"-f", "null", "-")
+	vocalOut, _ := vocalCmd.CombinedOutput()
+	vocalLevels := parseRMSLevels(string(vocalOut))
+
+	// Find vocal onset: look for the first sustained increase in vocal-to-full ratio
+	minLen := len(fullLevels)
+	if len(vocalLevels) < minLen {
+		minLen = len(vocalLevels)
+	}
+	if minLen < 5 {
+		return "", fmt.Errorf("audio too short or analysis failed (got %d samples)", minLen)
+	}
+
+	// Calculate vocal/full ratio for each second
+	type sample struct {
+		Second     int     `json:"second"`
+		FullDB     float64 `json:"full_db"`
+		VocalDB    float64 `json:"vocal_db"`
+		Ratio      float64 `json:"ratio"`
+		VocalBoost bool    `json:"vocal_boost"`
+	}
+	var samples []sample
+
+	// Compute baseline ratio from first few seconds (instrumental only)
+	baselineEnd := 5
+	if baselineEnd > minLen {
+		baselineEnd = minLen
+	}
+	baselineSum := 0.0
+	baselineCount := 0
+	for i := 0; i < baselineEnd; i++ {
+		if fullLevels[i] < -40 { // skip silence
+			continue
+		}
+		// Ratio = vocal_db - full_db (in dB domain, closer to 0 means more vocal energy)
+		ratio := vocalLevels[i] - fullLevels[i]
+		baselineSum += ratio
+		baselineCount++
+	}
+	baselineRatio := -20.0 // default if no valid baseline
+	if baselineCount > 0 {
+		baselineRatio = baselineSum / float64(baselineCount)
+	}
+
+	// Detect vocal onset: 3 consecutive seconds where ratio exceeds baseline by threshold
+	threshold := 3.0 // dB above baseline
+	vocalStart := 0.0
+	consecutiveCount := 0
+	requiredConsecutive := 3
+
+	for i := 0; i < minLen; i++ {
+		if fullLevels[i] < -40 { // skip silence
+			consecutiveCount = 0
+			continue
+		}
+		ratio := vocalLevels[i] - fullLevels[i]
+		boost := ratio > baselineRatio+threshold
+
+		s := sample{
+			Second:     i,
+			FullDB:     math.Round(fullLevels[i]*10) / 10,
+			VocalDB:    math.Round(vocalLevels[i]*10) / 10,
+			Ratio:      math.Round(ratio*10) / 10,
+			VocalBoost: boost,
+		}
+		samples = append(samples, s)
+
+		if boost {
+			consecutiveCount++
+			if consecutiveCount >= requiredConsecutive && vocalStart == 0 {
+				vocalStart = float64(i - requiredConsecutive + 1)
+			}
+		} else {
+			consecutiveCount = 0
+		}
+	}
+
+	// Fallback if detection fails
+	if vocalStart <= 0 {
+		if totalDuration > 180 {
+			vocalStart = 18.0
+		} else if totalDuration > 60 {
+			vocalStart = 8.0
+		} else {
+			vocalStart = 2.0
+		}
+	}
+
+	// Return first 30 seconds of samples for debugging
+	debugSamples := samples
+	if len(debugSamples) > 30 {
+		debugSamples = debugSamples[:30]
+	}
+
+	return toJSON(map[string]interface{}{
+		"action":         "detect_vocal_start",
+		"status":         "success",
+		"vocal_start":    vocalStart,
+		"duration":       totalDuration,
+		"baseline_ratio": math.Round(baselineRatio*10) / 10,
+		"threshold":      threshold,
+		"samples":        debugSamples,
+		"message":        fmt.Sprintf("检测到人声起始于 %.1f 秒。可用于 generate_srt 的 vocal_start 参数。", vocalStart),
+	}), nil
+}
+
+// parseRMSLevels extracts RMS level values from ffmpeg astats output
+func parseRMSLevels(output string) []float64 {
+	var levels []float64
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.Contains(line, "RMS_level=") {
+			continue
+		}
+		idx := strings.Index(line, "RMS_level=")
+		if idx == -1 {
+			continue
+		}
+		valStr := strings.TrimSpace(line[idx+len("RMS_level="):])
+		if val, err := strconv.ParseFloat(valStr, 64); err == nil {
+			levels = append(levels, val)
+		}
+	}
+	return levels
+}
+
 // isCreditLine checks if a line is a song credit/metadata (not singing)
 func isCreditLine(line string) bool {
 	creditKeywords := []string{"词曲", "演唱", "制作人", "作词", "作曲", "编曲", "混音", "录音", "母带", "出品", "监制", "Lyrics", "Composer", "Producer", "Singer", "Vocal"}
@@ -639,9 +801,9 @@ func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, er
 	if vocalStart <= 0 {
 		// Default: estimate intro based on song duration
 		if duration > 180 {
-			vocalStart = 12.0 // typical pop song intro ~12s
+			vocalStart = 18.0 // typical pop song intro ~18s
 		} else if duration > 60 {
-			vocalStart = 5.0
+			vocalStart = 8.0
 		} else {
 			vocalStart = 2.0
 		}
