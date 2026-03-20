@@ -320,11 +320,20 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 		t.ensureVideoWorkflow(userID, convID)
 	}
 
+	// Audit log for reconciliation
+	genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+		UserID: userID, ConversationID: convID,
+		Provider: "dashscope", Model: args.Model, Type: "video",
+		TaskID: taskID, RecordID: record.ID,
+		Prompt: args.Prompt, Status: "running",
+	})
+
 	go func() {
 		videoURL, _, err := t.pollDashScopeTask(context.Background(), apiKey, baseHost, taskID, 10*time.Minute)
 		if err != nil {
 			log.Printf("[VideoTool] Task %s failed: %v", taskID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{"status": "failed"})
+			UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
 			return
 		}
 		// Save clip locally to prevent CDN URL expiration during merge
@@ -337,6 +346,7 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{
 			"video_url": savedURL, "status": "succeeded",
 		})
+		UpdateGenLog(t.db, genLogID, "succeeded", savedURL, "")
 		var rec model.VideoRecord
 		if t.db.Where("task_id = ?", taskID).First(&rec).Error == nil {
 			ExtractThumbnail(t.db, rec.ID, savedURL)
@@ -485,12 +495,21 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		t.ensureVideoWorkflow(userID, convID)
 	}
 
+	// Audit log for reconciliation
+	genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+		UserID: userID, ConversationID: convID,
+		Provider: "fal", Model: args.Model, Type: "video",
+		TaskID: requestID, RecordID: record.ID,
+		Prompt: args.Prompt, Status: "running",
+	})
+
 	go func() {
 		log.Printf("[VideoTool] fal.ai polling started: %s (model=%s, endpoint=%s)", requestID, args.Model, endpoint)
 		result, err := PollFalStatus(apiKey, endpoint, requestID, 10*time.Minute)
 		if err != nil {
 			log.Printf("[VideoTool] fal.ai %s polling failed: %v", requestID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
+			UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
 			return
 		}
 		log.Printf("[VideoTool] fal.ai %s poll completed, extracting video URL", requestID)
@@ -498,6 +517,7 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		if videoURL == "" {
 			log.Printf("[VideoTool] fal.ai %s: extractFalVideoURL returned empty, marking failed", requestID)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
+			UpdateGenLog(t.db, genLogID, "failed", "", "no video URL in result")
 			return
 		}
 		log.Printf("[VideoTool] fal.ai %s: got video URL, downloading to local...", requestID)
@@ -513,6 +533,7 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{
 			"video_url": savedURL, "status": "succeeded",
 		})
+		UpdateGenLog(t.db, genLogID, "succeeded", savedURL, "")
 		var rec model.VideoRecord
 		if t.db.Where("task_id = ?", requestID).First(&rec).Error == nil {
 			ExtractThumbnail(t.db, rec.ID, savedURL)

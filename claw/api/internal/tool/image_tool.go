@@ -322,10 +322,19 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	}
 	t.db.Create(&record)
 
+	// Audit log for reconciliation
+	genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+		UserID: userID, ConversationID: convID,
+		Provider: "fal", Model: args.Model, Type: "image",
+		TaskID: requestID, RecordID: record.ID,
+		Prompt: args.Prompt, Status: "running",
+	})
+
 	// Block and wait for result (up to 3 min) to prevent LLM hallucinating fake URLs
 	result, err := PollFalStatus(apiKey, endpoint, requestID, 3*time.Minute)
 	if err != nil {
 		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
 		return "", fmt.Errorf("图片生成失败: %v", err)
 	}
 
@@ -333,6 +342,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	imageURL := extractFalImageURL(result)
 	if imageURL == "" {
 		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", "no image URL in result")
 		return toJSON(map[string]interface{}{
 			"action":  "generate_image",
 			"status":  "failed",
@@ -343,6 +353,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	localURL := t.downloadImage(imageURL, record.ID)
 	if localURL == "" {
 		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", imageURL, "download to local failed")
 		return toJSON(map[string]interface{}{
 			"action":  "generate_image",
 			"status":  "failed",
@@ -354,6 +365,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 		updates["local_url"] = localURL
 	}
 	t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(updates)
+	UpdateGenLog(t.db, genLogID, "succeeded", localURL, "")
 
 	displayURL := localURL
 	log.Printf("[ImageTool] Image %s completed: %s", record.ID, displayURL)
@@ -461,8 +473,16 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 		}
 		t.db.Create(&record)
 
+		// Audit log for reconciliation
+		genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+			UserID: userID, ConversationID: convID,
+			Provider: "fal", Model: args.Model, Type: "image",
+			TaskID: requestID, RecordID: record.ID,
+			Prompt: prompt, Status: "running",
+		})
+
 		// Poll in background
-		go t.pollAndDownload(apiKey, endpoint, requestID, record.ID) // batch: background poll is OK
+		go t.pollAndDownloadWithLog(apiKey, endpoint, requestID, record.ID, genLogID) // batch: background poll is OK
 
 		results = append(results, map[string]interface{}{
 			"image_id": record.ID,
@@ -529,6 +549,40 @@ func (t *ImageTool) pollAndDownload(apiKey, endpoint, requestID, recordID string
 		updates["local_url"] = localURL
 	}
 	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
+	log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
+}
+
+// pollAndDownloadWithLog wraps pollAndDownload with GenerationLog status updates
+func (t *ImageTool) pollAndDownloadWithLog(apiKey, endpoint, requestID, recordID, genLogID string) {
+	result, err := PollFalStatus(apiKey, endpoint, requestID, 5*time.Minute)
+	if err != nil {
+		log.Printf("[ImageTool] Poll failed for %s: %v", requestID, err)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
+		return
+	}
+
+	imageURL := extractFalImageURL(result)
+	if imageURL == "" {
+		log.Printf("[ImageTool] No image URL in result for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", "no image URL in result")
+		return
+	}
+
+	localURL := t.downloadImage(imageURL, recordID)
+	if localURL == "" {
+		log.Printf("[ImageTool] Local sync failed for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", imageURL, "download to local failed")
+		return
+	}
+	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
+	if localURL != "" {
+		updates["local_url"] = localURL
+	}
+	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
+	UpdateGenLog(t.db, genLogID, "succeeded", localURL, "")
 	log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
 }
 

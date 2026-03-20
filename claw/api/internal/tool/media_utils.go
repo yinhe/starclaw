@@ -71,6 +71,67 @@ func GetFalAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) string {
 	return GetFalAPIKey(db, userID)
 }
 
+// ── Generation Audit Log ──
+
+// LogGeneration creates a unified GenerationLog entry for reconciliation with Router.
+// superProvider is auto-detected from apiKey: "starai://*" → "starai", otherwise "direct".
+func LogGeneration(db *gorm.DB, apiKey string, opts GenLogOpts) string {
+	sp := "direct"
+	if isStarAIKey(apiKey) {
+		sp = "starai"
+	}
+	entry := model.GenerationLog{
+		UserID:         opts.UserID,
+		ConversationID: opts.ConversationID,
+		SuperProvider:  sp,
+		Provider:       opts.Provider,
+		Model:          opts.Model,
+		Type:           opts.Type,
+		TaskID:         opts.TaskID,
+		RecordID:       opts.RecordID,
+		Prompt:         opts.Prompt,
+		Status:         opts.Status,
+	}
+	if err := db.Create(&entry).Error; err != nil {
+		log.Printf("[GenLog] failed to create: %v", err)
+		return ""
+	}
+	log.Printf("[GenLog] %s/%s %s via %s (task=%s record=%s)", opts.Provider, opts.Model, opts.Type, sp, opts.TaskID, opts.RecordID)
+	return entry.ID
+}
+
+// UpdateGenLog updates a GenerationLog entry's status and optional fields.
+func UpdateGenLog(db *gorm.DB, logID string, status string, resultURL string, errMsg string) {
+	if logID == "" {
+		return
+	}
+	updates := map[string]interface{}{"status": status}
+	if resultURL != "" {
+		updates["result_url"] = resultURL
+	}
+	if errMsg != "" {
+		updates["error_msg"] = errMsg
+	}
+	if status == "succeeded" || status == "failed" {
+		now := time.Now()
+		updates["completed_at"] = &now
+	}
+	db.Model(&model.GenerationLog{}).Where("id = ?", logID).Updates(updates)
+}
+
+// GenLogOpts holds parameters for LogGeneration
+type GenLogOpts struct {
+	UserID         string
+	ConversationID string
+	Provider       string // fal, dashscope, minimax
+	Model          string // veo3, flux-dev, etc.
+	Type           string // image, video, audio
+	TaskID         string
+	RecordID       string
+	Prompt         string
+	Status         string // pending, running
+}
+
 // ── File Path Resolution ──
 
 // ResolveClipToLocal resolves a video URL to a local file path.

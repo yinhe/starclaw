@@ -211,8 +211,16 @@ func (t *MusicTool) generateMusic(ctx context.Context, args musicArgs) (string, 
 	}
 	t.db.Create(&record)
 
+	// Audit log for reconciliation
+	genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+		UserID: userID, ConversationID: convID,
+		Provider: "fal", Model: args.Model, Type: "audio",
+		TaskID: requestID, RecordID: record.ID,
+		Prompt: args.Prompt, Status: "running",
+	})
+
 	// Poll in background
-	go t.pollAndDownload(apiKey, endpoint, requestID, record.ID, userID)
+	go t.pollAndDownload(apiKey, endpoint, requestID, record.ID, userID, genLogID)
 
 	return toJSON(map[string]interface{}{
 		"action":     "generate_music",
@@ -380,7 +388,7 @@ func (t *MusicTool) submitToFal(apiKey, endpoint string, body map[string]interfa
 }
 
 // pollAndDownload polls fal.ai queue status and downloads the result
-func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userID string) {
+func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userID, genLogID string) {
 	deadline := time.Now().Add(15 * time.Minute)
 	interval := 5 * time.Second
 
@@ -415,6 +423,7 @@ func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userI
 					"status":    "failed",
 					"error_msg": err.Error(),
 				})
+				UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
 				return
 			}
 
@@ -429,6 +438,7 @@ func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userI
 				updates["local_url"] = localURL
 			}
 			t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(updates)
+			UpdateGenLog(t.db, genLogID, "succeeded", localURL, "")
 			log.Printf("[MusicTool] Music %s completed: %s", recordID, localURL)
 			return
 		}
@@ -439,6 +449,7 @@ func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userI
 				"status":    "failed",
 				"error_msg": fmt.Sprintf("unexpected status: %s", statusStr),
 			})
+			UpdateGenLog(t.db, genLogID, "failed", "", fmt.Sprintf("unexpected status: %s", statusStr))
 			return
 		}
 	}
@@ -448,6 +459,7 @@ func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userI
 		"status":    "failed",
 		"error_msg": "generation timed out (15 min)",
 	})
+	UpdateGenLog(t.db, genLogID, "failed", "", "generation timed out (15 min)")
 }
 
 // fetchResult gets the completed result from fal.ai
