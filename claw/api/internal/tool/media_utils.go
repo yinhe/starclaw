@@ -38,13 +38,10 @@ func GetDashScopeAPIKey(db *gorm.DB, userID string) (string, string) {
 	return cfg.APIKey, "dashscope.aliyuncs.com"
 }
 
-// GetDashScopeAPIKeyCtx is like GetDashScopeAPIKey but checks for StarAI provider first.
-// If StarAI is active, returns a special marker so callers can route through StarAI proxy.
+// GetDashScopeAPIKeyCtx prefers StarAI proxy when available, falls back to direct key.
 func GetDashScopeAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) (string, string) {
-	if IsStarAIProvider(ctx) {
-		if client, _ := GetStarAIClient(); client != nil {
-			return "starai://qwen", "starai-proxy"
-		}
+	if client, _ := GetStarAIClient(); client != nil {
+		return "starai://qwen", "starai-proxy"
 	}
 	return GetDashScopeAPIKey(db, userID)
 }
@@ -64,12 +61,10 @@ func GetFalAPIKey(db *gorm.DB, userID string) string {
 	return cfg.APIKey
 }
 
-// GetFalAPIKeyCtx is like GetFalAPIKey but checks for StarAI provider first.
+// GetFalAPIKeyCtx prefers StarAI proxy when available, falls back to direct key.
 func GetFalAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) string {
-	if IsStarAIProvider(ctx) {
-		if client, _ := GetStarAIClient(); client != nil {
-			return "starai://fal"
-		}
+	if client, _ := GetStarAIClient(); client != nil {
+		return "starai://fal"
 	}
 	return GetFalAPIKey(db, userID)
 }

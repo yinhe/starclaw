@@ -27,7 +27,6 @@ func SeedPlatformModels(db *gorm.DB) {
 	defs := []platformDef{
 		{ID: "platform-qwen", Provider: "qwen", ModelName: "qwen3-max", DisplayName: "通义千问 (平台)", EnvKey: "PLATFORM_QWEN_API_KEY"},
 		{ID: "platform-openai", Provider: "openai", ModelName: "gpt-4o", DisplayName: "OpenAI (平台)", EnvKey: "PLATFORM_OPENAI_API_KEY"},
-		{ID: "platform-fal", Provider: "fal", ModelName: "fal-ai/flux/schnell", DisplayName: "fal.ai (平台)", EnvKey: "PLATFORM_FAL_API_KEY"},
 		{ID: "platform-deepseek", Provider: "deepseek", ModelName: "deepseek-chat", DisplayName: "DeepSeek (平台)", EnvKey: "PLATFORM_DEEPSEEK_API_KEY"},
 	}
 
