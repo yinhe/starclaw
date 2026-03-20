@@ -148,6 +148,14 @@ func main() {
 	admin.GET("/permissions", middleware.RequirePermission("manage_roles"), adminHandler.ListPermissions)
 	admin.GET("/me", adminHandler.AdminMe)
 
+	// ── Claw API key provisioning (Ed25519 signature auth only) ──
+	clawProv := handler.NewClawProvisionHandler(db)
+	clawGroup := r.Group("/v1/claw")
+	clawGroup.Use(middleware.ClawSignatureAuth())
+	clawGroup.POST("/provision", clawProv.Provision)
+	clawGroup.POST("/rotate-key", clawProv.RotateKey)
+	clawGroup.GET("/sync", clawProv.Sync)
+
 	// ── OpenAI-compatible API routes (API Key OR Claw signature auth) ──
 	v1 := r.Group("/v1")
 	v1.Use(middleware.DualAuth(db))

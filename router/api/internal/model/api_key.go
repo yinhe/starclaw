@@ -13,9 +13,10 @@ import (
 type APIKey struct {
 	ID        string         `json:"id" gorm:"type:varchar(36);primaryKey"`
 	UserID    string         `json:"user_id" gorm:"type:varchar(36);index;not null"`
-	Name      string         `json:"name" gorm:"type:varchar(100)"`       // user-defined label
+	ClawID    string         `json:"claw_id" gorm:"type:varchar(60);index"` // bound Claw instance (claw:<hash>), empty for manual keys
+	Name      string         `json:"name" gorm:"type:varchar(100)"`         // user-defined label
 	KeyHash   string         `json:"-" gorm:"type:varchar(64);uniqueIndex"` // sha256 of the key
-	KeyPrefix string         `json:"key_prefix" gorm:"type:varchar(20)"`  // "sk-star-a1b2" for display
+	KeyPrefix string         `json:"key_prefix" gorm:"type:varchar(20)"`    // "sk-star-a1b2" for display
 	IsEnabled bool           `json:"is_enabled" gorm:"default:true"`
 	LastUsed  *time.Time     `json:"last_used"`
 	CreatedAt time.Time      `json:"created_at"`
