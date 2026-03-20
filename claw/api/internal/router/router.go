@@ -103,7 +103,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	if envURL := os.Getenv("STAR_AI_BASE_URL"); envURL != "" {
 		starAIBaseURL = envURL
 	}
-	tool.InitStarAIProxy(identity, starAIBaseURL)
+	tool.InitStarAIProxy(identity, starAIBaseURL, db)
 
 	// Tool registry
 	browserMgr := browser.NewManager()

@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/provider"
+	"gorm.io/gorm"
 )
 
 // StarAI proxy singleton — set once during router init, used by all tools
@@ -20,16 +22,18 @@ var (
 	staraiClient   *http.Client // HTTP client with SignedTransport for StarAI Router
 	staraiBaseURL  string       // e.g. "https://api.star-ai.net/v1"
 	staraiIdentity *node.Identity
-	staraiAPIKey   string // provisioned API key (sk-star-xxx)
+	staraiAPIKey   string   // provisioned API key (sk-star-xxx)
+	staraiDB       *gorm.DB // DB for syncing API key to model_configs
 )
 
 // InitStarAIProxy initializes the shared StarAI proxy client.
 // Called once during Claw router initialization when Identity is available.
-func InitStarAIProxy(identity *node.Identity, baseURL string) {
+func InitStarAIProxy(identity *node.Identity, baseURL string, db *gorm.DB) {
 	staraiMu.Lock()
 	defer staraiMu.Unlock()
 	staraiIdentity = identity
 	staraiBaseURL = baseURL
+	staraiDB = db
 	staraiClient = &http.Client{
 		Transport: &provider.SignedTransport{Identity: identity},
 	}
@@ -124,15 +128,17 @@ func autoProvisionAPIKey() {
 
 		switch result.Status {
 		case "created":
-			// New key — store it
+			// New key — store it in memory and sync to DB
 			staraiMu.Lock()
 			staraiAPIKey = result.APIKey
 			staraiMu.Unlock()
+			syncAPIKeyToConfig(result.APIKey, result.KeyPrefix)
 			log.Printf("[StarAI] API key provisioned: %s (user=%s, balance=%.2f分)", result.KeyPrefix, result.UserID, result.Balance)
 			return
 
 		case "existing":
-			// Key already exists on Router side
+			// Key already exists on Router side — ensure local DB is synced
+			syncAPIKeyToConfig("", result.KeyPrefix)
 			log.Printf("[StarAI] API key already active: %s (user=%s, balance=%.2f分)", result.KeyPrefix, result.UserID, result.Balance)
 			return
 
@@ -141,4 +147,33 @@ func autoProvisionAPIKey() {
 		}
 	}
 	log.Printf("[StarAI] provision failed after 3 attempts — will use Ed25519 signature auth")
+}
+
+// syncAPIKeyToConfig updates all star-ai model_configs with the provisioned API key.
+// If fullKey is empty (existing key), only updates configs still using the placeholder "claw-identity".
+func syncAPIKeyToConfig(fullKey, keyPrefix string) {
+	staraiMu.RLock()
+	db := staraiDB
+	staraiMu.RUnlock()
+	if db == nil {
+		return
+	}
+
+	if fullKey != "" {
+		// New key — update all star-ai configs to use it
+		result := db.Model(&model.ModelConfig{}).
+			Where("provider = ?", "star-ai").
+			Update("api_key", fullKey)
+		if result.RowsAffected > 0 {
+			log.Printf("[StarAI] synced API key %s to %d provider config(s)", keyPrefix, result.RowsAffected)
+		}
+	} else {
+		// Existing key — only update placeholder configs
+		result := db.Model(&model.ModelConfig{}).
+			Where("provider = ? AND api_key = ?", "star-ai", "claw-identity").
+			Update("api_key", keyPrefix+"...")
+		if result.RowsAffected > 0 {
+			log.Printf("[StarAI] synced key prefix %s to %d placeholder config(s)", keyPrefix, result.RowsAffected)
+		}
+	}
 }
