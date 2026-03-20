@@ -38,10 +38,12 @@ func GetDashScopeAPIKey(db *gorm.DB, userID string) (string, string) {
 	return cfg.APIKey, "dashscope.aliyuncs.com"
 }
 
-// GetDashScopeAPIKeyCtx prefers StarAI proxy when available, falls back to direct key.
+// GetDashScopeAPIKeyCtx checks for StarAI provider first, falls back to direct key.
 func GetDashScopeAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) (string, string) {
-	if client, _ := GetStarAIClient(); client != nil {
-		return "starai://qwen", "starai-proxy"
+	if IsStarAIProvider(ctx) {
+		if client, _ := GetStarAIClient(); client != nil {
+			return "starai://qwen", "starai-proxy"
+		}
 	}
 	return GetDashScopeAPIKey(db, userID)
 }
