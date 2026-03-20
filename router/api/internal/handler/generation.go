@@ -178,14 +178,14 @@ func (h *GenerationHandler) ProxyDashScopeVideo(c *gin.Context, provSlug, subPat
 	// Create generation record (pending)
 	now := time.Now()
 	gen := model.Generation{
-		UserID:   userID,
-		ClawID:   clawID,
-		Provider: "dashscope",
-		Model:    reqBody.Model,
-		Type:     "video",
-		Prompt:   reqBody.Input.Prompt,
-		Status:   "pending",
-		Duration: reqBody.Parameters.Duration,
+		UserID:    userID,
+		ClawID:    clawID,
+		Provider:  "dashscope",
+		Model:     reqBody.Model,
+		Type:      "video",
+		Prompt:    reqBody.Input.Prompt,
+		Status:    "pending",
+		Duration:  reqBody.Parameters.Duration,
 		StartedAt: &now,
 	}
 	// Parse size
@@ -364,7 +364,7 @@ func (h *GenerationHandler) ProxyFalVideo(c *gin.Context, provSlug, subPath stri
 func (h *GenerationHandler) UpdateGenerationStatus(c *gin.Context) {
 	taskID := c.Param("task_id")
 	var req struct {
-		Status    string `json:"status"`    // succeeded, failed
+		Status    string `json:"status"` // succeeded, failed
 		ResultURL string `json:"result_url"`
 		ErrorMsg  string `json:"error_msg"`
 	}
@@ -391,6 +391,135 @@ func (h *GenerationHandler) UpdateGenerationStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"updated": result.RowsAffected})
+}
+
+// ProxyFalImage intercepts fal.ai image generation requests with tracking.
+func (h *GenerationHandler) ProxyFalImage(c *gin.Context, provSlug, subPath string, body []byte) {
+	userID := c.GetString("user_id")
+	clawID := c.GetString("claw_id")
+
+	var reqBody struct {
+		Prompt string `json:"prompt"`
+	}
+	json.Unmarshal(body, &reqBody)
+
+	falModel := determineFalImageModel(subPath)
+
+	now := time.Now()
+	gen := model.Generation{
+		UserID:    userID,
+		ClawID:    clawID,
+		Provider:  "fal",
+		Model:     falModel,
+		Type:      "image",
+		Prompt:    reqBody.Prompt,
+		Status:    "pending",
+		StartedAt: &now,
+	}
+
+	// Forward to fal.ai
+	prov, ok := h.registry.GetProvider(provSlug)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "unknown provider", "type": "invalid_request_error"}})
+		return
+	}
+
+	upstreamURL := strings.TrimRight(prov.Endpoint, "/") + subPath
+	upstreamReq, err := http.NewRequestWithContext(c.Request.Context(), "POST", upstreamURL, strings.NewReader(string(body)))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": "failed to create request", "type": "server_error"}})
+		return
+	}
+
+	apiKey := h.registry.GetAPIKey(provSlug)
+	upstreamReq.Header.Set("Authorization", "Key "+apiKey)
+	upstreamReq.Header.Set("Content-Type", "application/json")
+
+	log.Printf("[star-ai] proxy+track → %s %s (model=%s type=image)", "POST", upstreamURL, falModel)
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(upstreamReq)
+	if err != nil {
+		gen.Status = "failed"
+		gen.ErrorMsg = err.Error()
+		h.db.Create(&gen)
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": "upstream unreachable: " + err.Error(), "type": "server_error"}})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	// fal.ai queue returns request_id for async; sync returns images directly
+	var result struct {
+		RequestID string `json:"request_id"`
+	}
+	json.Unmarshal(respBody, &result)
+
+	if result.RequestID != "" {
+		gen.TaskID = result.RequestID
+		gen.Status = "running"
+	} else if resp.StatusCode == 200 {
+		gen.Status = "succeeded"
+		completed := time.Now()
+		gen.CompletedAt = &completed
+	} else {
+		gen.Status = "failed"
+		gen.ErrorMsg = string(respBody)
+	}
+
+	// Calculate cost
+	costCents, _ := h.meter.CalculateCost("fal/"+falModel, 0, 0)
+	if costCents <= 0 {
+		if entry, ok := h.registry.GetModel("fal/" + falModel); ok && entry.Model.PricePerCallCNY > 0 {
+			costCents = entry.Model.PricePerCallCNY * 100
+		}
+	}
+	gen.CostCents = costCents
+
+	h.db.Create(&gen)
+
+	log.Printf("[star-ai] generation tracked: id=%s task=%s model=%s type=image status=%s cost=%.2f分",
+		gen.ID, gen.TaskID, gen.Model, gen.Status, gen.CostCents)
+
+	for k, vals := range resp.Header {
+		for _, v := range vals {
+			c.Writer.Header().Add(k, v)
+		}
+	}
+	c.Writer.WriteHeader(resp.StatusCode)
+	c.Writer.Write(respBody)
+}
+
+func determineFalImageModel(path string) string {
+	switch {
+	case strings.Contains(path, "flux-pro"):
+		return "flux-pro"
+	case strings.Contains(path, "flux-lora"):
+		return "flux-lora"
+	case strings.Contains(path, "flux-realism"):
+		return "flux-realism"
+	case strings.Contains(path, "flux/schnell"):
+		return "flux-schnell"
+	case strings.Contains(path, "flux/dev"):
+		return "flux-dev"
+	case strings.Contains(path, "flux"):
+		return "flux"
+	case strings.Contains(path, "stable-diffusion-v35-large"):
+		return "stable-diffusion-v35-large"
+	case strings.Contains(path, "stable-diffusion"):
+		return "stable-diffusion"
+	case strings.Contains(path, "aura-sr"):
+		return "aura-sr"
+	case strings.Contains(path, "recraft"):
+		return "recraft-v3"
+	case strings.Contains(path, "ideogram"):
+		return "ideogram"
+	case strings.Contains(path, "omnigen"):
+		return "omnigen"
+	default:
+		return "fal-image-unknown"
+	}
 }
 
 func determineFalModel(path string) string {
