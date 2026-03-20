@@ -218,6 +218,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
+	// Inject resource directory info so AI knows where media files are stored
+	systemPrompt += "\n\n" + tool.DataDirSummary()
+
 	messages := buildProviderMessages(systemPrompt, history, req.Images)
 
 	// Get or create provider dynamically

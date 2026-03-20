@@ -127,7 +127,7 @@ func (t *MVTool) composeMV(ctx context.Context, args mvArgs) (string, error) {
 		}
 		if strings.HasPrefix(video.VideoURL, "/v1/videos/merged/") {
 			fn := strings.TrimPrefix(video.VideoURL, "/v1/videos/merged/")
-			videoPath = "/app/merged_videos/" + fn
+			videoPath = filepath.Join(MergedVideosDir(), fn)
 		} else {
 			videoPath = filepath.Join(tmpDir, "input_video.mp4")
 			if err := DownloadFile(video.VideoURL, videoPath); err != nil {
@@ -188,8 +188,7 @@ func (t *MVTool) composeMV(ctx context.Context, args mvArgs) (string, error) {
 	}
 
 	// Compose video + music + optional lyrics
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputFilename := fmt.Sprintf("mv_%s.mp4", uuid.New().String()[:8])
 	outputPath := filepath.Join(outputDir, outputFilename)
 
@@ -311,9 +310,15 @@ func (t *MVTool) composePro(ctx context.Context, args mvArgs) (string, error) {
 
 		// Download/resolve clip
 		clipPath := filepath.Join(tmpDir, fmt.Sprintf("raw_%03d.mp4", i))
-		if strings.HasPrefix(video.VideoURL, "/v1/videos/merged/") {
-			fn := strings.TrimPrefix(video.VideoURL, "/v1/videos/merged/")
-			src := "/app/merged_videos/" + fn
+		if strings.HasPrefix(video.VideoURL, "/v1/videos/merged/") || strings.HasPrefix(video.VideoURL, "/v1/videos/clips/") {
+			var src string
+			if strings.HasPrefix(video.VideoURL, "/v1/videos/clips/") {
+				fn := strings.TrimPrefix(video.VideoURL, "/v1/videos/clips/")
+				src = filepath.Join(VideosDir(), fn)
+			} else {
+				fn := strings.TrimPrefix(video.VideoURL, "/v1/videos/merged/")
+				src = filepath.Join(MergedVideosDir(), fn)
+			}
 			if _, err := os.Stat(src); err == nil {
 				clipPath = src
 			}
@@ -360,8 +365,7 @@ func (t *MVTool) composePro(ctx context.Context, args mvArgs) (string, error) {
 	}
 
 	// Step 3: Combine with audio + optional subtitles
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputFilename := fmt.Sprintf("mvpro_%s.mp4", uuid.New().String()[:8])
 	outputPath := filepath.Join(outputDir, outputFilename)
 
@@ -586,22 +590,14 @@ func (t *MVTool) resolveAudioURL(args mvArgs, tmpDir string) (string, error) {
 		// Music path
 		if strings.HasPrefix(args.AudioURL, "/v1/music/") {
 			filename := strings.TrimPrefix(args.AudioURL, "/v1/music/")
-			localPath := "/app/music/" + filename
-			if _, err := os.Stat(localPath); err == nil {
-				return localPath, nil
-			}
-		}
-		// Full app URL → extract local path (avoid unnecessary download)
-		if strings.Contains(args.AudioURL, "/v1/uploads/") {
-			idx := strings.Index(args.AudioURL, "/v1/uploads/")
-			localPath := "/app/uploads/" + args.AudioURL[idx+len("/v1/uploads/"):]
+			localPath := filepath.Join(MusicDir(), filename)
 			if _, err := os.Stat(localPath); err == nil {
 				return localPath, nil
 			}
 		}
 		if strings.Contains(args.AudioURL, "/v1/music/") {
 			idx := strings.Index(args.AudioURL, "/v1/music/")
-			localPath := "/app/music/" + args.AudioURL[idx+len("/v1/music/"):]
+			localPath := filepath.Join(MusicDir(), args.AudioURL[idx+len("/v1/music/"):])
 			if _, err := os.Stat(localPath); err == nil {
 				return localPath, nil
 			}

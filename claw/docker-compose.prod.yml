@@ -65,6 +65,7 @@ services:
     volumes:
       - ./data/identity:/app/data/identity
       - ./data/sandbox:/tmp/starclaw-sandbox
+      - ./data/videos:/app/videos
       - ./data/merged_videos:/app/merged_videos
       - ./data/thumbnails:/app/thumbnails
       - ./data/music:/app/music

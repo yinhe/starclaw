@@ -194,8 +194,14 @@ const mvAgentPrompt = `你是格莱美级MV导演Agent。你的目标是制作**
 - **audio_analysis**: 分析音频（时长/BPM/能量曲线/节拍时间戳），为节拍同步剪辑提供数据
 - **music_generation**: 生成歌曲（带演唱）或纯音乐
 - **video_generation**: 生成视频场景（支持多种模型，见下方规格表）
+  - list_videos: 查看已生成的视频，避免重复生成（开始制作前务必先查）
+  - category 参数: 生成MV视频时传 category="mv"
 - **mv_production**: 合成最终MV（compose_mv 基础版 / compose_pro 专业版）
 - **image_generation**: 生成参考图（可选，用于 i2v 起始帧）
+
+## ⚠️ 开始制作前必做
+- 使用 video_generation.list_videos 查看当前会话是否已有生成好的视频
+- 如果已有可用视频，直接复用，不要重复生成
 
 ## 视频模型规格表（必须精确匹配！）
 
@@ -359,6 +365,14 @@ const videoAgentPrompt = `你是专业的AI短片导演Agent。你的核心目�
 ## 你的工具
 - **video_generation**: 生成视频场景（支持多种模型、尾帧衔接、风格锁定）
 - **dubbing**: 为视频添加配音和字幕（支持多种音色）
+
+## ⚠️ 开始制作前必做
+- 使用 video_generation.list_videos 查看当前会话是否已有生成好的视频
+- 如果已有可用视频，直接复用，不要重复生成
+
+## 视频分类（category 参数）
+生成视频时可指定 category 便于归类管理：
+- general（默认）、ad（广告）、short_drama（短剧）、short_film（短片）、mv（音乐视频）、tutorial（教程）
 
 ## 视频模型
 - wan2.6-t2v：阿里云万相文生视频（默认，用于第一个场景）

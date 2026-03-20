@@ -272,8 +272,7 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 
 	// Output
 	outputID := uuid.New().String()
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputPath := filepath.Join(outputDir, outputID+".mp4")
 
 	ffmpegArgs := append(inputArgs,
@@ -334,9 +333,16 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 
 // resolveVideoFile resolves a video URL to a local file path
 func resolveVideoFile(videoURL, tmpDir, filename string) (string, error) {
+	if strings.HasPrefix(videoURL, "/v1/videos/clips/") {
+		fn := strings.TrimPrefix(videoURL, "/v1/videos/clips/")
+		localPath := filepath.Join(VideosDir(), fn)
+		if _, err := os.Stat(localPath); err == nil {
+			return localPath, nil
+		}
+	}
 	if strings.HasPrefix(videoURL, "/v1/videos/merged/") {
 		fn := strings.TrimPrefix(videoURL, "/v1/videos/merged/")
-		localPath := filepath.Join("/app/merged_videos", fn)
+		localPath := filepath.Join(MergedVideosDir(), fn)
 		if _, err := os.Stat(localPath); err == nil {
 			return localPath, nil
 		}

@@ -46,15 +46,17 @@ func (t *VideoTool) Description() string {
 - minimax-video: MiniMax 视频生成 (fal.ai)
 - luma: Luma Dream Machine Ray-2 (fal.ai)
 
-操作：generate_video、check_status、merge_videos、list_models、extract_last_frame
-制作流程：1) 编写脚本 2) 逐场景调用 generate_video（用 ref_video_id 衔接上一场景尾帧，用 style_prefix 统一风格） 3) 所有场景完成后自动合成最终视频（带 crossfade 转场效果）。`
+操作：generate_video、check_status、merge_videos、list_models、extract_last_frame、list_videos
+制作流程：1) 编写脚本 2) 逐场景调用 generate_video（用 ref_video_id 衔接上一场景尾帧，用 style_prefix 统一风格） 3) 所有场景完成后自动合成最终视频（带 crossfade 转场效果）。
+
+list_videos 可以查看当前会话或全局已生成的视频，避免重复生成。`
 }
 
 func (t *VideoTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame"},
+			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame, list_videos"},
 			"prompt":       {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
 			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, veo3.1, sora2, kling-v3, minimax-video, luma"},
 			"img_url":      {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
@@ -65,6 +67,7 @@ func (t *VideoTool) Parameters() interface{} {
 			"task_ids":     {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
 			"style_prefix": {Type: "string", Description: "Shared style prefix prepended to all scene prompts for visual consistency (e.g. 'cinematic film style, warm color grading, shallow depth of field'). Stored with the record."},
 			"ref_video_id": {Type: "string", Description: "Previous scene's video record ID. Auto-extracts its last frame as img_url for i2v, ensuring visual continuity between scenes."},
+			"category":     {Type: "string", Description: "Video category: general (default), ad, short_drama, short_film, mv, tutorial. Used for organization and filtering."},
 		},
 		Required: []string{"action"},
 	}
@@ -82,6 +85,7 @@ type videoArgs struct {
 	TaskIDs     string `json:"task_ids"`
 	StylePrefix string `json:"style_prefix"`
 	RefVideoID  string `json:"ref_video_id"`
+	Category    string `json:"category"`
 }
 
 // fal.ai video model endpoints
@@ -110,8 +114,10 @@ func (t *VideoTool) Execute(ctx context.Context, argsJSON string) (string, error
 		return t.listModels()
 	case "extract_last_frame":
 		return t.extractLastFrame(ctx, args)
+	case "list_videos":
+		return t.listVideos(ctx, args)
 	default:
-		return "", fmt.Errorf("unknown action: %s. Use: generate_video, check_status, merge_videos, list_models, extract_last_frame", args.Action)
+		return "", fmt.Errorf("unknown action: %s. Use: generate_video, check_status, merge_videos, list_models, extract_last_frame, list_videos", args.Action)
 	}
 }
 
@@ -222,7 +228,7 @@ func (t *VideoTool) getLastFrameURL(recordOrTaskID string) (string, error) {
 		seekTime = 0
 	}
 
-	frameDir := "/app/images"
+	frameDir := ImagesDir()
 	os.MkdirAll(frameDir, 0755)
 	frameFile := fmt.Sprintf("lastframe_%s.jpg", rec.ID)
 	framePath := filepath.Join(frameDir, frameFile)
@@ -310,10 +316,15 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 
 	log.Printf("[VideoTool] Wan submitted: %s (model=%s, dur=%ds, scene=%s)", taskID, args.Model, duration, args.Scene)
 
+	category := args.Category
+	if category == "" {
+		category = "general"
+	}
 	record := model.VideoRecord{
 		UserID: userID, ConversationID: convID, TaskID: taskID,
 		Model: args.Model, Prompt: args.Prompt, ImgURL: args.ImgURL,
 		Size: args.Size, Duration: duration, Scene: args.Scene, Status: "running",
+		Category: category,
 	}
 	t.db.Create(&record)
 	if args.Scene != "" {
@@ -485,10 +496,15 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 
 	log.Printf("[VideoTool] fal.ai submitted: %s (model=%s, scene=%s)", requestID, args.Model, args.Scene)
 
+	falCategory := args.Category
+	if falCategory == "" {
+		falCategory = "general"
+	}
 	record := model.VideoRecord{
 		UserID: userID, ConversationID: convID, TaskID: requestID,
 		Model: args.Model, Prompt: args.Prompt, ImgURL: args.ImgURL,
 		Size: args.Size, Duration: duration, Scene: args.Scene, Status: "running",
+		Category: falCategory,
 	}
 	t.db.Create(&record)
 	if args.Scene != "" {
@@ -521,14 +537,13 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 			return
 		}
 		log.Printf("[VideoTool] fal.ai %s: got video URL, downloading to local...", requestID)
-		// Download to local storage
-		outputDir := "/app/merged_videos"
-		os.MkdirAll(outputDir, 0755)
+		// Download to local storage (clips go to videos/ dir)
+		outputDir := VideosDir()
 		localFile := fmt.Sprintf("fal_%s.mp4", uuid.New().String()[:8])
 		localPath := filepath.Join(outputDir, localFile)
 		savedURL := videoURL
 		if err := DownloadFile(videoURL, localPath); err == nil {
-			savedURL = fmt.Sprintf("/v1/videos/merged/%s", localFile)
+			savedURL = VideoClipURL(localFile)
 		}
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{
 			"video_url": savedURL, "status": "succeeded",
@@ -1001,8 +1016,7 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 	}
 
 	mergeID := uuid.New().String()
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputPath := filepath.Join(outputDir, mergeID+".mp4")
 
 	if err := ffmpegMergeClips(ctx, clipPaths, outputPath); err != nil {
@@ -1030,7 +1044,8 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 		t.db.Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").Find(&oldMerges)
 		for _, om := range oldMerges {
 			if om.VideoURL != "" {
-				os.Remove(filepath.Join("/app/merged_videos", filepath.Base(om.VideoURL)))
+				// Try removing from both merged and clips dirs
+				os.Remove(filepath.Join(MergedVideosDir(), filepath.Base(om.VideoURL)))
 			}
 		}
 		if len(oldMerges) > 0 {
@@ -1112,7 +1127,7 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 		log.Printf("[VideoTool] Re-merge: %d clips now vs %d in previous merge", newSucceeded, len(existingClipIDs))
 		// Delete old merged file
 		if existingMerge.VideoURL != "" {
-			oldFile := filepath.Join("/app/merged_videos", filepath.Base(existingMerge.VideoURL))
+			oldFile := filepath.Join(MergedVideosDir(), filepath.Base(existingMerge.VideoURL))
 			os.Remove(oldFile)
 		}
 		t.db.Unscoped().Delete(&existingMerge)
@@ -1158,8 +1173,7 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 	}
 
 	mergeID := uuid.New().String()
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputPath := filepath.Join(outputDir, mergeID+".mp4")
 
 	ctx := context.Background()
@@ -1190,6 +1204,84 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 // RetryNarration is kept as stub for backward compatibility (narration moved to dubbing tool)
 func (t *VideoTool) RetryNarration(userID string) {
 	// No-op: narration is now handled by the dubbing tool
+}
+
+// ── List Videos ──
+
+// listVideos returns existing video records for the current conversation or user,
+// so the AI can discover already-generated videos and avoid regenerating them.
+func (t *VideoTool) listVideos(ctx context.Context, args videoArgs) (string, error) {
+	userID := ""
+	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
+		userID = uid
+	}
+	convID := ""
+	if cid, ok := ctx.Value(CtxKeyConversationID).(string); ok {
+		convID = cid
+	}
+
+	var records []model.VideoRecord
+	q := t.db.Order("created_at DESC").Limit(50)
+
+	if convID != "" {
+		// Show videos in current conversation first
+		q = q.Where("conversation_id = ?", convID)
+	} else if userID != "" {
+		q = q.Where("user_id = ?", userID)
+	} else {
+		return "", fmt.Errorf("no user or conversation context")
+	}
+	q.Find(&records)
+
+	type videoSummary struct {
+		ID        string `json:"id"`
+		TaskID    string `json:"task_id"`
+		Model     string `json:"model"`
+		Scene     string `json:"scene"`
+		Status    string `json:"status"`
+		Type      string `json:"type"`
+		Duration  int    `json:"duration"`
+		VideoURL  string `json:"video_url,omitempty"`
+		Prompt    string `json:"prompt_preview"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	var summaries []videoSummary
+	succeeded := 0
+	running := 0
+	failed := 0
+	for _, r := range records {
+		promptPreview := r.Prompt
+		if len(promptPreview) > 100 {
+			promptPreview = promptPreview[:100] + "..."
+		}
+		s := videoSummary{
+			ID: r.ID, TaskID: r.TaskID, Model: r.Model,
+			Scene: r.Scene, Status: r.Status, Type: r.Type,
+			Duration: r.Duration, Prompt: promptPreview,
+			CreatedAt: r.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if r.Status == "succeeded" {
+			s.VideoURL = r.VideoURL
+			succeeded++
+		} else if r.Status == "running" || r.Status == "pending" {
+			running++
+		} else {
+			failed++
+		}
+		summaries = append(summaries, s)
+	}
+
+	return toJSON(map[string]interface{}{
+		"action":    "list_videos",
+		"total":     len(summaries),
+		"succeeded": succeeded,
+		"running":   running,
+		"failed":    failed,
+		"videos":    summaries,
+		"message": fmt.Sprintf("找到 %d 个视频记录（%d 完成, %d 进行中, %d 失败）。已完成的视频可直接用于 compose_pro 的 video_id。",
+			len(summaries), succeeded, running, failed),
+	}), nil
 }
 
 // ── DashScope Task Polling ──

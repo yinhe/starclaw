@@ -291,7 +291,7 @@ func (t *MusicTool) probeAudioDuration(localURL string) float64 {
 	filePath := ""
 	if strings.HasPrefix(localURL, "/v1/music/") {
 		filename := strings.TrimPrefix(localURL, "/v1/music/")
-		filePath = "/app/music/" + filename
+		filePath = filepath.Join(MusicDir(), filename)
 	}
 	if filePath == "" {
 		return 0
@@ -503,8 +503,7 @@ func (t *MusicTool) fetchResult(apiKey, endpoint, requestID string) (string, err
 
 // downloadAudio downloads the audio file to local storage and returns the local serve URL
 func (t *MusicTool) downloadAudio(remoteURL, recordID string) string {
-	musicDir := "/app/music"
-	os.MkdirAll(musicDir, 0755)
+	musicDir := MusicDir()
 
 	// Determine extension from URL or default to .mp3
 	ext := ".mp3"

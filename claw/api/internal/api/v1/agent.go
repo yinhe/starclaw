@@ -77,7 +77,9 @@ const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完�
   - kling-v2: 5/10s, 1280×720/720×1280（人物特写/动态）
   - minimax-video: ~5s, 1280×720（快速出片）
   - luma: ~5s, 最高1080p（梦幻艺术）
-- check_status / merge_videos / list_models
+- check_status / merge_videos / list_models / list_videos / extract_last_frame
+- list_videos: 查看当前会话或全局已生成的视频，避免重复生成
+- category 参数: general(默认)/ad/short_drama/short_film/mv/tutorial
 - wan系列通过 StarAI/DashScope 调用，其他模型通过 fal.ai 调用
 
 ### 音频分析 (audio_analysis)

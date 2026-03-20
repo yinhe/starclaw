@@ -40,13 +40,13 @@ func (t *AudioTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":    {Type: "string", Description: "Action: analyze, detect_beats, get_energy_curve, generate_srt"},
-			"music_id":  {Type: "string", Description: "Music record ID (from music_generation or uploaded). Used for analyze/detect_beats/get_energy_curve."},
-			"file_url":  {Type: "string", Description: "Direct URL or local path to audio file. Alternative to music_id."},
-			"lyrics":    {Type: "string", Description: "For generate_srt: full lyrics text with section markers like [verse1], [chorus], [bridge], [outro]."},
-			"duration":  {Type: "string", Description: "For generate_srt: total audio duration in seconds (from analyze result)."},
-			"sections":  {Type: "string", Description: "For generate_srt: JSON array of sections from analyze, e.g. [{\"type\":\"verse1\",\"start\":15.2,\"end\":45.8}]"},
-			"interval":  {Type: "string", Description: "For get_energy_curve: sampling interval in seconds (default: 1.0)"},
+			"action":   {Type: "string", Description: "Action: analyze, detect_beats, get_energy_curve, generate_srt"},
+			"music_id": {Type: "string", Description: "Music record ID (from music_generation or uploaded). Used for analyze/detect_beats/get_energy_curve."},
+			"file_url": {Type: "string", Description: "Direct URL or local path to audio file. Alternative to music_id."},
+			"lyrics":   {Type: "string", Description: "For generate_srt: full lyrics text with section markers like [verse1], [chorus], [bridge], [outro]."},
+			"duration": {Type: "string", Description: "For generate_srt: total audio duration in seconds (from analyze result)."},
+			"sections": {Type: "string", Description: "For generate_srt: JSON array of sections from analyze, e.g. [{\"type\":\"verse1\",\"start\":15.2,\"end\":45.8}]"},
+			"interval": {Type: "string", Description: "For get_energy_curve: sampling interval in seconds (default: 1.0)"},
 		},
 		Required: []string{"action"},
 	}
@@ -100,7 +100,7 @@ func (t *AudioTool) resolveAudioPath(args audioArgs, tmpDir string) (string, err
 		// Check if it's a local music path
 		if strings.HasPrefix(args.FileURL, "/v1/music/") {
 			filename := strings.TrimPrefix(args.FileURL, "/v1/music/")
-			localPath := "/app/music/" + filename
+			localPath := filepath.Join(MusicDir(), filename)
 			if _, err := os.Stat(localPath); err == nil {
 				return localPath, nil
 			}
@@ -250,9 +250,9 @@ func (t *AudioTool) analyze(ctx context.Context, args audioArgs) (string, error)
 		"duration_formatted": fmt.Sprintf("%d:%02d",
 			int(duration)/60, int(duration)%60),
 		"sample_rate": "",
-		"channels":   0,
-		"codec":      "",
-		"bit_rate":   probeData.Format.BitRate,
+		"channels":    0,
+		"codec":       "",
+		"bit_rate":    probeData.Format.BitRate,
 	}
 
 	if len(probeData.Streams) > 0 {

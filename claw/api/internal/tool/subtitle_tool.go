@@ -125,8 +125,7 @@ func (t *SubtitleTool) addSubtitles(ctx context.Context, args subtitleArgs) (str
 	}
 
 	outputID := uuid.New().String()
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputPath := filepath.Join(outputDir, outputID+".mp4")
 
 	escapedSrt := strings.ReplaceAll(srtPath, "\\", "/")

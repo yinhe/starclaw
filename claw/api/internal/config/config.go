@@ -18,6 +18,11 @@ type Config struct {
 	Overlord    OverlordConfig    `mapstructure:"overlord"`
 	Contributor ContributorConfig `mapstructure:"contributor"`
 	Nydus       NydusConfig       `mapstructure:"nydus"`
+	Storage     StorageConfig     `mapstructure:"storage"`
+}
+
+type StorageConfig struct {
+	DataDir string `mapstructure:"data_dir"` // root data directory, default /app (container) or ./data (host)
 }
 
 type NodeConfig struct {
@@ -151,6 +156,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("contributor.ollama_url", "http://localhost:11434")
 	viper.SetDefault("contributor.max_jobs", 2)
 	viper.SetDefault("contributor.external_addr", "")
+	viper.SetDefault("storage.data_dir", "/app")
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

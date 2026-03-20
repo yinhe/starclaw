@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -588,8 +587,7 @@ func (t *ImageTool) pollAndDownloadWithLog(apiKey, endpoint, requestID, recordID
 
 // downloadImage downloads a remote image to /app/images/ and returns the local serve URL
 func (t *ImageTool) downloadImage(remoteURL, recordID string) string {
-	imgDir := "/app/images"
-	os.MkdirAll(imgDir, 0755)
+	imgDir := ImagesDir()
 
 	ext := ".png"
 	lower := strings.ToLower(remoteURL)

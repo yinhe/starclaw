@@ -107,6 +107,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 	// Tool registry
 	browserMgr := browser.NewManager()
+	// Initialize data directory from config (must be before tool creation)
+	tool.SetDataDir(cfg.Storage.DataDir)
+
 	sandboxMgr := sandbox.NewManager()
 	processMgr := sandbox.NewProcessManager()
 	toolRegistry := tool.NewRegistry()
@@ -473,10 +476,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Browser screenshots (public, secured by UUID)
 		apiV1.GET("/screenshots/:id", v1.ServeScreenshot)
 
+		// Video clips (individual generated clips, public, secured by UUID filename)
+		apiV1.GET("/videos/clips/:filename", func(c *gin.Context) {
+			filename := c.Param("filename")
+			filePath := filepath.Join(tool.VideosDir(), filename)
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				c.JSON(404, gin.H{"error": "video clip not found"})
+				return
+			}
+			c.Header("Content-Disposition", "attachment; filename="+filename)
+			c.File(filePath)
+		})
+
 		// Merged videos (public, secured by UUID filename)
 		apiV1.GET("/videos/merged/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
-			filePath := "/app/merged_videos/" + filename
+			filePath := filepath.Join(tool.MergedVideosDir(), filename)
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				c.JSON(404, gin.H{"error": "merged video not found"})
 				return
@@ -488,7 +503,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Video thumbnails (public, secured by UUID filename)
 		apiV1.GET("/videos/thumbnails/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
-			filePath := "/app/thumbnails/" + filename
+			filePath := filepath.Join(tool.ThumbnailsDir(), filename)
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				c.JSON(404, gin.H{"error": "thumbnail not found"})
 				return
