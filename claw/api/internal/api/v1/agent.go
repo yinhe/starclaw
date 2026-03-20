@@ -104,16 +104,6 @@ const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完�
 
 ### AI图片 (image_generation)
 - generate_image / batch_generate / check_status / list_images
-- 模型：flux-schnell(默认)、flux-dev、flux-pro、flux-realism、stable-diffusion-v35-large
-
-### AI音乐 (music_generation)
-- generate_music / check_status / list_music
-- 模型：ace-step(默认)、minimax-music-v2、diffrhythm、stable-audio
-
-## MV制作（推荐委派给 MV创作Agent）
-⭐ 用户说“做MV”“音乐视频”“歌曲视频” → delegate_to_agent 给 "MV创作Agent"
-如果用户要求你直接做，流程：
-1. 获取音频 → 2. audio_analysis.analyze → 3. 按能量曲线分镜 → 4. video_generation逐场景 → 5. audio_analysis.generate_srt → 6. mv_production.compose_pro合成
 
 ## 普通视频制作流程
 1. 编写分镜脚本 → 2. video_generation逐场景生成（可选模型）

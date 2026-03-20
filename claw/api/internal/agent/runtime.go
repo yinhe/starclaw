@@ -13,7 +13,7 @@ import (
 )
 
 const maxToolIterations = 500 // effectively unlimited for long workflows like MV creation
-const maxAutoContinue = 10    // max consecutive auto-continue rounds without tool calls
+const maxAutoContinue = 5     // max consecutive auto-continue rounds without tool calls
 
 // shouldAutoContinue checks if the LLM response indicates more work is planned
 // and the agent should automatically continue instead of stopping.
@@ -33,6 +33,11 @@ var hallucinatedToolSignals = []string{
 	"正在执行", "已注入", "合成中",
 	"compose_pro", "compose_mv", "generate_video", "generate_music",
 	"analyze", "generate_srt", "check_status",
+	// Delegation narration (SuperAgent describes delegation instead of calling system.delegate_to_agent)
+	"委派任务给", "任务已提交", "Agent 将执行", "Agent将执行",
+	"正在委派", "已委派给", "交给专业Agent",
+	// Numbered workflow plans that should be tool calls
+	"1️⃣", "2️⃣", "3️⃣", "4️⃣",
 }
 
 func isHallucinatedToolNarration(content string) bool {
@@ -47,7 +52,14 @@ func isHallucinatedToolNarration(content string) bool {
 func shouldAutoContinue(content string) (bool, string) {
 	// Check for hallucinated tool execution first (higher priority)
 	if isHallucinatedToolNarration(content) {
-		return true, "你刚才只是用文字描述了工具调用过程，但并没有实际发起 function call。下一条消息必须直接发起一个工具调用；如果前置条件不满足，只能调用 check_status/list 这类查询工具，不要再输出流程说明文字。"
+		// Detect delegation narration specifically — give a stronger, more targeted correction
+		if strings.Contains(content, "委派") || strings.Contains(content, "Agent") && (strings.Contains(content, "提交") || strings.Contains(content, "执行")) {
+			return true, `⛔ 你没有发起 function call，只是用文字描述了委派过程。不要再描述计划。你有两个选择：
+1. 真正委派：立刻调用 system 工具，action="delegate_to_agent"，agent_id="MV创作Agent"，message="用户的完整需求"
+2. 自己做：直接调用 audio_analysis 工具开始分析音频（你拥有所有工具）
+下一条消息必须是一个 function call，不允许输出任何文字说明。`
+		}
+		return true, "⛔ 你刚才只是用文字描述了工具调用，但没有真正发起 function call。下一条消息必须直接发起工具调用（content留空），不要输出任何文字。"
 	}
 	// Check for normal continuation signals
 	for _, signal := range autoContinueSignals {
