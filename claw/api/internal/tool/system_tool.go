@@ -546,8 +546,11 @@ func (t *SystemTool) listSchedules(args systemArgs) (string, error) {
 }
 
 func (t *SystemTool) delegateToAgent(ctx context.Context, args systemArgs) (string, error) {
+	if args.AgentID == "" && args.Name != "" {
+		args.AgentID = args.Name // fallback: LLM sometimes puts agent name in "name" instead of "agent_id"
+	}
 	if args.AgentID == "" {
-		return "", fmt.Errorf("agent_id is required")
+		return "", fmt.Errorf("agent_id is required (请提供目标Agent的名称，如 agent_id=\"MV创作Agent\")")
 	}
 	if args.Message == "" {
 		return "", fmt.Errorf("message is required")

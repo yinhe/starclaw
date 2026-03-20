@@ -498,8 +498,14 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				// Cerebrate: async extract memories + summary from this conversation
 				if h.cerebrate != nil {
 					aid := c.GetString("agent_id_for_cerebrate")
-					go h.cerebrate.ExtractAndStore(context.Background(), userID, aid, req.Messages, convID)
-					go h.cerebrate.GenerateSummary(context.Background(), userID, aid, convID, req.Messages)
+					// Build full message list: input messages + assistant response
+					allMsgs := make([]provider.ChatMessage, len(req.Messages), len(req.Messages)+1)
+					copy(allMsgs, req.Messages)
+					if fullContent != "" {
+						allMsgs = append(allMsgs, provider.ChatMessage{Role: "assistant", Content: fullContent})
+					}
+					go h.cerebrate.ExtractAndStore(context.Background(), userID, aid, allMsgs, convID)
+					go h.cerebrate.GenerateSummary(context.Background(), userID, aid, convID, allMsgs)
 				}
 
 				// Long-running conversation notification (>30s)
@@ -775,8 +781,13 @@ func buildFileContext(files []FileAttachment) string {
 		parts = append(parts, fmt.Sprintf("%d. %s (%s, %s, %s)", i+1, f.Filename, f.Category, f.Mime, sizeStr))
 
 		// For text-readable files, try to read and include content
-		if isTextReadable(f.Mime, f.Filename) && f.Stored != "" {
-			content, err := readUploadedFileContent("/app/uploads/" + f.Stored)
+		stored := f.Stored
+		if stored == "" && f.URL != "" {
+			// Derive stored filename from URL: /v1/uploads/<uuid>.<ext> → <uuid>.<ext>
+			stored = filepath.Base(f.URL)
+		}
+		if isTextReadable(f.Mime, f.Filename) && stored != "" {
+			content, err := readUploadedFileContent("/app/uploads/" + stored)
 			if err == nil && content != "" {
 				// Limit to 10000 chars to avoid prompt overflow
 				if len(content) > 10000 {

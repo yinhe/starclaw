@@ -78,7 +78,7 @@ func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]m
 			if len(kw) < 2 {
 				continue
 			}
-			conditions = append(conditions, "(key LIKE ? OR content LIKE ?)")
+			conditions = append(conditions, "(`key` LIKE ? OR content LIKE ?)")
 			args = append(args, "%"+kw+"%", "%"+kw+"%")
 		}
 		if len(conditions) > 0 {
@@ -268,7 +268,7 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 
 		// Upsert: update if same key+user+agent exists, otherwise create
 		var existing model.Memory
-		err := c.db.Where("user_id = ? AND agent_id = ? AND key = ?", userID, agentID, e.Key).First(&existing).Error
+		err := c.db.Where("user_id = ? AND agent_id = ? AND `key` = ?", userID, agentID, e.Key).First(&existing).Error
 		if err == nil {
 			// Update existing memory
 			updates := map[string]interface{}{
