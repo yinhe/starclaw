@@ -156,6 +156,7 @@ export default function ModelsPage() {
 
   const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
   const isStarAI = form.provider === 'star-ai'
+  const isOllama = form.provider === 'ollama'
 
   return (
     <div className="h-full overflow-y-auto">
@@ -385,6 +386,10 @@ export default function ModelsPage() {
                 <div className="bg-emerald-50 rounded-lg px-4 py-3 text-xs text-emerald-700">
                   StarAI 使用 Claw 节点身份认证，无需 API Key。添加后即可直接使用 100+ 模型。
                 </div>
+              ) : isOllama ? (
+                <div className="bg-amber-50 rounded-lg px-4 py-3 text-xs text-amber-700">
+                  Ollama 本地部署无需 API Key，直接添加即可。请确保 Ollama 已在本机运行。
+                </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
@@ -462,7 +467,7 @@ export default function ModelsPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!isStarAI && !form.api_key}
+                disabled={!isStarAI && !isOllama && !form.api_key}
                 className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 添加提供商

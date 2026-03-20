@@ -75,7 +75,7 @@ type CreateModelRequest struct {
 	Provider    string  `json:"provider" binding:"required"`
 	ModelName   string  `json:"model_name"`
 	DisplayName string  `json:"display_name"`
-	APIKey      string  `json:"api_key" binding:"required"`
+	APIKey      string  `json:"api_key"`
 	BaseURL     string  `json:"base_url"`
 	MaxTokens   int     `json:"max_tokens"`
 	Temperature float64 `json:"temperature"`
