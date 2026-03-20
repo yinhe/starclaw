@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -76,12 +77,24 @@ func (h *MultimodalHandler) UploadImage(c *gin.Context) {
 	b64 := base64.StdEncoding.EncodeToString(data)
 	dataURL := fmt.Sprintf("data:%s;base64,%s", mime, b64)
 
+	// Also save to disk so AI tools can access the file
+	os.MkdirAll(uploadDir, 0755)
+	fileID := uuid.New().String()
+	storedName := fileID + ext
+	destPath := filepath.Join(uploadDir, storedName)
+	if err := os.WriteFile(destPath, data, 0644); err != nil {
+		log.Printf("[multimodal] failed to save image to disk: %v", err)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"id":       uuid.New().String(),
+		"id":       fileID,
 		"url":      dataURL,
+		"file_url": "/v1/uploads/" + storedName,
+		"stored":   storedName,
 		"filename": header.Filename,
 		"size":     header.Size,
 		"mime":     mime,
+		"category": "image",
 	})
 }
 

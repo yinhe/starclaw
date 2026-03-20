@@ -190,11 +190,22 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			systemPrompt += "\n\n" + fileContext
 		}
 
-		// Extract images and video frames from file attachments for vision analysis
-		visionURLs := extractVisionFromFiles(req.Files, 4)
+		// Extract vision from file attachments (videos: extract frames; images: convert to base64)
+		// Skip image files if base64 URLs were already provided via req.Images (avoid duplicates)
+		filesToExtract := req.Files
+		if len(req.Images) > 0 {
+			var nonImageFiles []FileAttachment
+			for _, f := range req.Files {
+				if !strings.HasPrefix(strings.ToLower(f.Mime), "image/") {
+					nonImageFiles = append(nonImageFiles, f)
+				}
+			}
+			filesToExtract = nonImageFiles
+		}
+		visionURLs := extractVisionFromFiles(filesToExtract, 4)
 		if len(visionURLs) > 0 {
 			req.Images = append(req.Images, visionURLs...)
-			log.Printf("[vision] injected %d image/video-frame URLs from %d file attachments", len(visionURLs), len(req.Files))
+			log.Printf("[vision] injected %d image/video-frame URLs from %d file attachments", len(visionURLs), len(filesToExtract))
 		}
 	}
 

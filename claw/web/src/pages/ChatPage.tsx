@@ -236,6 +236,18 @@ export default function ChatPage() {
       try {
         const res = await multimodalAPI.uploadImage(file)
         setAttachedImages((prev) => [...prev, { url: res.data.url, name: res.data.filename }])
+        // Also add to files so backend knows the disk path for AI tools
+        if (res.data.stored) {
+          setAttachedFiles((prev) => [...prev, {
+            id: res.data.id,
+            filename: res.data.filename,
+            url: res.data.file_url || res.data.url,
+            size: res.data.size || 0,
+            mime: res.data.mime || file.type,
+            category: 'image',
+            stored: res.data.stored,
+          }])
+        }
       } catch { /* ignore */ }
     }
   }
@@ -244,11 +256,22 @@ export default function ChatPage() {
     if (!files) return
     setFileUploading(true)
     for (const file of Array.from(files)) {
-      // Skip images — those go through handleImageUpload
+      // Images: upload via multimodal (for base64 vision) + save to files (for AI tool access)
       if (file.type.startsWith('image/')) {
         try {
           const res = await multimodalAPI.uploadImage(file)
           setAttachedImages((prev) => [...prev, { url: res.data.url, name: res.data.filename }])
+          if (res.data.stored) {
+            setAttachedFiles((prev) => [...prev, {
+              id: res.data.id,
+              filename: res.data.filename,
+              url: res.data.file_url || res.data.url,
+              size: res.data.size || 0,
+              mime: res.data.mime || file.type,
+              category: 'image',
+              stored: res.data.stored,
+            }])
+          }
         } catch { /* ignore */ }
         continue
       }
