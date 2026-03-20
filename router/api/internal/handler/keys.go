@@ -25,7 +25,25 @@ func (h *KeysHandler) List(c *gin.Context) {
 	var keys []model.APIKey
 	h.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&keys)
 
-	c.JSON(http.StatusOK, gin.H{"keys": keys})
+	// Decrypt full keys for display
+	type keyView struct {
+		ID        string      `json:"id"`
+		Name      string      `json:"name"`
+		KeyPrefix string      `json:"key_prefix"`
+		KeyFull   string      `json:"key_full,omitempty"`
+		IsEnabled bool        `json:"is_enabled"`
+		LastUsed  interface{} `json:"last_used"`
+		CreatedAt interface{} `json:"created_at"`
+	}
+	views := make([]keyView, len(keys))
+	for i, k := range keys {
+		views[i] = keyView{
+			ID: k.ID, Name: k.Name, KeyPrefix: k.KeyPrefix,
+			KeyFull:   model.DecryptKey(k.KeyEnc),
+			IsEnabled: k.IsEnabled, LastUsed: k.LastUsed, CreatedAt: k.CreatedAt,
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"keys": views})
 }
 
 // Create generates a new API key
@@ -52,6 +70,7 @@ func (h *KeysHandler) Create(c *gin.Context) {
 		Name:      req.Name,
 		KeyHash:   keyHash,
 		KeyPrefix: rawKey[:16] + "...", // "sk-star-a1b2c3d4..."
+		KeyEnc:    model.EncryptKey(rawKey),
 		IsEnabled: true,
 	}
 

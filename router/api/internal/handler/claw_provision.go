@@ -73,6 +73,7 @@ func (h *ClawProvisionHandler) Provision(c *gin.Context) {
 		Name:      "Claw Auto (" + shortID + ")",
 		KeyHash:   keyHash,
 		KeyPrefix: prefix,
+		KeyEnc:    model.EncryptKey(plainKey),
 		IsEnabled: true,
 	}
 	if err := h.db.Create(&apiKey).Error; err != nil {
@@ -84,13 +85,14 @@ func (h *ClawProvisionHandler) Provision(c *gin.Context) {
 	log.Printf("[claw-provision] new API key provisioned: %s → user %s, key %s", clawID, user.ID, prefix)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":   "created",
-		"api_key":  plainKey,
-		"key_id":   apiKey.ID,
-		"user_id":  user.ID,
-		"claw_id":  clawID,
-		"balance":  user.Balance,
-		"message":  "API key created and bound to your Claw instance. Store it securely — it won't be shown again.",
+		"status":     "created",
+		"api_key":    plainKey,
+		"key_prefix": prefix,
+		"key_id":     apiKey.ID,
+		"user_id":    user.ID,
+		"claw_id":    clawID,
+		"balance":    user.Balance,
+		"message":    "API key created and bound to your Claw instance.",
 	})
 }
 
@@ -132,6 +134,7 @@ func (h *ClawProvisionHandler) RotateKey(c *gin.Context) {
 		Name:      "Claw Auto (" + shortID + ")",
 		KeyHash:   keyHash,
 		KeyPrefix: prefix,
+		KeyEnc:    model.EncryptKey(plainKey),
 		IsEnabled: true,
 	}
 	if err := h.db.Create(&apiKey).Error; err != nil {
@@ -142,13 +145,14 @@ func (h *ClawProvisionHandler) RotateKey(c *gin.Context) {
 	log.Printf("[claw-provision] key rotated for %s → new key %s", clawID, prefix)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":   "rotated",
-		"api_key":  plainKey,
-		"key_id":   apiKey.ID,
-		"user_id":  user.ID,
-		"claw_id":  clawID,
-		"balance":  user.Balance,
-		"message":  "Old key revoked, new key generated. Store it securely.",
+		"status":     "rotated",
+		"api_key":    plainKey,
+		"key_prefix": prefix,
+		"key_id":     apiKey.ID,
+		"user_id":    user.ID,
+		"claw_id":    clawID,
+		"balance":    user.Balance,
+		"message":    "Old key revoked, new key generated.",
 	})
 }
 
@@ -182,8 +186,8 @@ func (h *ClawProvisionHandler) Sync(c *gin.Context) {
 		"user_id":        user.ID,
 		"claw_id":        clawID,
 		"balance":        user.Balance,
-		"has_active_key":  hasKey,
-		"needs_rotation":  needsRotation,
+		"has_active_key": hasKey,
+		"needs_rotation": needsRotation,
 	}
 	if hasKey {
 		resp["key_prefix"] = activeKey.KeyPrefix

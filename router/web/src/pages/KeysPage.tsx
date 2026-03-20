@@ -6,6 +6,7 @@ interface APIKey {
   id: string;
   name: string;
   key_prefix: string;
+  key_full?: string;
   is_enabled: boolean;
   last_used: string | null;
   created_at: string;
@@ -137,10 +138,12 @@ export default function KeysPage() {
                 <tr key={k.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                   <td className="px-5 py-3 text-white">{k.name || '未命名'}</td>
                   <td className="px-5 py-3">
-                    <code className="text-gray-400 text-xs">{k.key_prefix}...</code>
-                    <button onClick={() => copyText(k.key_prefix, k.id)} className="ml-2 p-1 rounded hover:bg-gray-700 cursor-pointer inline-flex align-middle">
-                      {copied === k.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-gray-500" />}
-                    </button>
+                    <code className="text-gray-400 text-xs">{k.key_prefix}</code>
+                    {(k.key_full || k.key_prefix) && (
+                      <button onClick={() => copyText(k.key_full || k.key_prefix, k.id)} className="ml-2 p-1 rounded hover:bg-gray-700 cursor-pointer inline-flex align-middle" title={k.key_full ? '复制完整 Key' : '复制 Key 前缀'}>
+                        {copied === k.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-gray-500" />}
+                      </button>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-gray-400">{new Date(k.created_at).toLocaleDateString()}</td>
                   <td className="px-5 py-3 text-gray-400">{k.last_used ? new Date(k.last_used).toLocaleDateString() : '从未'}</td>
