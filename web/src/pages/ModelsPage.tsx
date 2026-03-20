@@ -26,7 +26,7 @@ const PROVIDERS = [
   { value: 'anthropic', label: 'Anthropic', desc: 'Claude 4, Claude 3.5 Sonnet 等', icon: '🟠', base_url: 'https://api.anthropic.com' },
   { value: 'google', label: 'Google', desc: 'Gemini 2.0, Gemini Pro 等', icon: '🔵', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai' },
   { value: 'deepseek', label: 'DeepSeek', desc: 'DeepSeek V3, R1 推理模型', icon: '🐋', base_url: 'https://api.deepseek.com/v1' },
-  { value: 'ollama', label: 'Ollama (本地)', desc: '本地部署开源模型', icon: '🏠', base_url: 'http://localhost:11434' },
+  { value: 'ollama', label: 'Ollama (本地)', desc: '本地部署开源模型', icon: '🏠', base_url: 'http://host.docker.internal:11434' },
   { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀', base_url: 'https://openrouter.ai/api/v1' },
   { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡', base_url: 'https://fal.run/fal-ai/any-llm/v1' },
   { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏', base_url: 'https://api.x.ai/v1' },
@@ -388,7 +388,7 @@ export default function ModelsPage() {
                 </div>
               ) : isOllama ? (
                 <div className="bg-amber-50 rounded-lg px-4 py-3 text-xs text-amber-700">
-                  Ollama 本地部署无需 API Key，直接添加即可。请确保 Ollama 已在本机运行。
+                  Ollama 本地部署无需 API Key，直接添加即可。请确保 Ollama 已在本机运行。Docker 部署请使用 <code>host.docker.internal</code> 而非 <code>localhost</code>。
                 </div>
               ) : (
                 <div>
