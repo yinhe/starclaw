@@ -157,6 +157,7 @@ export default function ModelsPage() {
   const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
   const isStarAI = form.provider === 'star-ai'
   const isOllama = form.provider === 'ollama'
+  const isCustom = form.provider === 'custom'
 
   return (
     <div className="h-full overflow-y-auto">
@@ -392,13 +393,13 @@ export default function ModelsPage() {
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">API Key{isCustom && '（可选）'}</label>
                   <input
                     type="password"
                     value={form.api_key}
                     onChange={(e) => setForm({ ...form, api_key: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="sk-..."
+                    placeholder={isCustom ? '留空 = 无需认证' : 'sk-...'}
                   />
                 </div>
               )}
@@ -467,7 +468,7 @@ export default function ModelsPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!isStarAI && !isOllama && !form.api_key}
+                disabled={!isStarAI && !isOllama && !isCustom && !form.api_key}
                 className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 添加提供商
