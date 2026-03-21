@@ -32,6 +32,20 @@ scrape_configs:
       - targets: ['arena:8094']
     metrics_path: /metrics
 
+  # ── Overlord (same host, different Docker network) ──
+  - job_name: 'overlord-api'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:8098']
+    metrics_path: /metrics
+
+  # ── Router / StarAI (Server B) ──
+  - job_name: 'router-starai'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['47.103.51.32:8096']
+    metrics_path: /metrics
+
   # ── External: Claw (starclaw.me) ──
   # Requires Claw /metrics to be accessible from Server C
   # In production, use file_sd_configs or HTTP SD for dynamic discovery

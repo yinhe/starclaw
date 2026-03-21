@@ -1,6 +1,6 @@
 # StarClaw — 产品开发路线图
 
-> 最后更新：2026-03-16 (P8-P10 路线图扩展)
+> 最后更新：2026-03-21 (P5 Overlord 上线 + P6 GitHub 社区基建 + P7 官网 Team Agent)
 > 视角：虫后（Queen）全局战略
 
 ---
@@ -11,25 +11,25 @@
 
 | 模块 | 代号 | 状态 | 核心能力 |
 |------|------|:----:|---------|
-| **Claw** 🦞 | 小龙虾核心 | ✅ Phase 1-5 全部完成 | Agent 引擎 / 工作流 / RAG / MCP / 工具生态 / Multi-Agent / Computer Use / 代码沙箱 / RBAC / 多租户 / 计费 / i18n |
-| **Overlord** 👁️ | 领主管理层 | ✅ Phase 1 完成 | 节点管理 / 团队 RBAC（4 级）/ Nydus 隧道 / Molt 更新 / Webhook / 9 页管理控制台 |
-| **Router** ⛽ | 算力网关 | 🔧 骨架就绪 | api + proxy + web 基础结构，计费流未跑通 |
-| **Queen** 👑 | 虫后中央 | ✅ 后端 + 管理后台 | api / swarm / core / bounty / forum / arena，10 页管理后台 |
-| **商业文档** 📄 | — | ✅ 17 份完成 | 定价 / 产品 / 销售 / 交付 / 法务 / 品牌 / GTM / 社区 / 内容 / 客户成功 |
+| **Claw** 🦞 | 小龙虾核心 | ✅ Phase 1-5 全部完成 | Agent 引擎 / 工作流 / RAG / MCP / 工具生态 / Multi-Agent / Computer Use / 代码沙箱 / RBAC / 多租户 / 计费 / i18n / Squad 引擎 / 代码审查循环 / P2P 网络 / 开发者平台 / 可观测性 / Security |
+| **Overlord** 👁️ | 领主管理层 | ✅ Phase 1-4 完成 | 节点管理 / 团队 RBAC / Nydus 隧道 / Molt 更新 / Webhook / 9 页管理控制台 / **Team Agent 9 模板** / 实时看板 / WebSocket / **白牌 5 级许可证** / 合规面板 / 终端用户工作台 |
+| **Synapse** ⛽ | 算力网关 | ✅ 已上线 | Router (star-ai.net) + 充值 + 支付 + 模型路由 + 计费流跑通 |
+| **Queen** 👑 | 虫后中央 | ✅ 后端 + 管理后台 + 官网 | api / swarm / core / bounty / forum / arena / **site (starclaw.me)** / partner / city / overseer，10 页管理后台 + 官网 Team Agent 展示 |
+| **商业文档** 📄 | — | ✅ 38+ 份完成 | 定价 / 产品 / 销售 / 交付 / 法务 / 品牌 / GTM / 社区 / 内容 / 客户成功 / Pitch Deck / Demo 脚本 / One-pager / 星钻体系 |
 
 ### 1.2 缺失模块（尚未开发）
 
 | 缺失项 | 影响 | 阻塞的商业能力 |
 |--------|------|---------------|
-| Overlord 终端用户界面（`web/`） | 企业员工无法使用 AI | ❌ Overlord 不可卖 |
-| Overlord 计费/SSO/审计增强 | 无法满足 Pro 以上需求 | ❌ 高价值客户无法签 |
-| Router 完整计费流 | 星能消耗无法收费 | ❌ 用量收入为零 |
-| 官网落地页（`queen/site/`） | 陌生客户找不到产品 | ❌ 开源获客无入口 |
-| Queen City Portal | 城市合伙人无后台 | ❌ 渠道无法招募 |
-| Queen Partner Hub | 核心合伙人无 CRM | ❌ 内部管理靠微信 |
-| Overlord 白牌引擎 + 许可证 | 功能分级未生效 | ❌ 白牌客户无法卖 |
+| ~~Overlord 终端用户界面（`web/`）~~ | ~~企业员工无法使用 AI~~ | ✅ **已完成** (P0) |
+| ~~Overlord 计费/SSO/审计增强~~ | ~~无法满足 Pro 以上需求~~ | ✅ **已完成** (P0) |
+| ~~Synapse 完整计费流~~ | ~~星能消耗无法收费~~ | ✅ **已完成** (P0.5, star-ai.net) |
+| ~~官网落地页（`queen/site/`）~~ | ~~陌生客户找不到产品~~ | ✅ **已完成** (P1, starclaw.me) |
+| ~~Queen City Portal~~ | ~~城市合伙人无后台~~ | ✅ **已完成** (P2) |
+| ~~Queen Partner Hub~~ | ~~核心合伙人无 CRM~~ | ✅ **已完成** (P3) |
+| ~~Overlord 白牌引擎 + 许可证~~ | ~~功能分级未生效~~ | ✅ **已完成** (P4, 5 级许可证) |
 | Queen 结算引擎 | 佣金手工计算 | ❌ 10+ 合伙人时崩溃 |
-| 移动端（`queen/mobile/`） | 无移动端入口 | ⚠️ 影响使用场景 |
+| 移动端（`larva/`） | 无移动端入口 | ⚠️ 影响使用场景 |
 | Overlord SDK | 无法嵌入客户系统 | ⚠️ 限制集成场景 |
 | P2P 高级组网 | 无分布式壁垒 | ⚠️ 长期竞争力 |
 
@@ -143,17 +143,17 @@ overlord/
 
 **为什么要早做：**
 - Overlord 客户如果不自带 API Key（BYOK），AI 推理需要走星能消耗
-- 没有 Router，Overlord 只能服务 BYOK 客户，丢失大量中小企业市场
+- 没有 Synapse，Overlord 只能服务 BYOK 客户，丢失大量中小企业市场
 - star-ai.net 本身也是面向个人用户的独立收入线
 
 **交付清单：**
 
 | 模块 | 路径 | 交付物 |
 |------|------|--------|
-| 计费流 | `router/api/ billing/` | 充值 → 星能余额 → 按量扣费 → 用量记录 |
-| 用户控制台 | `router/web/` | 注册 + 充值 + 模型选择 + 用量统计 |
-| 海外代理 | `router/proxy/` | OpenAI / Claude / Grok 稳定代理 |
-| 支付对接 | `router/api/` | 微信/支付宝充值回调 |
+| 计费流 | `synapse/api/ billing/` | 充值 → 星能余额 → 按量扣费 → 用量记录 |
+| 用户控制台 | `synapse/web/` | 注册 + 充值 + 模型选择 + 用量统计 |
+| 海外代理 | `synapse/proxy/` | OpenAI / Claude / Grok 稳定代理 |
+| 支付对接 | `synapse/api/` | 微信/支付宝充值回调 |
 
 **日历拆解：**
 
@@ -371,7 +371,7 @@ overlord/
 
 | 模块 | 路径 | 交付物 |
 |------|------|--------|
-| 移动端 App | `queen/mobile/` | Flutter 官方 App（iOS + Android） |
+| 移动端 App | `larva/` | Flutter 官方 App（iOS + Android + 桌面 + Web） |
 | 前端嵌入 SDK | `overlord/sdk/js/` | Chat Widget / Agent Picker 组件 |
 | 后端 SDK | `overlord/sdk/go/` | Claw 能力 Go SDK |
 
@@ -723,7 +723,7 @@ M19+                                                                            
 ## 四、跨阶段依赖关系
 
 ```
-P0 Overlord 可卖 ──→ P0.5 star-ai.net（Overlord 非 BYOK 依赖 Router）
+P0 Overlord 可卖 ──→ P0.5 star-ai.net（Overlord 非 BYOK 依赖 Synapse）
         │
         ├──→ P1 官网+开源（需要产品可 Demo）
         │        │
