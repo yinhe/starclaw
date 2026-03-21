@@ -105,6 +105,112 @@ func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
 	return result.Data, nil
 }
 
+// ── Team Agent ──
+
+// ListTeamTemplates returns available team agent templates.
+func (c *Client) ListTeamTemplates(ctx context.Context) ([]TeamAgentTemplate, error) {
+	resp, err := c.doRequest(ctx, "GET", "/brood/team-agent/templates", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Templates []TeamAgentTemplate `json:"templates"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result.Templates, nil
+}
+
+// ListTeamInstances returns team instances.
+func (c *Client) ListTeamInstances(ctx context.Context) ([]TeamInstance, error) {
+	resp, err := c.doRequest(ctx, "GET", "/brood/team-agent/instances", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Instances []TeamInstance `json:"instances"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result.Instances, nil
+}
+
+// CreateTeamInstance creates a new team agent instance.
+func (c *Client) CreateTeamInstance(ctx context.Context, req CreateTeamInstanceRequest) (*TeamInstance, error) {
+	resp, err := c.doRequest(ctx, "POST", "/brood/team-agent/instances", req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Instance TeamInstance `json:"instance"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return &result.Instance, nil
+}
+
+// CreateTeamMission submits a new mission to a team instance.
+func (c *Client) CreateTeamMission(ctx context.Context, instanceID string, req CreateTeamMissionRequest) (*TeamMission, error) {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/brood/team-agent/instances/%s/missions", instanceID), req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Mission TeamMission `json:"mission"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return &result.Mission, nil
+}
+
+// ListTeamMissions returns missions for a team instance.
+func (c *Client) ListTeamMissions(ctx context.Context, instanceID string) ([]TeamMission, error) {
+	resp, err := c.doRequest(ctx, "GET", fmt.Sprintf("/brood/team-agent/instances/%s/missions", instanceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Missions []TeamMission `json:"missions"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result.Missions, nil
+}
+
+// DisbandTeamInstance disbands a team agent instance.
+func (c *Client) DisbandTeamInstance(ctx context.Context, instanceID string) error {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/brood/team-agent/instances/%s/disband", instanceID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // Health checks the API health endpoint.
 func (c *Client) Health(ctx context.Context) error {
 	resp, err := c.doRequest(ctx, "GET", "/health", nil)

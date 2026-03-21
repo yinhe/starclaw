@@ -21,7 +21,7 @@ func WithTimeout(seconds int) Option {
 
 // ChatMessage represents a single message in a conversation.
 type ChatMessage struct {
-	Role    string `json:"role"`    // system, user, assistant
+	Role    string `json:"role"` // system, user, assistant
 	Content string `json:"content"`
 }
 
@@ -92,4 +92,64 @@ type Model struct {
 // ModelsResponse is the response from /v1/models.
 type ModelsResponse struct {
 	Data []Model `json:"data"`
+}
+
+// ── Team Agent ──
+
+// TeamAgentTemplate is a reusable team blueprint.
+type TeamAgentTemplate struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	Description string `json:"description"`
+	Icon        string `json:"icon"`
+	Roles       string `json:"roles"`
+	IsOfficial  bool   `json:"is_official"`
+	Version     string `json:"version"`
+}
+
+// TeamInstance is a running team agent.
+type TeamInstance struct {
+	ID           string  `json:"id"`
+	TemplateID   string  `json:"template_id"`
+	TemplateName string  `json:"template_name"`
+	Name         string  `json:"name"`
+	Goal         string  `json:"goal"`
+	Status       string  `json:"status"`
+	EnergyBudget int     `json:"energy_budget"`
+	EnergyUsed   int     `json:"energy_used"`
+	MissionCount int     `json:"mission_count"`
+	AvgScore     float64 `json:"avg_score"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+// TeamMission is a task assigned to a team.
+type TeamMission struct {
+	ID          string  `json:"id"`
+	InstanceID  string  `json:"instance_id"`
+	Title       string  `json:"title"`
+	Goal        string  `json:"goal"`
+	Status      string  `json:"status"`
+	TotalSteps  int     `json:"total_steps"`
+	DoneSteps   int     `json:"done_steps"`
+	ReviewScore float64 `json:"review_score"`
+	EnergyUsed  int     `json:"energy_used"`
+	PreviewURL  string  `json:"preview_url"`
+	CreatedAt   string  `json:"created_at"`
+	CompletedAt *string `json:"completed_at"`
+}
+
+// CreateTeamInstanceRequest creates a new team instance.
+type CreateTeamInstanceRequest struct {
+	TemplateID   string `json:"template_id"`
+	ClawNodeID   string `json:"claw_node_id"`
+	Name         string `json:"name"`
+	Goal         string `json:"goal,omitempty"`
+	EnergyBudget int    `json:"energy_budget,omitempty"`
+}
+
+// CreateTeamMissionRequest creates a new mission for a team.
+type CreateTeamMissionRequest struct {
+	Goal        string `json:"goal"`
+	AutoConfirm bool   `json:"auto_confirm,omitempty"`
 }

@@ -5,6 +5,11 @@ import type {
   ChatCompletionChunk,
   Model,
   AgentListResponse,
+  TeamAgentTemplate,
+  TeamInstance,
+  TeamMission,
+  CreateTeamInstanceRequest,
+  CreateTeamMissionRequest,
 } from './types'
 
 /**
@@ -148,6 +153,45 @@ export class StarClawClient {
     if (params?.page) qs.set('page', String(params.page))
     const query = qs.toString()
     return this.request<AgentListResponse>('GET', `/marketplace/items${query ? '?' + query : ''}`)
+  }
+
+  // ── Team Agent ──
+
+  /** List available team agent templates */
+  async listTeamTemplates(category?: string): Promise<TeamAgentTemplate[]> {
+    const q = category ? `?category=${category}` : ''
+    const res = await this.request<{ templates: TeamAgentTemplate[] }>('GET', `/brood/team-agent/templates${q}`)
+    return res.templates ?? []
+  }
+
+  /** List team instances */
+  async listTeamInstances(status?: string): Promise<TeamInstance[]> {
+    const q = status ? `?status=${status}` : ''
+    const res = await this.request<{ instances: TeamInstance[] }>('GET', `/brood/team-agent/instances${q}`)
+    return res.instances ?? []
+  }
+
+  /** Create a new team agent instance */
+  async createTeamInstance(req: CreateTeamInstanceRequest): Promise<TeamInstance> {
+    const res = await this.request<{ instance: TeamInstance }>('POST', '/brood/team-agent/instances', req)
+    return res.instance
+  }
+
+  /** Submit a mission to a team instance */
+  async createTeamMission(instanceId: string, req: CreateTeamMissionRequest): Promise<TeamMission> {
+    const res = await this.request<{ mission: TeamMission }>('POST', `/brood/team-agent/instances/${instanceId}/missions`, req)
+    return res.mission
+  }
+
+  /** List missions for a team instance */
+  async listTeamMissions(instanceId: string): Promise<TeamMission[]> {
+    const res = await this.request<{ missions: TeamMission[] }>('GET', `/brood/team-agent/instances/${instanceId}/missions`)
+    return res.missions ?? []
+  }
+
+  /** Disband a team instance */
+  async disbandTeamInstance(instanceId: string): Promise<void> {
+    await this.request('POST', `/brood/team-agent/instances/${instanceId}/disband`)
   }
 
   // ── Health ──
