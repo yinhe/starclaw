@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { MessageSquare, Bot, Wrench, User, LogOut } from 'lucide-react'
+import { MessageSquare, Bot, Wrench, User, LogOut, Users } from 'lucide-react'
 import { getToken, getUser, clearAuth } from './api/client'
 import { getBrand } from './lib/brand'
 import LoginPage from './pages/LoginPage'
@@ -8,10 +8,12 @@ import ChatPage from './pages/ChatPage'
 import AgentsPage from './pages/AgentsPage'
 import ToolsPage from './pages/ToolsPage'
 import ProfilePage from './pages/ProfilePage'
+import TeamPage from './pages/TeamPage'
 
 const navItems = [
   { to: '/', icon: MessageSquare, label: '对话' },
   { to: '/agents', icon: Bot, label: '智能体' },
+  { to: '/team', icon: Users, label: 'AI 团队' },
   { to: '/tools', icon: Wrench, label: '工具' },
   { to: '/profile', icon: User, label: '个人中心' },
 ]
@@ -102,6 +104,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ChatPage />} />
           <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/team" element={<TeamPage />} />
           <Route path="/tools" element={<ToolsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Routes>

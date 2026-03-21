@@ -53,4 +53,15 @@ export const api = {
 
   // Stats
   stats: () => request('GET', '/stats'),
+
+  // Team Agent
+  teamTemplates: () => request('GET', '/team-agent/templates'),
+  teamInstances: (status?: string) =>
+    request('GET', '/team-agent/instances' + (status ? `?status=${status}` : '')),
+  teamInstance: (id: string) => request('GET', `/team-agent/instances/${id}`),
+  teamDashboard: (id: string) => request('GET', `/team-agent/instances/${id}/dashboard`),
+  teamMissions: (id: string) => request('GET', `/team-agent/instances/${id}/missions`),
+  createTeamMission: (id: string, goal: string) =>
+    request('POST', `/team-agent/instances/${id}/missions`, { goal }),
+  teamStats: () => request('GET', '/team-agent/stats'),
 }
