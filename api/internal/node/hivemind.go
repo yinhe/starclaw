@@ -42,8 +42,9 @@ type NodeCapability struct {
 	MaxTasks     int               `json:"max_tasks"`      // concurrency limit
 	CostPerToken float64           `json:"cost_per_token"` // relative cost factor
 	Online       bool              `json:"online"`
-	LastReport   int64             `json:"last_report"`      // Unix timestamp
-	Agents       []AgentCapability `json:"agents,omitempty"` // agents available for squad collaboration
+	LastReport   int64             `json:"last_report"`          // Unix timestamp
+	Agents       []AgentCapability `json:"agents,omitempty"`     // agents available for squad collaboration
+	TeamRoles    []string          `json:"team_roles,omitempty"` // team agent roles this node can fulfill (e.g. "architect", "coder", "reviewer")
 }
 
 // Load returns the utilization ratio (0.0 = idle, 1.0 = fully loaded).
@@ -400,6 +401,9 @@ func (hm *HivemindEngine) broadcastCapability() {
 		cap.Agents = provider()
 	}
 
+	// Derive TeamRoles from agent specialties
+	cap.TeamRoles = deriveTeamRoles(cap.Agents)
+
 	capJSON, _ := json.Marshal(cap)
 
 	peers := hm.gossip.GetPeers()
@@ -420,6 +424,42 @@ func (hm *HivemindEngine) broadcastCapability() {
 			resp.Body.Close()
 		}(p.Address)
 	}
+}
+
+// deriveTeamRoles maps agent specialties to team agent roles.
+// Every node with an LLM can be an architect/reviewer; coding agents → coder; etc.
+func deriveTeamRoles(agents []AgentCapability) []string {
+	roleSet := map[string]bool{
+		"architect": true, // every node can architect (LLM planning)
+		"reviewer":  true, // every node can review
+	}
+	for _, a := range agents {
+		switch a.Specialty {
+		case "coding":
+			roleSet["coder"] = true
+			roleSet["tester"] = true
+		case "design":
+			roleSet["designer"] = true
+		case "video":
+			roleSet["video_producer"] = true
+		case "writing":
+			roleSet["content_writer"] = true
+			roleSet["copywriter"] = true
+		case "testing":
+			roleSet["tester"] = true
+		case "sales":
+			roleSet["sdr"] = true
+			roleSet["campaign_manager"] = true
+		case "general":
+			roleSet["ops"] = true
+		}
+	}
+	roles := make([]string, 0, len(roleSet))
+	for r := range roleSet {
+		roles = append(roles, r)
+	}
+	sort.Strings(roles)
+	return roles
 }
 
 func (hm *HivemindEngine) cleanStalePeers() {

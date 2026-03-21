@@ -375,6 +375,19 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/peer/squad/heartbeat", squadPeerHandler.HandleHeartbeat)
 		squadPeerHandler.StartCallbackWatcher()
 
+		// Overlord internal endpoints (token-authenticated, for Team Agent orchestration)
+		overlordH := v1.NewOverlordInternalHandler(db, identity)
+		internal := apiV1.Group("/internal")
+		internal.Use(overlordH.AuthMiddleware())
+		{
+			internal.POST("/squad/create", overlordH.CreateSquad)
+			internal.POST("/squad/disband", overlordH.DisbandSquad)
+			internal.GET("/squad/:id", overlordH.GetSquad)
+			internal.POST("/mission/create", overlordH.CreateMission)
+			internal.POST("/mission/start", overlordH.StartMission)
+			internal.GET("/mission/:id", overlordH.GetMission)
+		}
+
 		// Inference Router (public status + signed contributor endpoints)
 		inferenceRouter := inference.NewInferenceRouter(identity)
 		spotChecker := inference.NewSpotChecker(inferenceRouter.Registry, inferenceRouter, 0.01) // 1% spot-check rate

@@ -267,9 +267,68 @@ func sanitizeBranch(s string) string {
 	return result
 }
 
-// generatePlan calls a local LLM to decompose the mission goal into steps.
-func (e *Engine) generatePlan(mission model.Mission, memberDescs []string) (*MissionPlan, error) {
-	prompt := fmt.Sprintf(`你是一个敏捷开发编排专家。请将以下任务目标分解为多个可并行或串行执行的步骤。
+// buildPlanPrompt constructs the LLM prompt for mission planning.
+// For Overlord Team Agent missions (user_id starts with "overlord:"), it uses
+// a specialized Architect Agent prompt with role-aware topology.
+func (e *Engine) buildPlanPrompt(mission model.Mission, memberDescs []string) string {
+	isOverlordMission := strings.HasPrefix(mission.UserID, "overlord:")
+
+	if isOverlordMission {
+		// Fetch squad tags (which contain template role codes from Overlord)
+		var squad model.Squad
+		e.db.First(&squad, "id = ?", mission.SquadID)
+		roleTags := squad.Tags // JSON array of role codes, e.g. ["architect","coder","reviewer","tester"]
+
+		return fmt.Sprintf(`你是 StarClaw Architect Agent — 一个专业的 AI 团队编排架构师。
+你负责将企业任务分解为结构化的执行计划，由 AI 团队成员协作完成。
+
+## 你的职责
+1. 分析任务目标，拆解为可执行的原子步骤
+2. 根据团队角色分配最合适的执行者
+3. 设计步骤间的依赖关系和并行策略
+4. 确保每个步骤都有明确的交付物
+
+## 任务目标
+%s
+
+## AI 团队角色
+%s
+
+## 可用节点
+%s
+
+## 执行环境
+- 每步骤独立 Git 分支 + 工作目录
+- Agent 工具: code (读写文件/执行命令/启动服务) + git (add/commit/push)
+- 完成后 Captain 自动 merge 所有分支
+- 每步骤完成后触发 Code Review (最多 3 次重试)
+- 所有步骤完成后进入 CI Gate (质量评分 + 自动预览)
+
+## 输出格式
+仅输出 JSON:
+{
+  "steps": [
+    {
+      "title": "步骤标题",
+      "task": "详细任务描述。必须产出实际代码文件。描述包含：目标文件、技术栈、功能需求。完成后 git add + commit + push。",
+      "specialty": "coding|design|video|writing|testing|sales|general",
+      "agent_name": "推荐 Agent（可选）",
+      "depends_on": []
+    }
+  ]
+}
+
+## 编排规则
+1. 每步骤必须产出实际代码/配置文件
+2. 最大化并行 — 无依赖的步骤同时执行
+3. 步骤数 2-8 个，粒度适中
+4. depends_on 用 0-based 索引
+5. 先架构后实现：基础设施/数据模型 → 核心逻辑 → UI/测试
+6. 只输出 JSON`, mission.Goal, roleTags, strings.Join(memberDescs, "\n"))
+	}
+
+	// Default prompt for regular squad missions
+	return fmt.Sprintf(`你是一个敏捷开发编排专家。请将以下任务目标分解为多个可并行或串行执行的步骤。
 
 ## 任务目标
 %s
@@ -304,6 +363,11 @@ func (e *Engine) generatePlan(mission model.Mission, memberDescs []string) (*Mis
 4. 步骤数量 2-8 个，不要过多
 5. depends_on 使用步骤在数组中的索引（0-based）
 6. 只输出 JSON，不要其他文字`, mission.Goal, strings.Join(memberDescs, "\n"))
+}
+
+// generatePlan calls a local LLM to decompose the mission goal into steps.
+func (e *Engine) generatePlan(mission model.Mission, memberDescs []string) (*MissionPlan, error) {
+	prompt := e.buildPlanPrompt(mission, memberDescs)
 
 	// Find a model to use for planning
 	var modelCfg model.ModelConfig
