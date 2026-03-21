@@ -191,11 +191,63 @@ func (e *Engine) completeReview(reviewID string, step model.MissionStep, mission
 		e.finalizeStepDone(step, mission)
 	} else {
 		log.Printf("[review] step %s changes_requested ❌: %.100s", step.ID, comments)
-		// TODO: In a full implementation, re-dispatch the step with review feedback.
-		// For now, auto-approve after logging the feedback to avoid blocking.
-		log.Printf("[review] auto-approving step %s after logging feedback (retry support planned)", step.ID)
-		e.finalizeStepDone(step, mission)
+		e.retryStepWithFeedback(step, mission, comments)
 	}
+}
+
+// retryStepWithFeedback re-dispatches a step after a review rejection.
+// It appends the reviewer's feedback to the task so the agent can address the issues,
+// then resets the step status and dispatches again. If max retries are exceeded,
+// triggerAutoReview will auto-approve on the next round.
+func (e *Engine) retryStepWithFeedback(step model.MissionStep, mission model.Mission, reviewComments string) {
+	// Count how many reviews this step already has
+	var reviewCount int64
+	e.db.Model(&model.StepReview{}).Where("step_id = ?", step.ID).Count(&reviewCount)
+
+	if reviewCount >= maxReviewRetries {
+		log.Printf("[review-retry] step %s hit max retries (%d), force-approving", step.ID, maxReviewRetries)
+		e.finalizeStepDone(step, mission)
+		return
+	}
+
+	log.Printf("[review-retry] step %s retry %d/%d — re-dispatching with feedback", step.ID, reviewCount, maxReviewRetries)
+
+	// Append review feedback to task
+	feedbackSuffix := fmt.Sprintf("\n\n## ⚠️ 审查反馈 (第 %d 次修改)\n审查结果: changes_requested\n\n%s\n\n请根据以上审查意见修改代码，修改完成后 git add + commit + push。",
+		reviewCount, reviewComments)
+
+	updatedTask := step.Task + feedbackSuffix
+	if len(updatedTask) > 8000 {
+		// Truncate old task to keep total reasonable
+		updatedTask = step.Task[:4000] + "...(truncated)" + feedbackSuffix
+	}
+
+	// Reset step for re-execution
+	e.db.Model(&model.MissionStep{}).Where("id = ?", step.ID).Updates(map[string]interface{}{
+		"status": "pending",
+		"task":   updatedTask,
+		"output": "", // clear previous output
+	})
+
+	// Reload step with updated task
+	var updatedStep model.MissionStep
+	e.db.Where("id = ?", step.ID).First(&updatedStep)
+
+	// Push WS notification about the retry
+	hub := ws.GetHub()
+	if mission.UserID != "" {
+		hub.SendToUser(mission.UserID, ws.EventHiveStepUpdate, map[string]interface{}{
+			"step_id":    step.ID,
+			"status":     "retry",
+			"retry_num":  reviewCount,
+			"max_retry":  maxReviewRetries,
+			"mission_id": mission.ID,
+		})
+	}
+
+	// Re-dispatch — use previous output as context for the retry
+	retryContext := fmt.Sprintf("你之前的产出被审查拒绝，请根据反馈修改。\n\n## 上次产出\n%s", step.Output)
+	go e.dispatchStep(updatedStep, retryContext)
 }
 
 // finalizeStepDone marks a step as fully done (post-review) and advances the mission.
