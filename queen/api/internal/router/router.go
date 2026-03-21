@@ -314,7 +314,7 @@ func Setup() *gin.Engine {
 	// Admin investor management
 	admin.POST("/investor/pool/init", investor.InitPool)
 	admin.GET("/investor/pool", investor.GetPool)
-	admin.POST("/investor/airdrop", investor.Airdrop)
+	admin.POST("/investor/seed", investor.SeedGrant)
 	admin.GET("/investor/list", investor.ListInvestors)
 	admin.POST("/investor/distribute", investor.Distribute)
 	admin.GET("/investor/dividends", investor.ListDividends)

@@ -12,10 +12,11 @@ import "time"
 //
 // Funding rounds (每轮 10% 份额, 5× 递增):
 //
-//	Angel: 10% @ ¥0.10/份  → 募资 ¥100万
-//	A轮:   10% @ ¥0.50/份  → 募资 ¥500万
-//	B轮:   10% @ ¥2.50/份  → 募资 ¥2500万
-//	C轮:   10% @ ¥12.50/份 → 募资 ¥1.25亿
+//	Seed:  10% @ ¥0.20/份  → 募资 ¥200万
+//	Angel: 10% @ ¥1.00/份  → 募资 ¥1000万
+//	A轮:   10% @ ¥5.00/份  → 募资 ¥5000万
+//	B轮:   10% @ ¥25.00/份 → 募资 ¥2.5亿
+//	C轮:   10% @ ¥125.00/份→ 募资 ¥12.5亿
 type InvestorPool struct {
 	ID             string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	TotalShares    int64     `json:"total_shares" gorm:"default:0"`                 // total shares ever issued
@@ -24,10 +25,10 @@ type InvestorPool struct {
 	TotalDistrib   int64     `json:"total_distributed" gorm:"default:0"`            // total dividends distributed (分)
 	PoolBalance    int64     `json:"pool_balance" gorm:"default:0"`                 // undistributed balance (分)
 	TotalRaised    int64     `json:"total_raised" gorm:"default:0"`                 // total investment raised (分)
-	AirdropTotal   int64     `json:"airdrop_total" gorm:"default:10000000"`         // airdrop budget = 10% of 1亿 = 1000万 star diamonds
-	AirdropIssued  int64     `json:"airdrop_issued" gorm:"default:0"`               // airdrop shares already issued
-	CurrentRound   string    `json:"current_round" gorm:"type:varchar(10)"`         // angel / a / b / c / closed
-	SharePrice     int64     `json:"share_price" gorm:"default:10"`                 // current price per share (分), driven by max(NAV, round floor)
+	SeedTotal      int64     `json:"seed_total" gorm:"default:10000000"`            // seed round budget = 10% of 1亿 = 1000万 star diamonds
+	SeedIssued     int64     `json:"seed_issued" gorm:"default:0"`                  // seed round shares already issued
+	CurrentRound   string    `json:"current_round" gorm:"type:varchar(10)"`         // seed / angel / a / b / c / closed
+	SharePrice     int64     `json:"share_price" gorm:"default:20"`                 // current price per share (分), driven by max(NAV, round floor)
 	Status         string    `json:"status" gorm:"type:varchar(20);default:active"` // active / paused / closed
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
@@ -55,22 +56,23 @@ type FundingRound struct {
 // StarDiamondTotal is the fixed total supply of Star Diamonds.
 const StarDiamondTotal int64 = 100_000_000 // 1亿
 
-// RoundConfig defines the 4 funding rounds.
+// RoundConfig defines the 5 funding rounds.
 var RoundConfig = []struct {
 	Round      string
 	Label      string
 	Multiplier int
 	Price      int64 // floor price per star diamond (分)
 }{
-	{"angel", "天使轮", 1, 10}, // ¥0.10/份 → 募资 ¥100万
-	{"a", "A轮", 5, 50},      // ¥0.50/份 → 募资 ¥500万
-	{"b", "B轮", 25, 250},    // ¥2.50/份 → 募资 ¥2500万
-	{"c", "C轮", 125, 1250},  // ¥12.50/份 → 募资 ¥1.25亿
+	{"seed", "种子轮", 1, 20},   // ¥0.20/份 → 募资 ¥200万
+	{"angel", "天使轮", 5, 100}, // ¥1.00/份 → 募资 ¥1000万
+	{"a", "A轮", 25, 500},     // ¥5.00/份 → 募资 ¥5000万
+	{"b", "B轮", 125, 2500},   // ¥25.00/份 → 募资 ¥2.5亿
+	{"c", "C轮", 625, 12500},  // ¥125.00/份 → 募资 ¥12.5亿
 }
 
 // NextRound returns the next round name after the given round, or "" if no more rounds.
 func NextRound(current string) string {
-	order := []string{"angel", "a", "b", "c"}
+	order := []string{"seed", "angel", "a", "b", "c"}
 	for i, r := range order {
 		if r == current && i+1 < len(order) {
 			return order[i+1]
@@ -126,7 +128,7 @@ type Investor struct {
 	AgreementSignedAt  *time.Time `json:"agreement_signed_at"`             // when agreement was signed
 	AgreementExpiresAt *time.Time `json:"agreement_expires_at"`            // when agreement expires
 
-	Source    string     `json:"source" gorm:"type:varchar(30)"`                // self_register / airdrop / admin_grant
+	Source    string     `json:"source" gorm:"type:varchar(30)"`                // self_register / seed_grant / admin_grant
 	Status    string     `json:"status" gorm:"type:varchar(20);default:active"` // active / frozen / exited
 	JoinedAt  time.Time  `json:"joined_at"`
 	ExitedAt  *time.Time `json:"exited_at"`
@@ -138,7 +140,7 @@ type Investor struct {
 type InvestorTransaction struct {
 	ID            string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	InvestorID    string    `json:"investor_id" gorm:"type:varchar(36);index;not null"`
-	Type          string    `json:"type" gorm:"type:varchar(20);index"` // airdrop / purchase / transfer_in / transfer_out / exit
+	Type          string    `json:"type" gorm:"type:varchar(20);index"` // seed_grant / purchase / transfer_in / transfer_out / exit
 	Shares        int64     `json:"shares"`                             // number of shares (positive=acquire, negative=release)
 	Amount        int64     `json:"amount" gorm:"default:0"`            // CNY amount paid/received (分)
 	PricePerShare int64     `json:"price_per_share" gorm:"default:0"`   // price at time of transaction (分)

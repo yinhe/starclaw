@@ -23,7 +23,7 @@ type InvestorHandler struct{}
 // Admin: Pool Management
 // ════════════════════════════════════════════════════════════
 
-// POST /admin/investor/pool/init — Initialize the investor pool + seed 4 funding rounds (one-time)
+// POST /admin/investor/pool/init — Initialize the investor pool + seed 5 funding rounds (one-time)
 func (h *InvestorHandler) InitPool(c *gin.Context) {
 	db := database.DB
 
@@ -34,23 +34,23 @@ func (h *InvestorHandler) InitPool(c *gin.Context) {
 	}
 
 	pool := model.InvestorPool{
-		ID:            uuid.New().String(),
-		TotalShares:   0,
-		MaxShares:     model.StarDiamondTotal, // 1亿 star diamonds
-		PoolBalance:   0,
-		AirdropTotal:  model.StarDiamondTotal / 10, // 10% = 1000万 star diamonds for airdrop
-		AirdropIssued: 0,
-		CurrentRound:  "angel",
-		SharePrice:    10, // ¥0.10 per star diamond (angel floor price)
-		Status:        "active",
+		ID:           uuid.New().String(),
+		TotalShares:  0,
+		MaxShares:    model.StarDiamondTotal, // 1亿 star diamonds
+		PoolBalance:  0,
+		SeedTotal:    model.StarDiamondTotal / 10, // 10% = 1000万 star diamonds for seed round
+		SeedIssued:   0,
+		CurrentRound: "seed",
+		SharePrice:   20, // ¥0.20 per star diamond (seed floor price)
+		Status:       "active",
 	}
 	db.Create(&pool)
 
-	// Seed the 4 funding rounds (each = 10% of MaxShares)
+	// Seed the 5 funding rounds (each = 10% of MaxShares)
 	quota := pool.MaxShares / 10 // 10% = 1000万 shares per round
 	for _, rc := range model.RoundConfig {
 		status := "upcoming"
-		if rc.Round == "angel" {
+		if rc.Round == "seed" {
 			status = "open"
 		}
 		db.Create(&model.FundingRound{
@@ -64,7 +64,7 @@ func (h *InvestorHandler) InitPool(c *gin.Context) {
 		})
 	}
 
-	log.Printf("[investor] Pool initialized: max=%d shares, 4 rounds seeded, angel round open", pool.MaxShares)
+	log.Printf("[investor] Pool initialized: max=%d shares, 5 rounds seeded, seed round open", pool.MaxShares)
 	c.JSON(http.StatusCreated, gin.H{"pool": pool, "rounds": model.RoundConfig})
 }
 
@@ -84,21 +84,21 @@ func (h *InvestorHandler) GetPool(c *gin.Context) {
 	db.Order("multiplier ASC").Find(&rounds)
 
 	c.JSON(http.StatusOK, gin.H{
-		"pool":              pool,
-		"rounds":            rounds,
-		"investor_count":    investorCount,
-		"airdrop_remaining": pool.AirdropTotal - pool.AirdropIssued,
-		"airdrop_pct":       fmt.Sprintf("%.1f%%", float64(pool.AirdropIssued)/float64(pool.AirdropTotal)*100),
+		"pool":           pool,
+		"rounds":         rounds,
+		"investor_count": investorCount,
+		"seed_remaining": pool.SeedTotal - pool.SeedIssued,
+		"seed_pct":       fmt.Sprintf("%.1f%%", float64(pool.SeedIssued)/float64(pool.SeedTotal)*100),
 	})
 }
 
 // POST /admin/investor/round/open — Open the next funding round
 func (h *InvestorHandler) OpenRound(c *gin.Context) {
 	var req struct {
-		Round string `json:"round" binding:"required"` // angel / a / b / c
+		Round string `json:"round" binding:"required"` // seed / angel / a / b / c
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定轮次: angel / a / b / c"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定轮次: seed / angel / a / b / c"})
 		return
 	}
 
@@ -156,8 +156,8 @@ func (h *InvestorHandler) ListRounds(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"rounds": rounds})
 }
 
-// POST /admin/investor/airdrop — Issue airdrop shares to a user
-func (h *InvestorHandler) Airdrop(c *gin.Context) {
+// POST /admin/investor/seed — Issue seed round shares to a user
+func (h *InvestorHandler) SeedGrant(c *gin.Context) {
 	var req struct {
 		UserID string `json:"user_id" binding:"required"`
 		Shares int64  `json:"shares" binding:"required"`
@@ -186,10 +186,10 @@ func (h *InvestorHandler) Airdrop(c *gin.Context) {
 			return fmt.Errorf("investor pool is %s", pool.Status)
 		}
 
-		// Check airdrop budget (tracked in star diamond count, not fen)
-		if pool.AirdropIssued+req.Shares > pool.AirdropTotal {
-			return fmt.Errorf("airdrop budget exceeded (remaining: %d star diamonds, need: %d)",
-				pool.AirdropTotal-pool.AirdropIssued, req.Shares)
+		// Check seed round budget (tracked in star diamond count, not fen)
+		if pool.SeedIssued+req.Shares > pool.SeedTotal {
+			return fmt.Errorf("seed round budget exceeded (remaining: %d star diamonds, need: %d)",
+				pool.SeedTotal-pool.SeedIssued, req.Shares)
 		}
 
 		// Find or create investor
@@ -201,7 +201,7 @@ func (h *InvestorHandler) Airdrop(c *gin.Context) {
 				Name:     req.Name,
 				Email:    req.Email,
 				Phone:    req.Phone,
-				Source:   "airdrop",
+				Source:   "seed_grant",
 				Status:   "active",
 				JoinedAt: time.Now(),
 			}
@@ -214,7 +214,7 @@ func (h *InvestorHandler) Airdrop(c *gin.Context) {
 
 		// Update pool
 		pool.TotalShares += req.Shares
-		pool.AirdropIssued += req.Shares
+		pool.SeedIssued += req.Shares
 		tx.Save(&pool)
 
 		// Record transaction
@@ -225,15 +225,15 @@ func (h *InvestorHandler) Airdrop(c *gin.Context) {
 		tx.Create(&model.InvestorTransaction{
 			ID:            uuid.New().String(),
 			InvestorID:    investor.ID,
-			Type:          "airdrop",
+			Type:          "seed_grant",
 			Shares:        req.Shares,
-			Amount:        0, // airdrop is free
+			Amount:        0, // seed grant is free
 			PricePerShare: 0,
 			Remark:        remark,
 		})
 
-		log.Printf("[investor] Airdrop: user=%s shares=%d pool_issued=%d/%d",
-			req.UserID, req.Shares, pool.AirdropIssued, pool.AirdropTotal)
+		log.Printf("[investor] SeedGrant: user=%s shares=%d pool_issued=%d/%d",
+			req.UserID, req.Shares, pool.SeedIssued, pool.SeedTotal)
 		return nil
 	})
 
@@ -498,7 +498,7 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 
 	// Get current round for floor price
 	var round model.FundingRound
-	var floorPrice int64 = 10 // default angel ¥0.10
+	var floorPrice int64 = 20 // default seed ¥0.20
 	if err := database.DB.Where("status = ?", "open").First(&round).Error; err == nil {
 		floorPrice = round.SharePrice
 	}
@@ -917,7 +917,7 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 
 	// Get current round for floor price
 	var round model.FundingRound
-	var floorPrice int64 = 10
+	var floorPrice int64 = 20 // default seed ¥0.20
 	if err := database.DB.Where("status = ?", "open").First(&round).Error; err == nil {
 		floorPrice = round.SharePrice
 	}
