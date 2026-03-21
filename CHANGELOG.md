@@ -5,6 +5,21 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.0321.2048] - 2026-03-21
+
+### Added
+- **GitHub community templates** — Issue templates (bug report, feature request, question), PR template with checklist, `FUNDING.yml`, and `SECURITY.md` with vulnerability reporting policy.
+
+### Changed
+- Overlord Internal API token authentication now uses a configurable `OVERLORD_CLAW_TOKEN` environment variable (previously hardcoded default).
+
+### Infrastructure
+- Overlord WebSocket support via nginx reverse proxy — enables real-time Team Agent mission updates.
+- Prometheus scrape config for Overlord API metrics collection.
+- 7 new Overlord monitoring alert rules: API health, error rate, Claw connectivity, mission stuck detection, WebSocket health, license expiry warnings.
+
+---
+
 ## [2026.0321.2020] - 2026-03-21
 
 ### Added
