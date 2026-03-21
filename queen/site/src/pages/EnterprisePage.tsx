@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Shield, Users, CreditCard, ScrollText, Bell, Palette, ArrowRight, Server, Code2, Database } from 'lucide-react'
+import { Shield, Users, CreditCard, ScrollText, Bell, Palette, ArrowRight, Server, Code2, Database, Sparkles } from 'lucide-react'
 import { Layout } from '../components/Layout'
 import { useI18n } from '../i18n'
 
@@ -10,6 +10,18 @@ const FEATURES = [
   { key: 'audit', icon: ScrollText },
   { key: 'webhook', icon: Bell },
   { key: 'whitelabel', icon: Palette },
+]
+
+const TEAM_TEMPLATES = [
+  { name: 'DevClaw', roles: '5 Agents', color: 'border-blue-500/30 text-blue-400' },
+  { name: 'MarketClaw', roles: '4 Agents', color: 'border-pink-500/30 text-pink-400' },
+  { name: 'SupportClaw', roles: '4 Agents', color: 'border-green-500/30 text-green-400' },
+  { name: 'DataClaw', roles: '3 Agents', color: 'border-cyan-500/30 text-cyan-400' },
+  { name: 'QuantClaw', roles: '4 Agents', color: 'border-yellow-500/30 text-yellow-400' },
+  { name: 'EcomClaw', roles: '4 Agents', color: 'border-purple-500/30 text-purple-400' },
+  { name: 'DramaClaw', roles: '5 Agents', color: 'border-red-500/30 text-red-400' },
+  { name: 'SalesClaw', roles: '4 Agents', color: 'border-orange-500/30 text-orange-400' },
+  { name: 'OpsClaw', roles: '4 Agents', color: 'border-emerald-500/30 text-emerald-400' },
 ]
 
 const STACK = [
@@ -69,6 +81,43 @@ export function EnterprisePage() {
                 <p className="text-sm text-gray-400 leading-relaxed">{t(`ent.f.${f.key}.desc`)}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Team Agent Templates */}
+      <section className="py-16 md:py-24 border-t border-white/5 bg-gradient-to-b from-transparent via-claw-950/20 to-transparent">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-1.5 text-sm text-orange-400 mb-6">
+              <Sparkles size={14} />
+              {t('team.badge')}
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('team.title')}</h2>
+            <p className="mt-4 text-gray-400 text-lg max-w-2xl mx-auto">{t('team.desc')}</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+            {TEAM_TEMPLATES.map(tmpl => (
+              <div key={tmpl.name} className={`rounded-lg border ${tmpl.color} bg-white/[0.02] p-4 text-center hover:scale-105 transition-transform`}>
+                <div className="font-semibold text-sm mb-1">{tmpl.name}</div>
+                <div className="text-xs text-gray-500">{tmpl.roles}</div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-center text-sm text-gray-400 mb-8">
+            {t('team.how')}
+          </div>
+          <div className="text-center">
+            <a
+              href="https://overlord.starclaw.net"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-6 py-3 text-sm font-semibold text-white hover:bg-orange-500 transition-colors"
+            >
+              <Users size={18} />
+              {t('team.cta')}
+              <ArrowRight size={16} />
+            </a>
           </div>
         </div>
       </section>

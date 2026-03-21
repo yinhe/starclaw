@@ -155,3 +155,74 @@ groups:
         annotations:
           summary: "High payment failure rate"
           description: "Over 50% of recharge attempts are failing — check payment gateway."
+
+  # ── Overlord (Enterprise Management) ──
+  - name: overlord
+    rules:
+      - alert: OverlordAPIDown
+        expr: up{job="overlord-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Overlord API is down"
+          description: "Overlord API (overlord.starclaw.net) unreachable for 2 minutes."
+
+      - alert: OverlordHighErrorRate
+        expr: |
+          (
+            sum(rate(overlord_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(overlord_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Overlord API high 5xx error rate"
+          description: "Error rate above 5% (current: {{ $value | humanizePercentage }})."
+
+      - alert: OverlordClawUnreachable
+        expr: overlord_claw_health_check{status="failed"} > 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Overlord cannot reach Claw node"
+          description: "Overlord → Claw internal API connection failed for 3 minutes. Team Agent missions will fail."
+
+      - alert: OverlordMissionStuck
+        expr: overlord_team_agent_missions{status="executing"} > 0 and on() (time() - overlord_team_agent_mission_last_update_timestamp) > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Team Agent mission stuck"
+          description: "A mission has been in 'executing' status with no update for 10+ minutes."
+
+      - alert: OverlordWebSocketDisconnected
+        expr: overlord_websocket_connections == 0 and overlord_console_sessions > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Overlord WebSocket has no connections while console is active"
+          description: "Real-time dashboard updates may not be working."
+
+      - alert: OverlordLicenseExpiringSoon
+        expr: overlord_license_days_remaining < 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Overlord license expiring in {{ $value }} days"
+          description: "License will expire soon. Contact customer to renew."
+
+      - alert: OverlordLicenseExpired
+        expr: overlord_license_days_remaining <= 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Overlord license has expired"
+          description: "Enterprise features are now restricted to Community tier."
