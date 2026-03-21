@@ -21,9 +21,13 @@ func AdminAuth(db *gorm.DB) gin.HandlerFunc {
 		if token != "" {
 			hash := hashToken(token)
 			var user model.AdminUser
-			if err := db.Where("password_hash = ?", hash).First(&user).Error; err != nil {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-				return
+			// Check token_hash first (new), fallback to password_hash for backward compat
+			if err := db.Where("token_hash = ?", hash).First(&user).Error; err != nil {
+				// Fallback: old tokens stored in password_hash (pre-migration)
+				if err2 := db.Where("password_hash = ?", hash).First(&user).Error; err2 != nil {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+					return
+				}
 			}
 			c.Set("admin_user", &user)
 			c.Set("admin_role", user.Role)

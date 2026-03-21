@@ -288,6 +288,9 @@ export const broodAPI = {
 
   getClaw: (id: string) => request<{ claw: ClawNode }>(`/claws/${id}`),
 
+  registerClaw: (data: { name: string; address: string; team?: string }) =>
+    request<{ node_id: string; token: string }>('/register', { method: 'POST', body: JSON.stringify(data) }),
+
   updateQuota: (id: string, data: { max_concurrent: number; max_tokens_day: number }) =>
     request(`/claws/${id}/quota`, { method: 'PUT', body: JSON.stringify(data) }),
 

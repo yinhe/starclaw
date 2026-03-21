@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Server, Wifi, WifiOff, AlertTriangle, Trash2 } from 'lucide-react'
+import { Server, Wifi, WifiOff, AlertTriangle, Trash2, Plus } from 'lucide-react'
 import { broodAPI, type ClawNode } from '../api/brood'
 
 const statusIcon = { online: Wifi, feral: AlertTriangle, offline: WifiOff }
@@ -17,6 +17,27 @@ export default function ClawsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState(searchParams.get('status') || '')
   const [teamFilter, setTeamFilter] = useState(searchParams.get('team') || '')
+
+  // Add node modal
+  const [showAdd, setShowAdd] = useState(false)
+  const [addForm, setAddForm] = useState({ name: '', address: '', team: '' })
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
+
+  const handleAdd = async () => {
+    if (!addForm.name || !addForm.address) return
+    setAdding(true)
+    setAddError('')
+    try {
+      await broodAPI.registerClaw({ name: addForm.name, address: addForm.address, team: addForm.team || undefined })
+      setShowAdd(false)
+      setAddForm({ name: '', address: '', team: '' })
+      load()
+    } catch (e: unknown) {
+      setAddError(e instanceof Error ? e.message : '添加失败')
+    }
+    setAdding(false)
+  }
 
   const load = async () => {
     try {
@@ -79,6 +100,12 @@ export default function ClawsPage() {
               ))}
             </select>
           )}
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-overlord-600 hover:bg-overlord-500 text-white rounded-lg text-sm transition"
+          >
+            <Plus className="w-4 h-4" /> 添加节点
+          </button>
         </div>
       </div>
 
@@ -151,6 +178,56 @@ export default function ClawsPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Add Node Modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowAdd(false)}>
+          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-white mb-4">添加节点</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">节点名称 *</label>
+                <input
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none"
+                  placeholder="如: claw-prod-01"
+                  value={addForm.name}
+                  onChange={e => setAddForm({ ...addForm, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">节点地址 *</label>
+                <input
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none"
+                  placeholder="如: https://claw.example.com:8080"
+                  value={addForm.address}
+                  onChange={e => setAddForm({ ...addForm, address: e.target.value })}
+                />
+                <div className="text-[10px] text-gray-600 mt-1">Claw 节点的可访问地址（含协议和端口）</div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">所属团队</label>
+                <input
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none"
+                  placeholder="留空表示全局"
+                  value={addForm.team}
+                  onChange={e => setAddForm({ ...addForm, team: e.target.value })}
+                />
+              </div>
+              {addError && <div className="text-xs text-red-400">{addError}</div>}
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">取消</button>
+              <button
+                onClick={handleAdd}
+                disabled={adding || !addForm.name || !addForm.address}
+                className="px-4 py-2 bg-overlord-600 hover:bg-overlord-500 text-white rounded-lg text-sm transition disabled:opacity-50"
+              >
+                {adding ? '添加中...' : '添加节点'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

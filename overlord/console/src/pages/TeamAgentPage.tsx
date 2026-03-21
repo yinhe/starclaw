@@ -324,7 +324,7 @@ export default function TeamAgentPage() {
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Bot className="w-5 h-5 text-overlord-400" />
-            AI 团队智能体
+            团队智能体
           </h1>
           <p className="text-sm text-gray-500 mt-1">给你的企业雇一支永远在线的 AI 团队</p>
         </div>

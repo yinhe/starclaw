@@ -8,7 +8,7 @@ import ProfilePage from './pages/ProfilePage'
 import TeamPage from './pages/TeamPage'
 
 const navItems = [
-  { to: '/', icon: Users, label: 'AI 团队' },
+  { to: '/', icon: Users, label: '团队智能体' },
   { to: '/profile', icon: User, label: '我的' },
 ]
 

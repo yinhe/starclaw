@@ -21,7 +21,7 @@ import TeamAgentPage from './pages/TeamAgentPage'
 const primaryNav = [
   { to: '/', icon: LayoutDashboard, label: '总览' },
   { to: '/claws', icon: Server, label: '节点管理' },
-  { to: '/team-agent', icon: Bot, label: 'AI 团队' },
+  { to: '/team-agent', icon: Bot, label: '团队智能体' },
   { to: '/teams', icon: Users, label: '团队管理' },
   { to: '/billing', icon: CreditCard, label: '计费管理' },
   { to: '/analytics', icon: BarChart3, label: '用量分析' },

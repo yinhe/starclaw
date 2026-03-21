@@ -351,7 +351,7 @@ export default function TeamPage() {
         <div className="flex items-center gap-2">
           <span className="text-xl">🦞</span>
           <div>
-            <div className="text-base font-bold text-white">AI 团队</div>
+            <div className="text-base font-bold text-white">团队智能体</div>
             <div className="text-[11px] text-gray-500">Team Agent · 提交任务，AI 团队自动执行</div>
           </div>
         </div>

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw-overlord/api/internal/middleware"
@@ -217,14 +218,18 @@ func (h *TeamHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Generate API token (same as password hash for simplicity — in production use JWT)
+	// Generate API token — stored in token_hash (password_hash stays intact for re-login)
 	token := generateToken(32)
-	h.db.Model(&user).Update("password_hash", hashPassword(token))
+	now := time.Now()
+	h.db.Model(&user).Updates(map[string]interface{}{
+		"token_hash":    hashPassword(token),
+		"last_login_at": &now,
+	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"token":    token,
-		"user":     user,
-		"message":  "login successful",
+		"token":   token,
+		"user":    user,
+		"message": "login successful",
 	})
 }
 
