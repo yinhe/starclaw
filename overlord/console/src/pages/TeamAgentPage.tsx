@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users } from 'lucide-react'
+import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield } from 'lucide-react'
 import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
@@ -38,6 +38,11 @@ const categoryIcons: Record<string, typeof Code> = {
   marketing: Megaphone,
   support: Headphones,
   data: BarChart3,
+  finance: TrendingUp,
+  ecommerce: ShoppingCart,
+  content: Film,
+  sales: Crosshair,
+  ops: Shield,
 }
 
 type View = 'overview' | 'templates' | 'detail'
@@ -346,7 +351,7 @@ export default function TeamAgentPage() {
       {/* Templates */}
       <div>
         <h2 className="text-sm font-semibold text-gray-300 mb-3">官方模板</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {templates.map(t => {
             const Icon = categoryIcons[t.category] || Bot
             const roles = parseRoles(t.roles)
