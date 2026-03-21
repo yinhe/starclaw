@@ -5,10 +5,10 @@
 | 目标 | 说明 |
 |------|------|
 | **开发者零感知** | 第三方 agent/plugin 开发者不写任何计费代码，计费自动发生 |
-| **双端同步** | Claw 和 Router 的费用记录一致，支持对账 |
+| **双端同步** | Claw 和 Synapse 的费用记录一致，支持对账 |
 | **分润引擎** | 上游成本 +10% 加价，城市合伙人/团队合伙人/平台/投资人 四方自动分润 |
 | **全资源覆盖** | tokens、video、image、music、search、TTS、STT、plugin API 全覆盖 |
-| **双模式兼容** | starai:// 走 Router proxy 的和直连 API 的都能计费 |
+| **双模式兼容** | starai:// 走 Synapse proxy 的和直连 API 的都能计费 |
 
 ## 1.1 分润模型
 
@@ -126,7 +126,7 @@ Agent Runtime (LLM ↔ Tool 循环)
 │  │    5. 写 ToolUsageRecord                     │   │
 │  │    6. 扣费 (本地余额 or Router星能)          │   │
 │  │    7. 分润 (如果涉及第三方 agent/plugin)     │   │
-│  │    8. 异步同步到 Router (对账)               │   │
+│  │    8. 异步同步到 Synapse (对账)              │   │
 │  └──────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────┘
 ```
@@ -137,7 +137,7 @@ Agent Runtime (LLM ↔ Tool 循环)
 
 统一维护所有可计费资源的价格。来源有三：
 - **内置定价** — 已知的 fal.ai / DashScope / Minimax 等定价
-- **Router 同步** — 从 Router 的 ModelConfig 拉取最新价格
+- **Synapse 同步** — 从 Synapse 的 ModelConfig 拉取最新价格
 - **Plugin 自声明** — 第三方 plugin 在 spec 中声明价格
 
 ```go
@@ -307,8 +307,8 @@ func (g *Gateway) settle(ctx context.Context, record *ToolUsageRecord) {
         g.revenueSplit.Split(record, agentID.(string))
     }
 
-    // 4. 同步到 Router（对账）
-    g.routerSync.ReportUsage(record)
+    // 4. 同步到 Synapse（对账）
+    g.synapseSync.ReportUsage(record)
 }
 ```
 
@@ -432,19 +432,19 @@ func (s *RevenueSplitter) Split(record *ToolUsageRecord, clawID string) {
 }
 ```
 
-### 3.6 Router Sync (双端对账)
+### 3.6 Synapse Sync (双端对账)
 
 ```go
-// claw/api/internal/billing/router_sync.go
+// claw/api/internal/billing/synapse_sync.go
 
-type RouterSyncClient struct {
+type SynapseSyncClient struct {
     client  *http.Client
-    baseURL string   // StarAI Router API
+    baseURL string   // StarAI Synapse API
 }
 
-// ReportUsage 将 Claw 端的工具使用记录同步到 Router
-// Router 侧新增 POST /v1/internal/billing/report 接口接收
-func (c *RouterSyncClient) ReportUsage(record *ToolUsageRecord) error {
+// ReportUsage 将 Claw 端的工具使用记录同步到 Synapse
+// Synapse 侧新增 POST /v1/internal/billing/report 接口接收
+func (c *SynapseSyncClient) ReportUsage(record *ToolUsageRecord) error {
     body, _ := json.Marshal(record)
     resp, err := c.client.Post(c.baseURL+"/v1/internal/billing/report", "application/json", bytes.NewReader(body))
     if err != nil {
@@ -533,15 +533,15 @@ func (t *VideoTool) ReportCost(args, result string) float64 {
 └────────────────────────────┬────────────────────────────────────┘
                              │ POST /v1/internal/billing/report
                              ↓
-┌─ Router ───────────────────────────────────────────────────────┐
+┌─ Synapse ───────────────────────────────────────────────────────┐
 │                                                                 │
 │  /v1/internal/billing/report → 写入 UsageRecord (对账)          │
 │                                                                 │
 │  /v1/proxy/:provider/*path  → ProviderProxyHandler              │
 │       │                          └─→ Meter.CalculateCost()  ←─ │
-│       │                              (Router 侧也独立计费)      │
+│       │                              (Synapse 侧也独立计费)     │
 │       ↓                                                        │
-│  对账逻辑: Claw 上报 ≈ Router 计量 → 差异报警                  │
+│  对账逻辑: Claw 上报 ≈ Synapse 计量 → 差异报警                 │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -560,7 +560,7 @@ func (t *VideoTool) ReportCost(args, result string) float64 {
 │
 └── 记录:
     ├── Claw: ToolUsageRecord (含分润明细)
-    ├── Router: UsageRecord (对账)
+    ├── Synapse: UsageRecord (对账)
     └── CreatorRevenue: pending → settled → paid_out
 ```
 
@@ -573,8 +573,8 @@ func (t *VideoTool) ReportCost(args, result string) float64 {
 | **P0** | `ToolUsageRecord` 模型 + 写入 | 0.5天 |
 | **P1** | 本地扣费逻辑 (Claw 余额) | 0.5天 |
 | **P1** | `RevenueSplitter` 分润引擎 | 1天 |
-| **P1** | `RouterSync` 双端同步 + Router 接收接口 | 1天 |
-| **P2** | Router `ProviderProxyHandler` 加计量 | 0.5天 |
+| **P1** | `SynapseSync` 双端同步 + Synapse 接收接口 | 1天 |
+| **P2** | Synapse `ProviderProxyHandler` 加计量 | 0.5天 |
 | **P2** | Plugin spec 的 `pricing` 字段支持 | 0.5天 |
 | **P2** | 对账报表 + 差异报警 | 1天 |
 | **P3** | 创作者后台 (收益查看/提现) | 2天 |
