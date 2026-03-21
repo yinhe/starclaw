@@ -11,52 +11,40 @@ const V = 'v2026.0318.0738'
 
 const PACKAGES = [
   {
-    platform: 'Windows',
+    id: 'win',
     icon: Monitor,
     setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}.exe`,
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}.exe`,
     setupSize: '26 MB',
-    arch: 'x86_64',
     setupLabel: 'StarClaw-Setup.exe',
-    note: 'Download → Double-click → Done',
     scriptCmd: 'irm https://nydus.starclaw.net/spore/install.ps1 | iex',
-    scriptLabel: 'PowerShell',
   },
   {
-    platform: 'Linux',
+    id: 'linux',
     icon: Terminal,
     setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
     setupSize: '19 MB',
-    arch: 'x86_64',
     setupLabel: 'StarClaw-Setup.tar.gz',
-    note: 'Download → Extract → Run',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-    scriptLabel: 'Bash',
   },
   {
-    platform: 'macOS (Apple 芯片)',
+    id: 'mac.arm',
     icon: Apple,
     setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
     setupSize: '26 MB',
-    arch: 'Apple Silicon (M1/M2/M3/M4)',
     setupLabel: 'StarClaw-Setup.dmg',
-    note: 'DMG 安装: 右键点击 → 打开 (绕过 Gatekeeper)',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-    scriptLabel: 'Terminal (推荐)',
   },
   {
-    platform: 'macOS (Intel)',
+    id: 'mac.intel',
     icon: Apple,
     setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
     mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
     setupSize: '27 MB',
-    arch: 'Intel x86_64',
     setupLabel: 'StarClaw-Setup.dmg',
-    note: 'DMG 安装: 右键点击 → 打开 (绕过 Gatekeeper)',
     scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-    scriptLabel: 'Terminal (推荐)',
   },
 ]
 
@@ -128,13 +116,15 @@ export function DownloadPage() {
                 const Icon = pkg.icon
                 return (
                   <div
-                    key={pkg.platform}
+                    key={pkg.id}
                     className="rounded-xl border p-4 sm:p-6 flex flex-col border-white/10 bg-white/[0.03] hover:border-claw-500/30 transition-colors overflow-hidden"
                   >
-                    <div className="flex items-center gap-2 mb-4">
-                      <Icon size={20} className="text-gray-400" />
-                      <span className="font-semibold text-white">{pkg.platform}</span>
-                      <span className="text-xs text-gray-500">{pkg.arch}</span>
+                    <div className="min-h-[52px] mb-4">
+                      <div className="flex items-center gap-2">
+                        <Icon size={20} className="text-gray-400 shrink-0" />
+                        <span className="font-semibold text-white text-lg leading-tight">{t(`dl.pkg.${pkg.id}`)}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 ml-7 mt-1">{t(`dl.pkg.${pkg.id}.arch`)}</div>
                     </div>
 
                     {pkg.setupUrl && (
@@ -149,16 +139,16 @@ export function DownloadPage() {
                           <span className="text-claw-200 text-xs shrink-0">({pkg.setupSize})</span>
                         </a>
                         <div className="flex items-center justify-center gap-2 mb-3">
-                          <span className="text-[10px] text-green-400">⚡ 国内加速</span>
+                          <span className="text-[10px] text-green-400">⚡ {t('dl.mirror.cn')}</span>
                           <span className="text-[10px] text-gray-600">|</span>
-                          <a href={pkg.setupUrl} download className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">海外节点</a>
+                          <a href={pkg.setupUrl} download className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">{t('dl.mirror.overseas')}</a>
                         </div>
-                        <p className="text-xs text-gray-500 text-center mb-4">{pkg.note}</p>
+                        <p className="text-xs text-gray-500 text-center mb-4">{t(`dl.pkg.${pkg.id}.note`)}</p>
                       </>
                     )}
 
                     <div className="mt-auto">
-                      <div className="text-xs text-gray-500 mb-1.5">{pkg.scriptLabel}</div>
+                      <div className="text-xs text-gray-500 mb-1.5">{t(`dl.pkg.${pkg.id}.script`)}</div>
                       <div className="rounded-lg bg-gray-900/80 px-2 sm:px-3 py-2">
                         <code className="block text-[11px] sm:text-xs text-gray-400 break-all whitespace-pre-wrap mb-2">
                           {pkg.scriptCmd}
@@ -172,7 +162,7 @@ export function DownloadPage() {
             </div>
 
             <p className="mt-4 text-xs text-gray-500 text-center">
-              Spore: ~18 MB total · No Docker required · Delta updates ~2 MB
+              {t('dl.spore.footer')}
             </p>
           </div>
 
@@ -189,7 +179,7 @@ export function DownloadPage() {
             </div>
             <div className="space-y-3">
               <div>
-                <div className="text-xs text-green-400 mb-1">⚡ 国内镜像（推荐）</div>
+                <div className="text-xs text-green-400 mb-1">⚡ {t('dl.mirror.docker.cn')}</div>
                 <CopyBlock text={DOCKER_CMD_MIRROR} />
               </div>
               <div>
