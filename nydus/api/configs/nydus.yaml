@@ -39,6 +39,15 @@ repos:
         subdir: "synapse"
         branch: "master"
 
+      # ========== CEREBRATE (合伙人生态 — Server C 本地, Queen docker-compose 引用) ==========
+
+      - name: "cerebrate-server-c"
+        worm_url: "http://nydus-worm:8096"
+        deploy_path: "/opt/cerebrate"
+        deploy_cmd: "echo 'cerebrate synced (built via queen docker-compose)'"
+        subdir: "cerebrate"
+        branch: "master"
+
       # ========== OVERLORD (企业 AI 管控平台 — Server C 本地) ==========
 
       - name: "overlord-server-c"
