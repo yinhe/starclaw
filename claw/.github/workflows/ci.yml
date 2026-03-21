@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build web frontend (for go:embed)
+        run: cd web && npm ci --legacy-peer-deps && npm run build && cp -r dist ../api/internal/web/dist
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
@@ -40,6 +45,11 @@ jobs:
     needs: lint-api
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build web frontend (for go:embed)
+        run: cd web && npm ci --legacy-peer-deps && npm run build && cp -r dist ../api/internal/web/dist
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
