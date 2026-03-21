@@ -8,6 +8,7 @@ import { EnterprisePage } from './pages/EnterprisePage'
 import { StarAIPage } from './pages/StarAIPage'
 import { PartnersPage } from './pages/PartnersPage'
 import { AboutPage } from './pages/AboutPage'
+import { InvestPage } from './pages/InvestPage'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/star-ai" element={<StarAIPage />} />
           <Route path="/partners" element={<PartnersPage />} />
           <Route path="/partner" element={<Navigate to="/partners" replace />} />
+          <Route path="/invest" element={<InvestPage />} />
           <Route path="/about" element={<AboutPage />} />
         </Routes>
       </BrowserRouter>
