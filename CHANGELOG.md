@@ -5,6 +5,24 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.0321.2020] - 2026-03-21
+
+### Added
+- **Squad Engine enhancements** — Architect-specialized LLM prompt for mission planning, improved step dependency scheduling, cross-node dispatch with agent capability matching.
+- **Code Review Loop** — When a reviewer agent returns `changes_requested`, the step is automatically re-dispatched with review feedback appended to the task context. Maximum 3 retries before escalation. Replaces previous auto-approve behavior.
+- **Overlord Internal API** — New `/v1/internal/overlord/*` endpoints for enterprise management plane integration. Supports mission creation, status queries, and step-level progress reporting.
+- **AgentCapability broadcast** — Hivemind now broadcasts agent capabilities (name, specialties, tools) with each heartbeat, enabling capability-based step routing in Squad missions.
+- **Sprint lifecycle** — `retryStepWithFeedback()` function handles review-driven retry loops with feedback context propagation.
+
+### Changed
+- Squad engine `buildPlanPrompt()` now generates role-aware prompts when mission originates from an enterprise team template.
+- `dispatchStep` accepts enriched context string for retry scenarios.
+
+### Fixed
+- GitHub Actions release workflow: build web frontend before Go compilation steps to ensure `go:embed` assets are available.
+
+---
+
 ## [2026.0313.1806] - 2026-03-13
 
 ### Added
