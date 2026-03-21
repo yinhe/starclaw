@@ -1,0 +1,39 @@
+title: "[Idea] "
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your idea! Please describe what you'd like to see in StarClaw.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What problem does this solve? How would it work?
+      placeholder: Describe your idea...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any workarounds?
+      placeholder: Any alternative approaches...
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Agent Engine
+        - Squad / Multi-Agent
+        - Workflow
+        - RAG / Knowledge Base
+        - Tools
+        - UI / UX
+        - API
+        - SDK
+        - Deployment
+        - Other
