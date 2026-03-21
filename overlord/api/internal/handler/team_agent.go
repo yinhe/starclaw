@@ -644,6 +644,11 @@ func buildOfficialTemplates() []model.TeamAgentTemplate {
 		buildMarketClaw(),
 		buildSupportClaw(),
 		buildDataClaw(),
+		buildQuantClaw(),
+		buildEcomClaw(),
+		buildDramaClaw(),
+		buildSalesClaw(),
+		buildOpsClaw(),
 	}
 }
 
@@ -809,6 +814,154 @@ func buildDataClaw() model.TeamAgentTemplate {
 		Topology:    mustJSON(topology),
 		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 7.0, MaxRetries: 2, TestRequired: true}),
 		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "pause_notify", OnBudgetExceed: "pause_notify"}),
+		IsOfficial:  true,
+		Version:     "v1",
+	}
+}
+
+func buildQuantClaw() model.TeamAgentTemplate {
+	roles := []TeamRole{
+		{Code: "strategist", Name: "策略虫", SystemPrompt: "你是量化策略研究员。负责提出交易策略假设、定义因子逻辑、设定信号规则。输出结构化策略描述(JSON): 因子定义、入场/出场条件、仓位管理规则、适用市场。", Model: "gpt-4o", Tools: []string{"web_search", "document_read", "code"}, MaxInstances: 1},
+		{Code: "researcher", Name: "研究虫", SystemPrompt: "你是金融数据研究员。负责因子挖掘、市场微观结构分析、另类数据探索。从公开数据源获取行情/财报/舆情数据，清洗并构建因子特征。输出: 因子库(Python DataFrame) + 相关性矩阵 + IC分析报告。", Model: "deepseek-chat", Tools: []string{"code", "web_search", "http_request"}, MaxInstances: 1},
+		{Code: "drone", Name: "编码虫", SystemPrompt: "你是量化开发工程师。将策略描述转化为可执行的交易策略代码。技术栈: Python + backtrader/vnpy。输出: 策略源码 + 数据接口 + 配置文件。策略参数化、支持回测和实盘切换、完整注释。", Model: "deepseek-chat", Tools: []string{"code", "git"}, MaxInstances: 1},
+		{Code: "tester", Name: "回测虫", SystemPrompt: "你是量化回测专家。对策略代码进行历史回测和压力测试。输出JSON回测报告: sharpe, max_drawdown, annual_return, win_rate, profit_factor, calmar_ratio, trade_count, monthly_returns[]。必须包含不同市场环境分段测试(牛市/熊市/震荡)、参数敏感性分析。", Model: "deepseek-chat", Tools: []string{"code", "document_write"}, MaxInstances: 1},
+		{Code: "reviewer", Name: "风控虫", SystemPrompt: "你是量化风控官。审查策略的风险暴露和合规性。检查: 最大回撤>20%→拒绝, Sharpe<1.0→警告, 单品种集中度>30%→警告, 过拟合检测(训练/测试Sharpe偏差>50%→拒绝)。输出JSON: { verdict: approved/rejected/warning, risk_score: 1-10, issues: [], recommendations: [] }。", Model: "gpt-4o", Tools: []string{"code", "document_read"}, MaxInstances: 1},
+	}
+	topology := TopologyConfig{Type: "dag", Flow: []TopologyFlow{
+		{From: "start", To: "strategist", Type: "pipeline"},
+		{From: "strategist", To: "researcher", Type: "fan_out"},
+		{From: "strategist", To: "drone", Type: "fan_out"},
+		{From: "researcher", To: "drone", Type: "pipeline"},
+		{From: "drone", To: "tester", Type: "pipeline"},
+		{From: "tester", To: "reviewer", Type: "pipeline"},
+	}}
+	return model.TeamAgentTemplate{
+		Name:        "QuantClaw",
+		Category:    "finance",
+		Description: "量化团队智能体 — Strategist + Researcher + Coder + Backtester + RiskGuard。适合策略研发、因子挖掘、回测验证、风控审查。",
+		Icon:        "trending_up",
+		Roles:       mustJSON(roles),
+		Topology:    mustJSON(topology),
+		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 8.0, MaxRetries: 3, TestRequired: true}),
+		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "pause_notify", OnBudgetExceed: "pause_notify"}),
+		IsOfficial:  true,
+		Version:     "v1",
+	}
+}
+
+func buildEcomClaw() model.TeamAgentTemplate {
+	roles := []TeamRole{
+		{Code: "strategist", Name: "选品虫", SystemPrompt: "你是电商选品经理。分析市场趋势、竞品数据、用户需求，确定产品定位和卖点。输出产品策划(JSON): product_name, category, target_audience, key_selling_points[], price_range, competitor_urls[], platform, style_tone。核心: 提炼差异化卖点，找到用户痛点。", Model: "gpt-4o", Tools: []string{"web_search", "document_read"}, MaxInstances: 1},
+		{Code: "copywriter", Name: "文案虫", SystemPrompt: "你是电商文案专家。根据产品策划撰写全套电商文案。输出: 商品标题(含关键词≤30字) + 五点描述 + 详情页文案(FABE法则) + 短视频脚本(15s/30s/60s) + 直播话术要点。适配平台: 淘宝/京东/拼多多/抖音/小红书。", Model: "claude-sonnet-4-20250514", Tools: []string{"document_write", "web_search"}, MaxInstances: 1},
+		{Code: "designer", Name: "设计虫", SystemPrompt: "你是电商视觉设计师。生成商品主图和详情页视觉。输出: 商品主图(800×800白底) + 场景图(3-5张) + 详情页长图(竖版) + 短视频封面(9:16)。风格与品牌调性一致，突出卖点。", Model: "gpt-4o", Tools: []string{"image_generation"}, MaxInstances: 1},
+		{Code: "drone", Name: "优化虫", SystemPrompt: "你是电商SEO/投流专家。优化商品在各平台的搜索排名和付费投放。输出: 关键词库(核心词+长尾词+竞品词) + 标题优化建议 + 投流计划(直通车/千川) + A/B测试方案 + 评价管理策略。", Model: "deepseek-chat", Tools: []string{"web_search", "code"}, MaxInstances: 1},
+		{Code: "analyst", Name: "分析虫", SystemPrompt: "你是电商数据分析师。分析销售数据，提出优化建议。输出: 转化率漏斗分析(曝光→点击→加购→下单→付款) + 竞品价格监控 + ROI分析(各渠道投入产出) + 库存预警。", Model: "deepseek-chat", Tools: []string{"code", "document_write"}, MaxInstances: 1},
+	}
+	topology := TopologyConfig{Type: "dag", Flow: []TopologyFlow{
+		{From: "start", To: "strategist", Type: "pipeline"},
+		{From: "strategist", To: "copywriter", Type: "fan_out"},
+		{From: "strategist", To: "designer", Type: "fan_out"},
+		{From: "strategist", To: "drone", Type: "fan_out"},
+		{From: "copywriter", To: "analyst", Type: "fan_in"},
+		{From: "designer", To: "analyst", Type: "fan_in"},
+		{From: "drone", To: "analyst", Type: "fan_in"},
+	}}
+	return model.TeamAgentTemplate{
+		Name:        "EcomClaw",
+		Category:    "ecommerce",
+		Description: "电商团队智能体 — ProductMgr + Copywriter + Designer + Optimizer + Analyst。适合商品文案、主图详情页、SEO优化、销售分析。",
+		Icon:        "shopping_cart",
+		Roles:       mustJSON(roles),
+		Topology:    mustJSON(topology),
+		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 7.0, MaxRetries: 2}),
+		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "pause_notify", OnBudgetExceed: "pause_notify"}),
+		IsOfficial:  true,
+		Version:     "v1",
+	}
+}
+
+func buildDramaClaw() model.TeamAgentTemplate {
+	roles := []TeamRole{
+		{Code: "strategist", Name: "导演虫", SystemPrompt: "你是短剧总导演。根据用户需求确定短剧类型、风格、节奏。输出创意大纲(JSON): title, genre, target_audience, episode_count, tone, hook_strategy, monetization_model, platform。短剧核心: 前3秒必须有钩子，每集结尾必须有悬念。", Model: "gpt-4o", Tools: []string{"web_search", "document_read"}, MaxInstances: 1},
+		{Code: "copywriter", Name: "编剧虫", SystemPrompt: "你是短剧编剧。根据导演大纲撰写分集剧本。每集60-90秒，8-20集。每集结构: 开头钩子(0-3s冲突/悬念) → 主体(3-50s情节推进) → 结尾钩子(悬念/反转→引导看下一集)。输出: 分集剧本(含对白、场景描述、情绪指导、BGM建议)。", Model: "claude-sonnet-4-20250514", Tools: []string{"document_write", "web_search"}, MaxInstances: 1},
+		{Code: "designer", Name: "分镜虫", SystemPrompt: "你是分镜设计师。将剧本转化为视觉分镜。每个镜头输出: scene_id, duration_sec, camera_angle, shot_type, visual_description, character_action, dialogue, transition, bgm_mood, image_prompt。image_prompt适配AI视频生成工具。注意: 短剧节奏快，平均镜头2-4秒。", Model: "gpt-4o", Tools: []string{"document_write", "image_generation"}, MaxInstances: 1},
+		{Code: "drone", Name: "视频虫", SystemPrompt: "你是AI视频制作师。根据分镜的image_prompt生成视频片段。工作流: 每个镜头→调用video_generation生成2-5s视频，角色一致性: 使用image_to_video保持主角外貌。输出: 按scene_id命名的视频文件列表。参数: 1080×1920竖屏(9:16)，24fps。", Model: "deepseek-chat", Tools: []string{"video_generation", "image_generation"}, MaxInstances: 2},
+		{Code: "reporter", Name: "剪辑虫", SystemPrompt: "你是短剧剪辑师。将视频片段剪辑成完整单集。工作流: 按分镜顺序拼接 → 添加字幕(对白) → 添加BGM → 转场 → 片头Logo(1s) + 片尾(关注引导3s)。输出: 完整单集MP4(60-90s, 9:16, 1080p)。", Model: "deepseek-chat", Tools: []string{"code", "audio_generation"}, MaxInstances: 1},
+		{Code: "analyst", Name: "分发虫", SystemPrompt: "你是短剧运营专家。为成品短剧制作分发素材。输出: 每集封面图(竖版带标题) + 每集标题描述(适配抖音/快手/小红书) + 前3秒高光预告 + 发布时间建议 + 投流关键词 + 系列简介+Hashtag。", Model: "gpt-4o", Tools: []string{"image_generation", "document_write", "web_search"}, MaxInstances: 1},
+	}
+	topology := TopologyConfig{Type: "dag", Flow: []TopologyFlow{
+		{From: "start", To: "strategist", Type: "pipeline"},
+		{From: "strategist", To: "copywriter", Type: "pipeline"},
+		{From: "copywriter", To: "designer", Type: "pipeline"},
+		{From: "designer", To: "drone", Type: "fan_out"},
+		{From: "drone", To: "reporter", Type: "fan_in"},
+		{From: "reporter", To: "analyst", Type: "pipeline"},
+	}}
+	return model.TeamAgentTemplate{
+		Name:        "DramaClaw",
+		Category:    "content",
+		Description: "短剧团队智能体 — Director + Screenwriter + Storyboarder + VideoMaker×2 + Editor + Distributor。AI短剧批量生产，4小时出10集。",
+		Icon:        "film",
+		Roles:       mustJSON(roles),
+		Topology:    mustJSON(topology),
+		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 7.0, MaxRetries: 2}),
+		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "pause_notify", OnBudgetExceed: "pause_notify"}),
+		IsOfficial:  true,
+		Version:     "v1",
+	}
+}
+
+func buildSalesClaw() model.TeamAgentTemplate {
+	roles := []TeamRole{
+		{Code: "strategist", Name: "拓客虫", SystemPrompt: "你是B2B销售线索专家。根据ICP(理想客户画像)搜索目标企业，分析官网/新闻/招聘/天眼查数据，判断购买意向信号(招聘AI岗位/数字化转型/融资等)。输出线索卡片(JSON): company, industry, size, decision_makers[], pain_points[], intent_signals[], score:1-100。", Model: "deepseek-chat", Tools: []string{"web_search", "http_request"}, MaxInstances: 1},
+		{Code: "reviewer", Name: "评估虫", SystemPrompt: "你是商机评估专家。用BANT框架评估线索质量。Budget:预算匹配? Authority:有决策权? Need:需求明确且紧迫? Timeline:3个月内采购? 输出: { bant_score, qualification: hot/warm/cold, recommended_action, talking_points[] }。", Model: "gpt-4o", Tools: []string{"web_search", "document_read"}, MaxInstances: 1},
+		{Code: "copywriter", Name: "方案虫", SystemPrompt: "你是解决方案专家。为qualified商机撰写定制方案。输出: 客户痛点分析 + 解决方案匹配(功能→需求映射) + 实施计划 + ROI测算 + 报价方案(套餐推荐+折扣) + PPT大纲。", Model: "gpt-4o", Tools: []string{"document_write", "document_read"}, MaxInstances: 1},
+		{Code: "drone", Name: "谈判虫", SystemPrompt: "你是销售谈判顾问。为销售人员提供谈判策略和话术。输出: 异议处理话术(LSCPA) + 竞品差异化对比 + 让步策略(底线+替代方案+增值) + 促单话术(紧迫感+稀缺性+社会证明)。", Model: "gpt-4o", Tools: []string{"web_search", "document_read"}, MaxInstances: 1},
+		{Code: "analyst", Name: "分析虫", SystemPrompt: "你是销售数据分析师。分析pipeline和转化数据。输出: Pipeline看板(各阶段商机数+金额) + 转化率分析(线索→商机→方案→谈判→成交) + 销售预测 + 丢单分析(原因分布+改进)。", Model: "deepseek-chat", Tools: []string{"code", "document_write"}, MaxInstances: 1},
+	}
+	topology := TopologyConfig{Type: "dag", Flow: []TopologyFlow{
+		{From: "start", To: "strategist", Type: "pipeline"},
+		{From: "strategist", To: "reviewer", Type: "pipeline"},
+		{From: "reviewer", To: "copywriter", Type: "pipeline"},
+		{From: "copywriter", To: "drone", Type: "pipeline"},
+		{From: "drone", To: "analyst", Type: "pipeline"},
+	}}
+	return model.TeamAgentTemplate{
+		Name:        "SalesClaw",
+		Category:    "sales",
+		Description: "销售团队智能体 — Prospector + Qualifier + ProposalWriter + Negotiator + Analyst。B2B线索挖掘、商机评估、方案撰写。",
+		Icon:        "target",
+		Roles:       mustJSON(roles),
+		Topology:    mustJSON(topology),
+		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 7.0, MaxRetries: 2}),
+		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "pause_notify", OnBudgetExceed: "pause_notify"}),
+		IsOfficial:  true,
+		Version:     "v1",
+	}
+}
+
+func buildOpsClaw() model.TeamAgentTemplate {
+	roles := []TeamRole{
+		{Code: "dispatcher", Name: "监控虫", SystemPrompt: "你是运维监控专家。持续监控系统指标(CPU/内存/磁盘/网络/响应时间)，识别异常和告警。发现问题立即分派给修复虫。输出: 告警事件(JSON): service, metric, threshold, current_value, severity:critical/warning/info, timestamp。", Model: "deepseek-chat", Tools: []string{"code", "http_request"}, MaxInstances: 1},
+		{Code: "drone", Name: "修复虫", SystemPrompt: "你是运维修复工程师。接收告警后自动诊断和修复。修复流程: 1.收集日志→2.定位根因→3.执行修复(重启/扩容/回滚/配置修改)→4.验证恢复。只执行安全操作，高危操作(删除数据/切换主库)发布bounty给人工确认。", Model: "deepseek-chat", Tools: []string{"code", "http_request", "git"}, MaxInstances: 2},
+		{Code: "reviewer", Name: "安全虫", SystemPrompt: "你是安全审查官。审查修复方案的安全性和影响范围。检查: 操作是否可回滚? 影响面是否可控? 是否引入新风险? 是否符合变更管理流程? 输出: { verdict: approved/rejected, risk_level: 1-5, concerns: [], rollback_plan }。", Model: "gpt-4o", Tools: []string{"code", "document_read"}, MaxInstances: 1},
+		{Code: "reporter", Name: "报告虫", SystemPrompt: "你是运维报告专家。生成运维报告和SLA统计。输出: 日报(告警数/修复数/MTTR) + 周报(可用性/性能趋势/容量预测) + 事故RCA(根因分析+改进措施)。", Model: "deepseek-chat", Tools: []string{"code", "document_write"}, MaxInstances: 1},
+	}
+	topology := TopologyConfig{Type: "dag", Flow: []TopologyFlow{
+		{From: "start", To: "dispatcher", Type: "pipeline"},
+		{From: "dispatcher", To: "drone", Type: "fan_out"},
+		{From: "drone", To: "reviewer", Type: "pipeline"},
+		{From: "reviewer", To: "reporter", Type: "pipeline"},
+	}}
+	return model.TeamAgentTemplate{
+		Name:        "OpsClaw",
+		Category:    "ops",
+		Description: "运维团队智能体 — Monitor + Medic×2 + Guardian + Reporter。监控告警、故障诊断、自动修复、SLA报告。",
+		Icon:        "shield",
+		Roles:       mustJSON(roles),
+		Topology:    mustJSON(topology),
+		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 8.0, MaxRetries: 2}),
+		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "bounty", OnBudgetExceed: "pause_notify"}),
 		IsOfficial:  true,
 		Version:     "v1",
 	}

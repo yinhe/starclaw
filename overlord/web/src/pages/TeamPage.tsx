@@ -43,7 +43,7 @@ const roleIcons: Record<string, string> = {
   architect: '🏗️', drone: '⚙️', tester: '🧪', reviewer: '🔍', docbot: '📝',
   strategist: '🎯', copywriter: '✍️', designer: '🎨', analyst: '📊',
   dispatcher: '📡', responder: '💬', escalator: '🚨',
-  etl_bot: '🔄', reporter: '📋',
+  etl_bot: '🔄', reporter: '📋', researcher: '🔬',
 }
 
 function useTeamWS(onUpdate: () => void) {
