@@ -7,7 +7,7 @@ import { useI18n } from '../i18n'
 
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases'
 const STARAI_BASE = 'https://star-ai.net/downloads'
-const V = 'v2026.0318.0738'
+const V = 'v2026.0320.1609'
 
 const PACKAGES = [
   {
