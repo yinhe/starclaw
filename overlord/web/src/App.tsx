@@ -13,9 +13,9 @@ import TeamPage from './pages/TeamPage'
 const navItems = [
   { to: '/', icon: MessageSquare, label: '对话' },
   { to: '/agents', icon: Bot, label: '智能体' },
-  { to: '/team', icon: Users, label: 'AI 团队' },
+  { to: '/team', icon: Users, label: '团队' },
   { to: '/tools', icon: Wrench, label: '工具' },
-  { to: '/profile', icon: User, label: '个人中心' },
+  { to: '/profile', icon: User, label: '我的' },
 ]
 
 export default function App() {
@@ -34,9 +34,9 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <aside className="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-4">
+    <div className="flex flex-col md:flex-row h-[100dvh]">
+      {/* Desktop Sidebar — hidden on mobile */}
+      <aside className="hidden md:flex w-16 bg-gray-900 border-r border-gray-800 flex-col items-center py-4 shrink-0">
         <div className="w-9 h-9 rounded-lg bg-brand-600/20 flex items-center justify-center mb-6" title={brand.brand_name}>
           {brand.enabled && brand.logo_url ? (
             <img src={brand.logo_url} alt={brand.brand_name} className="w-7 h-7 object-contain" />
@@ -100,7 +100,7 @@ export default function App() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden min-h-0">
         <Routes>
           <Route path="/" element={<ChatPage />} />
           <Route path="/agents" element={<AgentsPage />} />
@@ -109,6 +109,25 @@ export default function App() {
           <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </main>
+
+      {/* Mobile Bottom Tab Bar — hidden on desktop */}
+      <nav className="md:hidden flex items-center justify-around bg-gray-900 border-t border-gray-800 shrink-0 pb-[env(safe-area-inset-bottom)]">
+        {navItems.map(({ to, icon: Icon, label }) => {
+          const active = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              className={`flex flex-col items-center gap-0.5 py-2 px-3 min-w-[56px] transition-colors ${
+                active ? 'text-brand-400' : 'text-gray-500 active:text-gray-300'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[10px] leading-tight">{label}</span>
+            </NavLink>
+          )
+        })}
+      </nav>
     </div>
   )
 }

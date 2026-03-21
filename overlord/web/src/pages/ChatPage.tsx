@@ -76,10 +76,12 @@ export default function ChatPage() {
     }])
   }
 
+  const currentAgent = agents.find(a => a.id === selectedAgent)
+
   return (
     <div className="flex h-full">
-      {/* Agent selector sidebar */}
-      <aside className="w-56 bg-gray-900/50 border-r border-gray-800 flex flex-col">
+      {/* Agent selector sidebar — desktop only */}
+      <aside className="hidden md:flex w-56 bg-gray-900/50 border-r border-gray-800 flex-col shrink-0">
         <div className="px-4 py-4 border-b border-gray-800">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">智能体</h2>
         </div>
@@ -107,38 +109,54 @@ export default function ChatPage() {
       </aside>
 
       {/* Chat area */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="h-14 px-6 flex items-center justify-between border-b border-gray-800 bg-gray-900/30">
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header — desktop */}
+        <header className="hidden md:flex h-14 px-6 items-center justify-between border-b border-gray-800 bg-gray-900/30">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-brand-400" />
-            <span className="text-sm font-medium text-white">
-              {agents.find(a => a.id === selectedAgent)?.name}
-            </span>
-            <span className="text-[10px] text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">
-              {agents.find(a => a.id === selectedAgent)?.desc}
-            </span>
+            <span className="text-sm font-medium text-white">{currentAgent?.name}</span>
+            <span className="text-[10px] text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">{currentAgent?.desc}</span>
           </div>
-          <button
-            onClick={handleClear}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition"
-          >
+          <button onClick={handleClear} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition">
             <RotateCcw className="w-3.5 h-3.5" />
             清空对话
           </button>
         </header>
 
+        {/* Header — mobile: agent selector strip + clear button */}
+        <header className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-gray-800 bg-gray-900/30">
+          <div className="flex-1 flex gap-1.5 overflow-x-auto no-scrollbar">
+            {agents.map(agent => (
+              <button
+                key={agent.id}
+                onClick={() => setSelectedAgent(agent.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap shrink-0 transition ${
+                  selectedAgent === agent.id
+                    ? 'bg-brand-600/20 text-brand-300 border border-brand-500/30'
+                    : 'bg-gray-800 text-gray-400 border border-transparent active:bg-gray-700'
+                }`}
+              >
+                <span>{agent.icon}</span>
+                <span>{agent.name}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={handleClear} className="shrink-0 p-1.5 text-gray-500 active:text-gray-300">
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </header>
+
         {/* Messages */}
-        <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-auto px-3 md:px-6 py-4 space-y-4">
           {messages.map(msg => (
-            <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+            <div key={msg.id} className={`flex gap-2 md:gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role !== 'user' && (
-                <div className="w-8 h-8 rounded-lg bg-brand-600/20 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="w-4 h-4 text-brand-400" />
+                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-brand-600/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="w-3.5 h-3.5 md:w-4 md:h-4 text-brand-400" />
                 </div>
               )}
               <div
-                className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-3.5 py-2.5 md:px-4 md:py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
                     ? 'bg-brand-600 text-white'
                     : msg.role === 'system'
@@ -149,18 +167,18 @@ export default function ChatPage() {
                 {msg.content}
               </div>
               {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-lg bg-gray-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <User className="w-4 h-4 text-gray-300" />
+                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-gray-700 flex items-center justify-center shrink-0 mt-0.5">
+                  <User className="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-300" />
                 </div>
               )}
             </div>
           ))}
           {loading && (
-            <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-lg bg-brand-600/20 flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4 text-brand-400" />
+            <div className="flex gap-2 md:gap-3">
+              <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-brand-600/20 flex items-center justify-center shrink-0">
+                <Bot className="w-3.5 h-3.5 md:w-4 md:h-4 text-brand-400" />
               </div>
-              <div className="bg-gray-800 rounded-2xl px-4 py-3 flex items-center gap-2">
+              <div className="bg-gray-800 rounded-2xl px-3.5 py-2.5 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
                 <span className="text-sm text-gray-400">思考中...</span>
               </div>
@@ -170,32 +188,29 @@ export default function ChatPage() {
         </div>
 
         {/* Input */}
-        <div className="px-6 py-4 border-t border-gray-800 bg-gray-900/30">
-          <div className="flex gap-3 items-end">
+        <div className="px-3 py-2 md:px-6 md:py-4 border-t border-gray-800 bg-gray-900/30">
+          <div className="flex gap-2 md:gap-3 items-end">
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+              placeholder="输入消息..."
               rows={1}
-              className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 resize-none transition"
-              style={{ minHeight: 44, maxHeight: 160 }}
+              className="flex-1 px-3 py-2.5 md:px-4 md:py-3 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 resize-none transition"
+              style={{ minHeight: 42, maxHeight: 120 }}
               onInput={e => {
                 const t = e.target as HTMLTextAreaElement
                 t.style.height = 'auto'
-                t.style.height = Math.min(t.scrollHeight, 160) + 'px'
+                t.style.height = Math.min(t.scrollHeight, 120) + 'px'
               }}
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || loading}
-              className="px-4 py-3 bg-brand-600 hover:bg-brand-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl transition"
+              className="px-3.5 py-2.5 md:px-4 md:py-3 bg-brand-600 hover:bg-brand-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl transition active:scale-95"
             >
               <Send className="w-4 h-4" />
             </button>
-          </div>
-          <div className="text-[10px] text-gray-600 mt-2 text-center">
-            AI 回复仅供参考，请核实重要信息
           </div>
         </div>
       </div>

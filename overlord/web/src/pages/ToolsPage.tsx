@@ -33,13 +33,13 @@ export default function ToolsPage() {
   const comingSoon = filtered.filter(t => t.status === 'coming_soon')
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">工具集合</h1>
-        <p className="text-sm text-gray-500 mt-1">AI 智能体可调用的工具和能力扩展</p>
+    <div className="p-4 md:p-6">
+      <div className="mb-4 md:mb-6">
+        <h1 className="text-lg md:text-xl font-bold text-white">工具集合</h1>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">AI 智能体可调用的工具和能力扩展</p>
       </div>
 
-      <div className="relative max-w-md mb-6">
+      <div className="relative md:max-w-md mb-4 md:mb-6">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
         <input
           type="text"
@@ -54,7 +54,7 @@ export default function ToolsPage() {
       {available.length > 0 && (
         <>
           <h2 className="text-sm font-semibold text-gray-400 mb-3">可用工具 ({available.length})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-8">
             {available.map(tool => (
               <div
                 key={tool.id}
@@ -85,7 +85,7 @@ export default function ToolsPage() {
       {comingSoon.length > 0 && (
         <>
           <h2 className="text-sm font-semibold text-gray-400 mb-3">即将推出 ({comingSoon.length})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {comingSoon.map(tool => (
               <div
                 key={tool.id}

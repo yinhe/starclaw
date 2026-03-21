@@ -117,15 +117,15 @@ export default function AgentsPage() {
   })
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">智能体市场</h1>
-        <p className="text-sm text-gray-500 mt-1">浏览和使用预置的 AI 智能体模板</p>
+    <div className="p-4 md:p-6">
+      <div className="mb-4 md:mb-6">
+        <h1 className="text-lg md:text-xl font-bold text-white">智能体市场</h1>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">浏览和使用预置的 AI 智能体模板</p>
       </div>
 
       {/* Search + Filter */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 mb-4 md:mb-6">
+        <div className="relative flex-1 md:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
             type="text"
@@ -135,15 +135,15 @@ export default function AgentsPage() {
             className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 transition"
           />
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto no-scrollbar">
           {categories.map(c => (
             <button
               key={c}
               onClick={() => setCategory(c)}
-              className={`px-3 py-1.5 text-xs rounded-lg transition ${
+              className={`px-3 py-1.5 text-xs rounded-lg transition shrink-0 ${
                 category === c
                   ? 'bg-brand-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 active:bg-gray-600'
               }`}
             >
               {c}
@@ -153,7 +153,7 @@ export default function AgentsPage() {
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
         {filtered.map(agent => (
           <div
             key={agent.id}
@@ -185,7 +185,7 @@ export default function AgentsPage() {
                   {agent.uses.toLocaleString()}
                 </span>
               </div>
-              <button className="flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 transition opacity-0 group-hover:opacity-100">
+              <button className="flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 transition md:opacity-0 md:group-hover:opacity-100">
                 <Play className="w-3 h-3" />
                 使用
               </button>
