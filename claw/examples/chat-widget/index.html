@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>StarClaw Chat Widget Demo</title>
+  <style>
+    body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 40px; }
+    h1 { font-size: 24px; }
+    p { color: #94a3b8; max-width: 600px; line-height: 1.6; }
+    code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>StarClaw Chat Widget</h1>
+  <p>
+    This page demonstrates the <code>&lt;starclaw-chat&gt;</code> web component.
+    Edit the <code>endpoint</code> and <code>api-key</code> attributes below to connect to your StarClaw instance.
+  </p>
+  <p>
+    The widget appears as a floating button in the bottom-right corner.
+    Click it to open the chat panel.
+  </p>
+
+  <!-- Drop-in AI chat widget -->
+  <starclaw-chat
+    endpoint="http://localhost:8080"
+    api-key="your-api-key"
+    model="deepseek-chat"
+    title="AI Assistant"
+    placeholder="Ask anything..."
+    theme="dark"
+    position="bottom-right"
+    system-prompt="You are a helpful AI assistant powered by StarClaw."
+  ></starclaw-chat>
+
+  <script type="module">
+    // In production, use: <script src="https://sdk.starclaw.me/chat-widget.js">
+    // For local dev, import from the SDK source:
+    import { ChatWidget } from '../../sdk/js/src/chat-widget.ts'
+  </script>
+</body>
+</html>

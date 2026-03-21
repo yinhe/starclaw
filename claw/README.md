@@ -7,6 +7,10 @@
 
 <p align="center">
   <a href="https://github.com/yinhe/starclaw/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
+  <a href="https://github.com/yinhe/starclaw/releases"><img src="https://img.shields.io/github/v/release/yinhe/starclaw?color=orange" alt="Release" /></a>
+  <a href="https://github.com/yinhe/starclaw/actions"><img src="https://img.shields.io/github/actions/workflow/status/yinhe/starclaw/ci.yml?label=CI" alt="CI" /></a>
+  <img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go" alt="Go" />
+  <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react" alt="React" />
   <a href="https://github.com/yinhe/starclaw"><img src="https://img.shields.io/github/stars/yinhe/starclaw?style=social" alt="Stars" /></a>
 </p>
 
