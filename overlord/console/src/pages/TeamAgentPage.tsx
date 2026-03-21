@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users } from 'lucide-react'
 import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode } from '../api/brood'
+import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
 const statusColors: Record<string, string> = {
   forming: 'bg-yellow-500/15 text-yellow-400',
@@ -64,6 +65,18 @@ export default function TeamAgentPage() {
   const [showMission, setShowMission] = useState(false)
   const [missionGoal, setMissionGoal] = useState('')
   const [creatingMission, setCreatingMission] = useState(false)
+
+  // Real-time WS updates — refresh missions when status changes
+  const onMissionUpdate = useCallback((data: { mission_id?: string; instance_id?: string; status?: string }) => {
+    if (selectedInstance && data.instance_id === selectedInstance.id) {
+      broodAPI.listTeamMissions(selectedInstance.id).then(r => setMissions(r.missions || [])).catch(() => {})
+    }
+    // Refresh stats on status change
+    if (data.status === 'completed' || data.status === 'failed') {
+      broodAPI.teamAgentStats().then(setStats).catch(() => {})
+    }
+  }, [selectedInstance])
+  useTeamAgentWS(undefined, onMissionUpdate)
 
   useEffect(() => { load() }, [])
 

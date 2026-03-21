@@ -13,6 +13,7 @@ import (
 	"github.com/yinhe/starclaw-overlord/api/internal/handler"
 	"github.com/yinhe/starclaw-overlord/api/internal/middleware"
 	"github.com/yinhe/starclaw-overlord/api/internal/model"
+	"github.com/yinhe/starclaw-overlord/api/internal/ws"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -70,7 +71,9 @@ func main() {
 	brandH := handler.NewBrandHandler(db)
 	brandH.SeedFeatures()
 	complianceH := handler.NewComplianceHandler(db)
+	wsHub := ws.GetHub()
 	teamAgentH := handler.NewTeamAgentHandler(db)
+	teamAgentH.SetWSHub(wsHub)
 	teamAgentH.SeedOfficialTemplates()
 	teamAgentH.StartStatusSyncer()
 
@@ -330,6 +333,15 @@ func main() {
 			compWrite.DELETE("/flows/:id", complianceH.DeleteDataFlow)
 		}
 	}
+
+	// WebSocket endpoint for real-time Team Agent updates
+	r.GET("/ws/team-agent", func(c *gin.Context) {
+		teamID := c.Query("team_id")
+		if teamID == "" {
+			teamID = "global"
+		}
+		ws.HandleWS(wsHub, teamID, c.Writer, c.Request)
+	})
 
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	r.GET("/health", func(c *gin.Context) {

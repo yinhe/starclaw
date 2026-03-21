@@ -12,6 +12,7 @@ import (
 	"github.com/yinhe/starclaw-overlord/api/internal/claw"
 	"github.com/yinhe/starclaw-overlord/api/internal/middleware"
 	"github.com/yinhe/starclaw-overlord/api/internal/model"
+	"github.com/yinhe/starclaw-overlord/api/internal/ws"
 	"gorm.io/gorm"
 )
 
@@ -55,6 +56,12 @@ type TeamAgentHandler struct {
 	db            *gorm.DB
 	clawClient    *claw.Client
 	overlordToken string // shared secret for Overlord→Claw auth
+	wsHub         *ws.Hub
+}
+
+// SetWSHub wires the WebSocket hub for real-time push.
+func (h *TeamAgentHandler) SetWSHub(hub *ws.Hub) {
+	h.wsHub = hub
 }
 
 func NewTeamAgentHandler(db *gorm.DB) *TeamAgentHandler {
@@ -560,6 +567,17 @@ func (h *TeamAgentHandler) syncMissionStatuses() {
 
 		if len(updates) > 0 {
 			h.db.Model(&model.TeamMission{}).Where("id = ?", m.ID).Updates(updates)
+
+			// Push real-time update via WebSocket
+			if h.wsHub != nil {
+				updates["mission_id"] = m.ID
+				updates["instance_id"] = m.InstanceID
+				updates["title"] = m.Title
+				if inst := instMap[m.InstanceID]; inst != nil {
+					h.wsHub.SendToTeam(inst.TeamID, ws.EventTeamMissionUpdate, updates)
+				}
+				h.wsHub.SendToTeam("global", ws.EventTeamMissionUpdate, updates)
+			}
 		}
 
 		// If mission completed/failed, update instance metrics
