@@ -50,9 +50,9 @@ func (u *AdminUser) BeforeCreate(tx *gorm.DB) error {
 // RolePermissions defines what each role can do
 var RolePermissions = map[string][]string{
 	"superadmin": {"*"},
-	"admin":      {"claws.read", "claws.write", "claws.delete", "teams.read", "teams.write", "nydus.read", "nydus.write", "molt.read", "molt.write", "audit.read", "webhook.read", "webhook.write", "stats.read", "billing.read", "billing.write", "brand.read", "brand.write", "license.read", "license.write", "compliance.read", "compliance.write", "features.read", "features.write"},
-	"operator":   {"claws.read", "claws.write", "nydus.read", "nydus.write", "molt.read", "molt.approve", "audit.read", "stats.read", "billing.read", "brand.read", "compliance.read", "features.read"},
-	"viewer":     {"claws.read", "nydus.read", "molt.read", "audit.read", "stats.read", "billing.read", "brand.read", "features.read"},
+	"admin":      {"claws.read", "claws.write", "claws.delete", "teams.read", "teams.write", "nydus.read", "nydus.write", "molt.read", "molt.write", "audit.read", "webhook.read", "webhook.write", "stats.read", "billing.read", "billing.write", "brand.read", "brand.write", "license.read", "license.write", "compliance.read", "compliance.write", "features.read", "features.write", "team_agent.read", "team_agent.write"},
+	"operator":   {"claws.read", "claws.write", "nydus.read", "nydus.write", "molt.read", "molt.approve", "audit.read", "stats.read", "billing.read", "brand.read", "compliance.read", "features.read", "team_agent.read", "team_agent.write"},
+	"viewer":     {"claws.read", "nydus.read", "molt.read", "audit.read", "stats.read", "billing.read", "brand.read", "features.read", "team_agent.read"},
 }
 
 // HasPermission checks if a role has a specific permission

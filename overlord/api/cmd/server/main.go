@@ -36,6 +36,8 @@ func main() {
 		// P4: White-label + License
 		&model.BrandConfig{}, &model.FeatureToggle{}, &model.LicenseKey{},
 		&model.ComplianceLog{}, &model.SensitiveWordRule{}, &model.DataFlowRecord{},
+		// Team Agent
+		&model.TeamAgentTemplate{}, &model.TeamInstance{}, &model.TeamMission{},
 	)
 
 	// Seed default superadmin if none exists
@@ -68,6 +70,8 @@ func main() {
 	brandH := handler.NewBrandHandler(db)
 	brandH.SeedFeatures()
 	complianceH := handler.NewComplianceHandler(db)
+	teamAgentH := handler.NewTeamAgentHandler(db)
+	teamAgentH.SeedOfficialTemplates()
 
 	// Wire webhook dispatcher into registry handler
 	regH.Dispatcher = webhookH
@@ -277,6 +281,27 @@ func main() {
 		featWrite.Use(middleware.RequirePermission("features.write"))
 		{
 			featWrite.PUT("/:id", brandH.UpdateFeature)
+		}
+
+		// --- Team Agent ---
+		taRead := brood.Group("/team-agent")
+		taRead.Use(middleware.RequirePermission("team_agent.read"))
+		{
+			taRead.GET("/templates", teamAgentH.ListTemplates)
+			taRead.GET("/templates/:id", teamAgentH.GetTemplate)
+			taRead.GET("/instances", teamAgentH.ListInstances)
+			taRead.GET("/instances/:id", teamAgentH.GetInstance)
+			taRead.GET("/instances/:id/dashboard", teamAgentH.GetDashboard)
+			taRead.GET("/instances/:id/missions", teamAgentH.ListMissions)
+			taRead.GET("/instances/:id/missions/:mid", teamAgentH.GetMission)
+			taRead.GET("/stats", teamAgentH.Stats)
+		}
+		taWrite := brood.Group("/team-agent")
+		taWrite.Use(middleware.RequirePermission("team_agent.write"))
+		{
+			taWrite.POST("/instances", teamAgentH.CreateInstance)
+			taWrite.POST("/instances/:id/disband", teamAgentH.DisbandInstance)
+			taWrite.POST("/instances/:id/missions", teamAgentH.CreateMission)
 		}
 
 		// --- Compliance ---
