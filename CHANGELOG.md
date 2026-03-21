@@ -5,18 +5,25 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.0321.2115] - 2026-03-21
+
+### Added
+- **SDK examples** — Three runnable integration examples: Go non-streaming chat (`examples/chat-basic/`), TypeScript SSE streaming (`examples/chat-stream/`), and HTML drop-in `<starclaw-chat>` web component (`examples/chat-widget/`).
+- **GitHub Discussions** — Idea discussion template for community feature proposals.
+
+### Changed
+- **CI pipeline** — Added Go test job with `go vet` and test summary to GitHub Actions workflow (5 jobs total: lint-api → test-api → build-api → build-web → docker).
+- **README** — Added release version, CI status, Go 1.24, and React 18 badges.
+
+---
+
 ## [2026.0321.2048] - 2026-03-21
 
 ### Added
 - **GitHub community templates** — Issue templates (bug report, feature request, question), PR template with checklist, `FUNDING.yml`, and `SECURITY.md` with vulnerability reporting policy.
 
 ### Changed
-- Overlord Internal API token authentication now uses a configurable `OVERLORD_CLAW_TOKEN` environment variable (previously hardcoded default).
-
-### Infrastructure
-- Overlord WebSocket support via nginx reverse proxy — enables real-time Team Agent mission updates.
-- Prometheus scrape config for Overlord API metrics collection.
-- 7 new Overlord monitoring alert rules: API health, error rate, Claw connectivity, mission stuck detection, WebSocket health, license expiry warnings.
+- Internal API token authentication now uses a configurable environment variable (previously hardcoded default).
 
 ---
 
@@ -25,12 +32,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - **Squad Engine enhancements** — Architect-specialized LLM prompt for mission planning, improved step dependency scheduling, cross-node dispatch with agent capability matching.
 - **Code Review Loop** — When a reviewer agent returns `changes_requested`, the step is automatically re-dispatched with review feedback appended to the task context. Maximum 3 retries before escalation. Replaces previous auto-approve behavior.
-- **Overlord Internal API** — New `/v1/internal/overlord/*` endpoints for enterprise management plane integration. Supports mission creation, status queries, and step-level progress reporting.
+- **Internal management API** — New `/v1/internal/*` endpoints for external management plane integration. Supports squad creation, mission lifecycle, and step-level progress reporting.
 - **AgentCapability broadcast** — Hivemind now broadcasts agent capabilities (name, specialties, tools) with each heartbeat, enabling capability-based step routing in Squad missions.
 - **Sprint lifecycle** — `retryStepWithFeedback()` function handles review-driven retry loops with feedback context propagation.
 
 ### Changed
-- Squad engine `buildPlanPrompt()` now generates role-aware prompts when mission originates from an enterprise team template.
+- Squad engine `buildPlanPrompt()` now generates role-aware prompts when mission originates from a team template with predefined roles.
 - `dispatchStep` accepts enriched context string for retry scenarios.
 
 ### Fixed
