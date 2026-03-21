@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Open-Source AI Agent Orchestration Platform</strong><br>
-  Multi-Model · Visual Workflow · RAG · MCP Compatible · Multi-Agent Collaboration
+  Multi-Model · Squad Engine · Visual Workflow · RAG · MCP Compatible · P2P Network
 </p>
 
 <p align="center">
@@ -26,6 +26,8 @@
 
 | Feature | Description |
 |---------|-------------|
+| **Squad Engine** | Multi-node mission orchestration — LLM auto-plans tasks, dispatches across nodes, collects results |
+| **Code Review Loop** | Automated review with retry — reviewer Agent scores code, rejects < threshold, re-dispatches with feedback (max 3 retries) |
 | **Agent Engine** | ReAct reasoning loop, Multi-Agent collaboration, autonomous sub-agent delegation |
 | **Visual Workflow** | React Flow canvas with 5 node types: LLM / Condition / HTTP / Code / Merge |
 | **RAG Knowledge Base** | Document upload → smart chunking → vector embedding → semantic retrieval |
@@ -33,6 +35,7 @@
 | **Multi-Model** | Qwen · OpenAI · DeepSeek · Anthropic · Ollama · OpenRouter |
 | **Coding Agent** | Autonomous coding, file ops, sandbox for 13 languages |
 | **MCP Compatible** | Connect external MCP tool servers to extend Agent capabilities |
+| **P2P Network** | Ed25519 identity · Gossip protocol · DHT · NAT traversal · encrypted node-to-node communication |
 | **BYOK** | Bring Your Own Key — use your own API keys, completely free |
 | **Multimedia** | AI video + music + MV composition + TTS narration |
 | **Swarm Network** | Distributed multi-node collaboration (optional, works perfectly standalone) |
@@ -84,7 +87,10 @@ starclaw/
 │   │   ├── api/v1/         # HTTP Handlers
 │   │   ├── provider/       # LLM Provider adapters
 │   │   ├── rag/            # RAG Pipeline
+│   │   ├── squad/          # Squad Engine (mission orchestration)
 │   │   ├── tool/           # Tool system
+│   │   ├── node/           # P2P node identity + Gossip
+│   │   ├── security/       # AES-256-GCM encryption + Merkle audit chain
 │   │   └── workflow/       # Workflow engine
 │   ├── plugins/            # JSON tool plugins
 │   └── Dockerfile
@@ -102,11 +108,13 @@ starclaw/
 ## 🛠 Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|-------|----------|
 | **Frontend** | React 18 + Vite + TypeScript + TailwindCSS + Zustand + React Flow |
 | **Backend** | Go 1.24 + Gin + GORM + Viper |
 | **Database** | MySQL 8.0 + Redis 7 |
 | **AI** | Qwen / OpenAI / DeepSeek / Anthropic / Ollama / OpenRouter + fal.ai |
+| **P2P** | Ed25519 + Gossip v2 + DHT + NAT traversal |
+| **Security** | AES-256-GCM encryption + Merkle-linked audit chain |
 | **Multimedia** | FFmpeg + DashScope TTS + fal.ai (video/music/image) |
 | **Deploy** | Docker Compose + Nginx |
 
@@ -159,9 +167,11 @@ We welcome contributions of all kinds! See [CONTRIBUTING.md](CONTRIBUTING.md) fo
 
 StarClaw 是一个功能完整的**开源 AI Agent 编排平台**，支持：
 
+- **Squad 引擎** — 多节点组队协作，LLM 自动拆解任务、跨节点分发、代码审查自动重试
 - **Agent 引擎** — ReAct 推理、Multi-Agent 协作、自主委派子 Agent
 - **可视化工作流** — React Flow 画布，5 种节点类型
 - **RAG 知识库** — 文档分块 → 向量嵌入 → 语义检索
+- **P2P 网络** — Ed25519 身份 + Gossip 协议 + 加密通信
 - **Tool 系统** — 浏览器操控、代码沙箱、视频/音乐/图片生成
 - **多模型** — Qwen / OpenAI / DeepSeek / Anthropic / Ollama
 - **BYOK** — 自带 API Key，完全免费
