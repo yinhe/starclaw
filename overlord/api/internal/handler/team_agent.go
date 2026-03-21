@@ -244,12 +244,35 @@ func (h *TeamAgentHandler) GetDashboard(c *gin.Context) {
 	activeMissionTitle := ""
 	totalSteps := 0
 	doneSteps := 0
-	for _, m := range missions {
+	for i, m := range missions {
 		if m.Status == "executing" || m.Status == "planning" || m.Status == "confirming" || m.Status == "reviewing" {
 			activeMission = m.ID
 			activeMissionTitle = m.Title
-			totalSteps = m.TotalSteps
-			doneSteps = m.DoneSteps
+
+			// Live fetch from Claw for active mission
+			if m.ClawMissionID != "" {
+				var node model.ClawNode
+				if err := h.db.First(&node, "id = ?", inst.ClawNodeID).Error; err == nil {
+					if resp, err := h.clawClient.GetMission(node.Address, h.overlordToken, m.ClawMissionID); err == nil {
+						missions[i].TotalSteps = resp.Mission.TotalSteps
+						missions[i].DoneSteps = resp.Mission.DoneSteps
+						missions[i].Status = mapClawMissionStatus(resp.Mission.Status)
+						if resp.Mission.PreviewURL != "" {
+							missions[i].PreviewURL = resp.Mission.PreviewURL
+						}
+						// Persist the fresh data
+						h.db.Model(&model.TeamMission{}).Where("id = ?", m.ID).Updates(map[string]interface{}{
+							"total_steps": resp.Mission.TotalSteps,
+							"done_steps":  resp.Mission.DoneSteps,
+							"status":      missions[i].Status,
+							"preview_url": missions[i].PreviewURL,
+						})
+					}
+				}
+			}
+
+			totalSteps = missions[i].TotalSteps
+			doneSteps = missions[i].DoneSteps
 			break
 		}
 	}
@@ -305,16 +328,31 @@ func (h *TeamAgentHandler) GetDashboard(c *gin.Context) {
 // POST /brood/team-agent/instances/:id/disband
 func (h *TeamAgentHandler) DisbandInstance(c *gin.Context) {
 	instID := c.Param("id")
-	now := time.Now()
-	result := h.db.Model(&model.TeamInstance{}).Where("id = ? AND status NOT IN ?", instID, []string{"disbanded"}).
-		Updates(map[string]interface{}{
-			"status":       "disbanded",
-			"disbanded_at": &now,
-		})
-	if result.RowsAffected == 0 {
+
+	// Load instance first for Claw bridge call
+	var inst model.TeamInstance
+	if err := h.db.First(&inst, "id = ? AND status != ?", instID, "disbanded").Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "instance not found or already disbanded"})
 		return
 	}
+
+	now := time.Now()
+	h.db.Model(&inst).Updates(map[string]interface{}{
+		"status":       "disbanded",
+		"disbanded_at": &now,
+	})
+
+	// Bridge: disband Squad on Claw node
+	clawSquadID := extractConfig(inst.Config, "claw_squad_id")
+	if clawSquadID != "" {
+		var node model.ClawNode
+		if err := h.db.First(&node, "id = ?", inst.ClawNodeID).Error; err == nil {
+			if err := h.clawClient.DisbandSquad(node.Address, h.overlordToken, clawSquadID); err != nil {
+				log.Printf("[team-agent] claw disband failed for squad %s: %v (non-fatal)", clawSquadID, err)
+			}
+		}
+	}
+
 	audit(h.db, c, "disband_team_instance", instID, "team instance disbanded")
 	c.JSON(http.StatusOK, gin.H{"message": "team instance disbanded"})
 }
