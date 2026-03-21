@@ -131,7 +131,7 @@ services:
 
   city:
     build:
-      context: ./city
+      context: ../cerebrate/city
     container_name: starclaw-queen-city
     restart: unless-stopped
     ports:
@@ -143,7 +143,7 @@ services:
 
   partner:
     build:
-      context: ./partner
+      context: ../cerebrate/partner
     container_name: starclaw-queen-partner
     restart: unless-stopped
     ports:
