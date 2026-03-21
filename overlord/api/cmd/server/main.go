@@ -72,6 +72,7 @@ func main() {
 	complianceH := handler.NewComplianceHandler(db)
 	teamAgentH := handler.NewTeamAgentHandler(db)
 	teamAgentH.SeedOfficialTemplates()
+	teamAgentH.StartStatusSyncer()
 
 	// Wire webhook dispatcher into registry handler
 	regH.Dispatcher = webhookH

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw-overlord/api/internal/claw"
 	"github.com/yinhe/starclaw-overlord/api/internal/middleware"
 	"github.com/yinhe/starclaw-overlord/api/internal/model"
 	"gorm.io/gorm"
@@ -43,18 +45,28 @@ type QualityGateConfig struct {
 }
 
 type EscalationConfig struct {
-	OnMaxRetries  string `json:"on_max_retries"`  // bounty | pause_notify | human_review
+	OnMaxRetries   string `json:"on_max_retries"`   // bounty | pause_notify | human_review
 	OnBudgetExceed string `json:"on_budget_exceed"` // pause_notify | hard_stop
 }
 
 // ── Handler ──
 
 type TeamAgentHandler struct {
-	db *gorm.DB
+	db            *gorm.DB
+	clawClient    *claw.Client
+	overlordToken string // shared secret for Overlord→Claw auth
 }
 
 func NewTeamAgentHandler(db *gorm.DB) *TeamAgentHandler {
-	return &TeamAgentHandler{db: db}
+	token := os.Getenv("OVERLORD_CLAW_TOKEN")
+	if token == "" {
+		token = "overlord-internal-default"
+	}
+	return &TeamAgentHandler{
+		db:            db,
+		clawClient:    claw.NewClient(),
+		overlordToken: token,
+	}
 }
 
 // SeedOfficialTemplates inserts built-in templates if they don't exist.
@@ -155,6 +167,36 @@ func (h *TeamAgentHandler) CreateInstance(c *gin.Context) {
 		return
 	}
 
+	// Bridge: call Claw node to create a Squad
+	var roles []TeamRole
+	json.Unmarshal([]byte(tmpl.Roles), &roles)
+	roleNames := make([]string, 0, len(roles))
+	for _, r := range roles {
+		roleNames = append(roleNames, r.Code)
+	}
+
+	clawResp, err := h.clawClient.CreateSquad(node.Address, h.overlordToken, claw.CreateSquadReq{
+		Name:        fmt.Sprintf("[TeamAgent] %s", req.Name),
+		Description: fmt.Sprintf("Overlord Team Agent: %s (%s)", tmpl.Name, req.Goal),
+		MaxMembers:  10,
+		Tags:        roleNames,
+		OverlordRef: instance.ID,
+	})
+	if err != nil {
+		log.Printf("[team-agent] claw bridge failed for instance %s: %v (non-fatal)", instance.ID, err)
+		// Non-fatal: instance is created in Overlord, Claw sync can retry later
+	} else {
+		// Store Claw Squad ID in config for future reference
+		configMap := map[string]string{"claw_squad_id": clawResp.Squad.ID}
+		configJSON, _ := json.Marshal(configMap)
+		h.db.Model(&instance).Updates(map[string]interface{}{
+			"config": string(configJSON),
+			"status": "ready",
+		})
+		instance.Status = "ready"
+		instance.Config = string(configJSON)
+	}
+
 	audit(h.db, c, "create_team_instance", instance.ID,
 		fmt.Sprintf("team instance created: %s (template: %s, node: %s)", req.Name, tmpl.Name, node.Name))
 
@@ -241,22 +283,22 @@ func (h *TeamAgentHandler) GetDashboard(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"team_id":        inst.ID,
-		"team_name":      inst.Name,
-		"template_name":  inst.TemplateName,
-		"status":         inst.Status,
-		"mission_id":     activeMission,
-		"mission_title":  activeMissionTitle,
-		"total_steps":    totalSteps,
-		"done_steps":     doneSteps,
-		"progress":       progress,
-		"roles":          roleStatuses,
-		"energy_budget":  inst.EnergyBudget,
-		"energy_used":    inst.EnergyUsed,
-		"energy_rate":    energyRate,
-		"mission_count":  inst.MissionCount,
-		"avg_score":      inst.AvgScore,
-		"missions":       missions,
+		"team_id":       inst.ID,
+		"team_name":     inst.Name,
+		"template_name": inst.TemplateName,
+		"status":        inst.Status,
+		"mission_id":    activeMission,
+		"mission_title": activeMissionTitle,
+		"total_steps":   totalSteps,
+		"done_steps":    doneSteps,
+		"progress":      progress,
+		"roles":         roleStatuses,
+		"energy_budget": inst.EnergyBudget,
+		"energy_used":   inst.EnergyUsed,
+		"energy_rate":   energyRate,
+		"mission_count": inst.MissionCount,
+		"avg_score":     inst.AvgScore,
+		"missions":      missions,
 	})
 }
 
@@ -310,6 +352,34 @@ func (h *TeamAgentHandler) CreateMission(c *gin.Context) {
 	if err := h.db.Create(&mission).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create mission"})
 		return
+	}
+
+	// Bridge: call Claw node to create + start a Mission in the Squad
+	clawSquadID := extractConfig(inst.Config, "claw_squad_id")
+	if clawSquadID != "" {
+		var node model.ClawNode
+		if err := h.db.First(&node, "id = ?", inst.ClawNodeID).Error; err == nil {
+			clawResp, err := h.clawClient.CreateMission(node.Address, h.overlordToken, claw.CreateMissionReq{
+				SquadID: clawSquadID,
+				Title:   mission.Title,
+				Goal:    req.Goal,
+			})
+			if err != nil {
+				log.Printf("[team-agent] claw mission bridge failed: %v (non-fatal)", err)
+			} else {
+				// Store Claw Mission ID and start it
+				h.db.Model(&mission).Update("claw_mission_id", clawResp.Mission.ID)
+				mission.ClawMissionID = clawResp.Mission.ID
+
+				// Auto-start the mission on Claw
+				if err := h.clawClient.StartMission(node.Address, h.overlordToken, clawResp.Mission.ID); err != nil {
+					log.Printf("[team-agent] claw mission start failed: %v (non-fatal)", err)
+				} else {
+					h.db.Model(&mission).Update("status", "executing")
+					mission.Status = "executing"
+				}
+			}
+		}
 	}
 
 	// Update instance status
@@ -366,6 +436,129 @@ func (h *TeamAgentHandler) Stats(c *gin.Context) {
 	})
 }
 
+// ── Status Syncer (background goroutine) ──
+
+// StartStatusSyncer polls Claw nodes every 30s to sync mission status.
+func (h *TeamAgentHandler) StartStatusSyncer() {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			h.syncMissionStatuses()
+		}
+	}()
+	log.Printf("[team-agent] status syncer started (30s interval)")
+}
+
+func (h *TeamAgentHandler) syncMissionStatuses() {
+	// Find active missions that have a Claw mission ID
+	var missions []model.TeamMission
+	h.db.Where("claw_mission_id != '' AND status IN ?",
+		[]string{"planning", "confirming", "executing", "reviewing"}).
+		Find(&missions)
+
+	if len(missions) == 0 {
+		return
+	}
+
+	// Group by instance to batch node lookups
+	instanceIDs := make(map[string]bool)
+	for _, m := range missions {
+		instanceIDs[m.InstanceID] = true
+	}
+
+	ids := make([]string, 0, len(instanceIDs))
+	for id := range instanceIDs {
+		ids = append(ids, id)
+	}
+
+	var instances []model.TeamInstance
+	h.db.Where("id IN ?", ids).Find(&instances)
+	instMap := make(map[string]*model.TeamInstance)
+	for i := range instances {
+		instMap[instances[i].ID] = &instances[i]
+	}
+
+	// Cache node addresses
+	nodeCache := make(map[string]string) // nodeID → address
+
+	for _, m := range missions {
+		inst := instMap[m.InstanceID]
+		if inst == nil {
+			continue
+		}
+
+		nodeAddr, ok := nodeCache[inst.ClawNodeID]
+		if !ok {
+			var node model.ClawNode
+			if err := h.db.First(&node, "id = ?", inst.ClawNodeID).Error; err != nil {
+				continue
+			}
+			nodeAddr = node.Address
+			nodeCache[inst.ClawNodeID] = nodeAddr
+		}
+
+		resp, err := h.clawClient.GetMission(nodeAddr, h.overlordToken, m.ClawMissionID)
+		if err != nil {
+			continue // skip silently, will retry next tick
+		}
+
+		// Map Claw status → Overlord status
+		newStatus := mapClawMissionStatus(resp.Mission.Status)
+		updates := map[string]interface{}{}
+
+		if newStatus != m.Status {
+			updates["status"] = newStatus
+		}
+		if resp.Mission.TotalSteps != m.TotalSteps {
+			updates["total_steps"] = resp.Mission.TotalSteps
+		}
+		if resp.Mission.DoneSteps != m.DoneSteps {
+			updates["done_steps"] = resp.Mission.DoneSteps
+		}
+		if resp.Mission.PreviewURL != "" && resp.Mission.PreviewURL != m.PreviewURL {
+			updates["preview_url"] = resp.Mission.PreviewURL
+		}
+
+		if len(updates) > 0 {
+			h.db.Model(&model.TeamMission{}).Where("id = ?", m.ID).Updates(updates)
+		}
+
+		// If mission completed/failed, update instance metrics
+		if newStatus == "completed" || newStatus == "failed" {
+			now := time.Now()
+			h.db.Model(&model.TeamMission{}).Where("id = ?", m.ID).Update("completed_at", &now)
+
+			// Recalc instance status
+			var activeMissions int64
+			h.db.Model(&model.TeamMission{}).Where("instance_id = ? AND status IN ?",
+				m.InstanceID, []string{"planning", "confirming", "executing", "reviewing"}).
+				Count(&activeMissions)
+			if activeMissions == 0 {
+				h.db.Model(&model.TeamInstance{}).Where("id = ?", m.InstanceID).
+					Update("status", "ready")
+			}
+		}
+	}
+}
+
+func mapClawMissionStatus(clawStatus string) string {
+	switch clawStatus {
+	case "planning":
+		return "planning"
+	case "executing":
+		return "executing"
+	case "reviewing":
+		return "reviewing"
+	case "completed":
+		return "completed"
+	case "failed":
+		return "failed"
+	default:
+		return clawStatus
+	}
+}
+
 // ── Helpers ──
 
 func truncate(s string, maxLen int) string {
@@ -374,6 +567,17 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen])
+}
+
+func extractConfig(configJSON, key string) string {
+	if configJSON == "" {
+		return ""
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(configJSON), &m); err != nil {
+		return ""
+	}
+	return m[key]
 }
 
 // ── Official Templates ──
