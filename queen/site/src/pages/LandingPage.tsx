@@ -14,6 +14,8 @@ import {
   Zap,
   Video,
   ArrowRight,
+  Users,
+  Sparkles,
 } from 'lucide-react'
 import { Layout } from '../components/Layout'
 import { CopyBlock } from '../components/CopyBlock'
@@ -124,6 +126,65 @@ export function LandingPage() {
                 <p className="text-sm text-gray-400 leading-relaxed">{t(`feat.${f.key}.desc`)}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Team Agent */}
+      <section className="py-16 md:py-24 border-t border-white/5 bg-gradient-to-b from-transparent via-claw-950/20 to-transparent">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="text-center mb-12 md:mb-16">
+            <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-1.5 text-sm text-orange-400 mb-6">
+              <Users size={14} />
+              {t('team.badge')}
+            </div>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
+              {t('team.title')}
+            </h2>
+            <p className="mt-4 text-gray-400 text-lg max-w-2xl mx-auto">
+              {t('team.desc')}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+            {[
+              { key: 'dev', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+              { key: 'market', color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' },
+              { key: 'support', color: 'text-green-400 bg-green-500/10 border-green-500/20' },
+              { key: 'data', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20' },
+              { key: 'quant', color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
+            ].map((tmpl) => (
+              <div
+                key={tmpl.key}
+                className={`rounded-xl border p-5 ${tmpl.color} transition-all hover:scale-[1.02]`}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles size={16} />
+                  <h3 className="font-semibold">{t(`team.${tmpl.key}`)}</h3>
+                </div>
+                <p className="text-sm text-gray-400 leading-relaxed">{t(`team.${tmpl.key}.desc`)}</p>
+              </div>
+            ))}
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 flex items-center justify-center">
+              <p className="text-sm text-gray-500 text-center">{t('team.more')}</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-center text-sm text-gray-400 mb-8">
+            {t('team.how')}
+          </div>
+
+          <div className="text-center">
+            <a
+              href="https://overlord.starclaw.net"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-6 py-3 text-sm font-semibold text-white hover:bg-orange-500 transition-colors"
+            >
+              <Users size={18} />
+              {t('team.cta')}
+              <ArrowRight size={16} />
+            </a>
           </div>
         </div>
       </section>
