@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield, CreditCard, BarChart3, Paintbrush, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield, CreditCard, BarChart3, Paintbrush, ShieldCheck, Bot } from 'lucide-react'
 import { getStoredToken, getStoredUser, clearAuth } from './api/brood'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -16,11 +16,13 @@ import BillingPage from './pages/BillingPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import BrandPage from './pages/BrandPage'
 import CompliancePage from './pages/CompliancePage'
+import TeamAgentPage from './pages/TeamAgentPage'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '总览' },
   { to: '/claws', icon: Server, label: '节点管理' },
   { to: '/teams', icon: Users, label: '团队管理' },
+  { to: '/team-agent', icon: Bot, label: 'AI 团队' },
   { to: '/tunnels', icon: Network, label: 'Nydus 隧道' },
   { to: '/molt', icon: Package, label: 'Molt 更新' },
   { to: '/webhooks', icon: Bell, label: 'Webhook' },
@@ -129,6 +131,7 @@ export default function App() {
           <Route path="/claws" element={<ClawsPage />} />
           <Route path="/claws/:id" element={<ClawDetailPage />} />
           <Route path="/teams" element={<TeamsPage />} />
+          <Route path="/team-agent" element={<TeamAgentPage />} />
           <Route path="/tunnels" element={<TunnelsPage />} />
           <Route path="/molt" element={<MoltPage />} />
           <Route path="/webhooks" element={<WebhooksPage />} />

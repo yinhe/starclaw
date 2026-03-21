@@ -480,6 +480,31 @@ export const broodAPI = {
     request<{ flow: DataFlowRecord }>(`/compliance/flows/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDataFlow: (id: string) =>
     request(`/compliance/flows/${id}`, { method: 'DELETE' }),
+
+  // --- Team Agent ---
+  teamAgentStats: () => request<TeamAgentStats>('/team-agent/stats'),
+  listTeamTemplates: (category?: string) => {
+    const q = category ? `?category=${category}` : ''
+    return request<{ templates: TeamAgentTemplate[]; total: number }>(`/team-agent/templates${q}`)
+  },
+  getTeamTemplate: (id: string) => request<{ template: TeamAgentTemplate }>(`/team-agent/templates/${id}`),
+  listTeamInstances: (params?: { status?: string; template_id?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.status) q.set('status', params.status)
+    if (params?.template_id) q.set('template_id', params.template_id)
+    const qs = q.toString()
+    return request<{ instances: TeamInstance[]; total: number }>(`/team-agent/instances${qs ? '?' + qs : ''}`)
+  },
+  getTeamInstance: (id: string) => request<{ instance: TeamInstance }>(`/team-agent/instances/${id}`),
+  createTeamInstance: (data: { template_id: string; claw_node_id: string; name: string; goal?: string; energy_budget?: number }) =>
+    request<{ instance: TeamInstance }>('/team-agent/instances', { method: 'POST', body: JSON.stringify(data) }),
+  disbandTeamInstance: (id: string) =>
+    request('/team-agent/instances/' + id + '/disband', { method: 'POST' }),
+  getTeamDashboard: (id: string) => request<Record<string, unknown>>(`/team-agent/instances/${id}/dashboard`),
+  listTeamMissions: (instanceId: string) =>
+    request<{ missions: TeamMission[]; total: number }>(`/team-agent/instances/${instanceId}/missions`),
+  createTeamMission: (instanceId: string, data: { goal: string; auto_confirm?: boolean }) =>
+    request<{ mission: TeamMission }>(`/team-agent/instances/${instanceId}/missions`, { method: 'POST', body: JSON.stringify(data) }),
 }
 
 // --- P4 Types ---
@@ -587,4 +612,66 @@ export interface DataFlowRecord {
   region: string
   cross_border: boolean
   description: string
+}
+
+// --- Team Agent ---
+export interface TeamAgentTemplate {
+  id: string
+  name: string
+  category: string
+  description: string
+  icon: string
+  roles: string       // JSON
+  topology: string    // JSON
+  quality_gate: string
+  escalation: string
+  is_official: boolean
+  version: string
+  created_at: string
+}
+
+export interface TeamInstance {
+  id: string
+  template_id: string
+  template_name: string
+  team_id: string
+  claw_node_id: string
+  user_id: string
+  name: string
+  goal: string
+  status: string
+  role_map: string
+  config: string
+  energy_budget: number
+  energy_used: number
+  mission_count: number
+  avg_score: number
+  created_at: string
+  updated_at: string
+  disbanded_at: string | null
+}
+
+export interface TeamMission {
+  id: string
+  instance_id: string
+  claw_mission_id: string
+  title: string
+  goal: string
+  status: string
+  sprint_count: number
+  total_steps: number
+  done_steps: number
+  review_score: number
+  energy_used: number
+  preview_url: string
+  created_at: string
+  completed_at: string | null
+}
+
+export interface TeamAgentStats {
+  total_instances: number
+  active_instances: number
+  total_missions: number
+  total_energy: number
+  template_count: number
 }
