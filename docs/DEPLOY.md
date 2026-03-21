@@ -218,19 +218,21 @@ server:
 - 设置页面显示琥珀色失控警告
 - 恢复连接后自动退出 Feral 模式并记录日志
 
-## 八、升级为领主 Overlord（可选）
+## 八、企业管理模式（可选）
 
-如果你需要管理多个 Claw 节点：
+如果你需要管理多个 Claw 节点（企业场景），可升级为管理节点：
 
 ```yaml
 server:
-  node_role: overlord    # 启用领主管理模式（需购买 overlord/ 软件包）
+  node_role: overlord    # 启用企业管理模式（需企业订阅）
 ```
 
-Overlord 节点可以：
-- 管理下属 Claw 节点
+管理节点可以：
+- 统一管理下属 Claw 节点
 - 企业内部负载均衡
-- 通过 Nydus 隧道实现 Claw 间直连
+- P2P 隧道实现 Claw 间直连
+
+详情请联系 sales@starclaw.net 或访问 https://starclaw.net/enterprise
 
 ## 九、域名 + HTTPS
 

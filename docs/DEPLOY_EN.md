@@ -99,19 +99,21 @@ After restarting, your Claw will auto-register to the swarm and get:
 - 📦 Shared Agent/Workflow templates (Creep)
 - 💰 Bounty task publishing capability
 
-## 6. Upgrade to Overlord (Optional)
+## 6. Enterprise Management (Optional)
 
 If you need to manage multiple Claw nodes (enterprise):
 
 ```yaml
 server:
-  node_role: overlord    # Enable Overlord management (requires overlord/ package)
+  node_role: overlord    # Enable enterprise management mode (requires subscription)
 ```
 
-Overlord nodes can:
-- Manage subordinate Claw nodes
+Management nodes can:
+- Centrally manage subordinate Claw nodes
 - Internal load balancing
-- Nydus P2P tunnels for direct Claw-to-Claw connections
+- P2P tunnels for direct Claw-to-Claw connections
+
+Contact sales@starclaw.net or visit https://starclaw.net/enterprise for details.
 
 ## 7. Domain + HTTPS
 

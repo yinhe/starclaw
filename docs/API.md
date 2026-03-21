@@ -365,7 +365,7 @@ contributor:
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/v1/system/credits` | 查询星能余额（缓存值，加 `?refresh=true` 直接查 Queen） |
+| GET | `/v1/system/credits` | 查询星能余额（缓存值，加 `?refresh=true` 强制刷新） |
 | POST | `/v1/system/credits/transfer` | Ed25519 签名转账 |
 | GET | `/v1/system/credits/transactions` | 交易记录（`?page=1&page_size=20&type=transfer`） |
 
@@ -489,7 +489,6 @@ scripts\deploy.bat "commit message" all
 |------|---------|-------------|
 | app.starclaw.me | 127.0.0.1:8081 | starclaw-web (80→8081) |
 | api.starclaw.me | 127.0.0.1:8080 | starclaw-api (8080→8080) |
-| starclaw.me/api/ | 127.0.0.1:8085 | queen-api |
 
 ## SSE 流式响应格式
 
