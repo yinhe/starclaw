@@ -1,13 +1,14 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Server, Wifi, WifiOff, AlertTriangle, Cpu, MemoryStick, Activity, Coins, RefreshCw, Clock, ArrowRight } from 'lucide-react'
-import { broodAPI, type BroodStats, type ClawNode } from '../api/brood'
+import { Server, Wifi, WifiOff, AlertTriangle, Cpu, MemoryStick, Activity, Coins, RefreshCw, Clock, ArrowRight, Bot, Zap, Target } from 'lucide-react'
+import { broodAPI, type BroodStats, type ClawNode, type TeamAgentStats } from '../api/brood'
 
 const REFRESH_INTERVAL = 15
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<BroodStats | null>(null)
   const [recentAlerts, setRecentAlerts] = useState<ClawNode[]>([])
+  const [teamStats, setTeamStats] = useState<TeamAgentStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
@@ -19,12 +20,14 @@ export default function DashboardPage() {
     try {
       if (manual) setRefreshing(true)
       setError('')
-      const [statsData, alertData] = await Promise.all([
+      const [statsData, alertData, teamData] = await Promise.all([
         broodAPI.stats(),
         broodAPI.listClaws({ status: 'feral' }).catch(() => ({ claws: [] as ClawNode[], total: 0 })),
+        broodAPI.teamAgentStats().catch(() => null),
       ])
       setStats(statsData)
       setRecentAlerts(alertData.claws?.slice(0, 5) || [])
+      setTeamStats(teamData)
       setLastRefresh(new Date())
       setCountdown(REFRESH_INTERVAL)
     } catch (e: unknown) {
@@ -210,6 +213,38 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Team Agent section */}
+      {teamStats && (teamStats.total_instances > 0 || teamStats.template_count > 0) && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-overlord-400" />
+              <h3 className="text-sm font-medium text-white">AI 团队智能体</h3>
+            </div>
+            <Link to="/team-agent" className="text-[10px] text-overlord-400 hover:text-overlord-300 transition flex items-center gap-1">
+              管理 <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-5 gap-4">
+            {[
+              { label: '模板', value: teamStats.template_count, icon: Bot, color: 'text-overlord-400' },
+              { label: '总实例', value: teamStats.total_instances, icon: Server, color: 'text-blue-400' },
+              { label: '活跃', value: teamStats.active_instances, icon: Activity, color: 'text-emerald-400' },
+              { label: '总任务', value: teamStats.total_missions, icon: Target, color: 'text-purple-400' },
+              { label: '星能消耗', value: `${teamStats.total_energy}⚡`, icon: Zap, color: 'text-yellow-400' },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="text-center">
+                <div className="flex items-center justify-center gap-1.5 mb-1">
+                  <Icon className={`w-3.5 h-3.5 ${color}`} />
+                  <span className="text-xs text-gray-500">{label}</span>
+                </div>
+                <div className="text-xl font-bold text-white">{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {stats.total === 0 && (
         <div className="bg-gray-900 border border-gray-800 border-dashed rounded-xl p-12 text-center mt-6">

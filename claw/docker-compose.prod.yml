@@ -61,6 +61,7 @@ services:
       STARCLAW_NODE_ADDRESS: https://starclaw.me
       STARCLAW_SWARM_ENABLED: ${SWARM_ENABLED:-false}
       STARCLAW_SWARM_QUEEN_URL: ${SWARM_QUEEN_URL:-https://swarm.starclaw.net}
+      OVERLORD_CLAW_TOKEN: ${OVERLORD_CLAW_TOKEN:-overlord-internal-default}
       NODE_KEY_PATH: /app/data/identity/.node_key
     volumes:
       - ./data/identity:/app/data/identity
