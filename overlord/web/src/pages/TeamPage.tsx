@@ -67,6 +67,30 @@ function useTeamWS(onUpdate: () => void) {
   }, [onUpdate])
 }
 
+// Template → Claw capability mapping
+const templateCapabilities: Record<string, { icon: string; clawFeatures: string[] }> = {
+  DevClaw:     { icon: '💻', clawFeatures: ['Squad Engine', 'Code Review Loop', 'Coding Agent'] },
+  MarketClaw:  { icon: '📢', clawFeatures: ['Multi-Agent', 'RAG Knowledge Base', 'Web Search'] },
+  SupportClaw: { icon: '🎧', clawFeatures: ['Agent Engine', 'RAG Knowledge Base', 'Tool System'] },
+  DataClaw:    { icon: '📊', clawFeatures: ['Code Execution', 'Multi-Model', 'Tool System'] },
+  QuantClaw:   { icon: '📈', clawFeatures: ['Multi-Agent', 'Code Execution', 'Web Search'] },
+  EcomClaw:    { icon: '🛒', clawFeatures: ['RAG Knowledge Base', 'Multi-Agent', 'Tool System'] },
+  DramaClaw:   { icon: '🎬', clawFeatures: ['Multimedia', 'Multi-Model', 'Visual Workflow'] },
+  SalesClaw:   { icon: '🤝', clawFeatures: ['Agent Engine', 'RAG Knowledge Base', 'Web Search'] },
+  OpsClaw:     { icon: '⚙️', clawFeatures: ['Code Execution', 'Tool System', 'Multi-Agent'] },
+}
+
+function getTemplateIcon(templateName: string): string {
+  for (const [key, val] of Object.entries(templateCapabilities)) {
+    if (templateName.includes(key)) return val.icon
+  }
+  return '🤖'
+}
+
+interface TeamStats {
+  total_instances: number; active_instances: number; total_missions: number; total_energy: number
+}
+
 export default function TeamPage() {
   const [instances, setInstances] = useState<TeamInstance[]>([])
   const [selected, setSelected] = useState<TeamInstance | null>(null)
@@ -74,8 +98,9 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true)
   const [goalInput, setGoalInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [stats, setStats] = useState<TeamStats | null>(null)
 
-  useEffect(() => { loadInstances() }, [])
+  useEffect(() => { loadInstances(); loadStats() }, [])
 
   async function loadInstances() {
     setLoading(true)
@@ -84,6 +109,13 @@ export default function TeamPage() {
       setInstances(res.instances || [])
     } catch {}
     setLoading(false)
+  }
+
+  async function loadStats() {
+    try {
+      const res = await api.teamStats()
+      setStats(res)
+    } catch {}
   }
 
   const refreshDash = useCallback(() => {
@@ -309,62 +341,117 @@ export default function TeamPage() {
     )
   }
 
-  // ── List view ──
+  // ── Home / List view ──
+  const activeCount = instances.filter(i => ['forming', 'ready', 'running'].includes(i.status)).length
+
   return (
     <div className="h-full flex flex-col bg-gray-950">
-      <div className="px-5 py-4 border-b border-gray-800 bg-gray-900/60">
-        <div className="text-base font-bold text-white">AI 团队</div>
-        <div className="text-xs text-gray-500 mt-0.5">你的 AI 团队列表 · 点击进入实时看板</div>
-      </div>
-      <div className="flex-1 overflow-auto px-4 py-4">
-        {instances.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-4xl mb-3">�</div>
-            <div className="text-sm text-gray-400 font-medium">暂无分配的 AI 团队</div>
-            <div className="text-xs text-gray-600 mt-1">请联系管理员在控制台创建团队</div>
+      {/* Header */}
+      <div className="px-4 md:px-5 py-3 md:py-4 border-b border-gray-800 bg-gray-900/60">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🦞</span>
+          <div>
+            <div className="text-base font-bold text-white">AI 团队</div>
+            <div className="text-[11px] text-gray-500">Team Agent · 提交任务，AI 团队自动执行</div>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {instances.map(inst => {
-              const isActive = ['forming', 'ready', 'running'].includes(inst.status)
-              return (
-                <button
-                  key={inst.id}
-                  onClick={() => selectTeam(inst)}
-                  className={`w-full text-left rounded-xl p-4 border transition-all group ${
-                    isActive
-                      ? 'bg-gray-800/50 border-gray-700/50 hover:border-brand-500/40 hover:shadow-lg hover:shadow-brand-500/5'
-                      : 'bg-gray-800/30 border-gray-700/30 hover:border-gray-600/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full shrink-0 ${statusDot[inst.status] || 'bg-gray-500'} ${inst.status === 'running' ? 'animate-pulse' : ''}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-white truncate group-hover:text-brand-300 transition">{inst.name}</div>
-                      <div className="text-xs text-gray-500 mt-0.5 truncate">
-                        {inst.template_name} · {statusLabel[inst.status] || inst.status}
-                        {inst.goal && <span className="text-gray-600"> · {inst.goal}</span>}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-xs text-gray-400 tabular-nums">{inst.mission_count} 任务</div>
-                      <div className="text-[10px] text-gray-600 tabular-nums">{inst.energy_used.toLocaleString()}⚡</div>
-                    </div>
-                  </div>
-                  {/* Energy mini bar */}
-                  {inst.energy_budget > 0 && (
-                    <div className="mt-2.5 h-1 bg-gray-700/60 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-brand-500/60"
-                        style={{ width: `${Math.min(100, Math.round(inst.energy_used / inst.energy_budget * 100))}%` }}
-                      />
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        {/* Stats cards */}
+        {stats && (
+          <div className="grid grid-cols-4 gap-2 px-4 pt-4">
+            <div className="bg-gray-800/40 rounded-xl px-3 py-2.5 text-center">
+              <div className="text-base md:text-lg font-bold text-white tabular-nums">{stats.active_instances}</div>
+              <div className="text-[10px] text-gray-500">运行中</div>
+            </div>
+            <div className="bg-gray-800/40 rounded-xl px-3 py-2.5 text-center">
+              <div className="text-base md:text-lg font-bold text-white tabular-nums">{stats.total_instances}</div>
+              <div className="text-[10px] text-gray-500">总团队</div>
+            </div>
+            <div className="bg-gray-800/40 rounded-xl px-3 py-2.5 text-center">
+              <div className="text-base md:text-lg font-bold text-white tabular-nums">{stats.total_missions}</div>
+              <div className="text-[10px] text-gray-500">总任务</div>
+            </div>
+            <div className="bg-gray-800/40 rounded-xl px-3 py-2.5 text-center">
+              <div className="text-base md:text-lg font-bold text-white tabular-nums">{stats.total_energy.toLocaleString()}</div>
+              <div className="text-[10px] text-gray-500">⚡消耗</div>
+            </div>
           </div>
         )}
+
+        {/* Team list */}
+        <div className="px-4 py-4">
+          {instances.length === 0 ? (
+            <div className="text-center py-10">
+              <div className="text-4xl mb-3">🤖</div>
+              <div className="text-sm text-gray-300 font-medium">暂无 AI 团队</div>
+              <div className="text-xs text-gray-500 mt-1 mb-6">管理员将在控制台为你创建专属 AI 团队</div>
+              <div className="text-[11px] text-gray-600 font-medium uppercase tracking-wider mb-3">9 种团队模板 · 基于 Claw 开源引擎</div>
+              <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
+                {Object.entries(templateCapabilities).map(([name, { icon, clawFeatures }]) => (
+                  <div key={name} className="bg-gray-800/30 border border-gray-700/30 rounded-lg px-2.5 py-2 text-center">
+                    <div className="text-lg">{icon}</div>
+                    <div className="text-[11px] text-gray-300 font-medium mt-0.5">{name}</div>
+                    <div className="text-[9px] text-gray-600 mt-0.5 leading-tight">{clawFeatures[0]}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {activeCount > 0 && (
+                <div className="text-[11px] text-gray-500 uppercase tracking-wider mb-2 font-medium">
+                  运行中 ({activeCount})
+                </div>
+              )}
+              <div className="space-y-2.5">
+                {instances.map(inst => {
+                  const isActive = ['forming', 'ready', 'running'].includes(inst.status)
+                  const tmplIcon = getTemplateIcon(inst.template_name)
+                  return (
+                    <button
+                      key={inst.id}
+                      onClick={() => selectTeam(inst)}
+                      className={`w-full text-left rounded-xl p-3.5 border transition-all active:scale-[0.98] ${
+                        isActive
+                          ? 'bg-gray-800/50 border-gray-700/50 hover:border-brand-500/40'
+                          : 'bg-gray-800/30 border-gray-700/30 hover:border-gray-600/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gray-700/40 flex items-center justify-center shrink-0 text-lg">
+                          {tmplIcon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium text-white truncate">{inst.name}</div>
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot[inst.status] || 'bg-gray-500'} ${inst.status === 'running' ? 'animate-pulse' : ''}`} />
+                          </div>
+                          <div className="text-[11px] text-gray-500 mt-0.5 truncate">
+                            {inst.template_name} · {statusLabel[inst.status] || inst.status}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-xs text-gray-400 tabular-nums">{inst.mission_count} 任务</div>
+                          <div className="text-[10px] text-gray-600 tabular-nums">{inst.energy_used.toLocaleString()}⚡</div>
+                        </div>
+                      </div>
+                      {inst.energy_budget > 0 && (
+                        <div className="mt-2.5 h-1 bg-gray-700/60 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-brand-500/60"
+                            style={{ width: `${Math.min(100, Math.round(inst.energy_used / inst.energy_budget * 100))}%` }}
+                          />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
