@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw/internal/billing"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/swarm"
 	"gorm.io/gorm"
@@ -16,9 +17,23 @@ import (
 // When set, checkQuota and recordUsage will also call Queen API.
 var queenBilling *swarm.BillingClient
 
+// billingQueenClient is the billing gateway's QueenClient (set from router setup)
+var billingQueenClient billingChecker
+
+// billingChecker is the interface for checking balance via Queen
+type billingChecker interface {
+	CheckBalance(userID string) (bool, int64, error)
+	IsEnabled() bool
+}
+
 // SetQueenBilling sets the centralized billing client (called from router setup)
 func SetQueenBilling(bc *swarm.BillingClient) {
 	queenBilling = bc
+}
+
+// SetBillingQueenClient sets the billing gateway's queen client for balance queries
+func SetBillingQueenClient(c billingChecker) {
+	billingQueenClient = c
 }
 
 // Resource pricing (兀per unit)
@@ -93,12 +108,20 @@ func (h *BillingHandler) GetCurrentPlan(c *gin.Context) {
 	}
 
 	month := time.Now().Format("2006-01")
-	usage := h.getMonthUsage(tenant.ID, month)
-	cost := h.getMonthCost(tenant.ID, month)
+	usage := h.getMonthUsage(tenant.ID, userID, month)
+	cost := h.getMonthCost(tenant.ID, userID, month)
+
+	// Use Queen balance as authoritative source if available
+	balance := tenant.Balance
+	if billingQueenClient != nil && billingQueenClient.IsEnabled() {
+		if _, queenBalance, err := billingQueenClient.CheckBalance(userID); err == nil {
+			balance = float64(queenBalance) // Queen returns balance in 分 (stars)
+		}
+	}
 
 	c.JSON(200, gin.H{
 		"tenant":  tenant,
-		"balance": tenant.Balance,
+		"balance": balance,
 		"usage":   usage,
 		"cost":    cost,
 		"period":  month,
@@ -505,7 +528,7 @@ func (h *BillingHandler) getTenant(userID string) (*model.Tenant, error) {
 	return &tenant, nil
 }
 
-func (h *BillingHandler) getMonthUsage(tenantID, month string) map[string]int64 {
+func (h *BillingHandler) getMonthUsage(tenantID, userID, month string) map[string]int64 {
 	usage := map[string]int64{"tokens": 0, "video": 0, "image": 0, "music": 0}
 
 	var results []struct {
@@ -521,10 +544,24 @@ func (h *BillingHandler) getMonthUsage(tenantID, month string) map[string]int64 
 	for _, r := range results {
 		usage[r.ResourceType] = r.Total
 	}
+
+	// Also aggregate tool usage records (image/video/music generation)
+	var toolResults []struct {
+		ResourceType string
+		Total        int64
+	}
+	h.db.Model(&billing.ToolUsageRecord{}).
+		Select("resource_type, COUNT(*) as total").
+		Where("user_id = ? AND created_at >= ? AND created_at < ? AND success = true", userID, month+"-01", h.nextMonth(month)+"-01").
+		Group("resource_type").
+		Find(&toolResults)
+	for _, r := range toolResults {
+		usage[r.ResourceType] += r.Total
+	}
 	return usage
 }
 
-func (h *BillingHandler) getMonthCost(tenantID, month string) map[string]float64 {
+func (h *BillingHandler) getMonthCost(tenantID, userID, month string) map[string]float64 {
 	cost := map[string]float64{"tokens": 0, "video": 0, "image": 0, "music": 0}
 
 	var results []struct {
@@ -540,5 +577,28 @@ func (h *BillingHandler) getMonthCost(tenantID, month string) map[string]float64
 	for _, r := range results {
 		cost[r.ResourceType] = r.TotalCost
 	}
+
+	// Also aggregate tool usage cost
+	var toolResults []struct {
+		ResourceType string
+		TotalCost    float64
+	}
+	h.db.Model(&billing.ToolUsageRecord{}).
+		Select("resource_type, SUM(cost_fen) / 100.0 as total_cost").
+		Where("user_id = ? AND created_at >= ? AND created_at < ? AND success = true", userID, month+"-01", h.nextMonth(month)+"-01").
+		Group("resource_type").
+		Find(&toolResults)
+	for _, r := range toolResults {
+		cost[r.ResourceType] += r.TotalCost
+	}
 	return cost
+}
+
+// nextMonth returns the next month in "2006-01" format
+func (h *BillingHandler) nextMonth(month string) string {
+	t, err := time.Parse("2006-01", month)
+	if err != nil {
+		return month
+	}
+	return t.AddDate(0, 1, 0).Format("2006-01")
 }

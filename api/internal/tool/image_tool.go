@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,12 +27,40 @@ func NewImageTool(db *gorm.DB) *ImageTool {
 func (t *ImageTool) Name() string { return "image_generation" }
 
 func (t *ImageTool) Description() string {
-	return `AI 图片生成工具，通过 fal.ai 平台调用 Flux 等图像模型。支持模型：
-- flux-schnell：Flux 快速生成（默认），高质量，速度快（约10秒）
-- flux-dev：Flux 开发版，更高质量但较慢
-- flux-pro：Flux Pro，最高质量
-- flux-realism：Flux 写实风格
+	return `AI 图片生成工具，通过 fal.ai 平台调用 Flux 系列图像模型。
+
+## FLUX.1 模型
+- flux-schnell：快速生成（默认），高质量，约10秒
+- flux-dev：开发版，更高质量
+- flux-pro：Pro，最高质量
+- flux-realism：写实风格
 - stable-diffusion-v35-large：SD 3.5 Large
+
+## FLUX.2 模型（新一代，增强真实感与文字生成）
+**文生图：**
+- flux-2：FLUX.2 [dev]（推荐，增强真实感）
+- flux-2-pro：FLUX.2 [pro]（最高质量，超级写实）
+- flux-2-max：FLUX.2 [max]（SOTA，极致精度）
+- flux-2-flex：FLUX.2 [flex]（可调推理步数，增强排版）
+- flux-2-turbo：FLUX.2 Turbo（极速）
+- flux-2-flash：FLUX.2 Flash（闪电级速度）
+**图片编辑（需提供 image_url）：**
+- flux-2-edit：自然语言精确修改图片
+- flux-2-pro-edit：高质量图片编辑
+- flux-2-max-edit：SOTA 图片编辑
+- flux-2-flex-edit：多参考图编辑
+- flux-2-turbo-edit：极速编辑
+- flux-2-flash-edit：闪电编辑
+**LoRA 自定义风格：**
+- flux-2-lora：LoRA 文生图
+- flux-2-lora-edit：LoRA 图片编辑
+**Klein 轻量模型：**
+- flux-2-klein-4b / flux-2-klein-9b：轻量高速
+- flux-2-klein-realtime：实时生成
+**LoRA Gallery 预训练风格：**
+- flux-2-gallery-realism / flux-2-gallery-comic / flux-2-gallery-sketch
+- flux-2-gallery-vintage / flux-2-gallery-hdr / flux-2-gallery-satellite
+- flux-2-gallery-tryon / flux-2-gallery-background / flux-2-gallery-portrait / flux-2-gallery-angles / flux-2-gallery-staging
 
 操作：generate_image（生成单张图片）、batch_generate（批量生成多张图片，一次提交所有分镜）、check_status（检查状态）、list_images（列出已生成图片）。
 漫剧制作：用一致的 style 和 prompt 风格前缀保持角色和画面一致性。用 scene 字段标注分镜序号。`
@@ -48,7 +73,7 @@ func (t *ImageTool) Parameters() interface{} {
 			"action":          {Type: "string", Description: "Action: generate_image, batch_generate, check_status, list_images"},
 			"prompt":          {Type: "string", Description: "Image description. Be detailed: subject, action, composition, lighting, art style. For comics: include 'comic book style' or 'manga style' etc."},
 			"negative_prompt": {Type: "string", Description: "What to avoid. Example: 'blurry, low quality, text, watermark, deformed'"},
-			"model":           {Type: "string", Description: "Model: flux-schnell (default, fast ~10s), flux-dev (quality), flux-pro (best), flux-realism (realistic), stable-diffusion-v35-large"},
+			"model":           {Type: "string", Description: "Model: flux-schnell (default), flux-dev, flux-pro, flux-realism, stable-diffusion-v35-large, flux-2 (recommended), flux-2-pro, flux-2-max, flux-2-flex, flux-2-turbo, flux-2-flash, flux-2-edit, flux-2-pro-edit, flux-2-max-edit, flux-2-flex-edit, flux-2-turbo-edit, flux-2-flash-edit, flux-2-lora, flux-2-lora-edit, flux-2-klein-4b, flux-2-klein-9b, flux-2-klein-realtime, flux-2-gallery-realism, flux-2-gallery-comic, flux-2-gallery-sketch, flux-2-gallery-vintage, flux-2-gallery-hdr, flux-2-gallery-satellite, flux-2-gallery-tryon, flux-2-gallery-background, flux-2-gallery-portrait, flux-2-gallery-angles, flux-2-gallery-staging"},
 			"size":            {Type: "string", Description: "Image size: square_hd (1024x1024, default), portrait_4_3 (768x1024), portrait_16_9 (576x1024), landscape_4_3 (1024x768), landscape_16_9 (1024x576). Or WxH like 720x1280."},
 			"style":           {Type: "string", Description: "Style tag stored with record. Example: 'comic', 'manga', 'realistic', 'anime', 'watercolor'"},
 			"scene":           {Type: "string", Description: "Panel/scene label for ordering (e.g. 'panel_1', 'panel_2'). Used by compose_comic."},
@@ -106,18 +131,108 @@ func (t *ImageTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
 // modelToEndpoint maps user-facing model name to fal.ai endpoint
 func modelToEndpoint(m string) string {
 	switch m {
+	// ── FLUX.1 ──
 	case "flux-schnell":
-		return "fal-ai/flux-schnell"
+		return "fal-ai/flux/schnell"
 	case "flux-dev":
-		return "fal-ai/flux-dev"
+		return "fal-ai/flux/dev"
 	case "flux-pro":
 		return "fal-ai/flux-pro/v1.1"
 	case "flux-realism":
 		return "fal-ai/flux-realism"
 	case "stable-diffusion-v35-large":
 		return "fal-ai/stable-diffusion-v35-large"
+	// ── FLUX.2 text-to-image ──
+	case "flux-2":
+		return "fal-ai/flux-2"
+	case "flux-2-pro":
+		return "fal-ai/flux-2-pro"
+	case "flux-2-max":
+		return "fal-ai/flux-2-max"
+	case "flux-2-flex":
+		return "fal-ai/flux-2-flex"
+	case "flux-2-turbo":
+		return "fal-ai/flux-2/turbo"
+	case "flux-2-flash":
+		return "fal-ai/flux-2/flash"
+	// ── FLUX.2 image editing ──
+	case "flux-2-edit":
+		return "fal-ai/flux-2/edit"
+	case "flux-2-pro-edit":
+		return "fal-ai/flux-2-pro/edit"
+	case "flux-2-max-edit":
+		return "fal-ai/flux-2-max/edit"
+	case "flux-2-flex-edit":
+		return "fal-ai/flux-2-flex/edit"
+	case "flux-2-turbo-edit":
+		return "fal-ai/flux-2/turbo/edit"
+	case "flux-2-flash-edit":
+		return "fal-ai/flux-2/flash/edit"
+	// ── FLUX.2 LoRA ──
+	case "flux-2-lora":
+		return "fal-ai/flux-2/lora"
+	case "flux-2-lora-edit":
+		return "fal-ai/flux-2/lora/edit"
+	// ── FLUX.2 Klein ──
+	case "flux-2-klein-4b":
+		return "fal-ai/flux-2/klein/4b"
+	case "flux-2-klein-4b-base":
+		return "fal-ai/flux-2/klein/4b/base"
+	case "flux-2-klein-4b-edit":
+		return "fal-ai/flux-2/klein/4b/edit"
+	case "flux-2-klein-4b-lora":
+		return "fal-ai/flux-2/klein/4b/lora"
+	case "flux-2-klein-4b-base-edit":
+		return "fal-ai/flux-2/klein/4b/base/edit"
+	case "flux-2-klein-4b-base-lora":
+		return "fal-ai/flux-2/klein/4b/base/lora"
+	case "flux-2-klein-4b-base-edit-lora":
+		return "fal-ai/flux-2/klein/4b/base/edit/lora"
+	case "flux-2-klein-4b-edit-lora":
+		return "fal-ai/flux-2/klein/4b/edit/lora"
+	case "flux-2-klein-9b":
+		return "fal-ai/flux-2/klein/9b"
+	case "flux-2-klein-9b-base":
+		return "fal-ai/flux-2/klein/9b/base"
+	case "flux-2-klein-9b-edit":
+		return "fal-ai/flux-2/klein/9b/edit"
+	case "flux-2-klein-9b-lora":
+		return "fal-ai/flux-2/klein/9b/lora"
+	case "flux-2-klein-9b-base-edit":
+		return "fal-ai/flux-2/klein/9b/base/edit"
+	case "flux-2-klein-9b-base-lora":
+		return "fal-ai/flux-2/klein/9b/base/lora"
+	case "flux-2-klein-9b-base-edit-lora":
+		return "fal-ai/flux-2/klein/9b/base/edit/lora"
+	case "flux-2-klein-9b-edit-lora":
+		return "fal-ai/flux-2/klein/9b/edit/lora"
+	case "flux-2-klein-realtime":
+		return "fal-ai/flux-2/klein/realtime"
+	// ── FLUX.2 LoRA Gallery ──
+	case "flux-2-gallery-realism":
+		return "fal-ai/flux-2-lora-gallery/realism"
+	case "flux-2-gallery-angles":
+		return "fal-ai/flux-2-lora-gallery/multiple-angles"
+	case "flux-2-gallery-staging":
+		return "fal-ai/flux-2-lora-gallery/apartment-staging"
+	case "flux-2-gallery-tryon":
+		return "fal-ai/flux-2-lora-gallery/virtual-tryon"
+	case "flux-2-gallery-portrait":
+		return "fal-ai/flux-2-lora-gallery/face-to-full-portrait"
+	case "flux-2-gallery-background":
+		return "fal-ai/flux-2-lora-gallery/add-background"
+	case "flux-2-gallery-comic":
+		return "fal-ai/flux-2-lora-gallery/digital-comic-art"
+	case "flux-2-gallery-sketch":
+		return "fal-ai/flux-2-lora-gallery/ballpoint-pen-sketch"
+	case "flux-2-gallery-vintage":
+		return "fal-ai/flux-2-lora-gallery/sepia-vintage"
+	case "flux-2-gallery-satellite":
+		return "fal-ai/flux-2-lora-gallery/satellite-view-style"
+	case "flux-2-gallery-hdr":
+		return "fal-ai/flux-2-lora-gallery/hdr-style"
 	default:
-		return "fal-ai/flux-schnell"
+		return "fal-ai/flux/schnell"
 	}
 }
 
@@ -183,8 +298,8 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 		"num_images": n,
 	}
 
-	// Submit to fal.ai queue
-	requestID, err := t.submitToFal(apiKey, endpoint, body)
+	// Submit to fal.ai queue (supports StarAI proxy)
+	requestID, err := SubmitToFal(apiKey, endpoint, body)
 	if err != nil {
 		return "", fmt.Errorf("failed to submit image generation: %v", err)
 	}
@@ -206,17 +321,63 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	}
 	t.db.Create(&record)
 
-	// Poll in background
-	go t.pollAndDownload(apiKey, endpoint, requestID, record.ID)
+	// Audit log for reconciliation
+	genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+		UserID: userID, ConversationID: convID,
+		Provider: "fal", Model: args.Model, Type: "image",
+		TaskID: requestID, RecordID: record.ID,
+		Prompt: args.Prompt, Status: "running",
+	})
+
+	// Block and wait for result (up to 3 min) to prevent LLM hallucinating fake URLs
+	result, err := PollFalStatus(apiKey, endpoint, requestID, 3*time.Minute)
+	if err != nil {
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
+		return "", fmt.Errorf("图片生成失败: %v", err)
+	}
+
+	// Extract image URL from result
+	imageURL := extractFalImageURL(result)
+	if imageURL == "" {
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", "no image URL in result")
+		return toJSON(map[string]interface{}{
+			"action":  "generate_image",
+			"status":  "failed",
+			"message": "图片生成完成但无法提取图片 URL",
+		}), nil
+	}
+
+	localURL := t.downloadImage(imageURL, record.ID)
+	if localURL == "" {
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", imageURL, "download to local failed")
+		return toJSON(map[string]interface{}{
+			"action":  "generate_image",
+			"status":  "failed",
+			"message": "图片已生成，但同步到本地图片服务失败，请重试。",
+		}), nil
+	}
+	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
+	if localURL != "" {
+		updates["local_url"] = localURL
+	}
+	t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(updates)
+	UpdateGenLog(t.db, genLogID, "succeeded", localURL, "")
+
+	displayURL := localURL
+	log.Printf("[ImageTool] Image %s completed: %s", record.ID, displayURL)
 
 	return toJSON(map[string]interface{}{
-		"action":   "generate_image",
-		"status":   "submitted",
-		"image_id": record.ID,
-		"model":    args.Model,
-		"scene":    args.Scene,
-		"size":     args.Size,
-		"message":  fmt.Sprintf("图片生成已提交（模型: %s）。flux-schnell约10秒完成，用 check_status 或 list_images 查看进度。", args.Model),
+		"action":    "generate_image",
+		"status":    "succeeded",
+		"image_id":  record.ID,
+		"image_url": displayURL,
+		"model":     args.Model,
+		"scene":     args.Scene,
+		"size":      args.Size,
+		"message":   "图片已生成完成，结果已保存到本地图片服务。",
 	}), nil
 }
 
@@ -290,7 +451,7 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 			"num_images": 1,
 		}
 
-		requestID, err := t.submitToFal(apiKey, endpoint, body)
+		requestID, err := SubmitToFal(apiKey, endpoint, body)
 		if err != nil {
 			log.Printf("[ImageTool] batch: failed to submit %s: %v", scene, err)
 			continue
@@ -311,8 +472,16 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 		}
 		t.db.Create(&record)
 
+		// Audit log for reconciliation
+		genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+			UserID: userID, ConversationID: convID,
+			Provider: "fal", Model: args.Model, Type: "image",
+			TaskID: requestID, RecordID: record.ID,
+			Prompt: prompt, Status: "running",
+		})
+
 		// Poll in background
-		go t.pollAndDownload(apiKey, endpoint, requestID, record.ID)
+		go t.pollAndDownloadWithLog(apiKey, endpoint, requestID, record.ID, genLogID) // batch: background poll is OK
 
 		results = append(results, map[string]interface{}{
 			"image_id": record.ID,
@@ -333,149 +502,92 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 	}), nil
 }
 
-// submitToFal submits a request to fal.ai queue API and returns the request_id
-func (t *ImageTool) submitToFal(apiKey, endpoint string, body map[string]interface{}) (string, error) {
-	bodyBytes, _ := json.Marshal(body)
-	url := fmt.Sprintf("https://queue.fal.run/%s", endpoint)
-
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Key "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("fal API error (HTTP %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("failed to parse response: %s", string(respBody))
-	}
-
-	requestID, _ := result["request_id"].(string)
-	if requestID == "" {
-		return "", fmt.Errorf("no request_id in response: %s", string(respBody))
-	}
-	return requestID, nil
-}
-
-// pollAndDownload polls fal.ai queue status and downloads the result image
-func (t *ImageTool) pollAndDownload(apiKey, endpoint, requestID, recordID string) {
-	deadline := time.Now().Add(5 * time.Minute)
-	interval := 3 * time.Second
-
-	for time.Now().Before(deadline) {
-		time.Sleep(interval)
-
-		statusURL := fmt.Sprintf("https://queue.fal.run/%s/requests/%s/status", endpoint, requestID)
-		req, _ := http.NewRequest("GET", statusURL, nil)
-		req.Header.Set("Authorization", "Key "+apiKey)
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Printf("[ImageTool] Poll error for %s: %v", requestID, err)
-			continue
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		var status map[string]interface{}
-		json.Unmarshal(body, &status)
-
-		statusStr, _ := status["status"].(string)
-		log.Printf("[ImageTool] Poll %s: status=%s", requestID, statusStr)
-
-		if statusStr == "COMPLETED" {
-			// Fetch result
-			imageURL, err := t.fetchResult(apiKey, endpoint, requestID)
-			if err != nil {
-				log.Printf("[ImageTool] Failed to fetch result for %s: %v", requestID, err)
-				t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-					"status": "failed",
-				})
-				return
-			}
-
-			// Download image locally
-			localURL := t.downloadImage(imageURL, recordID)
-
-			updates := map[string]interface{}{
-				"status":    "succeeded",
-				"image_url": imageURL,
-			}
-			if localURL != "" {
-				updates["local_url"] = localURL
-			}
-			t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
-			log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
-			return
-		}
-
-		if statusStr != "IN_QUEUE" && statusStr != "IN_PROGRESS" {
-			t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-				"status": "failed",
-			})
-			return
-		}
-	}
-
-	// Timeout
-	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-		"status": "failed",
-	})
-}
-
-// fetchResult gets the completed result from fal.ai
-func (t *ImageTool) fetchResult(apiKey, endpoint, requestID string) (string, error) {
-	url := fmt.Sprintf("https://queue.fal.run/%s/requests/%s", endpoint, requestID)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Key "+apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("fal API error (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	var result map[string]interface{}
-	json.Unmarshal(body, &result)
-
+// extractFalImageURL extracts the image URL from a fal.ai completed result.
+func extractFalImageURL(result map[string]interface{}) string {
 	// Flux models: result.images[0].url
 	if images, ok := result["images"].([]interface{}); ok && len(images) > 0 {
 		if img, ok := images[0].(map[string]interface{}); ok {
 			if u, ok := img["url"].(string); ok && u != "" {
-				return u, nil
+				return u
 			}
 		}
 	}
 	// SD models: result.image.url
 	if img, ok := result["image"].(map[string]interface{}); ok {
 		if u, ok := img["url"].(string); ok && u != "" {
-			return u, nil
+			return u
 		}
 	}
+	return ""
+}
 
-	return "", fmt.Errorf("no image URL in result: %s", string(body))
+// pollAndDownload polls fal.ai queue status and downloads the result image (used by batch_generate)
+func (t *ImageTool) pollAndDownload(apiKey, endpoint, requestID, recordID string) {
+	result, err := PollFalStatus(apiKey, endpoint, requestID, 5*time.Minute)
+	if err != nil {
+		log.Printf("[ImageTool] Poll failed for %s: %v", requestID, err)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		return
+	}
+
+	imageURL := extractFalImageURL(result)
+	if imageURL == "" {
+		log.Printf("[ImageTool] No image URL in result for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		return
+	}
+
+	localURL := t.downloadImage(imageURL, recordID)
+	if localURL == "" {
+		log.Printf("[ImageTool] Local sync failed for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		return
+	}
+	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
+	if localURL != "" {
+		updates["local_url"] = localURL
+	}
+	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
+	log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
+}
+
+// pollAndDownloadWithLog wraps pollAndDownload with GenerationLog status updates
+func (t *ImageTool) pollAndDownloadWithLog(apiKey, endpoint, requestID, recordID, genLogID string) {
+	result, err := PollFalStatus(apiKey, endpoint, requestID, 5*time.Minute)
+	if err != nil {
+		log.Printf("[ImageTool] Poll failed for %s: %v", requestID, err)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
+		return
+	}
+
+	imageURL := extractFalImageURL(result)
+	if imageURL == "" {
+		log.Printf("[ImageTool] No image URL in result for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", "", "no image URL in result")
+		return
+	}
+
+	localURL := t.downloadImage(imageURL, recordID)
+	if localURL == "" {
+		log.Printf("[ImageTool] Local sync failed for %s", requestID)
+		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
+		UpdateGenLog(t.db, genLogID, "failed", imageURL, "download to local failed")
+		return
+	}
+	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
+	if localURL != "" {
+		updates["local_url"] = localURL
+	}
+	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
+	UpdateGenLog(t.db, genLogID, "succeeded", localURL, "")
+	log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
 }
 
 // downloadImage downloads a remote image to /app/images/ and returns the local serve URL
 func (t *ImageTool) downloadImage(remoteURL, recordID string) string {
-	imgDir := "/app/images"
-	os.MkdirAll(imgDir, 0755)
+	imgDir := ImagesDir()
 
 	ext := ".png"
 	lower := strings.ToLower(remoteURL)

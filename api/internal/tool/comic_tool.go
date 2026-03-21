@@ -207,8 +207,7 @@ func (t *ComicTool) composeComic(ctx context.Context, args comicArgs) (string, e
 	}
 
 	// Save output
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputFilename := fmt.Sprintf("comic_%s.mp4", uuid.New().String()[:8])
 	outputPath := filepath.Join(outputDir, outputFilename)
 

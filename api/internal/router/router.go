@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	agentpkg "github.com/yinhe/starclaw/internal/agent"
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
+	"github.com/yinhe/starclaw/internal/billing"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
@@ -68,6 +69,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		corsConfig.AllowOrigins = []string{
 			"https://starclaw.me", "https://app.starclaw.me",
 			"https://api.starclaw.me", "https://www.starclaw.me",
+			"https://star-ai.net", "https://www.star-ai.net",
+			"https://app.star-ai.net", "https://api.star-ai.net",
 			"https://starclaw.net", "https://www.starclaw.net",
 			"http://localhost:5173", "http://localhost:3000",
 		}
@@ -100,10 +103,13 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	if envURL := os.Getenv("STAR_AI_BASE_URL"); envURL != "" {
 		starAIBaseURL = envURL
 	}
-	tool.InitStarAIProxy(identity, starAIBaseURL)
+	tool.InitStarAIProxy(identity, starAIBaseURL, db)
 
 	// Tool registry
 	browserMgr := browser.NewManager()
+	// Initialize data directory from config (must be before tool creation)
+	tool.SetDataDir(cfg.Storage.DataDir)
+
 	sandboxMgr := sandbox.NewManager()
 	processMgr := sandbox.NewProcessManager()
 	toolRegistry := tool.NewRegistry()
@@ -169,8 +175,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Auto-detect and register MCP Bridge (host control)
 	mcp.AutoRegisterBridge(toolRegistry)
 
+	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
+	// Prefer dedicated swarm.node_token for Queen internal API; fall back to jwt.secret
+	queenNodeToken := cfg.Swarm.NodeToken
+	if queenNodeToken == "" {
+		queenNodeToken = cfg.JWT.Secret
+	}
+	queenClient := billing.NewQueenClient(cfg.Swarm.QueenURL, queenNodeToken, identity.NodeID)
+	billingGW := billing.NewGateway(db, queenClient, identity.NodeID)
+	if billingGW.IsEnabled() {
+		toolRegistry.SetExecuteHook(billingGW.ExecuteHook)
+		v1.SetBillingQueenClient(queenClient)
+		log.Printf("[router] Billing gateway enabled for node %s", identity.NodeID)
+	}
+
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &billing.ToolUsageRecord{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
@@ -456,10 +476,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Browser screenshots (public, secured by UUID)
 		apiV1.GET("/screenshots/:id", v1.ServeScreenshot)
 
+		// Video clips (individual generated clips, public, secured by UUID filename)
+		apiV1.GET("/videos/clips/:filename", func(c *gin.Context) {
+			filename := c.Param("filename")
+			filePath := filepath.Join(tool.VideosDir(), filename)
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				c.JSON(404, gin.H{"error": "video clip not found"})
+				return
+			}
+			c.Header("Content-Disposition", "attachment; filename="+filename)
+			c.File(filePath)
+		})
+
 		// Merged videos (public, secured by UUID filename)
 		apiV1.GET("/videos/merged/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
-			filePath := "/app/merged_videos/" + filename
+			filePath := filepath.Join(tool.MergedVideosDir(), filename)
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				c.JSON(404, gin.H{"error": "merged video not found"})
 				return
@@ -471,7 +503,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Video thumbnails (public, secured by UUID filename)
 		apiV1.GET("/videos/thumbnails/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
-			filePath := "/app/thumbnails/" + filename
+			filePath := filepath.Join(tool.ThumbnailsDir(), filename)
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				c.JSON(404, gin.H{"error": "thumbnail not found"})
 				return
@@ -1024,6 +1056,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/queen/status", queenHandler.GetStatus)
 			protected.POST("/queen/link", queenHandler.Link)
 			protected.POST("/queen/link-claw", queenHandler.LinkWithClaw)
+			protected.POST("/queen/auto-register", queenHandler.AutoRegister)
 			protected.POST("/queen/unlink", queenHandler.Unlink)
 
 			// Node Identity & Peer Networking

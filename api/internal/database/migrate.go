@@ -68,6 +68,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&agentpkg.LoRAAdapter{},
 		&agentpkg.TrainingSample{},
 		&agentpkg.DistillationJob{},
+		&model.GenerationLog{},
+		&model.ImageRecord{},
+		&model.MusicRecord{},
 	); err != nil {
 		return err
 	}

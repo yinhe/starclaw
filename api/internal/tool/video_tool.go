@@ -40,22 +40,25 @@ func (t *VideoTool) Description() string {
 - wan2.6-t2v: 阿里云万相文生视频（默认），最高10秒
 - wan2.6-i2v: 阿里云万相图生视频，需要img_url
 - veo3: Google Veo 3 文生视频 (fal.ai)，电影级画质
-- sora2: OpenAI Sora 2 文生视频 (fal.ai)
+- veo3.1: Google Veo 3.1 文生视频 (fal.ai)，最新最强，支持4-8秒，原生音频
+- sora2: OpenAI Sora 2 Pro 文生视频 (fal.ai)，支持5-20秒，原生音频
 - kling-v3: 快手可灵 v3 文生视频 (fal.ai)，支持3-15秒，原生音频
 - minimax-video: MiniMax 视频生成 (fal.ai)
-- luma: Luma Dream Machine (fal.ai)
+- luma: Luma Dream Machine Ray-2 (fal.ai)
 
-操作：generate_video、check_status、merge_videos、list_models、extract_last_frame
-制作流程：1) 编写脚本 2) 逐场景调用 generate_video（用 ref_video_id 衔接上一场景尾帧，用 style_prefix 统一风格） 3) 所有场景完成后自动合成最终视频（带 crossfade 转场效果）。`
+操作：generate_video、check_status、merge_videos、list_models、extract_last_frame、list_videos
+制作流程：1) 编写脚本 2) 逐场景调用 generate_video（用 ref_video_id 衔接上一场景尾帧，用 style_prefix 统一风格） 3) 所有场景完成后自动合成最终视频（带 crossfade 转场效果）。
+
+list_videos 可以查看当前会话或全局已生成的视频，避免重复生成。`
 }
 
 func (t *VideoTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame"},
+			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame, list_videos"},
 			"prompt":       {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
-			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, sora2, kling-v3, minimax-video, luma"},
+			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, veo3.1, sora2, kling-v3, minimax-video, luma"},
 			"img_url":      {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
 			"size":         {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
 			"duration":     {Type: "string", Description: "Video duration in seconds: 5 or 10. Default: 5"},
@@ -64,6 +67,7 @@ func (t *VideoTool) Parameters() interface{} {
 			"task_ids":     {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
 			"style_prefix": {Type: "string", Description: "Shared style prefix prepended to all scene prompts for visual consistency (e.g. 'cinematic film style, warm color grading, shallow depth of field'). Stored with the record."},
 			"ref_video_id": {Type: "string", Description: "Previous scene's video record ID. Auto-extracts its last frame as img_url for i2v, ensuring visual continuity between scenes."},
+			"category":     {Type: "string", Description: "Video category: general (default), ad, short_drama, short_film, mv, tutorial. Used for organization and filtering."},
 		},
 		Required: []string{"action"},
 	}
@@ -81,15 +85,17 @@ type videoArgs struct {
 	TaskIDs     string `json:"task_ids"`
 	StylePrefix string `json:"style_prefix"`
 	RefVideoID  string `json:"ref_video_id"`
+	Category    string `json:"category"`
 }
 
 // fal.ai video model endpoints
 var falVideoEndpoints = map[string]string{
 	"veo3":          "fal-ai/veo3",
-	"sora2":         "fal-ai/sora",
+	"veo3.1":        "fal-ai/veo3.1",
+	"sora2":         "fal-ai/sora-2/text-to-video/pro",
 	"kling-v3":      "fal-ai/kling-video/v3/pro/text-to-video",
 	"minimax-video": "fal-ai/minimax-video/video-01-live",
-	"luma":          "fal-ai/luma-dream-machine",
+	"luma":          "fal-ai/luma-dream-machine/ray-2",
 }
 
 func (t *VideoTool) Execute(ctx context.Context, argsJSON string) (string, error) {
@@ -108,8 +114,10 @@ func (t *VideoTool) Execute(ctx context.Context, argsJSON string) (string, error
 		return t.listModels()
 	case "extract_last_frame":
 		return t.extractLastFrame(ctx, args)
+	case "list_videos":
+		return t.listVideos(ctx, args)
 	default:
-		return "", fmt.Errorf("unknown action: %s. Use: generate_video, check_status, merge_videos, list_models, extract_last_frame", args.Action)
+		return "", fmt.Errorf("unknown action: %s. Use: generate_video, check_status, merge_videos, list_models, extract_last_frame, list_videos", args.Action)
 	}
 }
 
@@ -130,7 +138,12 @@ func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, 
 	if cid, ok := ctx.Value(CtxKeyConversationID).(string); ok {
 		convID = cid
 	}
-	if args.Model == "" {
+	// Auto-redirect deprecated/invalid model names
+	switch args.Model {
+	case "kling-v2", "kling-v1", "kling":
+		log.Printf("[VideoTool] Model %q is deprecated/invalid, auto-redirecting to kling-v3", args.Model)
+		args.Model = "kling-v3"
+	case "":
 		args.Model = "wan2.6-t2v"
 	}
 	if args.Size == "" {
@@ -215,7 +228,7 @@ func (t *VideoTool) getLastFrameURL(recordOrTaskID string) (string, error) {
 		seekTime = 0
 	}
 
-	frameDir := "/app/images"
+	frameDir := ImagesDir()
 	os.MkdirAll(frameDir, 0755)
 	frameFile := fmt.Sprintf("lastframe_%s.jpg", rec.ID)
 	framePath := filepath.Join(frameDir, frameFile)
@@ -303,21 +316,35 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 
 	log.Printf("[VideoTool] Wan submitted: %s (model=%s, dur=%ds, scene=%s)", taskID, args.Model, duration, args.Scene)
 
+	category := args.Category
+	if category == "" {
+		category = "general"
+	}
 	record := model.VideoRecord{
 		UserID: userID, ConversationID: convID, TaskID: taskID,
 		Model: args.Model, Prompt: args.Prompt, ImgURL: args.ImgURL,
 		Size: args.Size, Duration: duration, Scene: args.Scene, Status: "running",
+		Category: category,
 	}
 	t.db.Create(&record)
 	if args.Scene != "" {
 		t.ensureVideoWorkflow(userID, convID)
 	}
 
+	// Audit log for reconciliation
+	genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+		UserID: userID, ConversationID: convID,
+		Provider: "dashscope", Model: args.Model, Type: "video",
+		TaskID: taskID, RecordID: record.ID,
+		Prompt: args.Prompt, Status: "running",
+	})
+
 	go func() {
 		videoURL, _, err := t.pollDashScopeTask(context.Background(), apiKey, baseHost, taskID, 10*time.Minute)
 		if err != nil {
 			log.Printf("[VideoTool] Task %s failed: %v", taskID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{"status": "failed"})
+			UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
 			return
 		}
 		// Save clip locally to prevent CDN URL expiration during merge
@@ -330,6 +357,7 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{
 			"video_url": savedURL, "status": "succeeded",
 		})
+		UpdateGenLog(t.db, genLogID, "succeeded", savedURL, "")
 		var rec model.VideoRecord
 		if t.db.Where("task_id = ?", taskID).First(&rec).Error == nil {
 			ExtractThumbnail(t.db, rec.ID, savedURL)
@@ -342,7 +370,7 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 	return toJSON(map[string]interface{}{
 		"action": "generate_video", "status": "submitted", "task_id": taskID,
 		"model": args.Model, "scene": args.Scene,
-		"message": fmt.Sprintf("视频任务已提交！任务ID: %s，模型: %s。片段完成后会自动合成。", taskID, args.Model),
+		"message": fmt.Sprintf("视频任务已提交。任务ID: %s，模型: %s。可用 check_status 查看进度。", taskID, args.Model),
 	}), nil
 }
 
@@ -358,9 +386,18 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		return "", fmt.Errorf("unknown fal.ai video model: %s", args.Model)
 	}
 
-	// kling-v3: switch to i2v endpoint when image is provided
+	// Switch to i2v endpoint when image is provided
 	if args.Model == "kling-v3" && args.ImgURL != "" {
 		endpoint = "fal-ai/kling-video/v3/pro/image-to-video"
+	}
+	if args.Model == "luma" && args.ImgURL != "" {
+		endpoint = "fal-ai/luma-dream-machine/ray-2/image-to-video"
+	}
+	if args.Model == "sora2" && args.ImgURL != "" {
+		endpoint = "fal-ai/sora-2/image-to-video/pro"
+	}
+	if args.Model == "veo3.1" && args.ImgURL != "" {
+		endpoint = "fal-ai/veo3.1/image-to-video"
 	}
 
 	body := map[string]interface{}{
@@ -383,21 +420,51 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 		body["cfg_scale"] = 0.5
 	case "veo3":
 		// veo3 auto-determines duration, don't send it
+	case "veo3.1":
+		// veo3.1 accepts "4s", "6s", "8s"
+		if duration <= 4 {
+			body["duration"] = "4s"
+		} else if duration <= 6 {
+			body["duration"] = "6s"
+		} else {
+			body["duration"] = "8s"
+		}
+		body["generate_audio"] = true
+	case "sora2":
+		// sora2 accepts "5s", "10s", "15s", "20s"
+		switch {
+		case duration <= 5:
+			body["duration"] = "5s"
+		case duration <= 10:
+			body["duration"] = "10s"
+		case duration <= 15:
+			body["duration"] = "15s"
+		default:
+			body["duration"] = "20s"
+		}
+		body["generate_audio"] = true
 	case "luma":
-		// luma auto-determines duration
+		// Luma Ray-2: uses aspect_ratio, no duration/width/height
+		delete(body, "duration")
 	default:
 		body["duration"] = fmt.Sprintf("%d", duration)
 	}
 
 	if args.ImgURL != "" {
-		if args.Model == "kling-v3" {
+		switch args.Model {
+		case "kling-v3":
 			body["start_image_url"] = args.ImgURL
-		} else {
+		case "luma":
+			body["image_url"] = args.ImgURL
+		default:
 			body["image_url"] = args.ImgURL
 		}
 	}
-	if args.Model == "kling-v3" {
-		// kling-v3 uses aspect_ratio instead of width/height
+
+	// Per-model resolution/aspect_ratio handling
+	switch args.Model {
+	case "kling-v3", "luma", "veo3.1", "sora2":
+		// These models use aspect_ratio instead of width/height
 		sizeParts := strings.Split(args.Size, "*")
 		if len(sizeParts) == 2 {
 			w, _ := strconv.Atoi(sizeParts[0])
@@ -410,7 +477,7 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 				body["aspect_ratio"] = "1:1"
 			}
 		}
-	} else {
+	default:
 		sizeParts := strings.Split(args.Size, "*")
 		if len(sizeParts) == 2 {
 			if w, err := strconv.Atoi(sizeParts[0]); err == nil {
@@ -429,40 +496,59 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 
 	log.Printf("[VideoTool] fal.ai submitted: %s (model=%s, scene=%s)", requestID, args.Model, args.Scene)
 
+	falCategory := args.Category
+	if falCategory == "" {
+		falCategory = "general"
+	}
 	record := model.VideoRecord{
 		UserID: userID, ConversationID: convID, TaskID: requestID,
 		Model: args.Model, Prompt: args.Prompt, ImgURL: args.ImgURL,
 		Size: args.Size, Duration: duration, Scene: args.Scene, Status: "running",
+		Category: falCategory,
 	}
 	t.db.Create(&record)
 	if args.Scene != "" {
 		t.ensureVideoWorkflow(userID, convID)
 	}
 
+	// Audit log for reconciliation
+	genLogID := LogGeneration(t.db, apiKey, GenLogOpts{
+		UserID: userID, ConversationID: convID,
+		Provider: "fal", Model: args.Model, Type: "video",
+		TaskID: requestID, RecordID: record.ID,
+		Prompt: args.Prompt, Status: "running",
+	})
+
 	go func() {
+		log.Printf("[VideoTool] fal.ai polling started: %s (model=%s, endpoint=%s)", requestID, args.Model, endpoint)
 		result, err := PollFalStatus(apiKey, endpoint, requestID, 10*time.Minute)
 		if err != nil {
-			log.Printf("[VideoTool] fal.ai %s failed: %v", requestID, err)
+			log.Printf("[VideoTool] fal.ai %s polling failed: %v", requestID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
+			UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
 			return
 		}
+		log.Printf("[VideoTool] fal.ai %s poll completed, extracting video URL", requestID)
 		videoURL := extractFalVideoURL(result)
 		if videoURL == "" {
+			log.Printf("[VideoTool] fal.ai %s: extractFalVideoURL returned empty, marking failed", requestID)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
+			UpdateGenLog(t.db, genLogID, "failed", "", "no video URL in result")
 			return
 		}
-		// Download to local storage
-		outputDir := "/app/merged_videos"
-		os.MkdirAll(outputDir, 0755)
+		log.Printf("[VideoTool] fal.ai %s: got video URL, downloading to local...", requestID)
+		// Download to local storage (clips go to videos/ dir)
+		outputDir := VideosDir()
 		localFile := fmt.Sprintf("fal_%s.mp4", uuid.New().String()[:8])
 		localPath := filepath.Join(outputDir, localFile)
 		savedURL := videoURL
 		if err := DownloadFile(videoURL, localPath); err == nil {
-			savedURL = fmt.Sprintf("/v1/videos/merged/%s", localFile)
+			savedURL = VideoClipURL(localFile)
 		}
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{
 			"video_url": savedURL, "status": "succeeded",
 		})
+		UpdateGenLog(t.db, genLogID, "succeeded", savedURL, "")
 		var rec model.VideoRecord
 		if t.db.Where("task_id = ?", requestID).First(&rec).Error == nil {
 			ExtractThumbnail(t.db, rec.ID, savedURL)
@@ -475,7 +561,7 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 	return toJSON(map[string]interface{}{
 		"action": "generate_video", "status": "submitted", "task_id": requestID,
 		"model": args.Model, "scene": args.Scene,
-		"message": fmt.Sprintf("视频任务已提交！请求ID: %s，模型: %s (fal.ai)。", requestID, args.Model),
+		"message": fmt.Sprintf("视频任务已提交。任务ID: %s，模型: %s。可用 check_status 查看进度。", requestID, args.Model),
 	}), nil
 }
 
@@ -500,7 +586,18 @@ func extractFalVideoURL(result map[string]interface{}) string {
 			}
 		}
 	}
+	// Debug: log the full result structure when no video URL found
+	resJSON, _ := json.Marshal(result)
+	log.Printf("[VideoTool] extractFalVideoURL: no video URL found in result keys=%v snippet=%.500s", keysOf(result), string(resJSON))
 	return ""
+}
+
+func keysOf(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // ── Check Status ──
@@ -511,23 +608,60 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 	}
 	// Check DB first
 	var rec model.VideoRecord
-	if err := t.db.Where("task_id = ? OR id = ?", args.TaskID, args.TaskID).First(&rec).Error; err == nil {
+	dbFound := t.db.Where("task_id = ? OR id = ?", args.TaskID, args.TaskID).First(&rec).Error == nil
+	if dbFound {
 		if rec.Status == "succeeded" {
 			return toJSON(map[string]interface{}{
 				"action": "check_status", "task_id": rec.TaskID,
+				"record_id": rec.ID, "scene": rec.Scene,
 				"task_status": "SUCCEEDED", "video_url": rec.VideoURL,
-				"message": "视频已就绪！",
+				"message": fmt.Sprintf("视频已就绪！record_id=%s 可直接用于 compose_pro 的 video_id", rec.ID),
 			}), nil
 		}
 		if rec.Status == "failed" {
 			return toJSON(map[string]interface{}{
 				"action": "check_status", "task_id": rec.TaskID,
+				"record_id": rec.ID, "scene": rec.Scene,
 				"task_status": "FAILED", "message": "视频生成失败",
 			}), nil
 		}
+		// Record exists with running/pending status — wait for background goroutine
+		// For fal.ai models, background goroutine is already polling; just re-check DB.
+		// For DashScope models, we also re-check DB (background goroutine polls too).
+		deadline := time.Now().Add(3 * time.Minute)
+		for time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+			var updated model.VideoRecord
+			if err := t.db.Where("task_id = ? OR id = ?", args.TaskID, args.TaskID).First(&updated).Error; err == nil {
+				if updated.Status == "succeeded" {
+					return toJSON(map[string]interface{}{
+						"action": "check_status", "task_id": updated.TaskID,
+						"record_id": updated.ID, "scene": updated.Scene,
+						"task_status": "SUCCEEDED", "video_url": updated.VideoURL,
+						"message": fmt.Sprintf("视频已就绪！record_id=%s 可直接用于 compose_pro 的 video_id", updated.ID),
+					}), nil
+				}
+				if updated.Status == "failed" {
+					return toJSON(map[string]interface{}{
+						"action": "check_status", "task_id": updated.TaskID,
+						"record_id": updated.ID, "scene": updated.Scene,
+						"task_status": "FAILED", "message": "视频生成失败",
+					}), nil
+				}
+			}
+		}
+		return toJSON(map[string]interface{}{
+			"action": "check_status", "task_id": rec.TaskID,
+			"record_id": rec.ID, "scene": rec.Scene,
+			"task_status": "RUNNING", "message": "视频仍在生成中（后台轮询中），请稍后再查。",
+		}), nil
 	}
 
-	// Poll DashScope
+	// No DB record — try DashScope polling as fallback (old-style tasks without DB record)
 	userID := ""
 	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
 		userID = uid
@@ -544,9 +678,13 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 				t.db.Model(&model.VideoRecord{}).Where("task_id = ?", args.TaskID).Updates(map[string]interface{}{
 					"video_url": videoURL, "status": "succeeded",
 				})
+				var updated model.VideoRecord
+				t.db.Where("task_id = ?", args.TaskID).First(&updated)
 				return toJSON(map[string]interface{}{
 					"action": "check_status", "task_id": args.TaskID,
-					"task_status": "SUCCEEDED", "video_url": videoURL, "message": "视频已就绪！",
+					"record_id": updated.ID, "scene": updated.Scene,
+					"task_status": "SUCCEEDED", "video_url": videoURL,
+					"message": fmt.Sprintf("视频已就绪！record_id=%s 可直接用于 compose_pro 的 video_id", updated.ID),
 				}), nil
 			}
 			if status == "FAILED" {
@@ -565,7 +703,7 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 
 	return toJSON(map[string]interface{}{
 		"action": "check_status", "task_id": args.TaskID,
-		"task_status": "RUNNING", "message": "视频仍在生成中，请稍后再查。",
+		"task_status": "NOT_FOUND", "message": fmt.Sprintf("未找到任务 %s，请检查 task_id 是否正确。可能已过期或从未创建。", args.TaskID),
 	}), nil
 }
 
@@ -575,8 +713,9 @@ func (t *VideoTool) listModels() (string, error) {
 	models := []map[string]interface{}{
 		{"name": "wan2.6-t2v", "type": "text-to-video", "provider": "dashscope", "durations": "5s, 10s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相文生视频。通用首选，速度快，3种画幅", "best_for": "通用场景、第一个镜头、快速迭代"},
 		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "durations": "5s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相图生视频，需要img_url。用于尾帧衔接保持场景连续", "best_for": "场景衔接（上一场景尾帧→下一场景起始帧）"},
-		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质，最强画面质量", "best_for": "远景建立镜头、电影级MV、风景空镜"},
-		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2，强运动理解，支持长视频", "best_for": "复杂动作、长镜头、20秒连续画面"},
+		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质", "best_for": "远景建立镜头、电影级MV、风景空镜"},
+		{"name": "veo3.1", "type": "text-to-video", "provider": "fal.ai", "durations": "4s, 6s, 8s", "resolutions": "720p/1080p", "quality": "cinematic+", "speed": "medium", "description": "Google Veo 3.1，最新最强视频模型，支持原生音频、图生视频", "best_for": "电影级画质+音频、高质量i2v场景衔接"},
+		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2 Pro，强运动理解，支持长视频，原生音频", "best_for": "复杂动作、长镜头、20秒连续画面"},
 		{"name": "kling-v3", "type": "text-to-video", "provider": "fal.ai", "durations": "3-15s", "resolutions": "16:9, 9:16, 1:1", "quality": "cinematic", "speed": "medium", "description": "快手可灵 v3 Pro，电影级画质，原生音频生成，支持3-15秒", "best_for": "人物特写、动态场景、角色动作、带声音视频"},
 		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "1280*720", "quality": "good", "speed": "fast", "description": "MiniMax Video-01-Live，快速生成", "best_for": "快速出片、动画风格"},
 		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "最高1080p", "quality": "artistic", "speed": "medium", "description": "Luma Dream Machine，梦幻艺术风格", "best_for": "艺术风格、梦幻场景、概念视觉"},
@@ -877,8 +1016,7 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 	}
 
 	mergeID := uuid.New().String()
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputPath := filepath.Join(outputDir, mergeID+".mp4")
 
 	if err := ffmpegMergeClips(ctx, clipPaths, outputPath); err != nil {
@@ -906,7 +1044,8 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 		t.db.Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").Find(&oldMerges)
 		for _, om := range oldMerges {
 			if om.VideoURL != "" {
-				os.Remove(filepath.Join("/app/merged_videos", filepath.Base(om.VideoURL)))
+				// Try removing from both merged and clips dirs
+				os.Remove(filepath.Join(MergedVideosDir(), filepath.Base(om.VideoURL)))
 			}
 		}
 		if len(oldMerges) > 0 {
@@ -988,7 +1127,7 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 		log.Printf("[VideoTool] Re-merge: %d clips now vs %d in previous merge", newSucceeded, len(existingClipIDs))
 		// Delete old merged file
 		if existingMerge.VideoURL != "" {
-			oldFile := filepath.Join("/app/merged_videos", filepath.Base(existingMerge.VideoURL))
+			oldFile := filepath.Join(MergedVideosDir(), filepath.Base(existingMerge.VideoURL))
 			os.Remove(oldFile)
 		}
 		t.db.Unscoped().Delete(&existingMerge)
@@ -1034,8 +1173,7 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 	}
 
 	mergeID := uuid.New().String()
-	outputDir := "/app/merged_videos"
-	os.MkdirAll(outputDir, 0755)
+	outputDir := MergedVideosDir()
 	outputPath := filepath.Join(outputDir, mergeID+".mp4")
 
 	ctx := context.Background()
@@ -1066,6 +1204,84 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 // RetryNarration is kept as stub for backward compatibility (narration moved to dubbing tool)
 func (t *VideoTool) RetryNarration(userID string) {
 	// No-op: narration is now handled by the dubbing tool
+}
+
+// ── List Videos ──
+
+// listVideos returns existing video records for the current conversation or user,
+// so the AI can discover already-generated videos and avoid regenerating them.
+func (t *VideoTool) listVideos(ctx context.Context, args videoArgs) (string, error) {
+	userID := ""
+	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
+		userID = uid
+	}
+	convID := ""
+	if cid, ok := ctx.Value(CtxKeyConversationID).(string); ok {
+		convID = cid
+	}
+
+	var records []model.VideoRecord
+	q := t.db.Order("created_at DESC").Limit(50)
+
+	if convID != "" {
+		// Show videos in current conversation first
+		q = q.Where("conversation_id = ?", convID)
+	} else if userID != "" {
+		q = q.Where("user_id = ?", userID)
+	} else {
+		return "", fmt.Errorf("no user or conversation context")
+	}
+	q.Find(&records)
+
+	type videoSummary struct {
+		ID        string `json:"id"`
+		TaskID    string `json:"task_id"`
+		Model     string `json:"model"`
+		Scene     string `json:"scene"`
+		Status    string `json:"status"`
+		Type      string `json:"type"`
+		Duration  int    `json:"duration"`
+		VideoURL  string `json:"video_url,omitempty"`
+		Prompt    string `json:"prompt_preview"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	var summaries []videoSummary
+	succeeded := 0
+	running := 0
+	failed := 0
+	for _, r := range records {
+		promptPreview := r.Prompt
+		if len(promptPreview) > 100 {
+			promptPreview = promptPreview[:100] + "..."
+		}
+		s := videoSummary{
+			ID: r.ID, TaskID: r.TaskID, Model: r.Model,
+			Scene: r.Scene, Status: r.Status, Type: r.Type,
+			Duration: r.Duration, Prompt: promptPreview,
+			CreatedAt: r.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if r.Status == "succeeded" {
+			s.VideoURL = r.VideoURL
+			succeeded++
+		} else if r.Status == "running" || r.Status == "pending" {
+			running++
+		} else {
+			failed++
+		}
+		summaries = append(summaries, s)
+	}
+
+	return toJSON(map[string]interface{}{
+		"action":    "list_videos",
+		"total":     len(summaries),
+		"succeeded": succeeded,
+		"running":   running,
+		"failed":    failed,
+		"videos":    summaries,
+		"message": fmt.Sprintf("找到 %d 个视频记录（%d 完成, %d 进行中, %d 失败）。已完成的视频可直接用于 compose_pro 的 video_id。",
+			len(summaries), succeeded, running, failed),
+	}), nil
 }
 
 // ── DashScope Task Polling ──

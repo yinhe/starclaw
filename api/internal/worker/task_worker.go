@@ -253,7 +253,9 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 - 任务标题: %s
 - 父任务ID: %s
 
-你正在后台自主执行任务。完成后请用 system.notify_user 通知用户结果。如果需要拆分子任务，用 system.create_task 创建新任务。用 system.update_task 更新进度（progress 0-100，progress_note 描述当前步骤）。`, task.ID, task.Title, task.ParentTaskID)
+你正在后台自主执行任务。完成后请用 system.notify_user 通知用户结果。如果需要拆分子任务，用 system.create_task 创建新任务。用 system.update_task 更新进度（progress 0-100，progress_note 描述当前步骤）。
+
+%s`, task.ID, task.Title, task.ParentTaskID, tool.DataDirSummary())
 
 	systemPrompt := agent.SystemPrompt + taskContext
 

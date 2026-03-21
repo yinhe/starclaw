@@ -43,9 +43,14 @@ func ToProviderDefinition(t Tool) provider.ToolDefinition {
 	}
 }
 
+// ExecuteHook is a function that wraps tool execution (e.g. billing gateway).
+// It receives the tool, name, and args, and is responsible for calling t.Execute().
+type ExecuteHook func(ctx context.Context, t Tool, name, args string) (string, error)
+
 // Registry manages all available tools
 type Registry struct {
 	tools map[string]Tool
+	hook  ExecuteHook
 }
 
 // NewRegistry creates a new tool registry
@@ -53,6 +58,11 @@ func NewRegistry() *Registry {
 	return &Registry{
 		tools: make(map[string]Tool),
 	}
+}
+
+// SetExecuteHook sets a hook that wraps every tool execution (e.g. billing gateway).
+func (r *Registry) SetExecuteHook(hook ExecuteHook) {
+	r.hook = hook
 }
 
 // Register adds a tool to the registry
@@ -94,11 +104,15 @@ func (r *Registry) GetDefinitions(names []string) []provider.ToolDefinition {
 	return defs
 }
 
-// Execute runs a tool by name with the given JSON arguments
+// Execute runs a tool by name with the given JSON arguments.
+// If an ExecuteHook is set (e.g. billing gateway), the hook wraps the execution.
 func (r *Registry) Execute(ctx context.Context, name string, args string) (string, error) {
 	t, ok := r.tools[name]
 	if !ok {
 		return "", fmt.Errorf("tool not found: %s", name)
+	}
+	if r.hook != nil {
+		return r.hook(ctx, t, name, args)
 	}
 	return t.Execute(ctx, args)
 }

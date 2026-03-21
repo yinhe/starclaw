@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, CreditCard, FileText, Brain, Activity, Webhook, Code2, Shield, Target, FlaskConical, MessageCircle, Swords } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Webhook, Code2, Shield, Target, FlaskConical, MessageCircle, Swords } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -29,15 +29,12 @@ import { useI18n } from '../lib/i18n'
 interface NavItem { to: string; icon: React.ComponentType<{ className?: string }>; label: string }
 interface NavGroup { group: string; items: NavItem[] }
 
-function getNavGroups(isHosted: boolean, t: (key: string) => string): NavGroup[] {
+function getNavGroups(t: (key: string) => string): NavGroup[] {
   const systemItems: NavItem[] = [
-    { to: '/wallet', icon: Zap, label: t('nav.wallet') },
+    { to: '/billing', icon: Zap, label: t('nav.wallet') },
     { to: '/mining', icon: Cpu, label: t('nav.mining') },
     { to: '/settings', icon: Settings, label: t('nav.settings') },
   ]
-  if (isHosted) {
-    systemItems.unshift({ to: '/billing', icon: CreditCard, label: t('nav.billing') })
-  }
   return [
     {
       group: '',
@@ -106,7 +103,7 @@ function getNavGroups(isHosted: boolean, t: (key: string) => string): NavGroup[]
 export default function Layout() {
   const { user, logout } = useAuthStore()
   const { dark, toggle: toggleTheme } = useThemeStore()
-  const { deployMode, loaded: configLoaded, fetchConfig } = useConfigStore()
+  const { loaded: configLoaded, fetchConfig } = useConfigStore()
   const { locale, setLocale, t } = useI18n()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -139,7 +136,7 @@ export default function Layout() {
     }
   }, [])
 
-  const navGroups = getNavGroups(deployMode === 'hosted', t)
+  const navGroups = getNavGroups(t)
 
   useEffect(() => {
     const poll = async () => {

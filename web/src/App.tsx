@@ -32,7 +32,6 @@ import SkillsPage from './pages/SkillsPage'
 import VideosPage from './pages/VideosPage'
 import ResourcesPage from './pages/ResourcesPage'
 import BillingPage from './pages/BillingPage'
-import WalletPage from './pages/WalletPage'
 import MiningPage from './pages/MiningPage'
 import IntegrationsPage from './pages/IntegrationsPage'
 import SquadPage from './pages/SquadPage'
@@ -122,7 +121,7 @@ export default function App() {
         <Route path="activities" element={<ActivityPage />} />
         <Route path="visualization" element={<VisualizationPage />} />
         <Route path="billing" element={<BillingPage />} />
-        <Route path="wallet" element={<WalletPage />} />
+        <Route path="wallet" element={<Navigate to="/billing" replace />} />
         <Route path="mining" element={<MiningPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="squads" element={<SquadPage />} />

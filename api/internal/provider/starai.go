@@ -39,13 +39,19 @@ func NewStarAIProvider(cfg StarAIConfig) *StarAIProvider {
 		}
 	}
 	inner.models = []string{
-		// ── Qwen (domestic, default) ──
-		"qwen-plus", "qwen-max", "qwen-turbo", "qwen-flash", "qwen-long",
-		"qwen3.5-plus", "qwen3-max",
+		// ── Qwen3 / 3.5 (newest first) ──
+		"qwen3-max", "qwen3.5-plus", "qwen3.5-flash",
+		// ── Qwen 通用对话 (domestic) ──
+		"qwen-max", "qwen-plus", "qwen-turbo", "qwen-flash", "qwen-long",
+		// ── QwQ 推理 ──
 		"qwq-plus", "qwq-max", "qwq-32b",
+		// ── Qwen 视觉 (VL) ──
 		"qwen3-vl-plus", "qwen3-vl-flash", "qwen-vl-max", "qwen-vl-plus",
+		// ── Qwen 代码 (Coder) ──
 		"qwen3-coder-plus", "qwen3-coder-flash", "qwen-coder-plus", "qwen-coder-turbo",
+		// ── Qwen 数学 / OCR / 多模态 / 深度研究 ──
 		"qwen-math-plus", "qwen-math-turbo",
+		"qwen-ocr",
 		"qwen3-omni-flash", "qwen-omni-turbo",
 		"qwen-deep-research",
 		// ── DeepSeek (domestic) ──
@@ -54,23 +60,34 @@ func NewStarAIProvider(cfg StarAIConfig) *StarAIProvider {
 		"MiniMax-M2.5", "MiniMax-M2.5-highspeed",
 		"MiniMax-M2.1", "MiniMax-M2",
 		"MiniMax-Text-01", "MiniMax-VL-01",
-		// ── OpenAI (overseas, via proxy) ──
+		// ── OpenAI GPT-4.1 ──
+		"gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+		// ── OpenAI GPT-4o ──
+		"gpt-4o", "gpt-4o-mini", "gpt-4o-search-preview", "chatgpt-4o-latest",
+		// ── OpenAI GPT-4/3.5 (legacy) ──
+		"gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+		// ── OpenAI Reasoning (o 系列) ──
 		"o3", "o3-mini", "o3-pro", "o4-mini",
 		"o1", "o1-mini", "o1-pro",
-		"gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
-		"gpt-4o", "gpt-4o-mini", "gpt-4o-search-preview",
-		"chatgpt-4o-latest", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+		// ── OpenAI Codex ──
 		"codex-mini-latest",
-		// ── Anthropic (overseas, via proxy) ──
-		"claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219",
-		"claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
-		"claude-3-opus-20240229",
-		// ── Gemini (overseas, via proxy) ──
-		"gemini-2.5-pro", "gemini-2.5-flash",
+		// ── Anthropic Claude 4 ──
+		"claude-opus-4", "claude-sonnet-4",
+		// ── Anthropic Claude 3.7 ──
+		"claude-3.7-sonnet",
+		// ── Anthropic Claude 3.5 ──
+		"claude-3.5-sonnet", "claude-3.5-haiku",
+		// ── Anthropic Claude 3 ──
+		"claude-3-opus", "claude-3-haiku",
+		// ── Google Gemini 2.5 ──
+		"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+		// ── Google Gemini 2.0 ──
 		"gemini-2.0-flash", "gemini-2.0-flash-lite",
+		// ── Google Gemini 1.5 (legacy) ──
 		"gemini-1.5-pro", "gemini-1.5-flash",
-		// ── Grok (overseas, via proxy) ──
+		// ── Grok 3 ──
 		"grok-3", "grok-3-mini", "grok-3-fast",
+		// ── Grok 2 ──
 		"grok-2", "grok-2-mini", "grok-2-vision",
 	}
 	return &StarAIProvider{inner: inner}

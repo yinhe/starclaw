@@ -52,11 +52,6 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
 		})
-	case "fal":
-		return NewFalProvider(FalConfig{
-			APIKey:  cfg.APIKey,
-			BaseURL: cfg.BaseURL,
-		})
 	case "grok", "xai":
 		return NewGrokProvider(GrokConfig{
 			APIKey:  cfg.APIKey,

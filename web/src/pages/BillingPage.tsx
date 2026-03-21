@@ -1,16 +1,6 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, Users, BarChart3, Receipt, Plus, Trash2, Shield, Wallet, Gift, ArrowUpRight, ArrowDownRight } from 'lucide-react'
-import { billingAPI, tenantAPI } from '../lib/api'
-
-interface Plan {
-  id: string
-  name: string
-  display_name: string
-  price: number
-  credits: number
-  bonus_pct: number
-  tag: string
-}
+import { CreditCard, Users, BarChart3, Receipt, Plus, Trash2, Shield, ArrowUpRight, ArrowDownRight, Zap, Snowflake, Copy, Check, TrendingUp, Award, RefreshCw, WifiOff } from 'lucide-react'
+import { billingAPI, tenantAPI, systemAPI, nodeAPI } from '../lib/api'
 
 interface Tenant {
   id: string
@@ -35,34 +25,104 @@ interface UsageItem {
   total_cost: number
 }
 
-interface Transaction {
+interface CreditTransaction {
   id: string
+  from_claw: string
+  to_claw: string
   type: string
   amount: number
-  balance: number
+  fee?: number
   remark: string
+  status?: string
   created_at: string
 }
 
-type TabType = 'balance' | 'usage' | 'team' | 'transactions'
+interface CreditData {
+  balance: number
+  balance_energy?: number
+  frozen?: number
+  total_in: number
+  total_out: number
+  frozen_energy: number
+  connected: boolean
+  hp_status: string
+  status?: string
+  trust_level?: string
+  updated_at: string
+}
+
+type TabType = 'overview' | 'usage' | 'transactions' | 'team'
+type DirectionFilter = 'all' | 'in' | 'out'
+type TxnTypeFilter = 'all' | 'transfer'
+ type StatusFilter = 'all' | 'confirmed' | 'pending' | 'failed'
+ type TimeRangeFilter = 'all' | 'today' | '7d' | '30d' | 'custom'
 
 const resourceLabels: Record<string, string> = {
   tokens: 'Tokens', video: '视频', image: '图片', music: '音乐',
 }
 
+const hpLabels: Record<string, string> = {
+  full: '充沛',
+  healthy: '健康',
+  low: '偏低',
+  critical: '危急',
+  hibernated: '休眠',
+}
+
+const hpConfig: Record<string, { color: string; textDark: string; gradient: string; glow: string; label: string; desc: string; border: string; bg: string }> = {
+  full: { color: 'text-emerald-400', textDark: 'text-emerald-600', gradient: 'from-emerald-400 to-green-500', glow: 'shadow-emerald-500/50', label: '充沛', desc: '星能充足，所有功能满血运行', border: 'border-emerald-200', bg: 'bg-emerald-50' },
+  healthy: { color: 'text-green-400', textDark: 'text-green-600', gradient: 'from-green-400 to-emerald-500', glow: 'shadow-green-400/40', label: '健康', desc: '星能健康，请保持', border: 'border-green-200', bg: 'bg-green-50' },
+  low: { color: 'text-yellow-400', textDark: 'text-yellow-600', gradient: 'from-yellow-400 to-amber-500', glow: 'shadow-yellow-400/40', label: '偏低', desc: '星能偏低，建议充值', border: 'border-yellow-200', bg: 'bg-yellow-50' },
+  critical: { color: 'text-orange-400', textDark: 'text-orange-600', gradient: 'from-orange-400 to-red-500', glow: 'shadow-orange-500/50', label: '危急', desc: '星能即将耗尽，请尽快充值', border: 'border-orange-200', bg: 'bg-orange-50' },
+  hibernated: { color: 'text-red-400', textDark: 'text-red-600', gradient: 'from-red-400 to-red-600', glow: 'shadow-red-500/50', label: '休眠', desc: '星能耗尽，部分功能已暂停', border: 'border-red-200', bg: 'bg-red-50' },
+}
+
+const trustConfig: Record<string, { label: string; color: string; border: string; icon: typeof Award }> = {
+  newcomer: { label: '新手', color: 'text-gray-500', border: 'border-gray-200', icon: Award },
+  verified: { label: '已验证', color: 'text-blue-600', border: 'border-blue-200', icon: Award },
+  trusted: { label: '可信', color: 'text-green-600', border: 'border-green-200', icon: Award },
+  veteran: { label: '老将', color: 'text-purple-600', border: 'border-purple-200', icon: Award },
+  legendary: { label: '传奇', color: 'text-amber-600', border: 'border-amber-200', icon: Award },
+}
+
+const ENERGY_UNIT = 10000
+
+function formatEnergy(units: number): string {
+  const stars = units / ENERGY_UNIT
+  if (stars >= 10000) return `${(stars / 10000).toFixed(2)}万`
+  if (stars >= 1000) return `${(stars / 1000).toFixed(2)}K`
+  return stars.toFixed(2)
+}
+
+function normalizeClawUrl(address?: string): string {
+  if (!address) return window.location.origin
+  if (/^https?:\/\//i.test(address)) return address.replace(/\/+$/, '')
+  return `https://${address.replace(/\/+$/, '')}`
+}
+
 export default function BillingPage() {
-  const [tab, setTab] = useState<TabType>('balance')
-  const [plans, setPlans] = useState<Plan[]>([])
+  const TRANSACTION_PAGE_SIZE = 20
+  const [tab, setTab] = useState<TabType>('overview')
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [usage, setUsage] = useState<Record<string, number>>({})
   const [cost, setCost] = useState<Record<string, number>>({})
-  const [pricing, setPricing] = useState<Record<string, number>>({})
   const [period, setPeriod] = useState('')
+  const [credits, setCredits] = useState<CreditData | null>(null)
+  const [nodeInfo, setNodeInfo] = useState<any>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [usageHistory, setUsageHistory] = useState<UsageItem[]>([])
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [recharging, setRecharging] = useState(false)
+  const [transactions, setTransactions] = useState<CreditTransaction[]>([])
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all')
+  const [txnTypeFilter, setTxnTypeFilter] = useState<TxnTypeFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [timeRangeFilter, setTimeRangeFilter] = useState<TimeRangeFilter>('all')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
+  const [transactionsPage, setTransactionsPage] = useState(1)
+  const [transactionsTotal, setTransactionsTotal] = useState(0)
+  const [transactionsLoading, setTransactionsLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [copied, setCopied] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
   const [teamName, setTeamName] = useState('')
@@ -71,26 +131,22 @@ export default function BillingPage() {
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-    setLoading(true)
     try {
-      const [planRes, plansRes] = await Promise.all([
+      const [planRes, creditsRes, nodeRes] = await Promise.all([
         billingAPI.getCurrentPlan().catch(() => null),
-        billingAPI.listPlans().catch(() => null),
+        systemAPI.getCredits({ refresh: true } as any).catch(() => null),
+        nodeAPI.getInfo().catch(() => null),
       ])
       if (planRes?.data) {
         setTenant(planRes.data.tenant)
         setUsage(planRes.data.usage || {})
         setCost(planRes.data.cost || {})
-        setPricing(planRes.data.pricing || {})
         setPeriod(planRes.data.period || '')
         setTeamName(planRes.data.tenant?.name || '')
       }
-      if (plansRes?.data) {
-        setPlans(plansRes.data.plans || [])
-        if (plansRes.data.pricing) setPricing(plansRes.data.pricing)
-      }
+      if (creditsRes?.data) setCredits(creditsRes.data)
+      if (nodeRes?.data) setNodeInfo(nodeRes.data)
     } finally {
-      setLoading(false)
     }
   }
 
@@ -107,30 +163,47 @@ export default function BillingPage() {
     if (res?.data) setUsageHistory(res.data.usage || [])
   }
 
-  const loadTransactions = async () => {
-    const res = await billingAPI.listTransactions().catch(() => null)
-    if (res?.data) setTransactions(res.data.transactions || [])
+  const loadTransactions = async (page = 1, append = false) => {
+    setTransactionsLoading(true)
+    try {
+      const res = await systemAPI.getCreditTransactions({
+        page,
+        page_size: TRANSACTION_PAGE_SIZE,
+        type: txnTypeFilter === 'all' ? undefined : txnTypeFilter,
+      }).catch(() => null)
+      if (res?.data) {
+        const nextTransactions = res.data.transactions || []
+        setTransactions((prev) => append ? [...prev, ...nextTransactions] : nextTransactions)
+        setTransactionsPage(res.data.page || page)
+        setTransactionsTotal(res.data.total || nextTransactions.length)
+      }
+    } finally {
+      setTransactionsLoading(false)
+    }
   }
 
   useEffect(() => {
     if (tab === 'team') loadTeam()
+    if (tab === 'overview') loadData()
     if (tab === 'usage') loadUsageHistory()
-    if (tab === 'transactions') loadTransactions()
-  }, [tab])
+    if (tab === 'transactions') loadTransactions(1, false)
+  }, [tab, txnTypeFilter])
 
-  const handleRecharge = async (planId: string) => {
-    setRecharging(true)
-    try {
-      const res = await billingAPI.recharge(planId)
-      if (res?.data) {
-        alert(`充值成功！到账 ¥${res.data.credits}，当前余额 ¥${res.data.balance.toFixed(2)}`)
-        loadData()
-      }
-    } catch (e: any) {
-      alert(e.response?.data?.error || '充值失败')
-    } finally {
-      setRecharging(false)
-    }
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await Promise.all([loadData(), loadTransactions(1, false)])
+    setRefreshing(false)
+  }
+
+  const handleLoadMoreTransactions = async () => {
+    if (transactionsLoading) return
+    await loadTransactions(transactionsPage + 1, true)
+  }
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(label)
+    setTimeout(() => setCopied(''), 2000)
   }
 
   const handleInvite = async () => {
@@ -165,27 +238,93 @@ export default function BillingPage() {
 
   const totalCost = Object.values(cost).reduce((s, v) => s + v, 0)
 
+  const isTransactionInTimeRange = (createdAt: string) => {
+    if (timeRangeFilter === 'all') return true
+    const txDate = new Date(createdAt)
+    if (Number.isNaN(txDate.getTime())) return false
+
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    if (timeRangeFilter === 'today') {
+      return txDate >= startOfToday
+    }
+
+    if (timeRangeFilter === '7d' || timeRangeFilter === '30d') {
+      const days = timeRangeFilter === '7d' ? 7 : 30
+      const start = new Date(startOfToday)
+      start.setDate(start.getDate() - (days - 1))
+      return txDate >= start
+    }
+
+    if (timeRangeFilter === 'custom') {
+      if (!customStartDate && !customEndDate) return true
+      const start = customStartDate ? new Date(`${customStartDate}T00:00:00`) : null
+      const end = customEndDate ? new Date(`${customEndDate}T23:59:59.999`) : null
+      if (start && txDate < start) return false
+      if (end && txDate > end) return false
+      return true
+    }
+
+    return true
+  }
+
+  const connected = credits?.connected ?? false
+  const totalInStars = (credits?.total_in ?? 0) / ENERGY_UNIT
+  const totalOutStars = (credits?.total_out ?? 0) / ENERGY_UNIT
+  const frozenStars = credits?.frozen_energy ?? 0
+  const hp = credits?.hp_status ?? 'hibernated'
+  const hpMeta = hpConfig[hp] || hpConfig.hibernated
+  const trust = trustConfig[credits?.trust_level || 'newcomer'] || trustConfig.newcomer
+  const pct = Math.min(100, ((credits?.balance_energy ?? 0) / 2000) * 100)
+  const clawAuthUrl = normalizeClawUrl(window.location.origin)
+  const topUpUrl = nodeInfo?.node_id
+    ? `https://star-ai.net/login?claw_url=${encodeURIComponent(clawAuthUrl)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}`
+    : 'https://star-ai.net/billing'
+  const filteredTransactions = transactions.filter((tx) => {
+    if (!nodeInfo?.node_id || directionFilter === 'all') return true
+    if (directionFilter === 'in') return tx.to_claw === nodeInfo.node_id
+    if (directionFilter === 'out') return tx.from_claw === nodeInfo.node_id
+    return true
+  }).filter((tx) => {
+    if (statusFilter === 'all') return true
+    return (tx.status || 'confirmed') === statusFilter
+  }).filter((tx) => {
+    return isTransactionInTimeRange(tx.created_at)
+  })
+  const hasMoreTransactions = transactions.length < transactionsTotal
+
   const tabs: { key: TabType; label: string; icon: typeof CreditCard }[] = [
-    { key: 'balance', label: '充值', icon: Wallet },
+    { key: 'overview', label: '概览', icon: Zap },
     { key: 'usage', label: '用量', icon: BarChart3 },
     { key: 'transactions', label: '流水', icon: Receipt },
     { key: 'team', label: '团队', icon: Users },
   ]
 
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
-    )
-  }
-
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto px-6 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">计费中心</h1>
-          <p className="text-sm text-gray-500 mt-1">充值余额、查看用量和管理团队</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">星能中心</h1>
+          <p className="text-sm text-gray-500 mt-1">查看真实星能余额、消耗用量和团队协作信息</p>
+        </div>
+
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-950/20">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">充值入口已统一收敛到 StarAI</p>
+              <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">Claw 这里展示真实星能与真实用量。需要购买星能时，请前往 StarAI 完成统一充值。</p>
+            </div>
+            <a
+              href={topUpUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+            >
+              去 StarAI 充值
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -206,84 +345,95 @@ export default function BillingPage() {
           ))}
         </div>
 
-        {/* Balance / Recharge Tab */}
-        {tab === 'balance' && (
+        {/* Overview Tab */}
+        {tab === 'overview' && (
           <div className="space-y-6">
-            {/* Balance Card */}
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-6 text-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-emerald-200 text-sm">当前余额</p>
-                  <h2 className="text-4xl font-bold mt-1">¥{(tenant?.balance ?? 0).toFixed(2)}</h2>
-                  <p className="text-emerald-200 text-sm mt-2">本月已消费 ¥{totalCost.toFixed(2)}</p>
+            {!connected && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800/40 dark:bg-red-950/20 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <WifiOff className="h-5 w-5 text-red-500" />
+                  <div>
+                    <p className="text-sm font-medium text-red-800 dark:text-red-300">未连接虫群</p>
+                    <p className="text-xs text-red-600 dark:text-red-400">星能余额通过虫群心跳同步，请先加入虫群。</p>
+                  </div>
                 </div>
-                <Wallet className="w-14 h-14 text-emerald-200/30" />
+                <a href="/settings" className="shrink-0 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600">加入虫群</a>
               </div>
+            )}
 
-              {/* Monthly cost breakdown */}
-              <div className="grid grid-cols-4 gap-3 mt-5">
-                {['tokens', 'video', 'image', 'music'].map(key => (
-                  <div key={key} className="bg-white/10 rounded-lg px-3 py-2">
-                    <p className="text-xs text-emerald-200">{resourceLabels[key]}</p>
-                    <p className="text-sm font-semibold">{formatNum(usage[key] || 0)} <span className="text-xs font-normal text-emerald-200">/ ¥{(cost[key] || 0).toFixed(2)}</span></p>
+            <div className={`relative overflow-hidden rounded-2xl p-6 text-white ${connected ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-gray-500 to-gray-600'}`}>
+              <div className="absolute -top-8 -right-8 h-48 w-48 opacity-[0.04]"><Zap className="h-full w-full" fill="white" /></div>
+              <div className="relative">
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-gray-300">真实星能余额</p>
+                    <div className="mt-2 flex items-end gap-3">
+                      <span className="text-5xl font-extrabold tracking-tight">{connected ? formatEnergy(credits?.balance ?? 0) : '—'}</span>
+                      <Zap className="mb-1 h-5 w-5 text-amber-400" fill="currentColor" />
+                    </div>
+                    {connected && credits?.balance != null && <p className="mt-1.5 text-xs font-mono text-gray-400">{credits.balance.toLocaleString()} 内部单位</p>}
                   </div>
-                ))}
-              </div>
-            </div>
+                  <button onClick={handleRefresh} disabled={refreshing} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 px-3 py-1.5 text-xs text-white hover:bg-white/5 disabled:opacity-50">
+                    <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} /> 刷新
+                  </button>
+                </div>
 
-            {/* Pricing Info */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">资源单价</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                {[
-                  { key: 'tokens', unit: '1K Tokens' },
-                  { key: 'video', unit: '1 个视频' },
-                  { key: 'image', unit: '1 张图片' },
-                  { key: 'music', unit: '1 首音乐' },
-                ].map(item => (
-                  <div key={item.key} className="flex justify-between py-1.5 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                    <span className="text-gray-500">{item.unit}</span>
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      ¥{item.key === 'tokens' ? ((pricing[item.key] || 0) * 1000).toFixed(2) : (pricing[item.key] || 0).toFixed(2)}
+                <div className="mb-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap className={`h-4 w-4 ${hpMeta.color}`} fill="currentColor" />
+                      <span className={`text-sm font-bold ${hpMeta.color}`}>HP · {hpMeta.label}</span>
+                    </div>
+                    <span className="text-sm font-mono text-gray-300">{Math.round(pct)}%</span>
+                  </div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-gray-700/60 shadow-inner">
+                    <div className={`h-full rounded-full bg-gradient-to-r ${hpMeta.gradient} shadow-lg ${hpMeta.glow}`} style={{ width: `${Math.max(connected ? pct : 0, 2)}%` }} />
+                  </div>
+                  <p className="mt-2 text-xs text-gray-400">{hpMeta.desc}</p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${trust.border} bg-white/10 ${trust.color}`}>
+                      <trust.icon className="h-3 w-3" /> {trust.label}
                     </span>
+                    {credits?.status && <span className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-700/50 px-2.5 py-1 text-xs font-medium text-gray-300"><Shield className="h-3 w-3" /> {credits.status}</span>}
                   </div>
-                ))}
+                  {nodeInfo?.node_id && (
+                    <a href={topUpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/30 hover:from-amber-500 hover:to-orange-600">
+                      <Zap className="h-3.5 w-3.5" fill="white" /> 充值星能
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Recharge Packages */}
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">选择充值套餐</h3>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {plans.map(plan => (
-                  <div
-                    key={plan.id}
-                    className="relative rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:border-emerald-400 transition-all cursor-pointer group"
-                    onClick={() => !recharging && handleRecharge(plan.id)}
-                  >
-                    {plan.tag && (
-                      <span className="absolute -top-2.5 right-3 text-[10px] px-2 py-0.5 rounded-full bg-orange-500 text-white font-medium">
-                        {plan.tag}
-                      </span>
-                    )}
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">¥{plan.price}</p>
-                    {plan.bonus_pct > 0 ? (
-                      <div className="flex items-center gap-1 mt-1">
-                        <Gift className="w-3 h-3 text-orange-500" />
-                        <span className="text-xs text-orange-500 font-medium">送{plan.bonus_pct}%</span>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-400 mt-1">&nbsp;</p>
-                    )}
-                    <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium mt-2">到账 ¥{plan.credits}</p>
-                    <button
-                      disabled={recharging}
-                      className="w-full mt-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors group-hover:bg-emerald-600 disabled:opacity-50"
-                    >
-                      {recharging ? '处理中...' : '充值'}
-                    </button>
-                  </div>
-                ))}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><div className="mb-2 flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20"><ArrowDownRight className="h-4 w-4 text-emerald-500" /></div><span className="text-xs text-gray-500">总收入</span></div><p className="text-lg font-bold text-gray-900 dark:text-white">{connected ? `${totalInStars.toFixed(1)}` : '—'}<span className="ml-1 text-xs text-gray-400">⚡</span></p></div>
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><div className="mb-2 flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20"><ArrowUpRight className="h-4 w-4 text-red-500" /></div><span className="text-xs text-gray-500">总支出</span></div><p className="text-lg font-bold text-gray-900 dark:text-white">{connected ? `${totalOutStars.toFixed(1)}` : '—'}<span className="ml-1 text-xs text-gray-400">⚡</span></p></div>
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><div className="mb-2 flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/20"><Snowflake className="h-4 w-4 text-blue-500" /></div><span className="text-xs text-gray-500">冻结中</span></div><p className="text-lg font-bold text-gray-900 dark:text-white">{connected ? `${frozenStars.toFixed(1)}` : '—'}<span className="ml-1 text-xs text-gray-400">⚡</span></p></div>
+            </div>
+
+            {nodeInfo && (
+              <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200"><Shield className="h-4 w-4 text-indigo-500" /> 节点身份</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50"><div><p className="mb-0.5 text-xs text-gray-500">Claw 地址（钱包地址）</p><p className="font-mono text-sm text-gray-800 dark:text-gray-200">{nodeInfo.node_id}</p></div><button onClick={() => copyToClipboard(nodeInfo.node_id, 'claw_id')} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">{copied === 'claw_id' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}</button></div>
+                  {nodeInfo.fingerprint && <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50"><div><p className="mb-0.5 text-xs text-gray-500">基因指纹</p><p className="max-w-md truncate font-mono text-xs text-gray-600 dark:text-gray-400">{nodeInfo.fingerprint}</p></div><button onClick={() => copyToClipboard(nodeInfo.fingerprint, 'fingerprint')} className="shrink-0 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">{copied === 'fingerprint' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}</button></div>}
+                  {nodeInfo.address && <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50"><div><p className="mb-0.5 text-xs text-gray-500">Nydus 地址</p><p className="font-mono text-sm text-gray-700 dark:text-gray-300">{nodeInfo.address}</p></div><button onClick={() => copyToClipboard(nodeInfo.address, 'address')} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">{copied === 'address' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}</button></div>}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200"><Zap className="h-4 w-4 text-amber-500" fill="currentColor" /> 关于星能</h3>
+              <div className="space-y-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                <p><strong className="text-gray-700 dark:text-gray-200">星能 ⚡</strong> 是 StarClaw 虫群网络的算力能量单位。1 ⚡ = 10,000 内部单位。</p>
+                <p>星能用于 API 调用、赏金任务、算力贡献结算。在 <a href="https://star-ai.net/billing" target="_blank" rel="noopener noreferrer" className="font-medium text-amber-600 hover:underline">star-ai.net</a> 可直接充值。</p>
+                <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 p-3 dark:border-indigo-800/30 dark:bg-indigo-950/30">
+                  <p className="flex items-center gap-1.5 font-medium text-indigo-700 dark:text-indigo-300"><TrendingUp className="h-3.5 w-3.5" /> 获取星能的方式</p>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">{['充值购买', '推理挖矿', '赏金完成', '模板出售', 'P2P 转账', '邀请奖励'].map(way => <div key={way} className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400"><Zap className="h-2.5 w-2.5" /> {way}</div>)}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -292,6 +442,54 @@ export default function BillingPage() {
         {/* Usage Tab */}
         {tab === 'usage' && (
           <div className="space-y-6">
+            <div className={`rounded-2xl p-6 text-white ${connected ? 'bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-r from-gray-500 to-gray-600'}`}>
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-300">真实星能余额</p>
+                  <div className="mt-2 flex items-end gap-3">
+                    <span className="text-4xl font-extrabold tracking-tight">{connected ? formatEnergy(credits?.balance ?? 0) : '—'}</span>
+                    <Zap className="mb-1 h-5 w-5 text-amber-400" fill="currentColor" />
+                  </div>
+                  <p className="mt-2 text-sm text-gray-300">
+                    {connected
+                      ? `状态：${hpLabels[credits?.hp_status || 'hibernated'] || '未知'}${credits?.updated_at ? ` · 更新于 ${new Date(credits.updated_at).toLocaleString()}` : ''}`
+                      : '当前未同步到 Queen 星能余额'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-3 lg:min-w-[360px]">
+                  <div className="rounded-xl bg-white/10 px-4 py-3">
+                    <p className="text-xs text-gray-300">累计收入</p>
+                    <p className="mt-1 text-lg font-bold">{connected ? totalInStars.toFixed(1) : '—'}<span className="ml-1 text-xs text-gray-300">⚡</span></p>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-4 py-3">
+                    <p className="text-xs text-gray-300">累计支出</p>
+                    <p className="mt-1 text-lg font-bold">{connected ? totalOutStars.toFixed(1) : '—'}<span className="ml-1 text-xs text-gray-300">⚡</span></p>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-4 py-3">
+                    <p className="text-xs text-gray-300">冻结中</p>
+                    <p className="mt-1 text-lg font-bold">{connected ? frozenStars.toFixed(1) : '—'}<span className="ml-1 text-xs text-gray-300">⚡</span></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-blue-500" /> 本月总消耗
+                  </h3>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">¥{totalCost.toFixed(2)}</p>
+                  <p className="text-sm text-gray-500 mt-1">统计周期：{period || '--'}</p>
+                </div>
+                {tenant && (
+                  <div className="text-right text-sm text-gray-500">
+                    <p>团队：<span className="font-medium text-gray-900 dark:text-white">{tenant.name}</span></p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
               <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-blue-500" /> 本月用量 ({period})
@@ -340,37 +538,114 @@ export default function BillingPage() {
         {/* Transactions Tab */}
         {tab === 'transactions' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-blue-500" /> 交易流水
-            </h3>
-            {transactions.length === 0 ? (
-              <p className="text-sm text-gray-400 py-8 text-center">暂无交易记录</p>
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-blue-500" /> 交易流水
+              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-700/50">
+                  {[
+                    { key: 'all', label: '全部' },
+                    { key: 'in', label: '转入' },
+                    { key: 'out', label: '转出' },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setDirectionFilter(item.key as DirectionFilter)}
+                      className={`rounded-md px-3 py-1 text-xs font-medium ${directionFilter === item.key ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  value={txnTypeFilter}
+                  onChange={(e) => setTxnTypeFilter(e.target.value as TxnTypeFilter)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="all">全部类型</option>
+                  <option value="transfer">Transfer</option>
+                </select>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="all">全部状态</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="pending">Pending</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <select
+                  value={timeRangeFilter}
+                  onChange={(e) => setTimeRangeFilter(e.target.value as TimeRangeFilter)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="all">全部时间</option>
+                  <option value="today">今天</option>
+                  <option value="7d">近 7 天</option>
+                  <option value="30d">近 30 天</option>
+                  <option value="custom">自定义时间</option>
+                </select>
+                {timeRangeFilter === 'custom' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    />
+                    <span className="text-xs text-gray-400">至</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            {filteredTransactions.length === 0 ? (
+              <p className="text-sm text-gray-400 py-8 text-center">暂无星能流水</p>
             ) : (
               <div className="space-y-2">
-                {transactions.map(tx => (
+                {filteredTransactions.map(tx => (
                   <div key={tx.id} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        tx.type === 'recharge' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-orange-100 dark:bg-orange-900/30'
+                        tx.to_claw === nodeInfo?.node_id ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-orange-100 dark:bg-orange-900/30'
                       }`}>
-                        {tx.type === 'recharge'
+                        {tx.to_claw === nodeInfo?.node_id
                           ? <ArrowDownRight className="w-4 h-4 text-emerald-600" />
                           : <ArrowUpRight className="w-4 h-4 text-orange-600" />
                         }
                       </div>
                       <div>
-                        <p className="text-sm text-gray-900 dark:text-white">{tx.remark}</p>
+                        <p className="text-sm text-gray-900 dark:text-white">{tx.remark || tx.type || '星能交易'}</p>
+                        <p className="text-xs text-gray-500">{tx.from_claw} → {tx.to_claw}</p>
                         <p className="text-xs text-gray-400">{new Date(tx.created_at).toLocaleString('zh-CN')}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-medium ${tx.type === 'recharge' ? 'text-emerald-600' : 'text-orange-600'}`}>
-                        {tx.type === 'recharge' ? '+' : '-'}¥{Math.abs(tx.amount).toFixed(2)}
+                      <p className={`text-sm font-medium ${tx.to_claw === nodeInfo?.node_id ? 'text-emerald-600' : 'text-orange-600'}`}>
+                        {tx.to_claw === nodeInfo?.node_id ? '+' : '-'}{(Math.abs(tx.amount) / ENERGY_UNIT).toFixed(4)} ⚡
                       </p>
-                      <p className="text-xs text-gray-400">余额 ¥{tx.balance.toFixed(2)}</p>
+                      <p className="text-xs text-gray-400">{tx.status || 'confirmed'}{tx.fee ? ` · 手续费 ${(tx.fee / ENERGY_UNIT).toFixed(4)} ⚡` : ''}</p>
                     </div>
                   </div>
                 ))}
+                {hasMoreTransactions && (
+                  <div className="pt-3 text-center">
+                    <button
+                      onClick={handleLoadMoreTransactions}
+                      disabled={transactionsLoading}
+                      className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                    >
+                      {transactionsLoading ? '加载中...' : `加载更多（已加载 ${transactions.length} / ${transactionsTotal}）`}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

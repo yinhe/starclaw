@@ -47,6 +47,7 @@ services:
     restart: always
     environment:
       STARCLAW_SERVER_MODE: release
+      STARCLAW_SERVER_DEPLOY_MODE: ${DEPLOY_MODE:-hosted}
       STARCLAW_DATABASE_HOST: mysql
       STARCLAW_DATABASE_PORT: 3306
       STARCLAW_DATABASE_USER: root
@@ -64,11 +65,13 @@ services:
     volumes:
       - ./data/identity:/app/data/identity
       - ./data/sandbox:/tmp/starclaw-sandbox
+      - ./data/videos:/app/videos
       - ./data/merged_videos:/app/merged_videos
       - ./data/thumbnails:/app/thumbnails
       - ./data/music:/app/music
       - ./data/images:/app/images
       - ./data/workspaces:/app/workspaces
+      - ./data/uploads:/app/uploads
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
