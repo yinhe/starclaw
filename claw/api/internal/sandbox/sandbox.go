@@ -4,13 +4,19 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 // Manager manages sandboxed workspaces for coding agents
@@ -87,12 +93,37 @@ func (m *Manager) ReadFile(workspaceID, filePath string) (string, error) {
 		return "", fmt.Errorf("cannot read file: %v", err)
 	}
 
+	// Auto-detect encoding: if not valid UTF-8, try GBK (common for Chinese Windows text files)
+	content := decodeText(data)
+
 	// Limit file size to 100KB for LLM context
-	content := string(data)
 	if len(content) > 100*1024 {
 		content = content[:100*1024] + "\n... [truncated, file too large]"
 	}
 	return content, nil
+}
+
+// decodeText returns a UTF-8 string from raw bytes.
+// If the bytes are valid UTF-8, they are returned as-is.
+// Otherwise, GBK decoding is attempted (covers GBK, GB2312, GB18030 common on Chinese Windows).
+func decodeText(data []byte) string {
+	// Strip UTF-8 BOM if present
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+
+	if utf8.Valid(data) {
+		return string(data)
+	}
+
+	// Try GBK (the most common non-UTF-8 encoding for Chinese text)
+	reader := transform.NewReader(bytes.NewReader(data), simplifiedchinese.GBK.NewDecoder())
+	decoded, err := io.ReadAll(reader)
+	if err == nil && utf8.Valid(decoded) {
+		log.Printf("[sandbox] auto-decoded GBK text file (%d bytes)", len(data))
+		return string(decoded)
+	}
+
+	// Fallback: return raw bytes as string (may contain some garbled chars)
+	return string(data)
 }
 
 // WriteFile writes content to a file in the workspace

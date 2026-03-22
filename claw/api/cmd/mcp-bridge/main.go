@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 // ───────────────────────────────────────────────
@@ -385,13 +390,31 @@ func execFileRead(args map[string]interface{}) mcpToolResult {
 		return errResult("read error: " + err.Error())
 	}
 
-	content := string(data)
+	// Auto-detect encoding: if not valid UTF-8, try GBK (common for Chinese Windows text files)
+	content := decodeText(data)
 	lines := strings.Split(content, "\n")
 	if len(lines) > maxLines {
 		content = strings.Join(lines[:maxLines], "\n") + fmt.Sprintf("\n...[truncated, %d/%d lines shown]", maxLines, len(lines))
 	}
 
 	return textResult(content)
+}
+
+// decodeText returns a UTF-8 string from raw bytes.
+// If the bytes are valid UTF-8, they are returned as-is.
+// Otherwise, GBK decoding is attempted (covers GBK/GB2312/GB18030 common on Chinese Windows).
+func decodeText(data []byte) string {
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")) // strip UTF-8 BOM
+	if utf8.Valid(data) {
+		return string(data)
+	}
+	reader := transform.NewReader(bytes.NewReader(data), simplifiedchinese.GBK.NewDecoder())
+	decoded, err := io.ReadAll(reader)
+	if err == nil && utf8.Valid(decoded) {
+		log.Printf("[mcp-bridge] auto-decoded GBK text file (%d bytes)", len(data))
+		return string(decoded)
+	}
+	return string(data)
 }
 
 func execFileWrite(args map[string]interface{}) mcpToolResult {
