@@ -52,7 +52,7 @@ services:
     ports:
       - "127.0.0.1:6380:6379"
 
-  # Shared Web frontend (all Claw instances use same UI)
+  # Hive landing page (React SPA)
   web:
     build:
       context: ./web
@@ -64,11 +64,11 @@ services:
     ports:
       - "127.0.0.1:8082:80"
 
-  # Hive Controller
+  # Hive Controller API
   controller:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: hive/api/Dockerfile
     container_name: hive-controller
     restart: always
     environment:
@@ -91,6 +91,14 @@ services:
       HIVE_REDIS_PASSWORD: ${HIVE_REDIS_PASSWORD:-hive_redis_2026}
       HIVE_OVERLORD_URL: ${HIVE_OVERLORD_URL:-https://overlord.starclaw.net}
       HIVE_OVERLORD_TOKEN: ${HIVE_OVERLORD_TOKEN:-}
+      HIVE_MASTER_KEY: ${HIVE_MASTER_KEY:-}
+      HIVE_QUEEN_URL: ${HIVE_QUEEN_URL:-}
+      HIVE_QUEEN_TOKEN: ${HIVE_QUEEN_TOKEN:-}
+      HIVE_PUBLIC_IP: ${HIVE_PUBLIC_IP:-}
+      ALIYUN_ACCESS_KEY_ID: ${ALIYUN_ACCESS_KEY_ID:-}
+      ALIYUN_ACCESS_KEY_SECRET: ${ALIYUN_ACCESS_KEY_SECRET:-}
+      ALIYUN_REGION_ID: ${ALIYUN_REGION_ID:-cn-shanghai}
+      ALIYUN_DNS_DOMAIN: ${ALIYUN_DNS_DOMAIN:-starclaw.me}
       HIVE_ADMIN_TOKEN: ${HIVE_ADMIN_TOKEN:-}
       HIVE_FREE_EXPIRE_DAYS: ${HIVE_FREE_EXPIRE_DAYS:-7}
       HIVE_MAX_FREE: ${HIVE_MAX_FREE:-100}
