@@ -87,51 +87,59 @@ ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "chmod +x /opt/spore/releases/Sta
 scp -i ~/.ssh/starai_deploy spore/dist/StarClaw-Setup* root@47.103.51.32:/dnmp/www/downloads/
 ```
 
-## Step 4: macOS DMG (optional but recommended)
+## Step 4: Package macOS DMGs on Nydus
 
-6. Trigger GitHub Actions DMG build from OSS repo:
+6. Run package-releases.sh on Nydus to create DMGs from uploaded raw binaries:
 ```
-cd e:\starclaw-oss && gh workflow run build-spore-dmg.yml -f version=vVERSION
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "bash /opt/spore/scripts/package-releases.sh VERSION 2>&1"
 ```
-Wait for completion, then download artifact and upload to Nydus + StarAI (see RELEASE_GUIDE.md Section 8 for curl commands).
+Expected: creates `.dmg` files for darwin-arm64 and darwin-amd64.
+
+7. Sync DMGs from Nydus to StarAI mirror (they're built on Nydus, not locally):
+```
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "scp -o StrictHostKeyChecking=no /opt/spore/releases/StarClaw-Setup-VERSION-darwin-arm64.dmg /opt/spore/releases/StarClaw-Setup-VERSION-darwin-amd64.dmg root@47.103.51.32:/dnmp/www/downloads/"
+```
 
 ## Step 5: Generate Version Tag
 
 // turbo
-7. Generate version string (UTC timestamp format YYYY.MMDD.HHmm):
+8. Generate version string (UTC timestamp format YYYY.MMDD.HHmm):
 ```
 powershell -Command "Write-Host ('v' + (Get-Date).ToUniversalTime().ToString('yyyy.MMdd.HHmm'))"
 ```
 
 ## Step 6: Update Download Pages with New Version
 
-Both download pages have hardcoded version strings in URLs. Update them with the new VERSION from step 7:
+Both download pages have hardcoded version strings in URLs. Update them with the new VERSION from step 8:
 
-8. Update `queen/site` download page (starclaw.me/download):
+9. Update `queen/site` download page (starclaw.me/download):
 ```
 Edit e:\starclaw\queen\site\src\pages\DownloadPage.tsx — change `const V = 'vOLD'` to `const V = 'VERSION'`
 ```
 
-9. Update `synapse/web` download page (star-ai.net/download):
+10. Update `synapse/web` download page (star-ai.net/download):
 ```
 Edit e:\starclaw\synapse\web\src\pages\DownloadPage.tsx — change `const V = 'vOLD'` to `const V = 'VERSION'`
 ```
 
 ## Step 7: Commit & Tag in Monorepo
 
-10. Commit all changes and tag (replace VERSION with output from step 7):
+11. Commit all changes and tag (replace VERSION with output from step 8):
 ```
 cd e:\starclaw && git add -A && git commit -m "release: VERSION"
 git tag VERSION
 ```
 
-## Step 8: Push to Nydus (triggers auto-deploy)
+## Step 8: Push to Nydus (triggers auto-deploy + tag sync)
 
-11. Push code + tags to Nydus:
+12. Push code + tags to Nydus:
 ```
 cd e:\starclaw && git push nydus master --tags
 ```
-This triggers the Nydus post-receive hook which auto-deploys changed services (queen/api, queen/site, synapse/api, synapse/web).
+This triggers the Nydus post-receive hook which:
+- Auto-deploys changed services (queen/api, queen/site, synapse/api, synapse/web)
+- **Auto-syncs the version tag to `claw.git`** (so `/releases/latest` returns the new version)
+- **Auto-regenerates `spore-latest.json`** (so Spore update checks find the new version)
 
 ## Step 8b: Deploy Download Pages
 
@@ -171,9 +179,15 @@ This automatically creates a GitHub Release with 18 assets (10 binaries, 6 archi
 ## Step 10: Verify
 
 // turbo
-12. Check Nydus latest version endpoint:
+15. Check Nydus latest version endpoint (Docker update path):
 ```
 curl -s https://nydus.starclaw.net/releases/latest
+```
+
+// turbo
+16. Check Nydus Spore latest endpoint (Spore update path):
+```
+curl -s https://nydus.starclaw.net/releases/spore/latest
 ```
 
 // turbo
@@ -190,8 +204,11 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "curl -s http://localhost:8096/hea
 
 15. Manual verification checklist:
 - [ ] `starclaw.me/download` shows new version number
-- [ ] Nydus download links all return 200 (.exe / .tar.gz / .dmg)
-- [ ] StarAI mirror download links all return 200
+- [ ] `star-ai.net/download` shows new version number
+- [ ] Nydus download links all return 200 (.exe / .tar.gz / .dmg × 2)
+- [ ] StarAI mirror download links all return 200 (.exe / .tar.gz / .dmg × 2)
+- [ ] `/releases/latest` returns correct `tag_name`
+- [ ] `/releases/spore/latest` returns correct `tag_name`
 - [ ] GitHub Release page has all 18 assets
 - [ ] Release notes are English-only, Claw-scope only (NO Queen/Overlord mentions)
 - [ ] CHANGELOG.md updated (English, grouped by Added/Changed/Fixed/Removed)

@@ -13,7 +13,7 @@ import (
 	sporeRuntime "github.com/yinhe/starclaw-spore/pkg/runtime"
 )
 
-const version = "2026.0321.0629"
+const version = "2026.0322.2048"
 const defaultAddr = "127.0.0.1:7890"
 
 func main() {
