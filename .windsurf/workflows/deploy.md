@@ -1,5 +1,5 @@
 ---
-description: Deploy code to servers (Claw/Synapse/Queen). Use after git push nydus master.
+description: Deploy code to servers (Claw/Hive/Synapse/Queen). Use after git push nydus master.
 auto_execution_mode: 3
 ---
 
@@ -30,17 +30,34 @@ ssh -i ~/.ssh/claw_deploy root@starclaw.me "cd /opt/starclaw; bash scripts/serve
 ```
 This takes about 2 minutes. Expected output ends with Deploy complete.
 
+## Deploy Hive (Server A - starclaw.me)
+
+Hive Controller runs on the same server as Claw. Needs both `hive/` and `carapace/` synced.
+
+// turbo
+4. Sync hive + carapace from Nydus (Server C) to Server A:
+```
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:hive/ | ssh root@starclaw.me 'cd /opt/starclaw/hive && tar xf -'"
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:carapace/ | ssh root@starclaw.me 'cd /opt/starclaw/carapace && tar xf -'"
+```
+
+5. Build and restart Hive (controller build context is repo root for carapace dep):
+```
+ssh -i ~/.ssh/claw_deploy root@starclaw.me "cd /opt/starclaw && docker compose -f hive/docker-compose.hive.yml --env-file hive/.env up -d --build 2>&1 | tail -10"
+```
+Expected: 4 containers (hive-mysql, hive-redis, hive-controller, hive-web) all started.
+
 ## Deploy Synapse (Server B - star-ai.net)
 
 Two steps: sync code from Nydus then rebuild on Server B.
 
 // turbo
-4. Sync code from Nydus (Server C) to Synapse (Server B):
+6. Sync code from Nydus (Server C) to Synapse (Server B):
 ```
 ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:synapse/ | ssh root@47.103.51.32 'cd /opt/starclaw/synapse && tar xf -'"
 ```
 
-5. Build and restart Synapse API:
+7. Build and restart Synapse API:
 ```
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "cd /opt/starclaw/synapse/api && docker compose build --no-cache api 2>&1 | tail -5 && docker compose up -d api 2>&1"
 ```
@@ -50,12 +67,12 @@ Expected: Container star-ai-api Started
 
 Queen auto-deploys via Nydus hook on git push. Manual fallback:
 
-6. Queen (if auto-deploy failed):
+8. Queen (if auto-deploy failed):
 ```
 ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/starclaw-queen && git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/ | tar xf - && docker compose -f docker-compose.prod.yml up -d --build 2>&1 | tail -10"
 ```
 
-7. Gateway on Server B (queen/api code):
+9. Gateway on Server B (queen/api code):
 ```
 ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/api | ssh root@47.103.51.32 'cd /opt/starclaw/gateway && tar xf -'"
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "cd /opt/starclaw/gateway && docker compose -f docker-compose.gateway.yml up -d --build 2>&1 | tail -5"
@@ -64,27 +81,43 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "cd /opt/starclaw/gateway && docke
 ## Quick Verification
 
 // turbo
-8. Verify Claw API health:
+10. Verify Claw API health:
 ```
 ssh -i ~/.ssh/claw_deploy root@starclaw.me "curl -s http://localhost:8080/health | head -1"
 ```
 
 // turbo
-9. Verify Synapse API health:
+11. Verify Hive Controller health:
+```
+ssh -i ~/.ssh/claw_deploy root@starclaw.me "curl -s http://localhost:9090/hive/health"
+```
+
+// turbo
+12. Verify Synapse API health:
 ```
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "curl -s http://localhost:8096/health | head -1"
 ```
 
 ## SSH Keys Reference
 
-- Server A (Claw): ssh -i ~/.ssh/claw_deploy root@starclaw.me
+- Server A (Claw + Hive): ssh -i ~/.ssh/claw_deploy root@starclaw.me
 - Server B (Router): ssh -i ~/.ssh/starai_deploy root@47.103.51.32
 - Server C (Queen/Nydus): ssh -i ~/.ssh/starai_deploy root@43.106.158.26
 
 Note: Server C is accessed with starai_deploy key (not queen_deploy). The Nydus bare repo is at /data/nydus/repos/starclaw.git on Server C only.
+
+## Server Layout
+
+| Server | IP | Services | Port Mapping |
+|--------|----|----------|--------------|
+| A (starclaw.me) | 43.106.138.214 | Claw API :8080, Claw Web :8081, Hive Controller :9090, Hive Web :8082, Hive MySQL :3307, Hive Redis :6380 | nginx :443 |
+| B (star-ai.net) | 47.103.51.32 | Synapse API :8096, Gateway :8085, Synapse Web :3096 | dnmp nginx :443 |
+| C (starclaw.net) | 43.106.158.26 | Queen API, Nydus, bare git repo | auto-deploy hook |
 
 ## Common Issues
 
 - Nydus auto-deploy SSH failure: Server C to Server A SSH key is broken. Use manual sync (step 2+3).
 - git archive fails on wrong server: The bare repo only exists on Server C. Always run git archive FROM Server C via SSH.
 - Synapse build uses cache: Add --no-cache flag to docker compose build if code changes are not reflected.
+- Hive controller build needs carapace: Always sync both `hive/` AND `carapace/` dirs (step 4). The Dockerfile uses `context: ..` to access `../../carapace`.
+- Hive .env not in git: The `.env` file on Server A at `/opt/starclaw/hive/.env` is NOT tracked in git. Edit it directly on server for secrets.
