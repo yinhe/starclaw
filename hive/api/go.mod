@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw/hive
+module github.com/yinhe/starclaw/hive/api
 
 go 1.25.0
 
@@ -12,7 +12,7 @@ require (
 	gorm.io/gorm v1.25.12
 )
 
-replace github.com/yinhe/starclaw/carapace => ../carapace
+replace github.com/yinhe/starclaw/carapace => ../../carapace
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect

@@ -55,7 +55,7 @@ services:
   # Shared Web frontend (all Claw instances use same UI)
   web:
     build:
-      context: ../web
+      context: ./web
       dockerfile: Dockerfile
     container_name: hive-web
     restart: always
@@ -67,7 +67,7 @@ services:
   # Hive Controller
   controller:
     build:
-      context: .
+      context: ./api
       dockerfile: Dockerfile
     container_name: hive-controller
     restart: always

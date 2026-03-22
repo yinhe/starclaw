@@ -15,9 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/yinhe/starclaw/carapace"
-	"github.com/yinhe/starclaw/hive/config"
-	"github.com/yinhe/starclaw/hive/model"
-	"github.com/yinhe/starclaw/hive/service"
+	"github.com/yinhe/starclaw/hive/api/config"
+	"github.com/yinhe/starclaw/hive/api/model"
+	"github.com/yinhe/starclaw/hive/api/service"
 	"gorm.io/gorm"
 )
 

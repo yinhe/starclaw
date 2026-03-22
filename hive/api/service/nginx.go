@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/yinhe/starclaw/hive/config"
+	"github.com/yinhe/starclaw/hive/api/config"
 )
 
 // NginxService manages per-instance nginx configurations
