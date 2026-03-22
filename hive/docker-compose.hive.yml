@@ -72,9 +72,7 @@ services:
     container_name: hive-controller
     restart: always
     pid: "host"
-    cap_add:
-      - SYS_PTRACE
-      - SYS_ADMIN
+    privileged: true
     environment:
       HIVE_PORT: 9090
       HIVE_DOMAIN: ${HIVE_DOMAIN:-starclaw.me}
