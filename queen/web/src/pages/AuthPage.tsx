@@ -6,7 +6,7 @@ import { isLoggedIn, setAuth, clearAuth, getUserDisplayName } from '../lib/auth'
 import { Fingerprint, CheckCircle2, AlertCircle, Loader2 as Spinner, Shield, Mail, Lock, UserPlus } from 'lucide-react';
 
 const isInvestDomain = window.location.hostname === 'invest.starclaw.net';
-const isQueenDomain = !isInvestDomain; // starclaw.net / queen.starclaw.net → Claw only
+const isQueenDomain = !isInvestDomain;
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
