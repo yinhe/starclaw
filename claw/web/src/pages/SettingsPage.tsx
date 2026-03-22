@@ -411,7 +411,7 @@ export default function SettingsPage() {
                 )}
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                {updateInfo?.go_version} · {updateInfo?.os}/{updateInfo?.arch} · {updateInfo?.deploy_mode} 模式
+                {updateInfo?.go_version} · {updateInfo?.os}/{updateInfo?.arch} · {updateInfo?.runtime_mode === 'spore' ? 'Spore 本地部署' : updateInfo?.runtime_mode === 'docker' ? 'Docker 部署' : updateInfo?.deploy_mode} 模式
               </div>
             </div>
             <div className="flex items-center gap-2">

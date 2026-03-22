@@ -323,6 +323,14 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	// Detect runtime mode: spore (managed by Spore), docker, or standalone
+	runtimeMode := "standalone"
+	if os.Getenv("SPORE_DATA_DIR") != "" {
+		runtimeMode = "spore"
+	} else if _, err := os.Stat("/.dockerenv"); err == nil {
+		runtimeMode = "docker"
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"version":       vi,
 		"go_version":    runtime.Version(),
@@ -330,6 +338,7 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 		"arch":          runtime.GOARCH,
 		"memory_mb":     memStats.Alloc / 1024 / 1024,
 		"deploy_mode":   h.cfg.Server.DeployMode,
+		"runtime_mode":  runtimeMode,
 		"swarm_enabled": h.cfg.Swarm.Enabled,
 	})
 }

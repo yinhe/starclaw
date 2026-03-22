@@ -41,6 +41,8 @@ func main() {
 		cmdList(mgr)
 	case "logs":
 		cmdLogs(mgr)
+	case "autostart":
+		cmdAutostart(mgr)
 	case "uninstall":
 		cmdUninstall(mgr)
 	case "info":
@@ -280,6 +282,38 @@ func cmdUninstall(mgr *runtime.Manager) {
 	fmt.Printf("✅ %s uninstalled\n", name)
 }
 
+func cmdAutostart(mgr *runtime.Manager) {
+	if len(os.Args) < 3 {
+		fatal("usage: spore autostart <enable|disable|status> [name]")
+	}
+	action := os.Args[2]
+	name := "claw"
+	if len(os.Args) >= 4 {
+		name = os.Args[3]
+	}
+
+	switch action {
+	case "enable":
+		if err := mgr.EnableAutostart(name); err != nil {
+			fatal("enable autostart: %v", err)
+		}
+		fmt.Printf("✅ %s 已设为开机自启动\n", name)
+	case "disable":
+		if err := mgr.DisableAutostart(name); err != nil {
+			fatal("disable autostart: %v", err)
+		}
+		fmt.Printf("✅ %s 已取消开机自启动\n", name)
+	case "status":
+		if mgr.IsAutostartEnabled(name) {
+			fmt.Printf("🟢 %s 开机自启动: 已启用\n", name)
+		} else {
+			fmt.Printf("⚪ %s 开机自启动: 未启用\n", name)
+		}
+	default:
+		fatal("unknown autostart action: %s (use enable/disable/status)", action)
+	}
+}
+
 func printUsage() {
 	fmt.Printf(`Spore v%s — StarClaw Ultra-Lightweight Deployment Runtime
 
@@ -295,6 +329,7 @@ Commands:
   list              List installed spores
   info <name>       Show detailed info about a spore
   logs <name>       View spore logs
+  autostart <enable|disable|status> [name]  Manage boot autostart
   uninstall <name>  Remove an installed spore
   version           Show spore version
   platform          Show detected platform info

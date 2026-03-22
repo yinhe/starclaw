@@ -268,6 +268,14 @@ async function startInstall() {
     }
   } catch(e) {
     appendLog('log', '连接失败: ' + e.message, 'err');
+    appendLog('log', '', '');
+    appendLog('log', '可能原因:', 'err');
+    appendLog('log', '1. Windows Defender / 杀毒软件拦截了安装程序', 'err');
+    appendLog('log', '2. 请右键 .exe → 属性 → 解除锁定，然后以管理员身份运行', 'err');
+    appendLog('log', '3. 或尝试 CLI 安装: 命令行运行 StarClaw-Setup.exe --cli', 'err');
+    document.getElementById('btn-installing').textContent = '安装失败 — 请查看上方提示';
+    document.getElementById('btn-installing').disabled = false;
+    document.getElementById('btn-installing').onclick = () => location.reload();
   }
 }
 

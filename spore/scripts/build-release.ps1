@@ -73,6 +73,14 @@ foreach ($p in $platforms) {
     Write-Host "  -> spore ($sz MB)"
 
     # 2. Cross-compile Claw API (with version stamp matching Docker builds)
+    # Sync web dist into go:embed directory so the binary serves the latest frontend
+    $webSrc = Join-Path (Join-Path $Root "claw") "web\dist"
+    $webEmbed = Join-Path $ClawDir "internal\web\dist"
+    if (Test-Path $webSrc) {
+        if (Test-Path $webEmbed) { Remove-Item -Recurse -Force $webEmbed }
+        Copy-Item -Recurse $webSrc $webEmbed
+        Write-Host "  [2/5] Synced web dist -> api/internal/web/dist"
+    }
     $clawBinName = "claw-api$($p.Ext)"
     $clawBin = Join-Path $Dist "claw-api-$label$($p.Ext)"
     Write-Host "  [2/5] Cross-compiling Claw API..."

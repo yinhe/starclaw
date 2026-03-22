@@ -328,62 +328,8 @@ func createDesktopShortcut(url, sporePath, iconPath string) {
 }
 
 func registerAutoStart(sporePath, instName string) {
-	switch goruntime.GOOS {
-	case "windows":
-		// Add to HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-		startCmd := fmt.Sprintf(`"%s" start %s`, sporePath, instName)
-		exec.Command("reg", "add",
-			`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
-			"/v", "StarClaw-"+instName,
-			"/t", "REG_SZ",
-			"/d", startCmd,
-			"/f").Run()
-	case "linux":
-		// Create systemd user service if available
-		home, _ := os.UserHomeDir()
-		unitDir := filepath.Join(home, ".config", "systemd", "user")
-		os.MkdirAll(unitDir, 0755)
-		unit := fmt.Sprintf(`[Unit]
-Description=StarClaw %s
-After=network.target
-
-[Service]
-Type=forking
-ExecStart=%s start %s
-ExecStop=%s stop %s
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-`, instName, sporePath, instName, sporePath, instName)
-		unitPath := filepath.Join(unitDir, "starclaw-"+instName+".service")
-		os.WriteFile(unitPath, []byte(unit), 0644)
-		exec.Command("systemctl", "--user", "enable", "starclaw-"+instName).Run()
-	case "darwin":
-		// Create LaunchAgent plist
-		home, _ := os.UserHomeDir()
-		agentDir := filepath.Join(home, "Library", "LaunchAgents")
-		os.MkdirAll(agentDir, 0755)
-		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>me.starclaw.%s</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>%s</string>
-        <string>start</string>
-        <string>%s</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-`, instName, sporePath, instName)
-		plistPath := filepath.Join(agentDir, "me.starclaw."+instName+".plist")
-		os.WriteFile(plistPath, []byte(plist), 0644)
-	}
+	// Delegate to spore autostart — single source of truth for all platforms
+	exec.Command(sporePath, "autostart", "enable", instName).Run()
 }
 
 func addToPath(dir string) {

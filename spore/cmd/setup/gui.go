@@ -150,6 +150,14 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sse := newSSE(w)
+
+	// Recover from any panic so the SSE stream sends an error instead of silently dying
+	defer func() {
+		if r := recover(); r != nil {
+			sse.logErr(fmt.Sprintf("Internal error: %v", r))
+		}
+	}()
+
 	start := time.Now()
 
 	installDir := req.Dir
