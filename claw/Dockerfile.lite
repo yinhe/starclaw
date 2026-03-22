@@ -5,7 +5,8 @@
 FROM node:20-alpine AS build-web
 WORKDIR /web
 COPY claw/web/package.json claw/web/package-lock.json ./
-RUN npm ci --prefer-offline
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm install --legacy-peer-deps
 COPY claw/web/ ./
 RUN npm run build
 
