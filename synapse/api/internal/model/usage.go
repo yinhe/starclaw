@@ -10,7 +10,7 @@ import (
 // UsageRecord tracks every API call for billing and analytics
 type UsageRecord struct {
 	ID               string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	UserID           string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	UserID           string    `json:"user_id" gorm:"type:varchar(80);index;not null"`
 	APIKeyID         string    `json:"api_key_id" gorm:"type:varchar(36);index"`
 	Provider         string    `json:"provider" gorm:"type:varchar(50)"`  // openai, qwen, fal, grok, etc.
 	Model            string    `json:"model" gorm:"type:varchar(100)"`    // openai/gpt-4o, qwen/qwen-max

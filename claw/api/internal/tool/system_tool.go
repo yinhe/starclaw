@@ -570,19 +570,30 @@ func (t *SystemTool) delegateToAgent(ctx context.Context, args systemArgs) (stri
 		}
 	}
 
-	// Look up the model config (fallback to first available if agent has no model_id)
+	// Look up the model config (fallback to parent's provider, then first available)
 	var modelCfg model.ModelConfig
 	if agent.ModelID != "" {
 		if err := t.db.Where("id = ?", agent.ModelID).First(&modelCfg).Error; err != nil {
-			// model_id set but not found, try any available model
+			// model_id set but not found, try parent's provider first
 			if err2 := t.db.First(&modelCfg).Error; err2 != nil {
 				return "", fmt.Errorf("no model configured, please add a model in Settings first")
 			}
 		}
 	} else {
-		// No model_id on agent, use first available model
-		if err := t.db.First(&modelCfg).Error; err != nil {
-			return "", fmt.Errorf("no model configured, please add a model in Settings first")
+		// No model_id on agent — prefer same provider as parent to avoid
+		// routing through slow/unavailable overseas proxies.
+		parentProvider, _ := ctx.Value(CtxKeyProvider).(string)
+		found := false
+		if parentProvider != "" {
+			if err := t.db.Where("provider = ?", parentProvider).First(&modelCfg).Error; err == nil {
+				found = true
+				log.Printf("[SystemTool] delegate model fallback: using parent provider %q", parentProvider)
+			}
+		}
+		if !found {
+			if err := t.db.First(&modelCfg).Error; err != nil {
+				return "", fmt.Errorf("no model configured, please add a model in Settings first")
+			}
 		}
 	}
 
