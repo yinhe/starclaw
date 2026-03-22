@@ -348,8 +348,9 @@ func (h *QueenAccountHandler) AutoRegister(c *gin.Context) {
 	}
 
 	var req struct {
-		RefCode  string `json:"ref_code"`
-		Nickname string `json:"nickname"`
+		RefCode    string `json:"ref_code"`
+		InviteCode string `json:"invite_code"`
+		Nickname   string `json:"nickname"`
 	}
 	c.ShouldBindJSON(&req)
 
@@ -376,6 +377,9 @@ func (h *QueenAccountHandler) AutoRegister(c *gin.Context) {
 	}
 	if req.RefCode != "" {
 		body["ref_code"] = req.RefCode
+	}
+	if req.InviteCode != "" {
+		body["invite_code"] = req.InviteCode
 	}
 
 	bodyData, _ := json.Marshal(body)

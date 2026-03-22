@@ -225,6 +225,20 @@ func Setup() *gin.Engine {
 		partnerPortal.POST("/election/vote", writeRL.UserRateLimit(), election.Vote)
 	}
 
+	// ---- Partner Invite Codes ----
+	inv := &handler.InviteHandler{}
+	// Public: verify invite code (no auth)
+	v1.GET("/invite/verify", inv.VerifyInvite)
+	// Admin: invite management
+	admin.POST("/invites", inv.AdminCreateInvite)
+	admin.GET("/invites", inv.AdminListInvites)
+	admin.DELETE("/invites/:id", inv.AdminRevokeInvite)
+	admin.GET("/invite-uses", inv.AdminListInviteUses)
+	// TeamPartner: create/list/revoke city_partner invites
+	partnerPortal.POST("/invites", writeRL.UserRateLimit(), inv.PartnerCreateInvite)
+	partnerPortal.GET("/invites", inv.PartnerListInvites)
+	partnerPortal.DELETE("/invites/:id", writeRL.UserRateLimit(), inv.PartnerRevokeInvite)
+
 	// Admin: team partner management
 	admin.GET("/partners", ph.AdminListPartners)
 	admin.POST("/partners", ph.AdminCreatePartner)

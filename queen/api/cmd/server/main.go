@@ -96,6 +96,9 @@ func main() {
 		// Team Elections
 		&model.TeamVote{},
 		&model.TeamElection{},
+		// Partner Invites
+		&model.PartnerInvite{},
+		&model.PartnerInviteUse{},
 	)
 
 	seedAdmin()

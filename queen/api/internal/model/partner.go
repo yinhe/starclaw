@@ -124,6 +124,40 @@ type TeamVote struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// PartnerInvite represents an invitation code for joining the partner network.
+// Admin creates team_partner invites; TeamPartners create city_partner invites.
+type PartnerInvite struct {
+	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	Code        string     `json:"code" gorm:"type:varchar(20);uniqueIndex"`      // e.g. "SC-A3F8-K9M2"
+	Type        string     `json:"type" gorm:"type:varchar(20);index"`            // team_partner / city_partner
+	CreatorID   string     `json:"creator_id" gorm:"type:varchar(36);index"`      // TeamPartner.ID or "admin"
+	CreatorType string     `json:"creator_type" gorm:"type:varchar(20)"`          // admin / team_partner
+	CreatorName string     `json:"creator_name" gorm:"type:varchar(100)"`         // display name of creator
+	Label       string     `json:"label" gorm:"type:varchar(200)"`                // internal label / note
+	MaxUses     int        `json:"max_uses" gorm:"default:1"`                     // 0 = unlimited
+	UsedCount   int        `json:"used_count" gorm:"default:0"`                   // current usage
+	Region      string     `json:"region" gorm:"type:varchar(100)"`               // for city partners: target city
+	CommRate    float64    `json:"comm_rate" gorm:"default:0"`                    // default commission rate (0 = use system default)
+	Level       string     `json:"level" gorm:"type:varchar(20)"`                 // for team partners: default level
+	BaseSalary  int64      `json:"base_salary" gorm:"default:0"`                  // for team partners: monthly base (分)
+	ExpiresAt   *time.Time `json:"expires_at"`                                    // nil = never expires
+	Status      string     `json:"status" gorm:"type:varchar(20);default:active"` // active / expired / revoked
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// PartnerInviteUse records each use of an invitation code.
+type PartnerInviteUse struct {
+	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	InviteID  string    `json:"invite_id" gorm:"type:varchar(36);index;not null"` // PartnerInvite.ID
+	Code      string    `json:"code" gorm:"type:varchar(20);index"`               // denormalized for quick lookup
+	ClawID    string    `json:"claw_id" gorm:"type:varchar(60);index"`            // the claw_id that used the code
+	UserID    string    `json:"user_id" gorm:"type:varchar(36);index"`            // Queen user who used it
+	PartnerID string    `json:"partner_id" gorm:"type:varchar(36)"`               // created TeamPartner.ID or CityPartner.ID
+	Type      string    `json:"type" gorm:"type:varchar(20)"`                     // team_partner / city_partner
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // TeamElection represents a Cerebrate election round.
 type TeamElection struct {
 	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`

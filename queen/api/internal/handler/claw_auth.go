@@ -175,12 +175,13 @@ func (h *ClawAuthHandler) Verify(c *gin.Context) {
 // and optionally links the user to a city partner via ref_code.
 func (h *ClawAuthHandler) ClawRegister(c *gin.Context) {
 	var req struct {
-		NodeID    string `json:"node_id" binding:"required"`
-		PublicKey string `json:"public_key" binding:"required"`
-		Signature string `json:"signature" binding:"required"`
-		Timestamp int64  `json:"timestamp" binding:"required"`
-		RefCode   string `json:"ref_code"`
-		Nickname  string `json:"nickname"`
+		NodeID     string `json:"node_id" binding:"required"`
+		PublicKey  string `json:"public_key" binding:"required"`
+		Signature  string `json:"signature" binding:"required"`
+		Timestamp  int64  `json:"timestamp" binding:"required"`
+		RefCode    string `json:"ref_code"`
+		InviteCode string `json:"invite_code"`
+		Nickname   string `json:"nickname"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数不完整"})
@@ -242,10 +243,31 @@ func (h *ClawAuthHandler) ClawRegister(c *gin.Context) {
 	// 8. Auto-link partner whitelist
 	h.autoLinkPartner(req.NodeID, user)
 
+	// 8b. Invite code: validate and consume to auto-create partner record
+	var inviteResult gin.H
+	if req.InviteCode != "" {
+		invite, err := ValidateInviteCode(req.InviteCode)
+		if err != nil {
+			log.Printf("[claw-auth] invite_code %s invalid for %s: %v", req.InviteCode, req.NodeID, err)
+		} else {
+			partnerID, partnerType, err := ConsumeInviteCode(invite, req.NodeID, user)
+			if err != nil {
+				log.Printf("[claw-auth] invite_code %s consume failed: %v", req.InviteCode, err)
+			} else {
+				inviteResult = gin.H{
+					"partner_id":   partnerID,
+					"partner_type": partnerType,
+					"invite_code":  invite.Code,
+				}
+				log.Printf("[claw-auth] invite_code %s → %s %s for %s", invite.Code, partnerType, partnerID, req.NodeID)
+			}
+		}
+	}
+
 	// 9. Grant welcome bonus (only for new accounts with zero balance)
 	h.grantWelcomeBonus(req.NodeID)
 
-	// 10. Issue JWT
+	// 10. Issue JWT (re-generate to pick up role changes from invite)
 	token, err := middleware.GenerateToken(user.ID, user.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
@@ -258,7 +280,7 @@ func (h *ClawAuthHandler) ClawRegister(c *gin.Context) {
 
 	log.Printf("[claw-auth] Claw register success: %s → user %s (%s), ref=%s", req.NodeID, user.ID, user.Nickname, req.RefCode)
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"token": token,
 		"user": gin.H{
 			"id":       user.ID,
@@ -274,7 +296,11 @@ func (h *ClawAuthHandler) ClawRegister(c *gin.Context) {
 			"balance_energy": float64(acct.Balance) / 10000.0,
 			"status":         acct.Status,
 		},
-	})
+	}
+	if inviteResult != nil {
+		resp["partner"] = inviteResult
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // attributeReferral links the user to a city partner via ref_code
