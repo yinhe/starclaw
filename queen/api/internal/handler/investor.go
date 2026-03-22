@@ -1083,16 +1083,17 @@ func (h *InvestorHandler) createDiamondPayOrder(c *gin.Context, order *model.Dia
 		return
 	}
 
-	// Build callback URL (Queen's internal endpoint)
-	queenBase := strings.TrimRight(starAI.URL, "/")
-	// Use Queen's own base URL for the callback
-	callbackURL := ""
-	if port := config.C.Server.Port; port != "" {
-		callbackURL = fmt.Sprintf("http://queen-api:%s/internal/investor/payment-confirmed", port)
-	} else {
-		callbackURL = "http://queen-api:8080/internal/investor/payment-confirmed"
+	// Build callback URL (Queen's internal endpoint, reachable from Router's network)
+	callbackBase := strings.TrimRight(starAI.CallbackBase, "/")
+	if callbackBase == "" {
+		// Fallback: assume same-host Docker with port
+		if port := config.C.Server.Port; port != "" {
+			callbackBase = fmt.Sprintf("http://queen-api:%s", port)
+		} else {
+			callbackBase = "http://queen-api:8085"
+		}
 	}
-	_ = queenBase
+	callbackURL := callbackBase + "/internal/investor/payment-confirmed"
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"channel":           order.PayMethod,

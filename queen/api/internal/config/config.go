@@ -105,8 +105,9 @@ type WechatPayConfig struct {
 
 // StarAIConfig holds connection info for StarAI Router (payment gateway)
 type StarAIConfig struct {
-	URL   string `mapstructure:"url"`   // e.g. http://starai-api:8080
-	Token string `mapstructure:"token"` // X-Internal-Token for service auth
+	URL          string `mapstructure:"url"`           // Router URL, e.g. http://host.docker.internal:8096
+	Token        string `mapstructure:"token"`         // X-Internal-Token for service auth
+	CallbackBase string `mapstructure:"callback_base"` // Queen's URL as seen by Router, e.g. http://host.docker.internal:8085
 }
 
 var C Config
@@ -152,6 +153,9 @@ func Load() {
 	}
 	if token := viper.GetString("STARAI_TOKEN"); token != "" {
 		C.StarAI.Token = token
+	}
+	if cb := viper.GetString("STARAI_CALLBACK_BASE"); cb != "" {
+		C.StarAI.CallbackBase = cb
 	}
 
 	// Load payment config from .env
