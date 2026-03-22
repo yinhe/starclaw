@@ -71,13 +71,16 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
 		}
-		// If api_key is claw-identity, try to get Identity from registry for Ed25519 auth
-		if registry != nil && cfg.APIKey == "claw-identity" {
+		// Always try to inject Identity for Ed25519 signature auth.
+		// SignedTransport sends both signature headers AND keeps the API key,
+		// so Synapse's DualAuth will prefer the Claw signature path and check
+		// Queen star energy instead of local balance.
+		if registry != nil {
 			if rp, ok := registry.Get("star-ai"); ok {
 				if sp, ok := rp.(*StarAIProvider); ok && sp.inner.client.Transport != nil {
 					if st, ok := sp.inner.client.Transport.(*SignedTransport); ok {
 						starCfg.Identity = st.Identity
-						log.Printf("[Provider] Extracted Identity from registry for star-ai fallback")
+						log.Printf("[Provider] Injected Identity for star-ai (api_key_len=%d)", len(cfg.APIKey))
 					}
 				}
 			}
