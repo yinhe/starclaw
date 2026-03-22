@@ -76,21 +76,45 @@ func NewTeamAgentHandler(db *gorm.DB) *TeamAgentHandler {
 	}
 }
 
-// SeedOfficialTemplates inserts built-in templates if they don't exist.
+// SeedOfficialTemplates upserts built-in templates and removes stale ones.
 func (h *TeamAgentHandler) SeedOfficialTemplates() {
-	var count int64
-	h.db.Model(&model.TeamAgentTemplate{}).Where("is_official = ?", true).Count(&count)
-	if count > 0 {
-		return
-	}
-
 	templates := buildOfficialTemplates()
+	wantNames := make(map[string]bool, len(templates))
+
 	for _, t := range templates {
-		if err := h.db.Create(&t).Error; err != nil {
-			log.Printf("[team-agent] failed to seed template %s: %v", t.Name, err)
+		wantNames[t.Name] = true
+		var existing model.TeamAgentTemplate
+		if err := h.db.Where("name = ? AND is_official = ?", t.Name, true).First(&existing).Error; err == nil {
+			// Update existing
+			h.db.Model(&existing).Updates(map[string]interface{}{
+				"category":     t.Category,
+				"description":  t.Description,
+				"icon":         t.Icon,
+				"roles":        t.Roles,
+				"topology":     t.Topology,
+				"quality_gate": t.QualityGate,
+				"escalation":   t.Escalation,
+				"version":      t.Version,
+			})
+		} else {
+			// Insert new
+			if err := h.db.Create(&t).Error; err != nil {
+				log.Printf("[team-agent] failed to seed template %s: %v", t.Name, err)
+			} else {
+				log.Printf("[team-agent] added official template: %s", t.Name)
+			}
 		}
 	}
-	log.Printf("[team-agent] seeded %d official templates", len(templates))
+
+	// Remove stale official templates no longer in the list
+	var stale []model.TeamAgentTemplate
+	h.db.Where("is_official = ?", true).Find(&stale)
+	for _, s := range stale {
+		if !wantNames[s.Name] {
+			h.db.Delete(&s)
+			log.Printf("[team-agent] removed stale official template: %s", s.Name)
+		}
+	}
 }
 
 // ── Template endpoints ──
