@@ -993,6 +993,7 @@ func buildOfficialTemplates() []model.TeamAgentTemplate {
 		buildDramaClaw(),
 		buildSalesClaw(),
 		buildOpsClaw(),
+		buildMedClaw(),
 	}
 }
 
@@ -1278,6 +1279,61 @@ func buildSalesClaw() model.TeamAgentTemplate {
 		Roles:       mustJSON(roles),
 		Topology:    mustJSON(topology),
 		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 7.0, MaxRetries: 2}),
+		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "pause_notify", OnBudgetExceed: "pause_notify"}),
+		IsOfficial:  true,
+		Version:     "v1",
+	}
+}
+
+func buildMedClaw() model.TeamAgentTemplate {
+	roles := []TeamRole{
+		{
+			Code:         "diagnostician",
+			Name:         "主诊虫",
+			SystemPrompt: "你是资深全科医生(AI辅助诊断)。根据患者症状描述进行初步分析。工作流程: 1.收集主诉+现病史+既往史 2.症状分析+鉴别诊断(列出可能性从高到低) 3.建议检查项目 4.给出初步诊断意见。重要: 你是AI辅助工具，必须提醒用户以专业医生面诊为准，不替代医疗诊断。对急危重症必须建议立即就医。",
+			Model:        "gpt-4o",
+			Tools:        []string{"web_search", "document_read"},
+			MaxInstances: 1,
+		},
+		{
+			Code:         "pharmacist",
+			Name:         "药理虫",
+			SystemPrompt: "你是临床药师。根据诊断建议提供用药参考。职责: 1.常用药物方案(通用名+规格+用法用量) 2.药物相互作用检查 3.禁忌症和注意事项 4.特殊人群用药调整(老人/儿童/孕妇/肝肾功能不全)。重要: 仅供参考，实际用药须遵医嘱。OTC和处方药须区分标注。",
+			Model:        "deepseek-chat",
+			Tools:        []string{"web_search", "document_read"},
+			MaxInstances: 1,
+		},
+		{
+			Code:         "triage",
+			Name:         "分诊虫",
+			SystemPrompt: "你是急诊分诊护士(AI)。评估患者紧急程度并建议就医科室。分级: Level-1(立即急诊: 胸痛/呼吸困难/大出血/意识障碍) Level-2(尽快就诊: 高热/剧烈疼痛/外伤) Level-3(常规就诊: 慢性病复查/轻微不适) Level-4(自我观察: 轻微感冒/小伤口)。输出: 紧急等级 + 建议科室 + 就医时间建议 + 就医前注意事项。",
+			Model:        "deepseek-chat",
+			Tools:        []string{"web_search"},
+			MaxInstances: 1,
+		},
+		{
+			Code:         "researcher",
+			Name:         "文献虫",
+			SystemPrompt: "你是循证医学研究员。检索最新医学文献和临床指南，为诊断和治疗方案提供证据支持。输出: 相关临床指南摘要 + 最新研究进展 + 证据等级(A/B/C) + 参考文献列表。数据来源: PubMed、Cochrane、UpToDate、各学会指南。",
+			Model:        "gpt-4o",
+			Tools:        []string{"web_search", "document_read"},
+			MaxInstances: 1,
+		},
+	}
+	topology := TopologyConfig{Type: "dag", Flow: []TopologyFlow{
+		{From: "start", To: "triage", Type: "pipeline"},
+		{From: "triage", To: "diagnostician", Type: "pipeline"},
+		{From: "diagnostician", To: "pharmacist", Type: "fan_out"},
+		{From: "diagnostician", To: "researcher", Type: "fan_out"},
+	}}
+	return model.TeamAgentTemplate{
+		Name:        "MedClaw",
+		Category:    "medical",
+		Description: "医疗智能体团队 — 分诊虫 + 主诊虫 + 药理虫 + 文献虫。症状分析、鉴别诊断、用药参考、文献检索。仅供参考，不替代专业医疗。",
+		Icon:        "heart_pulse",
+		Roles:       mustJSON(roles),
+		Topology:    mustJSON(topology),
+		QualityGate: mustJSON(QualityGateConfig{ReviewThreshold: 8.0, MaxRetries: 2}),
 		Escalation:  mustJSON(EscalationConfig{OnMaxRetries: "pause_notify", OnBudgetExceed: "pause_notify"}),
 		IsOfficial:  true,
 		Version:     "v1",

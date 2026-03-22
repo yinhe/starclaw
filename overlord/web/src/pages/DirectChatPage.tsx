@@ -50,7 +50,7 @@ export default function DirectChatPage() {
       setMessages(prev => {
         const without = prev.filter(m => m.id !== 'temp-user')
         return [...without, { ...tempUser, id: 'sent-' + Date.now() }, {
-          id: 'err-' + Date.now(), role: 'assistant', content: '\u26a0\ufe0f ' + (err.message || '\u53d1\u9001\u5931\u8d25'),
+          id: 'err-' + Date.now(), role: 'assistant', content: '⚠️ ' + (err.message || '发送失败'),
           created_at: new Date().toISOString()
         }]
       })
@@ -74,8 +74,8 @@ export default function DirectChatPage() {
           <Bot className="w-5 h-5 text-brand-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-white">AI \u52a9\u624b</div>
-          <div className="text-[11px] text-gray-500">StarClaw AI \u00b7 \u968f\u65f6\u5f00\u59cb\u5bf9\u8bdd</div>
+          <div className="text-sm font-bold text-white">AI 助手</div>
+          <div className="text-[11px] text-gray-500">{'StarClaw AI · 随时开始对话'}</div>
         </div>
       </div>
 
@@ -83,16 +83,16 @@ export default function DirectChatPage() {
       <div className="flex-1 overflow-auto px-4 py-4 space-y-4">
         {loading ? (
           <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin mr-2" /> \u52a0\u8f7d\u4e2d...
+            <Loader2 className="w-4 h-4 animate-spin mr-2" /> {'加载中...'}
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-2xl bg-brand-600/10 flex items-center justify-center mb-4">
               <Bot className="w-8 h-8 text-brand-400" />
             </div>
-            <div className="text-sm text-gray-300 font-medium">StarClaw AI \u52a9\u624b</div>
+            <div className="text-sm text-gray-300 font-medium">{'通用 AI 助手'}</div>
             <div className="text-xs text-gray-500 mt-1 max-w-xs">
-              \u53d1\u9001\u6d88\u606f\u5f00\u59cb\u5bf9\u8bdd\uff0cAI \u5c06\u4e3a\u4f60\u63d0\u4f9b\u4e13\u4e1a\u7684\u56de\u7b54
+              {'发送消息开始对话，AI 将为你提供专业的回答'}
             </div>
           </div>
         ) : (
@@ -111,7 +111,7 @@ export default function DirectChatPage() {
                 <div className="whitespace-pre-wrap break-words">{m.content}</div>
                 {m.role === 'assistant' && (m.tokens_in || 0) + (m.tokens_out || 0) > 0 && (
                   <div className="text-[10px] text-gray-500 mt-1.5 tabular-nums">
-                    {m.model} \u00b7 {((m.tokens_in || 0) + (m.tokens_out || 0)).toLocaleString()} tokens \u00b7 {m.duration_ms}ms
+                    {m.model} {' · '} {((m.tokens_in || 0) + (m.tokens_out || 0)).toLocaleString()} tokens {' · '} {m.duration_ms}ms
                   </div>
                 )}
               </div>
@@ -148,7 +148,7 @@ export default function DirectChatPage() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="\u8f93\u5165\u6d88\u606f..."
+            placeholder="输入消息..."
             rows={1}
             className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:border-brand-500 focus:outline-none transition resize-none max-h-32"
             style={{ minHeight: '40px' }}

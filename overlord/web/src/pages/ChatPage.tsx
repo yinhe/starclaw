@@ -13,7 +13,7 @@ interface TeamInstance {
 }
 
 const templateIcons: Record<string, string> = {
-  DevClaw: '💻', MarketClaw: '📢', SupportClaw: '🎧', DataClaw: '📊',
+  MedClaw: '🩺', DevClaw: '💻', MarketClaw: '📢', SupportClaw: '🎧', DataClaw: '📊',
   QuantClaw: '📈', EcomClaw: '🛒', DramaClaw: '🎬', SalesClaw: '🤝', OpsClaw: '⚙️',
 }
 

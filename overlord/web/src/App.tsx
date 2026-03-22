@@ -1,11 +1,25 @@
-import { useState } from 'react'
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Routes, Route, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { MessageSquare, User, LogOut, Settings } from 'lucide-react'
-import { getToken, getUser, clearAuth, isAdmin } from './api/client'
+import { getToken, getUser, clearAuth, isAdmin, api } from './api/client'
 import { getBrand } from './lib/brand'
 import LoginPage from './pages/LoginPage'
 import ProfilePage from './pages/ProfilePage'
 import DirectChatPage from './pages/DirectChatPage'
+import HomePage from './pages/HomePage'
+import ChatPage from './pages/ChatPage'
+
+function ChatRoute() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const [instance, setInstance] = useState<any>(null)
+  useEffect(() => {
+    if (!id) return
+    api.teamInstance(id).then(res => setInstance(res.instance)).catch(() => navigate('/'))
+  }, [id, navigate])
+  if (!instance) return <div className="flex items-center justify-center h-full text-gray-500 text-sm">{'\u52A0\u8F7D\u4E2D...'}</div>
+  return <ChatPage instance={instance} onBack={() => navigate('/')} />
+}
 
 function getNavItems() {
   return [
@@ -107,7 +121,9 @@ export default function App() {
       {/* Main content */}
       <main className="flex-1 overflow-hidden min-h-0">
         <Routes>
-          <Route path="/" element={<DirectChatPage />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/chat/direct" element={<DirectChatPage />} />
+          <Route path="/chat/:id" element={<ChatRoute />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </main>

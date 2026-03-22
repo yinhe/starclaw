@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server } from 'lucide-react'
+import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server, HeartPulse } from 'lucide-react'
 import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, EmployeeUsage, ProvisionResult } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
@@ -43,6 +43,7 @@ const categoryIcons: Record<string, typeof Code> = {
   content: Film,
   sales: Crosshair,
   ops: Shield,
+  medical: HeartPulse,
 }
 
 type View = 'overview' | 'templates' | 'detail'
