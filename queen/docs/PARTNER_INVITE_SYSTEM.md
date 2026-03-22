@@ -58,29 +58,34 @@ StarClaw 的合伙人体系分三层：
                            │ claw_id + 上级自动绑定
                            ▼
                   ┌───────────────────┐
-                  │   CityPartner     │──── 分享 ref_code
-                  │   (城市合伙人)     │     (已有机制)
-                  └────────┬──────────┘
+                  │   CityPartner     │──── 创建 invite_code
+                  │   (城市合伙人)     │     type=referral
+                  └────────┬──────────┘     (升级版 ref_code，带次数/过期/别名控制)
                            │
                            ▼
                   ┌───────────────────┐
-                  │   终端客户         │
+                  │   终端客户候选人    │
                   │   装 Claw → 注册时 │
-                  │   填 ref_code     │
+                  │   填 invite_code  │
+                  │   或 ref_code     │
                   └───────────────────┘
 ```
 
 ### 2.2 三种码的对比
 
-| 属性 | invite_code (team) | invite_code (city) | ref_code |
-|------|--------------------|--------------------|----------|
-| 格式 | `SC-XXXX-XXXX` | `SC-XXXX-XXXX` | `city_xxxxxxxx` |
-| 创建者 | Admin | TeamPartner | 系统自动生成 |
-| 使用效果 | 成为 TeamPartner | 成为 CityPartner | 归因为该合伙人客户 |
-| 可使用次数 | 可配置（默认 1） | 可配置（默认 1） | 无限 |
-| 有效期 | 可配置 | 可配置 | 永久 |
-| 自动绑定 claw_id | ✅ | ✅ | ✅（绑 User，非合伙人） |
-| 自动绑定上级 | — | ✅（绑创建者 TeamPartner） | ✅（绑 CityPartner） |
+| 属性 | invite (team) | invite (city) | invite (referral) | ref_code（旧） |
+|------|---------------|---------------|-------------------|---------------|
+| 格式 | `SC-XXXX-XXXX` 或别名 | `SC-XXXX-XXXX` 或别名 | `SC-XXXX-XXXX` 或别名 | `city_xxxxxxxx` |
+| 创建者 | Admin | TeamPartner | CityPartner | 系统自动 |
+| 使用效果 | 成为 TeamPartner | 成为 CityPartner | 归因为客户 | 归因为客户 |
+| 可使用次数 | 可配置（默认 1） | 可配置（默认 1） | 可配置（默认无限） | 无限 |
+| 有效期 | 可配置 | 可配置 | 可配置 | 永久 |
+| 自动绑定 claw_id | ✅ | ✅ | ✅ | ✅ |
+| 自动绑定上级 | — | ✅ 绑 TeamPartner | ✅ 绑 CityPartner | ✅ 绑 CityPartner |
+| 别名码 | ✅ | ✅ | ✅ | ❌ |
+| 预设信息 | ✅ | ✅ | ✅ | ❌ |
+| 落地页链接 | ✅ | ✅ | ✅ | ❌ |
+| 统计看板 | ✅ | ✅ | ✅ | ❌ |
 
 ---
 
@@ -278,47 +283,45 @@ Claw 代理签名 → POST /v1/auth/claw-register
 
 ## 八、优化建议与待办
 
-### 8.1 已识别的优化点
+### 8.1 优化实施清单（全部已完成 ✅）
 
-#### ① 邀请码可读性提升
-**现状**：`SC-A3F8-K9M2` 是随机 hex，不好记忆和口头传播。
-**建议**：支持自定义别名码，例如 `SC-BEIJING-001` 或 `SC-张三专属`。实现方式：在 `PartnerInvite` 上增加 `alias` 字段，验证时同时匹配 `code` 和 `alias`。
+#### ✅ ① 邀请码可读性提升 — 别名码
+- `PartnerInvite` 新增 `Alias` 字段（`uniqueIndex`），支持自定义可读别名
+- 例如：`SC-BEIJING-001`、`SC-HUADONG-ZHANGSAN`
+- `ValidateInviteCode()` 同时匹配 `code` 和 `alias`
+- `DisplayCode()` 优先返回 alias
 
-#### ② 邀请码 → 落地页引导
-**现状**：候选人拿到邀请码后，需要自己知道去哪里下载 Claw、怎么填码。
-**建议**：生成带邀请码的落地页链接，如 `https://starclaw.net/join?code=SC-A3F8-K9M2`，页面自动引导下载安装并预填邀请码。
+#### ✅ ② 邀请码 → 落地页引导
+- 所有 API 响应自动附带 `join_url` 字段
+- 格式：`https://starclaw.net/join?code=SC-BEIJING-001`
+- 基础 URL 通过环境变量 `SITE_BASE_URL` 配置
+- `JoinURL()` 方法优先使用 alias 生成链接
 
-#### ③ 邀请码预绑定信息
-**现状**：候选人注册后，合伙人的 `name`/`email` 默认是 Claw 节点的 nickname。
-**建议**：邀请码创建时可预填候选人姓名/手机/邮箱，注册时自动填入合伙人档案。增加字段：
+#### ✅ ③ 邀请码预绑定候选人信息
+- `PartnerInvite` 新增 `PresetName`、`PresetPhone`、`PresetEmail`
+- `ConsumeInviteCode()` 自动将 preset 信息写入 User 和 Partner 档案
+- 仅在用户字段为空或为 `@claw.local` 占位符时覆盖
 
-```go
-type PartnerInvite struct {
-    // ...existing fields...
-    PresetName  string `json:"preset_name" gorm:"type:varchar(100)"`
-    PresetPhone string `json:"preset_phone" gorm:"type:varchar(20)"`
-    PresetEmail string `json:"preset_email" gorm:"type:varchar(200)"`
-}
-```
+#### ✅ ④ 城市合伙人自申请补充 claw_id
+- `POST /city/apply` 新增 `resolveClawID()` 自动从 NodeBinding/OAuth 解析 `claw_id`
+- 新增 `invite_code` 可选字段，自动绑定上级 TeamPartner
+- 彻底修复 `autoLinkPartner()` 匹配不上的 bug
 
-#### ④ 城市合伙人自申请补充 claw_id
-**现状**：`POST /city/apply` 不绑定 `claw_id`，导致 `autoLinkPartner()` 无法匹配。
-**建议**：在申请接口增加可选的 `claw_id` 字段。如果用户已通过 Claw 登录（JWT 中有 claw_id），自动填入。
+#### ✅ ⑤ 邀请码统计看板
+- Admin: `GET /admin/invite-stats` — 总量/活跃/使用/转化率/按类型分布/Top 创建者/7 天趋势
+- TeamPartner: `GET /partner/invite-stats` — 自己的邀请码和使用统计
 
-#### ⑤ 邀请码统计看板
-**现状**：只有基础的 CRUD。
-**建议**：在 Cerebrate Partner 面板和 Queen Core 后台增加：
-- 邀请码转化率（创建 vs 使用）
-- 邀请来源分布（哪个团队合伙人拉的人最多）
-- 时间趋势图（每日/每周新增合伙人）
+#### ✅ ⑥ 多级邀请码 — 城市合伙人也能发码
+- CityPartner 新增 `referral` 类型邀请码，替代原始 `ref_code` 的无控制分享
+- 支持使用次数限制、过期时间、别名、预设信息
+- 路由：`POST/GET/DELETE /city/invites`
+- `consumeReferral()` 自动创建 CityClient 归因记录
 
-#### ⑥ 多级邀请码（城市合伙人也能发码）
-**现状**：只有 Admin 和 TeamPartner 能创建邀请码。
-**建议**：未来可让 CityPartner 也能创建 `ref_code` 升级版邀请码，被邀请的客户自动归因到该城市合伙人。当前 `ref_code` 已实现此功能，但没有使用次数和过期时间控制。
-
-#### ⑦ invite_code 与 ref_code 统一
-**现状**：两套码、两套逻辑、两张表。
-**建议**：长期可考虑统一为一套「推广码」系统，通过 `type` 字段区分用途（partner_team / partner_city / referral），共享验证、统计、管理界面。
+#### ✅ ⑦ invite_code 与 ref_code 统一
+- `PartnerInvite.Type` 现支持三种：`team_partner` / `city_partner` / `referral`
+- 统一验证逻辑 `ValidateInviteCode()` 处理所有类型
+- 统一消费逻辑 `ConsumeInviteCode()` 按 type 分发
+- 统一管理界面和统计
 
 ### 8.2 收入分润链完整性
 
@@ -345,10 +348,11 @@ Claw 消费 API → profit-split
 
 | 文件 | 变更类型 | 说明 |
 |------|----------|------|
-| `queen/api/internal/model/partner.go` | 修改 | +PartnerInvite, +PartnerInviteUse |
-| `queen/api/internal/handler/invite.go` | 新建 | 完整 CRUD + ValidateInviteCode + ConsumeInviteCode |
-| `queen/api/internal/handler/claw_auth.go` | 修改 | ClawRegister 增加 invite_code 字段和处理逻辑 |
-| `queen/api/internal/router/router.go` | 修改 | +13 条路由（public + admin + partner） |
+| `queen/api/internal/model/partner.go` | 修改 | +PartnerInvite（含 Alias/Preset*/JoinURL/DisplayCode）, +PartnerInviteUse |
+| `queen/api/internal/handler/invite.go` | 新建 | 全功能：Admin/TeamPartner/CityPartner CRUD + Stats + 统一 Validate/Consume + referral 类型 |
+| `queen/api/internal/handler/claw_auth.go` | 修改 | ClawRegister 增加 invite_code 字段和消费逻辑 |
+| `queen/api/internal/handler/city.go` | 修改 | Apply 自动解析 claw_id（resolveClawID）+ 支持 invite_code 绑定上级 |
+| `queen/api/internal/router/router.go` | 修改 | +20 条路由（public + admin + partner + city） |
 | `queen/api/cmd/server/main.go` | 修改 | AutoMigrate 新增 2 张表 |
 | `claw/api/internal/api/v1/queen.go` | 修改 | AutoRegister 传递 invite_code |
 
@@ -356,21 +360,34 @@ Claw 消费 API → profit-split
 
 ## 十、使用示例
 
-### Admin 创建团队合伙人邀请码
+### Admin 创建团队合伙人邀请码（含别名 + 预设信息）
 
 ```bash
 curl -X POST https://queen.starclaw.net/v1/admin/invites \
   -H "Authorization: Bearer <admin_jwt>" \
   -d '{
     "type": "team_partner",
+    "alias": "SC-HUADONG-ZHANGSAN",
     "label": "华东区负责人-张三",
     "max_uses": 1,
     "region": "华东",
     "level": "overlord",
     "base_salary": 1000000,
-    "direct_comm_rate": 0.30
+    "comm_rate": 0.30,
+    "preset_name": "张三",
+    "preset_phone": "13800138000",
+    "preset_email": "zhangsan@example.com"
   }'
-# 返回: {"invite": {"code": "SC-A3F8-K9M2", ...}}
+# 返回:
+# {
+#   "invite": {
+#     "code": "SC-A3F8-K9M2",
+#     "alias": "SC-HUADONG-ZHANGSAN",
+#     "display_code": "SC-HUADONG-ZHANGSAN",
+#     "join_url": "https://starclaw.net/join?code=SC-HUADONG-ZHANGSAN",
+#     ...
+#   }
+# }
 ```
 
 ### 团队合伙人创建城市合伙人邀请码
@@ -379,29 +396,87 @@ curl -X POST https://queen.starclaw.net/v1/admin/invites \
 curl -X POST https://queen.starclaw.net/v1/partner/invites \
   -H "Authorization: Bearer <partner_jwt>" \
   -d '{
+    "alias": "SC-HANGZHOU-001",
     "label": "杭州代理-李四",
     "max_uses": 1,
     "region": "杭州",
-    "comm_rate": 0.20
+    "comm_rate": 0.20,
+    "preset_name": "李四"
   }'
-# 返回: {"invite": {"code": "SC-B7E2-N4P1", ...}}
+# 返回: {"invite": {"display_code": "SC-HANGZHOU-001", "join_url": "https://starclaw.net/join?code=SC-HANGZHOU-001", ...}}
 ```
 
-### 候选人通过 Claw 注册
+### 城市合伙人创建推荐邀请码（多级裂变）
 
 ```bash
-# Claw 节点上调用
+curl -X POST https://queen.starclaw.net/v1/city/invites \
+  -H "Authorization: Bearer <city_jwt>" \
+  -d '{
+    "alias": "SC-HANGZHOU-VIP",
+    "label": "杭州 VIP 客户通道",
+    "max_uses": 0
+  }'
+# 返回: {"invite": {"type": "referral", "display_code": "SC-HANGZHOU-VIP", "join_url": "...", ...}}
+# max_uses=0 表示无限次使用
+```
+
+### 候选人通过 Claw 注册（支持别名码）
+
+```bash
+# 可使用 code 或 alias
 curl -X POST http://localhost:8080/v1/queen/auto-register \
   -d '{
-    "invite_code": "SC-A3F8-K9M2",
+    "invite_code": "SC-HUADONG-ZHANGSAN",
     "nickname": "张三的AI节点"
   }'
-# 返回: {token, user: {role: "partner"}, partner: {partner_id, partner_type: "team_partner"}}
+# 返回: {token, user: {role: "partner", nickname: "张三"}, partner: {partner_type: "team_partner"}}
+# preset_name "张三" 自动填入 user.nickname 和 partner.name
 ```
 
 ### 验证邀请码（无需登录）
 
 ```bash
-curl https://queen.starclaw.net/v1/invite/verify?code=SC-A3F8-K9M2
-# 返回: {"valid": true, "type": "team_partner", "creator_name": "admin", "remaining": 1}
+curl https://queen.starclaw.net/v1/invite/verify?code=SC-HUADONG-ZHANGSAN
+# 返回:
+# {
+#   "valid": true,
+#   "type": "team_partner",
+#   "creator_name": "admin",
+#   "remaining": 1,
+#   "unlimited": false,
+#   "join_url": "https://starclaw.net/join?code=SC-HUADONG-ZHANGSAN"
+# }
+```
+
+### 查看邀请码统计（Admin）
+
+```bash
+curl https://queen.starclaw.net/v1/admin/invite-stats \
+  -H "Authorization: Bearer <admin_jwt>"
+# 返回:
+# {
+#   "total_invites": 42,
+#   "active_invites": 15,
+#   "total_uses": 28,
+#   "conversion_rate": "66.7%",
+#   "by_type": [{"type": "team_partner", "count": 10}, ...],
+#   "top_creators": [{"creator_name": "张三", "total_used": 12}, ...],
+#   "trend_7d": [{"day": "2026-03-22", "count": 3}, ...]
+# }
+```
+
+### 城市合伙人申请（自动绑 claw_id + 邀请码上级）
+
+```bash
+curl -X POST https://queen.starclaw.net/v1/city/apply \
+  -H "Authorization: Bearer <user_jwt>" \
+  -d '{
+    "name": "王五",
+    "city": "杭州",
+    "phone": "13900139000",
+    "email": "wangwu@example.com",
+    "invite_code": "SC-HANGZHOU-001"
+  }'
+# claw_id 从 NodeBinding 自动解析
+# invite_code 自动绑定上级 TeamPartner
 ```

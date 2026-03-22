@@ -125,13 +125,15 @@ type TeamVote struct {
 }
 
 // PartnerInvite represents an invitation code for joining the partner network.
-// Admin creates team_partner invites; TeamPartners create city_partner invites.
+// Admin creates team_partner invites; TeamPartners create city_partner invites;
+// CityPartners create referral invites (upgraded ref_code with controls).
 type PartnerInvite struct {
 	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	Code        string     `json:"code" gorm:"type:varchar(20);uniqueIndex"`      // e.g. "SC-A3F8-K9M2"
-	Type        string     `json:"type" gorm:"type:varchar(20);index"`            // team_partner / city_partner
-	CreatorID   string     `json:"creator_id" gorm:"type:varchar(36);index"`      // TeamPartner.ID or "admin"
-	CreatorType string     `json:"creator_type" gorm:"type:varchar(20)"`          // admin / team_partner
+	Alias       string     `json:"alias" gorm:"type:varchar(50);uniqueIndex"`     // human-readable alias, e.g. "SC-BEIJING-001"
+	Type        string     `json:"type" gorm:"type:varchar(20);index"`            // team_partner / city_partner / referral
+	CreatorID   string     `json:"creator_id" gorm:"type:varchar(36);index"`      // partner ID or "admin"
+	CreatorType string     `json:"creator_type" gorm:"type:varchar(20)"`          // admin / team_partner / city_partner
 	CreatorName string     `json:"creator_name" gorm:"type:varchar(100)"`         // display name of creator
 	Label       string     `json:"label" gorm:"type:varchar(200)"`                // internal label / note
 	MaxUses     int        `json:"max_uses" gorm:"default:1"`                     // 0 = unlimited
@@ -140,10 +142,30 @@ type PartnerInvite struct {
 	CommRate    float64    `json:"comm_rate" gorm:"default:0"`                    // default commission rate (0 = use system default)
 	Level       string     `json:"level" gorm:"type:varchar(20)"`                 // for team partners: default level
 	BaseSalary  int64      `json:"base_salary" gorm:"default:0"`                  // for team partners: monthly base (分)
+	PresetName  string     `json:"preset_name" gorm:"type:varchar(100)"`          // pre-fill candidate name
+	PresetPhone string     `json:"preset_phone" gorm:"type:varchar(20)"`          // pre-fill candidate phone
+	PresetEmail string     `json:"preset_email" gorm:"type:varchar(200)"`         // pre-fill candidate email
 	ExpiresAt   *time.Time `json:"expires_at"`                                    // nil = never expires
 	Status      string     `json:"status" gorm:"type:varchar(20);default:active"` // active / expired / revoked
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// JoinURL returns the landing page URL for this invite code.
+func (i *PartnerInvite) JoinURL(baseURL string) string {
+	code := i.Alias
+	if code == "" {
+		code = i.Code
+	}
+	return baseURL + "/join?code=" + code
+}
+
+// DisplayCode returns alias if set, otherwise code.
+func (i *PartnerInvite) DisplayCode() string {
+	if i.Alias != "" {
+		return i.Alias
+	}
+	return i.Code
 }
 
 // PartnerInviteUse records each use of an invitation code.

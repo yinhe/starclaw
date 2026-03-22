@@ -229,15 +229,17 @@ func Setup() *gin.Engine {
 	inv := &handler.InviteHandler{}
 	// Public: verify invite code (no auth)
 	v1.GET("/invite/verify", inv.VerifyInvite)
-	// Admin: invite management
+	// Admin: invite management + stats
 	admin.POST("/invites", inv.AdminCreateInvite)
 	admin.GET("/invites", inv.AdminListInvites)
 	admin.DELETE("/invites/:id", inv.AdminRevokeInvite)
 	admin.GET("/invite-uses", inv.AdminListInviteUses)
-	// TeamPartner: create/list/revoke city_partner invites
+	admin.GET("/invite-stats", inv.AdminInviteStats)
+	// TeamPartner: create/list/revoke city_partner invites + stats
 	partnerPortal.POST("/invites", writeRL.UserRateLimit(), inv.PartnerCreateInvite)
 	partnerPortal.GET("/invites", inv.PartnerListInvites)
 	partnerPortal.DELETE("/invites/:id", writeRL.UserRateLimit(), inv.PartnerRevokeInvite)
+	partnerPortal.GET("/invite-stats", inv.PartnerInviteStats)
 
 	// Admin: team partner management
 	admin.GET("/partners", ph.AdminListPartners)
@@ -270,6 +272,10 @@ func Setup() *gin.Engine {
 		cityPortal.GET("/payouts", city.ListPayouts)
 		cityPortal.GET("/materials", city.ListMaterials)
 		cityPortal.GET("/ref-link", city.RefLink)
+		// CityPartner: create/list/revoke referral invites (upgraded ref_code)
+		cityPortal.POST("/invites", writeRL.UserRateLimit(), inv.CityCreateInvite)
+		cityPortal.GET("/invites", inv.CityListInvites)
+		cityPortal.DELETE("/invites/:id", writeRL.UserRateLimit(), inv.CityRevokeInvite)
 	}
 
 	// Admin: city partner management

@@ -18,6 +18,31 @@ import (
 
 type CityHandler struct{}
 
+// resolveClawID finds a user's claw_id from NodeBinding or OAuth identity.
+func resolveClawID(userID string) string {
+	db := database.DB
+	// 1. Check OAuth identity (claw wallet login)
+	var user struct {
+		OAuthProvider string
+		OAuthID       string
+	}
+	if err := db.Table("users").Where("id = ?", userID).
+		Select("o_auth_provider, o_auth_id").Scan(&user).Error; err == nil {
+		if user.OAuthProvider == "claw" && user.OAuthID != "" {
+			return user.OAuthID
+		}
+	}
+	// 2. Fallback: NodeBinding
+	var binding struct {
+		NodeID string
+	}
+	if err := db.Table("node_bindings").Where("queen_user_id = ? AND status = ?", userID, "active").
+		Select("node_id").First(&binding).Error; err == nil {
+		return binding.NodeID
+	}
+	return ""
+}
+
 // ── Public: Apply to become a city partner ──
 
 func (h *CityHandler) Apply(c *gin.Context) {
@@ -30,6 +55,7 @@ func (h *CityHandler) Apply(c *gin.Context) {
 		Phone      string `json:"phone" binding:"required"`
 		Email      string `json:"email" binding:"required"`
 		Experience string `json:"experience"`
+		InviteCode string `json:"invite_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.Fail(c, http.StatusBadRequest, middleware.CodeBadRequest)
@@ -43,18 +69,33 @@ func (h *CityHandler) Apply(c *gin.Context) {
 		return
 	}
 
+	// Auto-resolve claw_id from user's NodeBinding or OAuth identity
+	clawID := resolveClawID(userID)
+
+	// If invite_code provided, resolve TeamPartner link
+	teamPartnerID := ""
+	if req.InviteCode != "" {
+		if invite, err := ValidateInviteCode(req.InviteCode); err == nil {
+			if invite.Type == "city_partner" && invite.CreatorType == "team_partner" {
+				teamPartnerID = invite.CreatorID
+			}
+		}
+	}
+
 	partner := model.CityPartner{
-		ID:         uuid.New().String(),
-		UserID:     userID,
-		Name:       req.Name,
-		Company:    req.Company,
-		City:       req.City,
-		Phone:      req.Phone,
-		Email:      req.Email,
-		Experience: req.Experience,
-		RefCode:    generateRefCode(),
-		CommRate:   0.20,
-		Status:     "pending",
+		ID:            uuid.New().String(),
+		UserID:        userID,
+		ClawID:        clawID,
+		Name:          req.Name,
+		Company:       req.Company,
+		City:          req.City,
+		TeamPartnerID: teamPartnerID,
+		Phone:         req.Phone,
+		Email:         req.Email,
+		Experience:    req.Experience,
+		RefCode:       generateRefCode(),
+		CommRate:      0.20,
+		Status:        "pending",
 	}
 
 	if err := database.DB.Create(&partner).Error; err != nil {
