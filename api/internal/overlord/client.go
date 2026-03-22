@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 
@@ -205,9 +204,8 @@ func (c *Client) heartbeat() error {
 		return fmt.Errorf("not registered")
 	}
 
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memMB := memStats.Alloc / 1024 / 1024
+	cpu := cpuPercent()
+	mem := memPercent()
 
 	c.mu.RLock()
 	cid := c.clawID
@@ -218,11 +216,11 @@ func (c *Client) heartbeat() error {
 		"token":         tok,
 		"version":       molt.Version,
 		"claw_id":       cid,
-		"cpu_percent":   0,
-		"mem_used_mb":   memMB,
+		"address":       c.getAddress(),
+		"cpu_percent":   cpu,
+		"mem_percent":   mem,
 		"tasks_running": 0,
 		"tasks_queued":  0,
-		"go_routines":   runtime.NumGoroutine(),
 	}
 
 	_, err := c.post("/brood/heartbeat", body)
