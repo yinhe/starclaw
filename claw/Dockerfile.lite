@@ -6,6 +6,7 @@ FROM golang:1.24-alpine AS build-claw
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
 COPY claw/api/ ./
+RUN mkdir -p internal/web/dist && echo "lite" > internal/web/dist/.keep
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /claw-api ./cmd/server
 
