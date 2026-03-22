@@ -13,11 +13,13 @@ import { DeveloperPage } from './pages/DeveloperPage';
 import { ClawLoginPage } from './pages/ClawLoginPage';
 import { InvestPage } from './pages/InvestPage';
 
+const isInvestDomain = window.location.hostname === 'invest.starclaw.net';
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={isInvestDomain ? <InvestPage /> : <LandingPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/auth/claw-login" element={<ClawLoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />

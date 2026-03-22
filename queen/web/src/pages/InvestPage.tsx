@@ -6,7 +6,7 @@ import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEar
 import { isLoggedIn } from '../lib/auth';
 import {
   Diamond, Wallet, ArrowRight, CheckCircle,
-  FileText, Shield, BarChart3, Gem, Zap, Lock, Unlock, Calendar,
+  FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar,
 } from 'lucide-react';
 
 function fmt(yuan: number) { return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
@@ -37,8 +37,9 @@ export function InvestPage() {
   const loggedIn = isLoggedIn();
 
   useEffect(() => {
+    if (!loggedIn) { navigate('/auth?redirect=' + encodeURIComponent(window.location.pathname)); return; }
     loadPool();
-    if (loggedIn) loadProfile();
+    loadProfile();
   }, []);
 
   async function loadPool() {
@@ -211,18 +212,7 @@ export function InvestPage() {
             </div>
 
             {/* Actions for non-investors */}
-            {!loggedIn && (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center">
-                <Shield className="w-10 h-10 text-amber-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">加入星钻计划</h3>
-                <p className="text-gray-400 text-sm mb-6">登录后可注册为投资人，购买星钻享受平台利润分成</p>
-                <button onClick={() => navigate('/auth?redirect=/invest')} className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition">
-                  登录 / 注册
-                </button>
-              </div>
-            )}
-
-            {loggedIn && !isInvestor && (
+            {!isInvestor && (
               <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center">
                 <Diamond className="w-10 h-10 text-amber-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">注册为投资人</h3>
@@ -233,7 +223,7 @@ export function InvestPage() {
               </div>
             )}
 
-            {loggedIn && isInvestor && !hasSigned && (
+            {isInvestor && !hasSigned && (
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-8">
                 <div className="flex items-start gap-4">
                   <FileText className="w-8 h-8 text-amber-400 shrink-0 mt-1" />
@@ -267,7 +257,7 @@ export function InvestPage() {
               </div>
             )}
 
-            {loggedIn && isInvestor && hasSigned && (
+            {isInvestor && hasSigned && (
               <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <Zap className="w-5 h-5 text-amber-400" />
