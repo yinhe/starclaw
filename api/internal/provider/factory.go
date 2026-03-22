@@ -4,11 +4,15 @@ import (
 	"log"
 
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/security"
 )
 
 // CreateFromConfig creates a ModelProvider from a ModelConfig, checking the registry first.
 // This is a shared factory used by both the chat handler and the system tool (for agent delegation).
 func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
+	// Decrypt API key if stored encrypted (transparent: handles both enc: and plaintext)
+	cfg.APIKey = security.DecryptAPIKey(cfg.APIKey)
+
 	// Check registry first, but only if no user-specific API key override.
 	// This allows user-configured API keys (e.g. star-ai sk-star-xxx) to
 	// take priority over pre-registered providers (e.g. Ed25519 identity auth).
@@ -67,13 +71,16 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
 		}
-		// If api_key is claw-identity, try to get Identity from registry for Ed25519 auth
-		if registry != nil && cfg.APIKey == "claw-identity" {
+		// Always try to inject Identity for Ed25519 signature auth.
+		// SignedTransport sends both signature headers AND keeps the API key,
+		// so the remote DualAuth will prefer the Claw signature path and check
+		// star energy instead of local balance.
+		if registry != nil {
 			if rp, ok := registry.Get("star-ai"); ok {
 				if sp, ok := rp.(*StarAIProvider); ok && sp.inner.client.Transport != nil {
 					if st, ok := sp.inner.client.Transport.(*SignedTransport); ok {
 						starCfg.Identity = st.Identity
-						log.Printf("[Provider] Extracted Identity from registry for star-ai fallback")
+						log.Printf("[Provider] Injected Identity for star-ai (api_key_len=%d)", len(cfg.APIKey))
 					}
 				}
 			}

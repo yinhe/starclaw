@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/provider"
+	"github.com/yinhe/starclaw/internal/security"
 	"gorm.io/gorm"
 )
 
@@ -36,10 +37,11 @@ func SeedPlatformModels(db *gorm.DB) {
 			continue
 		}
 		var existing model.ModelConfig
+		encKey := security.EncryptAPIKey(apiKey)
 		if err := db.Where("id = ?", d.ID).First(&existing).Error; err == nil {
-			// Update key if changed
-			if existing.APIKey != apiKey {
-				db.Model(&existing).Update("api_key", apiKey)
+			// Update key if changed (compare plaintext against decrypted stored)
+			if security.DecryptAPIKey(existing.APIKey) != apiKey {
+				db.Model(&existing).Update("api_key", encKey)
 			}
 			continue
 		}
@@ -49,7 +51,7 @@ func SeedPlatformModels(db *gorm.DB) {
 			Provider:    d.Provider,
 			ModelName:   d.ModelName,
 			DisplayName: d.DisplayName,
-			APIKey:      apiKey,
+			APIKey:      encKey,
 			BaseURL:     d.BaseURL,
 			MaxTokens:   16384,
 			Temperature: 0.7,
@@ -193,7 +195,7 @@ func (h *ModelHandler) Create(c *gin.Context) {
 		Provider:    req.Provider,
 		ModelName:   req.ModelName,
 		DisplayName: req.DisplayName,
-		APIKey:      req.APIKey,
+		APIKey:      security.EncryptAPIKey(req.APIKey),
 		BaseURL:     req.BaseURL,
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
@@ -245,7 +247,7 @@ func (h *ModelHandler) Update(c *gin.Context) {
 		updates["base_url"] = req.BaseURL
 	}
 	if req.APIKey != "" {
-		updates["api_key"] = req.APIKey
+		updates["api_key"] = security.EncryptAPIKey(req.APIKey)
 	}
 	if req.Provider != "" {
 		updates["provider"] = req.Provider

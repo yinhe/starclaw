@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/security"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -140,9 +141,10 @@ func (h *SettingsHandler) GetAPIKeys(c *gin.Context) {
 		}
 		seen[k.Provider] = true
 		masked := ""
-		if k.APIKey != "" {
-			if len(k.APIKey) > 8 {
-				masked = k.APIKey[:4] + "****" + k.APIKey[len(k.APIKey)-4:]
+		plain := security.DecryptAPIKey(k.APIKey)
+		if plain != "" {
+			if len(plain) > 8 {
+				masked = plain[:4] + "****" + plain[len(plain)-4:]
 			} else {
 				masked = "****"
 			}

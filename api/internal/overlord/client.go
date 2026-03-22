@@ -17,13 +17,14 @@ import (
 
 // Client handles registration and heartbeat with an Overlord node
 type Client struct {
-	cfg    config.OverlordConfig
-	nodeID string
-	token  string
-	clawID string
-	mu     sync.RWMutex
-	stopCh chan struct{}
-	httpC  *http.Client
+	cfg     config.OverlordConfig
+	nodeID  string
+	token   string
+	clawID  string
+	address string // public address of this Claw, e.g. https://starclaw.me
+	mu      sync.RWMutex
+	stopCh  chan struct{}
+	httpC   *http.Client
 }
 
 // NewClient creates an overlord client from config
@@ -113,6 +114,13 @@ func (c *Client) SetClawID(id string) {
 	c.mu.Unlock()
 }
 
+// SetAddress sets the public address of this Claw node
+func (c *Client) SetAddress(addr string) {
+	c.mu.Lock()
+	c.address = addr
+	c.mu.Unlock()
+}
+
 // OverlordURL returns the configured Overlord URL
 func (c *Client) OverlordURL() string {
 	return c.cfg.OverlordURL
@@ -165,12 +173,12 @@ func (c *Client) register() error {
 		"name":    name,
 		"role":    "claw",
 		"version": molt.Version,
-		"address": fmt.Sprintf("%s:8080", getHostname()),
+		"address": c.getAddress(),
 		"region":  c.cfg.Region,
 		"claw_id": cid,
 	}
 
-	resp, err := c.post("/overlord/register", body)
+	resp, err := c.post("/brood/register", body)
 	if err != nil {
 		return err
 	}
@@ -217,7 +225,7 @@ func (c *Client) heartbeat() error {
 		"go_routines":   runtime.NumGoroutine(),
 	}
 
-	_, err := c.post("/overlord/heartbeat", body)
+	_, err := c.post("/brood/heartbeat", body)
 	return err
 }
 
@@ -261,6 +269,16 @@ func LoadCredentials() (nodeID, token string) {
 		return string(parts[0]), string(parts[1])
 	}
 	return "", ""
+}
+
+func (c *Client) getAddress() string {
+	c.mu.RLock()
+	addr := c.address
+	c.mu.RUnlock()
+	if addr != "" {
+		return addr
+	}
+	return fmt.Sprintf("%s:8080", getHostname())
 }
 
 func getHostname() string {

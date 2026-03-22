@@ -135,3 +135,54 @@ func (km *KeyManager) DecryptString(encoded, purpose string) (string, error) {
 	}
 	return string(b), nil
 }
+
+// ════════════════════════════════════════════════════════════════
+//  Package-level singleton for API key encryption
+// ════════════════════════════════════════════════════════════════
+
+var globalKeyMgr *KeyManager
+
+// SetGlobalKeyManager sets the package-level KeyManager singleton.
+// Call this once at startup after creating the KeyManager.
+func SetGlobalKeyManager(km *KeyManager) {
+	globalKeyMgr = km
+}
+
+// GetGlobalKeyManager returns the package-level KeyManager singleton.
+func GetGlobalKeyManager() *KeyManager {
+	return globalKeyMgr
+}
+
+// EncryptAPIKey encrypts an API key for storage. Returns "enc:" prefixed ciphertext.
+// If KeyManager is not set or key is empty, returns the original string unchanged.
+func EncryptAPIKey(apiKey string) string {
+	if globalKeyMgr == nil || apiKey == "" {
+		return apiKey
+	}
+	// Already encrypted — don't double-encrypt
+	if len(apiKey) > 4 && apiKey[:4] == "enc:" {
+		return apiKey
+	}
+	enc, err := globalKeyMgr.EncryptString(apiKey, "api_key")
+	if err != nil {
+		return apiKey // fallback to plaintext on error
+	}
+	return "enc:" + enc
+}
+
+// DecryptAPIKey decrypts an API key from storage. Handles both encrypted ("enc:" prefix)
+// and plaintext values (for seamless migration from unencrypted to encrypted).
+func DecryptAPIKey(stored string) string {
+	if globalKeyMgr == nil || stored == "" {
+		return stored
+	}
+	// Not encrypted — return as-is (migration support)
+	if len(stored) < 4 || stored[:4] != "enc:" {
+		return stored
+	}
+	dec, err := globalKeyMgr.DecryptString(stored[4:], "api_key")
+	if err != nil {
+		return "" // corrupted — return empty rather than garbage
+	}
+	return dec
+}

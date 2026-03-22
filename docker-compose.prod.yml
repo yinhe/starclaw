@@ -58,10 +58,14 @@ services:
       STARCLAW_REDIS_PASSWORD: ${REDIS_PASSWORD:-starclaw_redis_2026}
       STARCLAW_JWT_SECRET: ${JWT_SECRET}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      STARCLAW_NODE_ADDRESS: https://starclaw.me
+      STARCLAW_NODE_ADDRESS: ${NODE_ADDRESS:-https://localhost:8080}
       STARCLAW_SWARM_ENABLED: ${SWARM_ENABLED:-false}
-      STARCLAW_SWARM_QUEEN_URL: ${SWARM_QUEEN_URL:-https://swarm.starclaw.net}
+      STARCLAW_SWARM_QUEEN_URL: ${SWARM_QUEEN_URL:-}
       OVERLORD_CLAW_TOKEN: ${OVERLORD_CLAW_TOKEN:-overlord-internal-default}
+      STARCLAW_OVERLORD_ENABLED: ${OVERLORD_ENABLED:-false}
+      STARCLAW_OVERLORD_OVERLORD_URL: ${OVERLORD_URL:-}
+      STARCLAW_OVERLORD_NODE_NAME: ${OVERLORD_NODE_NAME:-}
+      STARCLAW_OVERLORD_REGION: ${OVERLORD_REGION:-cn-east}
       NODE_KEY_PATH: /app/data/identity/.node_key
     volumes:
       - ./data/identity:/app/data/identity

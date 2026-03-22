@@ -452,6 +452,12 @@ func (h *SystemHandler) JoinOverlord(c *gin.Context) {
 		h.overlordClient.Stop()
 	}
 	h.overlordClient = overlord.NewClient(h.cfg.Overlord)
+	if h.identity != nil {
+		h.overlordClient.SetClawID(h.identity.NodeID)
+	}
+	if h.cfg.Node.Address != "" {
+		h.overlordClient.SetAddress(h.cfg.Node.Address)
+	}
 	h.overlordClient.Start()
 
 	log.Printf("[system] joined overlord: url=%s node=%s region=%s", req.OverlordURL, req.NodeName, req.Region)

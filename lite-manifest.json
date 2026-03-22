@@ -1,0 +1,28 @@
+{
+  "name": "claw-lite",
+  "version": "2026.0322",
+  "description": "Claw Lite — SQLite mode for Spark tier (free forever)",
+  "platform": { "os": "linux", "arch": "amd64" },
+  "binary": "claw-api",
+  "args": [],
+  "resources": {
+    "min_memory_mb": 128,
+    "min_disk_mb": 50,
+    "recommended_memory_mb": 256
+  },
+  "network": {
+    "ports": [{ "port": 8080, "protocol": "tcp", "description": "Claw API" }]
+  },
+  "health": {
+    "endpoint": "http://localhost:8080/health",
+    "interval_seconds": 15,
+    "timeout_seconds": 5
+  },
+  "env": {
+    "STARCLAW_DATABASE_DRIVER": "sqlite",
+    "STARCLAW_DATABASE_SQLITE_PATH": "/opt/claw/data/claw.db",
+    "STARCLAW_REDIS_ENABLED": "false",
+    "STARCLAW_SERVER_MODE": "release",
+    "GIN_MODE": "release"
+  }
+}
