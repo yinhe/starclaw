@@ -139,50 +139,55 @@ export function InvestPage() {
   const isActivated = inv?.activated;
 
   const TABS: { key: Tab; label: string; icon: typeof Diamond }[] = [
-    { key: 'pool', label: '星钻池', icon: Diamond },
+    { key: 'pool', label: '虫巢总览', icon: Diamond },
     { key: 'portfolio', label: '我的持仓', icon: Wallet },
     { key: 'earnings', label: '收益明细', icon: BarChart3 },
     { key: 'equity', label: '合伙人期权', icon: Gem },
   ];
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      <div className="animate-spin w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full" />
+    <div className="min-h-screen bg-[#0a0a14] text-white flex items-center justify-center">
+      <div className="animate-spin w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full" />
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Dashboard header — standalone, no portal nav */}
-      <header className="border-b border-white/10 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 h-14 flex items-center justify-between">
+    <div className="min-h-screen bg-[#0a0a14] text-white">
+      {/* Hive header — Queen’s command center */}
+      <header className="relative border-b border-purple-500/10 bg-gradient-to-r from-[#0d0b1a] via-[#130f24] to-[#0d0b1a] sticky top-0 z-50">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.06),transparent_70%)]" />
+        <div className="relative mx-auto max-w-5xl px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition" title="返回首页">
+            <button onClick={() => navigate('/')} className="p-1.5 rounded-lg hover:bg-purple-500/10 text-gray-500 hover:text-purple-300 transition" title="返回首页">
               <ArrowLeft size={18} />
             </button>
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <Diamond className="w-4 h-4 text-amber-400" />
+            <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
+              <Diamond className="w-4.5 h-4.5 text-purple-400" />
             </div>
             <div>
-              <h1 className="text-base font-bold leading-tight">星钻 · 合伙人期权</h1>
-              <p className="text-[11px] text-gray-500 leading-tight">Star Diamond & Partner Equity</p>
+              <h1 className="text-base font-bold leading-tight bg-gradient-to-r from-purple-300 to-fuchsia-300 bg-clip-text text-transparent">虫后视角 · 星钻合伙</h1>
+              <p className="text-[11px] text-gray-500 leading-tight">Queen’s Hive · Star Diamond Partnership</p>
             </div>
           </div>
-          <div className="text-xs text-gray-500">{isInvestor ? (isActivated ? '✓ 已激活分润' : '待激活') : '未注册'}</div>
+          <div className={`text-xs px-2.5 py-1 rounded-full border ${
+            isActivated ? 'border-green-500/30 bg-green-500/10 text-green-400' :
+            isInvestor ? 'border-purple-500/30 bg-purple-500/10 text-purple-400' :
+            'border-white/10 bg-white/5 text-gray-500'
+          }`}>{isInvestor ? (isActivated ? '✧ 分润已激活' : '○ 待激活') : '○ 未注册'}</div>
         </div>
       </header>
 
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mb-8">
+        <div className="flex gap-1 border-b border-purple-500/10 mb-8">
           {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => switchTab(t.key)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.key
-                  ? 'border-amber-400 text-amber-400'
+                  ? 'border-purple-400 text-purple-400'
                   : 'border-transparent text-gray-500 hover:text-gray-300'
               }`}
             >
@@ -200,20 +205,21 @@ export function InvestPage() {
         {tab === 'pool' && pool && (
           <div className="space-y-8">
             {/* Pool Stats */}
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] p-8">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+            <div className="relative rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/[0.06] to-transparent p-8 overflow-hidden">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-purple-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
+              <div className="relative grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
                 <div>
                   <div className="text-sm text-gray-400 mb-1">当前价格</div>
                   <div className="text-2xl font-bold text-white">{fmt(pool.price_yuan)}<span className="text-sm text-gray-400">/份</span></div>
-                  <div className="text-xs text-amber-400 mt-0.5">{pool.price_driver}驱动</div>
+                  <div className="text-xs text-purple-400 mt-0.5">{pool.price_driver}驱动</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-400 mb-1">NAV 净值</div>
                   <div className="text-2xl font-bold text-white">{fmt(pool.nav_yuan)}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-400 mb-1">当前轮次</div>
-                  <div className="text-2xl font-bold text-amber-400">{pool.current_round_label || pool.current_round}</div>
+                  <div className="text-sm text-gray-400 mb-1">当前期</div>
+                  <div className="text-2xl font-bold text-purple-400">{pool.current_round_label || pool.current_round}</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-400 mb-1">活跃合伙人</div>
@@ -224,37 +230,37 @@ export function InvestPage() {
 
             {/* Supply */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-                <div className="text-sm text-gray-400 mb-1">总供应量</div>
-                <div className="text-xl font-bold text-white">{(pool.total_supply / 10000).toLocaleString()}万 份</div>
+              <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5">
+                <div className="text-sm text-gray-500 mb-1">虫巢总供应</div>
+                <div className="text-xl font-bold text-white">{(pool.total_supply / 10000).toLocaleString()}万 <span className="text-sm font-normal text-gray-500">份</span></div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-                <div className="text-sm text-gray-400 mb-1">已发行</div>
-                <div className="text-xl font-bold text-white">{pool.issued.toLocaleString()} 份</div>
-                <div className="text-xs text-gray-500">{pct(pool.issued, pool.total_supply)}</div>
+              <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5">
+                <div className="text-sm text-gray-500 mb-1">已孵化</div>
+                <div className="text-xl font-bold text-white">{pool.issued.toLocaleString()} <span className="text-sm font-normal text-gray-500">份</span></div>
+                <div className="text-xs text-purple-400/60 mt-0.5">{pct(pool.issued, pool.total_supply)}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-                <div className="text-sm text-gray-400 mb-1">利润池余额</div>
-                <div className="text-xl font-bold text-amber-400">{fmt(pool.pool_balance_yuan)}</div>
+              <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5">
+                <div className="text-sm text-gray-500 mb-1">利润池余额</div>
+                <div className="text-xl font-bold text-purple-400">{fmt(pool.pool_balance_yuan)}</div>
               </div>
             </div>
 
             {/* Actions for non-investors */}
             {!isInvestor && (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center">
-                <Diamond className="w-10 h-10 text-amber-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">注册为合伙人</h3>
-                <p className="text-gray-400 text-sm mb-6">注册后签署合伙人协议 → 购买星钻 → 享受利润分成</p>
-                <button onClick={handleRegister} className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition inline-flex items-center gap-2">
+              <div className="rounded-xl border border-purple-500/15 bg-gradient-to-b from-purple-500/[0.04] to-transparent p-10 text-center">
+                <Diamond className="w-12 h-12 text-purple-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">加入虫巢 · 成为合伙人</h3>
+                <p className="text-gray-400 text-sm mb-6">签署合伙人协议 → 购买星钻 → 分享虫巢利润</p>
+                <button onClick={handleRegister} className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition inline-flex items-center gap-2">
                   <ArrowRight size={16} /> 立即注册
                 </button>
               </div>
             )}
 
             {isInvestor && !hasSigned && (
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-8">
+              <div className="rounded-xl border border-purple-500/20 bg-purple-500/[0.04] p-8">
                 <div className="flex items-start gap-4">
-                  <FileText className="w-8 h-8 text-amber-400 shrink-0 mt-1" />
+                  <FileText className="w-8 h-8 text-purple-400 shrink-0 mt-1" />
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold mb-2">签署合伙人协议</h3>
                     <p className="text-gray-400 text-sm mb-4">请选择合伙期限并签署《星钻合伙人协议》，签署后可购买星钻。</p>
@@ -265,7 +271,7 @@ export function InvestPage() {
                           onClick={() => setAgreeTerm(t)}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition border ${
                             agreeTerm === t
-                              ? 'border-amber-400 bg-amber-500/10 text-amber-400'
+                              ? 'border-purple-400 bg-purple-500/10 text-purple-400'
                               : 'border-white/10 text-gray-400 hover:border-white/20'
                           }`}
                         >
@@ -276,7 +282,7 @@ export function InvestPage() {
                     <button
                       onClick={handleAgree}
                       disabled={agreeing}
-                      className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
+                      className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
                     >
                       {agreeing ? '签署中...' : `签署 ${agreeTerm} 年协议`}
                     </button>
@@ -286,19 +292,19 @@ export function InvestPage() {
             )}
 
             {isInvestor && hasSigned && (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8">
+              <div className="rounded-xl border border-purple-500/15 bg-white/[0.02] p-8">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-amber-400" />
+                  <Zap className="w-5 h-5 text-purple-400" />
                   购买星钻
                 </h3>
 
                 {/* Buy mode toggle */}
                 <div className="flex gap-2 mb-6">
                   <button onClick={() => setBuyMode('pay')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${
-                    buyMode === 'pay' ? 'border-amber-400 bg-amber-500/10 text-amber-400' : 'border-white/10 text-gray-400 hover:border-white/20'
+                    buyMode === 'pay' ? 'border-purple-400 bg-purple-500/10 text-purple-400' : 'border-white/10 text-gray-400 hover:border-white/20'
                   }`}><CreditCard size={14} />直接支付</button>
                   <button onClick={() => setBuyMode('balance')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${
-                    buyMode === 'balance' ? 'border-amber-400 bg-amber-500/10 text-amber-400' : 'border-white/10 text-gray-400 hover:border-white/20'
+                    buyMode === 'balance' ? 'border-purple-400 bg-purple-500/10 text-purple-400' : 'border-white/10 text-gray-400 hover:border-white/20'
                   }`}><Wallet size={14} />余额购买</button>
                 </div>
 
@@ -312,17 +318,19 @@ export function InvestPage() {
                         {/* Payment method selector */}
                         <div className="flex gap-2 mb-3">
                           <button onClick={() => setPayMethod('alipay')} className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
-                            payMethod === 'alipay' ? 'border-blue-400 bg-blue-500/10 text-blue-400' : 'border-white/10 text-gray-400'
+                            payMethod === 'alipay' ? 'border-blue-400 bg-blue-500/10 text-blue-400' :
+                            'border-white/10 text-gray-400'
                           }`}>支付宝</button>
                           <button onClick={() => setPayMethod('wechatpay')} className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
-                            payMethod === 'wechatpay' ? 'border-green-400 bg-green-500/10 text-green-400' : 'border-white/10 text-gray-400'
+                            payMethod === 'wechatpay' ? 'border-green-400 bg-green-500/10 text-green-400' :
+                            'border-white/10 text-gray-400'
                           }`}>微信支付</button>
                         </div>
                         <div className="flex gap-2">
                           <input type="number" value={purchaseYuan} onChange={e => setPurchaseYuan(e.target.value)} placeholder="购买金额 (元)"
-                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50" />
+                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
                           <button onClick={handlePurchase} disabled={purchasing}
-                            className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0 flex items-center gap-1.5">
+                            className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0 flex items-center gap-1.5">
                             <ShoppingCart size={14} />{purchasing ? '创建中...' : '支付购买'}
                           </button>
                         </div>
@@ -344,9 +352,9 @@ export function InvestPage() {
                       <>
                         <div className="flex gap-2">
                           <input type="number" value={rechargeYuan} onChange={e => setRechargeYuan(e.target.value)} placeholder="购买金额 (元)"
-                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50" />
+                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
                           <button onClick={handleRecharge} disabled={recharging}
-                            className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
+                            className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
                             {recharging ? '购买中...' : '余额购买'}
                           </button>
                         </div>
@@ -384,35 +392,35 @@ export function InvestPage() {
         {tab === 'portfolio' && (
           <div className="space-y-6">
             {!isInvestor ? (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-12 text-center">
+              <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-12 text-center">
                 <Wallet className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-                <div className="text-gray-500">请先注册为合伙人</div>
+                <div className="text-gray-500">请先加入虫巢成为合伙人</div>
               </div>
             ) : (
               <>
                 {/* Summary cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 text-center">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5 text-center">
                     <div className="text-sm text-gray-400 mb-1">持有星钻</div>
                     <div className="text-2xl font-bold text-white">{inv!.shares.toLocaleString()}</div>
                     <div className="text-xs text-gray-500">份</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 text-center">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5 text-center">
                     <div className="text-sm text-gray-400 mb-1">持仓价值</div>
-                    <div className="text-2xl font-bold text-amber-400">{fmt(profile!.portfolio_yuan)}</div>
+                    <div className="text-2xl font-bold text-purple-400">{fmt(profile!.portfolio_yuan)}</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 text-center">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5 text-center">
                     <div className="text-sm text-gray-400 mb-1">占比</div>
                     <div className="text-2xl font-bold text-white">{profile!.share_percent}</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 text-center">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5 text-center">
                     <div className="text-sm text-gray-400 mb-1">累计分红</div>
                     <div className="text-2xl font-bold text-green-400">{fmtFen(inv!.total_dividends)}</div>
                   </div>
                 </div>
 
                 {/* Status */}
-                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+                <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-6">
                   <h3 className="text-sm font-semibold text-gray-300 mb-4">合伙人信息</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="flex justify-between"><span className="text-gray-500">姓名</span><span className="text-white">{inv!.name || '-'}</span></div>
@@ -426,11 +434,11 @@ export function InvestPage() {
 
                 {/* Transactions */}
                 {profile!.transactions?.length > 0 && (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-6">
                     <h3 className="text-sm font-semibold text-gray-300 mb-4">交易记录</h3>
                     <div className="space-y-2">
                       {profile!.transactions.map((tx: any) => (
-                        <div key={tx.id} className="flex items-center justify-between py-2 border-b border-white/5 text-sm">
+                        <div key={tx.id} className="flex items-center justify-between py-2 border-b border-purple-500/5 text-sm">
                           <div>
                             <span className={`inline-block px-2 py-0.5 rounded text-xs mr-2 ${
                               tx.type === 'seed_grant' ? 'bg-purple-500/10 text-purple-400' :
@@ -451,11 +459,11 @@ export function InvestPage() {
 
                 {/* Dividends */}
                 {profile!.dividends?.length > 0 && (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-6">
                     <h3 className="text-sm font-semibold text-gray-300 mb-4">分红记录</h3>
                     <div className="space-y-2">
                       {profile!.dividends.map((d: any) => (
-                        <div key={d.id} className="flex items-center justify-between py-2 border-b border-white/5 text-sm">
+                        <div key={d.id} className="flex items-center justify-between py-2 border-b border-purple-500/5 text-sm">
                           <div className="text-gray-400">{d.period}</div>
                           <div className="flex items-center gap-4">
                             <span className="text-gray-500 text-xs">占比 {(d.share_ratio * 100).toFixed(2)}%</span>
@@ -475,27 +483,27 @@ export function InvestPage() {
         {tab === 'earnings' && (
           <div className="space-y-6">
             {!isInvestor ? (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-12 text-center">
+              <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-12 text-center">
                 <BarChart3 className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-                <div className="text-gray-500">请先注册为合伙人</div>
+                <div className="text-gray-500">请先加入虫巢成为合伙人</div>
               </div>
             ) : !earnings ? (
               <div className="flex items-center justify-center py-12">
-                <div className="animate-spin w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full" />
+                <div className="animate-spin w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full" />
               </div>
             ) : (
               <>
                 {/* Earnings summary */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-6 text-center">
+                  <div className="rounded-xl border border-purple-500/20 bg-purple-500/[0.04] p-6 text-center">
                     <div className="text-sm text-gray-400 mb-1">今日预估收益</div>
-                    <div className="text-3xl font-bold text-amber-400">{fmt(earnings.today)}</div>
+                    <div className="text-3xl font-bold text-purple-400">{fmt(earnings.today)}</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-6 text-center">
                     <div className="text-sm text-gray-400 mb-1">近 30 天累计</div>
                     <div className="text-3xl font-bold text-white">{fmt(earnings.total30d)}</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-6 text-center">
                     <div className="text-sm text-gray-400 mb-1">份额占比</div>
                     <div className="text-3xl font-bold text-white">{earnings.percent}</div>
                   </div>
@@ -503,7 +511,7 @@ export function InvestPage() {
 
                 {/* Daily chart (simple bar) */}
                 {earnings.daily.length > 0 && (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+                  <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-6">
                     <h3 className="text-sm font-semibold text-gray-300 mb-4">每日收益 (近30天)</h3>
                     <div className="space-y-1.5">
                       {earnings.daily.slice(0, 14).map(d => {
@@ -513,7 +521,7 @@ export function InvestPage() {
                           <div key={d.date} className="flex items-center gap-3 text-sm">
                             <span className="text-gray-500 w-20 shrink-0 text-xs">{d.date.slice(5)}</span>
                             <div className="flex-1 h-5 bg-white/5 rounded-full overflow-hidden">
-                              <div className="h-full bg-amber-500/30 rounded-full" style={{ width: `${w}%` }} />
+                              <div className="h-full bg-purple-500/30 rounded-full" style={{ width: `${w}%` }} />
                             </div>
                             <span className="text-white font-medium w-24 text-right text-xs">{fmt(d.my_yuan)}</span>
                           </div>
@@ -536,7 +544,7 @@ export function InvestPage() {
         {/* ═══ Equity Tab ═══ */}
         {tab === 'equity' && (
           <div className="space-y-6">
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+            <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-6">
               <h3 className="text-sm font-semibold text-gray-300 mb-2">合伙人期权 (Equity Grant)</h3>
               <p className="text-xs text-gray-500 mb-6">核心合伙人期权授予记录。期权按月线性归属，设有 cliff 锁定期。</p>
 
@@ -552,11 +560,11 @@ export function InvestPage() {
                     const vestPct = g.total_shares > 0 ? (g.vested_shares / g.total_shares * 100) : 0;
                     const isCliff = new Date() < new Date(g.cliff_date);
                     return (
-                      <div key={g.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
+                      <div key={g.id} className="rounded-xl border border-purple-500/10 bg-white/[0.03] p-6">
                         <div className="flex items-start justify-between mb-4">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <Gem className="w-4 h-4 text-amber-400" />
+                              <Gem className="w-4 h-4 text-purple-400" />
                               <span className="text-white font-semibold">{g.total_shares.toLocaleString()} 份期权</span>
                               <span className={`px-2 py-0.5 rounded text-xs ${
                                 g.status === 'active' ? 'bg-green-500/10 text-green-400' :
@@ -582,10 +590,10 @@ export function InvestPage() {
                         <div className="mb-3">
                           <div className="flex justify-between text-xs mb-1">
                             <span className="text-gray-400">已归属 {g.vested_shares.toLocaleString()} / {g.total_shares.toLocaleString()}</span>
-                            <span className="text-amber-400 font-medium">{vestPct.toFixed(1)}%</span>
+                            <span className="text-purple-400 font-medium">{vestPct.toFixed(1)}%</span>
                           </div>
                           <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-amber-500 to-orange-400 rounded-full transition-all" style={{ width: `${vestPct}%` }} />
+                            <div className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-400 rounded-full transition-all" style={{ width: `${vestPct}%` }} />
                           </div>
                         </div>
 
@@ -611,9 +619,9 @@ export function InvestPage() {
         )}
       </div>
 
-      {/* Minimal footer */}
-      <div className="border-t border-white/5 mt-12 py-6 text-center text-xs text-gray-600">
-        StarClaw · 星钻合伙人系统
+      {/* Hive footer */}
+      <div className="border-t border-purple-500/10 mt-16 py-6 text-center text-xs text-gray-600">
+        <span className="text-purple-500/40">\u25c6</span> StarClaw · Queen’s Hive <span className="text-purple-500/40">\u25c6</span>
       </div>
     </div>
   );

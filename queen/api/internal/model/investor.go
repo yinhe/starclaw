@@ -10,13 +10,13 @@ import "time"
 //
 //	NAV = (TotalRaised + TotalDeposited - TotalDistributed) / TotalShares
 //
-// Funding rounds (每轮 10% 份额, 5× 递增):
+// Funding rounds (每期 10% 份额, 5× 递增):
 //
-//	Seed:  10% @ ¥0.20/份  → 募资 ¥200万
-//	Angel: 10% @ ¥1.00/份  → 募资 ¥1000万
-//	A轮:   10% @ ¥5.00/份  → 募资 ¥5000万
-//	B轮:   10% @ ¥25.00/份 → 募资 ¥2.5亿
-//	C轮:   10% @ ¥125.00/份→ 募资 ¥12.5亿
+//	孢子期:  10% @ ¥0.50/份  → 募资 ¥500万
+//	幼虫期:  10% @ ¥2.50/份  → 募资 ¥2500万
+//	虫兵期:  10% @ ¥12.50/份 → 募资 ¥1.25亿
+//	领主期:  10% @ ¥62.50/份 → 募资 ¥6.25亿
+//	虫后期:  10% @ ¥312.50/份→ 募资 ¥31.25亿
 type InvestorPool struct {
 	ID             string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	TotalShares    int64     `json:"total_shares" gorm:"default:0"`                 // total shares ever issued
@@ -35,7 +35,7 @@ type InvestorPool struct {
 }
 
 // FundingRound tracks each investment round of the investor pool.
-// Each round offers 10% of total pool shares at an escalating price (5× per round).
+// Each period offers 10% of total pool shares at an escalating price (5× per period).
 type FundingRound struct {
 	ID            string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	Round         string     `json:"round" gorm:"type:varchar(10);uniqueIndex"`       // angel / a / b / c
@@ -56,24 +56,24 @@ type FundingRound struct {
 // StarDiamondTotal is the fixed total supply of Star Diamonds.
 const StarDiamondTotal int64 = 100_000_000 // 1亿
 
-// RoundConfig defines the 5 funding rounds (虫族命名).
+// RoundConfig defines the 5 funding periods (虫族命名).
 //
-//	spore    孢子轮 — 生命起源，最早期支持者
-//	larva    幼虫轮 — 初具雏形，天使投资人
-//	zergling 虫兵轮 — 成军出征，A轮战略投资
-//	overlord 领主轮 — 领主加持，B轮规模扩张
-//	queen    虫后轮 — 虫后降临，C轮终极融资
+//	spore    孢子期 — 生命起源，最早期支持者
+//	larva    幼虫期 — 初具雏形，天使合伙人
+//	zergling 虫兵期 — 成军出征，战略合伙人
+//	overlord 领主期 — 领主加持，规模扩张
+//	queen    虫后期 — 虫后降临，终极融资
 var RoundConfig = []struct {
 	Round      string
 	Label      string
 	Multiplier int
 	Price      int64 // floor price per star diamond (分)
 }{
-	{"spore", "孢子轮", 1, 20},        // ¥0.20/份 → 募资 ¥200万
-	{"larva", "幼虫轮", 5, 100},       // ¥1.00/份 → 募资 ¥1000万
-	{"zergling", "虫兵轮", 25, 500},   // ¥5.00/份 → 募资 ¥5000万
-	{"overlord", "领主轮", 125, 2500}, // ¥25.00/份 → 募资 ¥2.5亿
-	{"queen", "虫后轮", 625, 12500},   // ¥125.00/份 → 募资 ¥12.5亿
+	{"spore", "孢子期", 1, 50},        // ¥0.50/份 → 募资 ¥500万
+	{"larva", "幼虫期", 5, 250},       // ¥2.50/份 → 募资 ¥2500万
+	{"zergling", "虫兵期", 25, 1250},  // ¥12.50/份 → 募资 ¥1.25亿
+	{"overlord", "领主期", 125, 6250}, // ¥62.50/份 → 募资 ¥6.25亿
+	{"queen", "虫后期", 625, 31250},   // ¥312.50/份 → 募资 ¥31.25亿
 }
 
 // NextRound returns the next round name after the given round, or "" if no more rounds.
