@@ -512,6 +512,12 @@ export const broodAPI = {
     request<{ users: EmployeeUsage[]; total: number }>('/team-agent/usage/by-user'),
   teamAgentChatHistory: (instanceId: string) =>
     request<{ messages: ChatMessageRecord[]; total: number }>(`/team-agent/instances/${instanceId}/chat`),
+
+  // --- Provision (one-click Spark node) ---
+  provisionNode: (name?: string) =>
+    request<ProvisionResult>('/team-agent/provision-node', { method: 'POST', body: JSON.stringify({ name: name || '' }) }),
+  provisionStatus: (slug: string) =>
+    request<ProvisionResult>(`/team-agent/provision-status?slug=${encodeURIComponent(slug)}`),
 }
 
 // --- P4 Types ---
@@ -673,6 +679,15 @@ export interface TeamMission {
   preview_url: string
   created_at: string
   completed_at: string | null
+}
+
+export interface ProvisionResult {
+  status: 'ready' | 'provisioning'
+  node_id?: string
+  name?: string
+  address?: string
+  slug: string
+  message?: string
 }
 
 export interface TeamAgentStats {

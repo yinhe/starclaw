@@ -76,6 +76,7 @@ func main() {
 	teamAgentH.SetWSHub(wsHub)
 	teamAgentH.SeedOfficialTemplates()
 	teamAgentH.StartStatusSyncer()
+	provisionH := handler.NewProvisionHandler(db)
 
 	// Wire webhook dispatcher into registry handler
 	regH.Dispatcher = webhookH
@@ -309,6 +310,8 @@ func main() {
 			taWrite.POST("/instances/:id/disband", teamAgentH.DisbandInstance)
 			taWrite.POST("/instances/:id/missions", teamAgentH.CreateMission)
 			taWrite.POST("/instances/:id/chat", teamAgentH.SendChat)
+			taWrite.POST("/provision-node", provisionH.ProvisionNode)
+			taWrite.GET("/provision-status", provisionH.ProvisionStatus)
 		}
 
 		// --- Compliance ---

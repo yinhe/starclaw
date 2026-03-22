@@ -349,6 +349,52 @@ func (m *Manager) HealthCheck(name string) (bool, error) {
 	return resp.StatusCode >= 200 && resp.StatusCode < 400, nil
 }
 
+// RunInline runs a spore binary in the foreground (for Docker/container use).
+// It reads manifest.json from the given directory, runs the binary as PID 1,
+// and restarts it on crash. This blocks until SIGTERM/SIGINT.
+func RunInline(dir string, envOverrides []string) error {
+	mf, err := manifest.Load(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		return fmt.Errorf("load manifest: %w", err)
+	}
+
+	binPath := filepath.Join(dir, mf.Binary)
+	if _, err := os.Stat(binPath); err != nil {
+		return fmt.Errorf("binary not found: %s", binPath)
+	}
+	os.Chmod(binPath, 0755)
+
+	// Ensure data dir
+	dataDir := filepath.Join(dir, "data")
+	os.MkdirAll(dataDir, 0755)
+
+	log.Printf("[spore-inline] starting %s v%s (%s)", mf.Name, mf.Version, binPath)
+
+	for {
+		cmd := exec.Command(binPath, mf.Args...)
+		cmd.Dir = dir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		env := os.Environ()
+		env = append(env, fmt.Sprintf("SPORE_DATA_DIR=%s", dataDir))
+		for k, v := range mf.Env {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+		env = append(env, envOverrides...)
+		cmd.Env = env
+
+		if err := cmd.Run(); err != nil {
+			log.Printf("[spore-inline] process exited: %v, restarting in 3s...", err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		// Clean exit
+		log.Printf("[spore-inline] process exited cleanly")
+		return nil
+	}
+}
+
 // Uninstall removes an installed spore.
 func (m *Manager) Uninstall(name string) error {
 	inst, err := m.Get(name)

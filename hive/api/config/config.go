@@ -12,7 +12,8 @@ type Config struct {
 	NginxConfDir   string // Nginx config directory for generated confs
 	SSLCertPath    string // Wildcard SSL cert path
 	SSLKeyPath     string // Wildcard SSL key path
-	ClawImage      string // Docker image for Claw API
+	ClawImage      string // Docker image for Claw API (full stack)
+	ClawLiteImage  string // Docker image for Claw Lite (Spark tier, SQLite)
 	WebImage       string // Docker image for Claw Web (shared)
 	NetworkName    string // Docker network name
 	PortRangeStart int    // Starting port for Claw instances
@@ -69,6 +70,7 @@ func Load() *Config {
 		SSLCertPath:    envStr("HIVE_SSL_CERT", "/etc/letsencrypt/live/starclaw.me/fullchain.pem"),
 		SSLKeyPath:     envStr("HIVE_SSL_KEY", "/etc/letsencrypt/live/starclaw.me/privkey.pem"),
 		ClawImage:      envStr("HIVE_CLAW_IMAGE", "starclaw-api:latest"),
+		ClawLiteImage:  envStr("HIVE_CLAW_LITE_IMAGE", "starclaw-claw-lite:latest"),
 		WebImage:       envStr("HIVE_WEB_IMAGE", "starclaw-web:latest"),
 		NetworkName:    envStr("HIVE_NETWORK", "hive-net"),
 		PortRangeStart: envInt("HIVE_PORT_START", 9001),

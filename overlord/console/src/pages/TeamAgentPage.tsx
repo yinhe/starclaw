@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server } from 'lucide-react'
-import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, EmployeeUsage } from '../api/brood'
+import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, EmployeeUsage, ProvisionResult } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
 const statusColors: Record<string, string> = {
@@ -67,6 +67,10 @@ export default function TeamAgentPage() {
   const [nodes, setNodes] = useState<ClawNode[]>([])
   const [roleNodeMap, setRoleNodeMap] = useState<Record<string, string>>({})
   const [creating, setCreating] = useState(false)
+
+  // Provision node (one-click Spark deploy)
+  const [provisioning, setProvisioning] = useState(false)
+  const [provisionSlug, setProvisionSlug] = useState('')
 
   // New mission modal
   const [showMission, setShowMission] = useState(false)
@@ -142,6 +146,45 @@ export default function TeamAgentPage() {
       load()
     } catch { /* ignore */ }
     setCreating(false)
+  }
+
+  async function handleProvision() {
+    setProvisioning(true)
+    try {
+      const res = await broodAPI.provisionNode()
+      setProvisionSlug(res.slug)
+      if (res.status === 'ready' && res.node_id) {
+        // Node is already online — refresh list
+        const claws = await broodAPI.listClaws({ status: 'online' })
+        setNodes(claws.claws || [])
+        const tmpl = templates.find(t => t.id === createTmplId)
+        if (tmpl && claws.claws?.length) {
+          const roles = parseRoles(tmpl.roles)
+          const map: Record<string, string> = {}
+          roles.forEach(r => { map[r.code] = claws.claws[0].id })
+          setRoleNodeMap(map)
+        }
+      } else {
+        // Poll for node to come online (max 90s)
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 3000))
+          const status = await broodAPI.provisionStatus(res.slug)
+          if (status.status === 'ready' && status.node_id) {
+            const claws = await broodAPI.listClaws({ status: 'online' })
+            setNodes(claws.claws || [])
+            const tmpl = templates.find(t => t.id === createTmplId)
+            if (tmpl && claws.claws?.length) {
+              const roles = parseRoles(tmpl.roles)
+              const map: Record<string, string> = {}
+              roles.forEach(r => { map[r.code] = claws.claws[0].id })
+              setRoleNodeMap(map)
+            }
+            break
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    setProvisioning(false)
   }
 
   function assignNode(roleCode: string, nodeId: string) {
@@ -542,6 +585,40 @@ export default function TeamAgentPage() {
                       <h4 className="text-sm font-semibold text-white">选将配阵</h4>
                       <span className="text-xs text-gray-500">为每个角色分配 Claw 节点</span>
                     </div>
+                    {/* Deploy Spark node — shown when no nodes or as option */}
+                    {nodes.length === 0 && !provisioning && (
+                      <div className="mb-4 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0 text-xl">🔥</div>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-white">没有可用节点</div>
+                          <div className="text-xs text-gray-400 mt-0.5">一键部署免费 Spark 节点（3 秒就绪，永久免费）</div>
+                        </div>
+                        <button onClick={handleProvision} className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-sm transition flex items-center gap-2 shrink-0">
+                          <Zap className="w-4 h-4" /> 极速部署
+                        </button>
+                      </div>
+                    )}
+                    {provisioning && (
+                      <div className="mb-4 bg-purple-500/5 border border-purple-500/20 rounded-xl p-4 flex items-center gap-4">
+                        <Loader2 className="w-6 h-6 text-purple-400 animate-spin shrink-0" />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-white">正在部署 Spark 节点...</div>
+                          <div className="text-xs text-gray-400 mt-0.5">{provisionSlug ? `${provisionSlug}.starclaw.me` : 'Spore + SQLite 极速启动中'}</div>
+                          <div className="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-purple-500 rounded-full animate-pulse" style={{ width: '60%' }} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {nodes.length > 0 && !provisioning && (
+                      <div className="mb-4 flex items-center justify-between">
+                        <div />
+                        <button onClick={handleProvision} className="text-xs text-orange-400 hover:text-orange-300 transition flex items-center gap-1">
+                          <Zap className="w-3 h-3" /> 部署新的 Spark 节点
+                        </button>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-3">
                       {roles.map((role, idx) => {
                         const assigned = roleNodeMap[role.code]

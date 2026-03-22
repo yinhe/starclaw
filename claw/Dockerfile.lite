@@ -1,0 +1,45 @@
+# Claw Lite — Spore + SQLite, single container, ~30MB
+# Used for Spark tier (free forever)
+
+# Stage 1: Build claw-api binary
+FROM golang:1.24-alpine AS build-claw
+WORKDIR /src
+COPY api/ ./
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w" -o /claw-api ./cmd/server
+
+# Stage 2: Build spore binary
+FROM golang:1.24-alpine AS build-spore
+WORKDIR /src
+COPY ../spore/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w" -o /spore ./cmd/spore
+
+# Stage 3: Minimal runtime
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /opt/claw
+
+COPY --from=build-claw /claw-api ./claw-api
+COPY --from=build-spore /spore /usr/bin/spore
+
+# Spore manifest for claw-lite
+COPY lite-manifest.json ./manifest.json
+
+# Data volume for SQLite + identity keys
+VOLUME /opt/claw/data
+
+ENV STARCLAW_DATABASE_DRIVER=sqlite \
+    STARCLAW_DATABASE_SQLITE_PATH=/opt/claw/data/claw.db \
+    STARCLAW_REDIS_ENABLED=false \
+    STARCLAW_SERVER_MODE=release \
+    STARCLAW_SERVER_PORT=8080 \
+    GIN_MODE=release
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s \
+    CMD wget -q -O /dev/null http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["spore", "run-inline", "/opt/claw"]

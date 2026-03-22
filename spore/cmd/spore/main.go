@@ -27,6 +27,8 @@ func main() {
 		cmdInstall(mgr)
 	case "run":
 		cmdRun(mgr)
+	case "run-inline":
+		cmdRunInline()
 	case "start":
 		cmdStart(mgr)
 	case "stop":
@@ -117,6 +119,25 @@ func cmdRun(mgr *runtime.Manager) {
 	}
 	binPath := filepath.Join(inst.InstallDir, inst.Manifest.Binary)
 	fmt.Printf("Binary: %s %s\n", binPath, strings.Join(inst.Manifest.Args, " "))
+}
+
+func cmdRunInline() {
+	if len(os.Args) < 3 {
+		fatal("usage: spore run-inline <dir> [--env KEY=VALUE ...]")
+	}
+	dir := os.Args[2]
+
+	var envOverrides []string
+	for i := 3; i < len(os.Args); i++ {
+		if os.Args[i] == "--env" && i+1 < len(os.Args) {
+			envOverrides = append(envOverrides, os.Args[i+1])
+			i++
+		}
+	}
+
+	if err := runtime.RunInline(dir, envOverrides); err != nil {
+		fatal("run-inline: %v", err)
+	}
 }
 
 func cmdStart(mgr *runtime.Manager) {
@@ -266,6 +287,7 @@ Usage: spore <command> [args]
 
 Commands:
   install <path>    Install from .spore package or directory
+  run-inline <dir>  Run in foreground (Docker/container mode)
   start <name>      Start a spore (background)
   stop <name>       Stop a running spore
   restart <name>    Restart a spore

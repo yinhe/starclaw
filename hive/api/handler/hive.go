@@ -203,12 +203,17 @@ func (h *HiveHandler) CreateInstance(c *gin.Context) {
 	go h.provisionInstance(&inst, order)
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":      inst.ID,
-		"slug":    inst.Slug,
-		"url":     fmt.Sprintf("https://%s.%s", inst.Slug, h.cfg.Domain),
-		"status":  inst.Status,
-		"plan":    planID,
-		"message": "正在创建 Claw 实例，约 10 秒后可用",
+		"id":     inst.ID,
+		"slug":   inst.Slug,
+		"url":    fmt.Sprintf("https://%s.%s", inst.Slug, h.cfg.Domain),
+		"status": inst.Status,
+		"plan":   planID,
+		"message": fmt.Sprintf("正在创建 Claw 实例，约 %s后可用", func() string {
+			if inst.DeployMode == "lite" {
+				return "3 秒"
+			}
+			return "10 秒"
+		}()),
 	})
 }
 
@@ -226,9 +231,12 @@ func (h *HiveHandler) provisionInstance(inst *model.ClawInstance, order *model.O
 		}
 	}
 
-	if inst.DeployMode == "ecs" {
+	switch inst.DeployMode {
+	case "ecs":
 		h.provisionECS(inst, order, updateStatus, refundOnError)
-	} else {
+	case "lite":
+		h.provisionLite(inst, order, updateStatus, refundOnError)
+	default:
 		h.provisionHive(inst, order, updateStatus, refundOnError)
 	}
 }
@@ -314,6 +322,74 @@ func (h *HiveHandler) provisionHive(inst *model.ClawInstance, order *model.Order
 	// Done — confirm billing
 	h.confirmOrder(inst, order)
 	log.Printf("[hive] instance %s ready at https://%s.%s", inst.Slug, inst.Slug, h.cfg.Domain)
+}
+
+// provisionLite deploys a Claw Lite instance (Spark tier) — single container, SQLite, no MySQL/Redis.
+func (h *HiveHandler) provisionLite(inst *model.ClawInstance, order *model.Order, updateStatus func(string), refundOnError func()) {
+	// Step 1: Create data directories
+	dataDir := filepath.Join(h.cfg.DataDir, "instances", inst.Slug)
+	for _, sub := range []string{"data", "identity"} {
+		os.MkdirAll(filepath.Join(dataDir, sub), 0755)
+	}
+
+	// Step 2: Create and start Docker container (lite image, no MySQL needed)
+	containerID, err := h.docker.CreateLiteContainer(inst)
+	if err != nil {
+		log.Printf("[hive] failed to create lite container for %s: %v", inst.Slug, err)
+		updateStatus("error")
+		refundOnError()
+		return
+	}
+	inst.ContainerID = containerID
+
+	// Encrypt JWT secret before DB save
+	if h.vault != nil {
+		if enc, err := h.vault.Seal("jwt_secret", inst.JWTSecret); err == nil {
+			inst.JWTSecret = enc
+		}
+	}
+	h.db.Save(inst)
+
+	// Step 3: Generate nginx config
+	if err := h.nginx.WriteConfig(inst.Slug, inst.Port); err != nil {
+		log.Printf("[hive] failed to write nginx config for %s: %v", inst.Slug, err)
+		updateStatus("error")
+		refundOnError()
+		return
+	}
+
+	// Step 4: Test and reload nginx
+	if err := h.nginx.TestConfig(); err != nil {
+		log.Printf("[hive] nginx config test failed: %v", err)
+		h.nginx.RemoveConfig(inst.Slug)
+		updateStatus("error")
+		refundOnError()
+		return
+	}
+	if err := h.nginx.Reload(); err != nil {
+		log.Printf("[hive] nginx reload failed: %v", err)
+	}
+
+	// Step 5: DNS record
+	if h.dns != nil && h.cfg.HivePublicIP != "" {
+		if recordID, err := h.dns.AddRecord(inst.Slug, h.cfg.HivePublicIP); err != nil {
+			log.Printf("[hive] DNS record failed for %s: %v (non-fatal)", inst.Slug, err)
+		} else {
+			log.Printf("[hive] DNS A record created: %s.%s → %s (id=%s)", inst.Slug, h.cfg.Domain, h.cfg.HivePublicIP, recordID)
+		}
+	}
+
+	// Step 6: Wait for health check (lite starts much faster — 10s timeout)
+	if err := h.docker.WaitHealthy(inst.Port, 10*time.Second); err != nil {
+		log.Printf("[hive] health check failed for lite %s: %v", inst.Slug, err)
+		updateStatus("error")
+		refundOnError()
+		return
+	}
+
+	// Done — no billing for free tier
+	h.confirmOrder(inst, order)
+	log.Printf("[hive] lite instance %s ready at https://%s.%s (3s deploy)", inst.Slug, inst.Slug, h.cfg.Domain)
 }
 
 // provisionECS deploys a Claw instance on a dedicated Aliyun ECS server.

@@ -77,6 +77,51 @@ func (d *DockerService) CreateContainer(inst *model.ClawInstance) (string, error
 	return containerID, nil
 }
 
+// CreateLiteContainer creates and starts a Claw Lite container (Spark tier, SQLite, no MySQL/Redis)
+func (d *DockerService) CreateLiteContainer(inst *model.ClawInstance) (string, error) {
+	containerName := fmt.Sprintf("claw-%s-lite", inst.Slug)
+	dataDir := fmt.Sprintf("%s/instances/%s", d.cfg.DataDir, inst.Slug)
+
+	args := []string{
+		"run", "-d",
+		"--name", containerName,
+		"--network", d.cfg.NetworkName,
+		"--restart", "unless-stopped",
+		"-p", fmt.Sprintf("127.0.0.1:%d:8080", inst.Port),
+		// Resource limits (Spark: lightweight)
+		"--cpus", fmt.Sprintf("%.2f", inst.CPULimit),
+		"--memory", fmt.Sprintf("%dM", inst.MemoryLimit/(1024*1024)),
+		// Volumes (data + identity only, no uploads/workspaces for lite)
+		"-v", fmt.Sprintf("%s/data:/opt/claw/data", dataDir),
+		"-v", fmt.Sprintf("%s/identity:/app/data/identity", dataDir),
+		// Environment (SQLite mode, no MySQL/Redis)
+		"-e", "STARCLAW_DATABASE_DRIVER=sqlite",
+		"-e", "STARCLAW_DATABASE_SQLITE_PATH=/opt/claw/data/claw.db",
+		"-e", "STARCLAW_REDIS_ENABLED=false",
+		"-e", "STARCLAW_SERVER_MODE=release",
+		"-e", "STARCLAW_SERVER_DEPLOY_MODE=hosted",
+		"-e", fmt.Sprintf("STARCLAW_JWT_SECRET=%s", inst.JWTSecret),
+		"-e", fmt.Sprintf("STARCLAW_NODE_ADDRESS=https://%s.%s", inst.Slug, d.cfg.Domain),
+		"-e", "STARCLAW_OVERLORD_ENABLED=true",
+		"-e", fmt.Sprintf("STARCLAW_OVERLORD_OVERLORD_URL=%s", d.cfg.OverlordURL),
+		"-e", fmt.Sprintf("STARCLAW_OVERLORD_NODE_NAME=claw-%s", inst.Slug),
+		"-e", "STARCLAW_OVERLORD_REGION=cn-east",
+		"-e", "NODE_KEY_PATH=/app/data/identity/.node_key",
+		"-e", "GIN_MODE=release",
+		// Image (lite)
+		d.cfg.ClawLiteImage,
+	}
+
+	out, err := exec.Command("docker", args...).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("docker run (lite): %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	containerID := strings.TrimSpace(string(out))
+	log.Printf("[hive] lite container %s started on port %d for %s (id: %s)", containerName, inst.Port, inst.Slug, containerID[:12])
+	return containerID, nil
+}
+
 // StopContainer stops a running container
 func (d *DockerService) StopContainer(containerID string) error {
 	out, err := exec.Command("docker", "stop", "-t", "30", containerID).CombinedOutput()

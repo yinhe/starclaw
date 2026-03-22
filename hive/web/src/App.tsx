@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Zap, Globe, Shield, Clock, CheckCircle, AlertCircle, Loader2, ArrowRight, Github, Server, Cpu, Database } from 'lucide-react'
+import { Zap, Globe, Shield, CheckCircle, AlertCircle, Loader2, ArrowRight, Github, Server, Cpu, Database } from 'lucide-react'
 
 const DOMAIN = 'starclaw.me'
 const SLUG_RE = /^[a-z][a-z0-9-]{1,28}[a-z0-9]$/
@@ -30,12 +30,6 @@ interface Plan {
   expire_days: number
 }
 
-function formatEnergy(amount: number): string {
-  if (amount === 0) return '免费'
-  const fen = amount / 10000
-  if (fen >= 100) return `¥${(fen / 100).toFixed(0)}/月`
-  return `¥${(fen / 100).toFixed(2)}/月`
-}
 
 function SlugInput({ slug, setSlug, status }: { slug: string; setSlug: (s: string) => void; status: Status }) {
   const border = {
@@ -174,16 +168,16 @@ function App() {
 
         <div className="relative z-10 max-w-3xl mx-auto px-6 pt-16 pb-24 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-sm mb-8">
-            <Zap className="w-3.5 h-3.5" /> 10 秒创建你的 AI 智能体平台
+            <Zap className="w-3.5 h-3.5" /> 3 秒极速创建你的 AI 智能体平台
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 bg-gradient-to-r from-white via-purple-200 to-emerald-200 bg-clip-text text-transparent">
             一键创建 Claw
           </h1>
           <p className="text-lg text-zinc-400 mb-12 max-w-xl mx-auto">
-            输入你想要的子域名，立即获得一个完整的 AI 智能体管理平台。
+            输入你想要的子域名，3 秒获得一个完整的 AI 智能体平台。
             <br className="hidden sm:block" />
-            免费体验，无需配置。
+            永久免费，无需配置，随时升级。
           </p>
 
           {/* Create Form */}
@@ -264,7 +258,7 @@ function App() {
             { icon: <Cpu className="w-6 h-6 text-purple-400" />, title: '多模型支持', desc: '接入 OpenAI、通义千问、DeepSeek 等主流大模型' },
             { icon: <Server className="w-6 h-6 text-emerald-400" />, title: 'MCP 工具集成', desc: '连接外部工具服务器，扩展智能体能力边界' },
             { icon: <Shield className="w-6 h-6 text-blue-400" />, title: '端到端加密', desc: 'Ed25519 身份密钥 + AES-256 数据加密' },
-            { icon: <Database className="w-6 h-6 text-orange-400" />, title: '独立数据库', desc: '每个 Claw 独享 MySQL 数据库，数据完全隔离' },
+            { icon: <Database className="w-6 h-6 text-orange-400" />, title: '极速启动', desc: 'Spore + SQLite 极简架构，30MB 镜像，3 秒部署就绪' },
           ].map((f, i) => (
             <div key={i} className="p-5 rounded-xl bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700 transition-colors">
               <div className="mb-3">{f.icon}</div>
@@ -281,7 +275,7 @@ function App() {
         <div className="flex flex-col sm:flex-row gap-8">
           {[
             { step: '1', title: '选择子域名', desc: '输入你喜欢的名称，系统自动检测可用性', icon: <Globe className="w-5 h-5" /> },
-            { step: '2', title: '一键创建', desc: '10 秒自动部署完整的 Claw 实例', icon: <Zap className="w-5 h-5" /> },
+            { step: '2', title: '一键创建', desc: '3 秒极速部署，Spore 技术加持', icon: <Zap className="w-5 h-5" /> },
             { step: '3', title: '开始使用', desc: '访问你的专属域名，配置 AI 模型，创建智能体', icon: <ArrowRight className="w-5 h-5" /> },
           ].map((s, i) => (
             <div key={i} className="flex-1 text-center">
@@ -295,54 +289,49 @@ function App() {
         </div>
       </section>
 
-      {/* Pricing Plans */}
+      {/* Pricing Tiers */}
       <section className="border-t border-zinc-800" id="pricing">
         <div className="max-w-5xl mx-auto px-6 py-16">
-          <h2 className="text-2xl font-bold text-center mb-3">选择套餐</h2>
-          <p className="text-center text-zinc-400 text-sm mb-10">免费体验或按月付费，随时升级</p>
+          <h2 className="text-2xl font-bold text-center mb-3">选择规格</h2>
+          <p className="text-center text-zinc-400 text-sm mb-10">永久免费开始，按需升级，数据无缝迁移</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {(plans.length > 0 ? plans : [
-              { id: 'free', display_name: '免费体验', deploy_mode: 'hive', price_monthly: 0, cpu: 0.5, memory_mb: 512, storage_gb: 2, bandwidth_mb: 0, backup_daily: false, custom_domain: false, expire_days: 7 } as Plan,
-            ]).map(p => {
-              const selected = selectedPlan === p.id
-              const isPaid = p.price_monthly > 0
-              const highlight = p.id === 'pro'
+            {[
+              { id: 'spark', icon: '🔥', name: 'Spark', sub: '火花', price: '永久免费', color: 'orange', highlight: false, specs: ['0.25 核 CPU', '256MB 内存', '1GB 存储', 'SQLite 极简数据库', '2 个团队智能体', '3 秒极速部署'], tag: '体验入门', tagColor: 'emerald' },
+              { id: 'pulse', icon: '⚡', name: 'Pulse', sub: '脉冲', price: '¥50/月', color: 'purple', highlight: false, specs: ['1 核 CPU', '1GB 内存', '10GB 存储', 'MySQL + Redis', 'Web UI 管理面板', '10 个团队智能体', '每日自动备份'], tag: '团队生产', tagColor: 'purple' },
+              { id: 'surge', icon: '🚀', name: 'Surge', sub: '激流', price: '¥200/月', color: 'blue', highlight: true, specs: ['2 核 CPU', '4GB 内存', '40GB 存储', '独立云服务器', '5Mbps 带宽', '无限团队智能体', '自定义子域名', '高级监控'], tag: '推荐', tagColor: 'blue' },
+              { id: 'storm', icon: '👑', name: 'Storm', sub: '风暴', price: '¥800/月', color: 'amber', highlight: false, specs: ['4 核 CPU', '8GB 内存', '100GB 存储', '独立高配服务器', '10Mbps 带宽', 'SSO 企业登录', 'SLA 99.9%', '专属技术支持'], tag: '企业级', tagColor: 'amber' },
+            ].map(tier => {
+              const selected = selectedPlan === tier.id || (selectedPlan === 'free' && tier.id === 'spark')
+              const borderColor = selected ? 'border-purple-500 bg-purple-500/10' : tier.highlight ? 'border-purple-500/30 bg-zinc-900/80' : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-700'
               return (
                 <button
-                  key={p.id}
-                  onClick={() => setSelectedPlan(p.id)}
-                  className={`relative p-5 rounded-xl border-2 text-left transition-all cursor-pointer ${
-                    selected
-                      ? 'border-purple-500 bg-purple-500/10'
-                      : highlight
-                        ? 'border-purple-500/30 bg-zinc-900/80'
-                        : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-700'
-                  }`}
+                  key={tier.id}
+                  onClick={() => setSelectedPlan(tier.id === 'spark' ? 'free' : tier.id)}
+                  className={`relative p-5 rounded-xl border-2 text-left transition-all cursor-pointer ${borderColor}`}
                 >
-                  {highlight && (
+                  {tier.highlight && (
                     <span className="absolute -top-2.5 left-4 px-2 py-0.5 rounded-full bg-purple-600 text-white text-xs font-medium">
-                      推荐
+                      {tier.tag}
                     </span>
                   )}
-                  <div className="text-white font-semibold mb-1">{p.display_name}</div>
-                  <div className="text-2xl font-bold text-white mb-3">{formatEnergy(p.price_monthly)}</div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xl">{tier.icon}</span>
+                    <span className="text-white font-semibold">{tier.name}</span>
+                    <span className="text-zinc-500 text-xs">{tier.sub}</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white mb-3">{tier.price}</div>
                   <div className="space-y-1.5 text-sm text-zinc-400">
-                    <div>{p.cpu} 核 CPU</div>
-                    <div>{p.memory_mb >= 1024 ? `${p.memory_mb / 1024} GB` : `${p.memory_mb} MB`} 内存</div>
-                    <div>{p.storage_gb} GB 存储</div>
-                    {p.bandwidth_mb > 0 && <div>{p.bandwidth_mb} Mbps 带宽</div>}
-                    <div className="text-zinc-500 text-xs pt-1">
-                      {p.deploy_mode === 'ecs' ? '独立云服务器' : '共享容器'}
-                      {p.backup_daily && ' · 每日备份'}
-                      {p.custom_domain && ' · 自定义域名'}
-                    </div>
-                    {p.expire_days > 0 && (
-                      <div className="flex items-center gap-1 text-yellow-500/80 text-xs">
-                        <Clock className="w-3 h-3" /> {p.expire_days} 天有效期
+                    {tier.specs.map((s, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <CheckCircle className="w-3 h-3 text-zinc-600 flex-shrink-0" />
+                        {s}
                       </div>
+                    ))}
+                    {!tier.highlight && tier.id !== 'spark' && (
+                      <div className="text-emerald-500/80 text-xs pt-1">按月续费 · 随时取消</div>
                     )}
-                    {isPaid && !p.expire_days && (
-                      <div className="text-emerald-500/80 text-xs">无限期 · 按月续费</div>
+                    {tier.id === 'spark' && (
+                      <div className="text-emerald-500/80 text-xs pt-1">永久免费 · 随时升级</div>
                     )}
                   </div>
                   {selected && (
@@ -354,6 +343,7 @@ function App() {
               )
             })}
           </div>
+          <p className="text-center text-zinc-500 text-xs mt-6">升级时数据无缝迁移，节点 ID 不变，团队智能体不中断</p>
         </div>
       </section>
 
