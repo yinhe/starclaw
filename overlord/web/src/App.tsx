@@ -1,16 +1,31 @@
-import { useState } from 'react'
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { Users, User, LogOut } from 'lucide-react'
-import { getToken, getUser, clearAuth } from './api/client'
+import { useState, useEffect } from 'react'
+import { Routes, Route, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { MessageSquare, User, LogOut } from 'lucide-react'
+import { getToken, getUser, clearAuth, isEmployee, api } from './api/client'
 import { getBrand } from './lib/brand'
 import LoginPage from './pages/LoginPage'
 import ProfilePage from './pages/ProfilePage'
 import TeamPage from './pages/TeamPage'
+import ChatPage from './pages/ChatPage'
 
-const navItems = [
-  { to: '/', icon: Users, label: '团队智能体' },
-  { to: '/profile', icon: User, label: '我的' },
-]
+function ChatRoute() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const [instance, setInstance] = useState<any>(null)
+  useEffect(() => {
+    if (!id) return
+    api.teamInstance(id).then(res => setInstance(res.instance)).catch(() => navigate('/'))
+  }, [id, navigate])
+  if (!instance) return <div className="flex items-center justify-center h-full text-gray-500 text-sm">加载中...</div>
+  return <ChatPage instance={instance} onBack={() => navigate('/')} />
+}
+
+function getNavItems() {
+  return [
+    { to: '/', icon: MessageSquare, label: isEmployee() ? 'AI 助手' : '团队智能体' },
+    { to: '/profile', icon: User, label: '我的' },
+  ]
+}
 
 export default function App() {
   const location = useLocation()
@@ -40,8 +55,8 @@ export default function App() {
         </div>
 
         <nav className="flex-1 flex flex-col items-center gap-1">
-          {navItems.map(({ to, icon: Icon, label }) => {
-            const active = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
+          {getNavItems().map(({ to, icon: Icon, label }) => {
+            const active = to === '/' ? location.pathname === '/' || location.pathname.startsWith('/chat') : location.pathname.startsWith(to)
             return (
               <NavLink
                 key={to}
@@ -97,14 +112,15 @@ export default function App() {
       <main className="flex-1 overflow-hidden min-h-0">
         <Routes>
           <Route path="/" element={<TeamPage />} />
+          <Route path="/chat/:id" element={<ChatRoute />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </main>
 
       {/* Mobile Bottom Tab Bar — hidden on desktop */}
       <nav className="md:hidden flex items-center justify-around bg-gray-900 border-t border-gray-800 shrink-0 pb-[env(safe-area-inset-bottom)]">
-        {navItems.map(({ to, icon: Icon, label }) => {
-          const active = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
+        {getNavItems().map(({ to, icon: Icon, label }) => {
+          const active = to === '/' ? location.pathname === '/' || location.pathname.startsWith('/chat') : location.pathname.startsWith(to)
           return (
             <NavLink
               key={to}

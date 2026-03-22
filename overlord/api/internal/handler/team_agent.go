@@ -457,6 +457,213 @@ func (h *TeamAgentHandler) GetMission(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"mission": m})
 }
 
+// ── Chat endpoints ──
+
+// POST /brood/team-agent/instances/:id/chat
+func (h *TeamAgentHandler) SendChat(c *gin.Context) {
+	instID := c.Param("id")
+	var inst model.TeamInstance
+	if err := h.db.First(&inst, "id = ?", instID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "instance not found"})
+		return
+	}
+	if inst.Status == "disbanded" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "instance is disbanded"})
+		return
+	}
+
+	var req struct {
+		Message string `json:"message" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get current user
+	userID := middleware.GetAdminActor(c)
+	adminUser, _ := c.Get("admin_user")
+	var adminUserID string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		adminUserID = u.ID
+	}
+
+	// Save user message
+	userMsg := model.ChatMessage{
+		InstanceID: instID,
+		UserID:     adminUserID,
+		Role:       "user",
+		Content:    req.Message,
+	}
+	h.db.Create(&userMsg)
+
+	// Build conversation context from recent history (last 20 messages)
+	var history []model.ChatMessage
+	h.db.Where("instance_id = ? AND user_id = ?", instID, adminUserID).
+		Order("created_at DESC").Limit(20).Find(&history)
+	// Reverse to chronological order
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
+	// Build messages array for Claw chat API
+	// Load template for system prompt
+	var tmpl model.TeamAgentTemplate
+	h.db.First(&tmpl, "id = ?", inst.TemplateID)
+	var roles []TeamRole
+	json.Unmarshal([]byte(tmpl.Roles), &roles)
+
+	systemPrompt := fmt.Sprintf("你是 %s (%s) 团队的 AI 助手。团队模板: %s。\n",
+		inst.Name, tmpl.Name, tmpl.Description)
+	if len(roles) > 0 {
+		systemPrompt += "团队成员:\n"
+		for _, r := range roles {
+			systemPrompt += fmt.Sprintf("- %s (%s)\n", r.Name, r.Code)
+		}
+	}
+	systemPrompt += "\n请根据你的团队专业领域，为用户提供专业、详细的回答。"
+
+	clawMessages := []claw.ChatMessage{{Role: "system", Content: systemPrompt}}
+	for _, m := range history {
+		clawMessages = append(clawMessages, claw.ChatMessage{Role: m.Role, Content: m.Content})
+	}
+
+	// Determine model from template's primary role
+	modelName := "deepseek-chat"
+	if len(roles) > 0 && roles[0].Model != "" {
+		modelName = roles[0].Model
+	}
+
+	// Proxy to Claw node
+	var node model.ClawNode
+	if err := h.db.First(&node, "id = ?", inst.ClawNodeID).Error; err != nil {
+		// Fallback: return a stub response if Claw node is unavailable
+		assistantMsg := model.ChatMessage{
+			InstanceID: instID,
+			UserID:     adminUserID,
+			Role:       "assistant",
+			Content:    "⚠️ AI 节点暂时不可用，请稍后重试。",
+		}
+		h.db.Create(&assistantMsg)
+		c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
+		return
+	}
+
+	start := time.Now()
+	chatResp, err := h.clawClient.ChatCompletion(node.Address, h.overlordToken, claw.ChatCompletionReq{
+		Model:    modelName,
+		Messages: clawMessages,
+		Stream:   false,
+	})
+	durationMs := int(time.Since(start).Milliseconds())
+
+	var assistantContent string
+	var tokensIn, tokensOut int
+	var respModel string
+
+	if err != nil {
+		log.Printf("[team-agent] chat completion failed for instance %s: %v", instID, err)
+		assistantContent = "⚠️ AI 响应失败，请稍后重试。错误: " + err.Error()
+	} else if len(chatResp.Choices) > 0 {
+		assistantContent = chatResp.Choices[0].Message.Content
+		tokensIn = chatResp.Usage.PromptTokens
+		tokensOut = chatResp.Usage.CompletionTokens
+		respModel = chatResp.Model
+	} else {
+		assistantContent = "⚠️ AI 返回了空响应。"
+	}
+
+	// Save assistant response
+	assistantMsg := model.ChatMessage{
+		InstanceID: instID,
+		UserID:     adminUserID,
+		Role:       "assistant",
+		Content:    assistantContent,
+		Model:      respModel,
+		TokensIn:   tokensIn,
+		TokensOut:  tokensOut,
+		DurationMs: durationMs,
+	}
+	h.db.Create(&assistantMsg)
+
+	// Track usage in UsageRecord
+	if tokensIn > 0 || tokensOut > 0 {
+		usage := model.UsageRecord{
+			TeamID:       inst.TeamID,
+			UserID:       adminUserID,
+			ClawID:       inst.ClawNodeID,
+			ModelName:    respModel,
+			InputTokens:  int64(tokensIn),
+			OutputTokens: int64(tokensOut),
+			TotalTokens:  int64(tokensIn + tokensOut),
+			RequestType:  "chat",
+			DurationMs:   durationMs,
+			Date:         time.Now().Format("2006-01-02"),
+		}
+		h.db.Create(&usage)
+
+		// Update instance energy used (rough: 1 energy per 1000 tokens)
+		energyDelta := (tokensIn + tokensOut) / 1000
+		if energyDelta < 1 {
+			energyDelta = 1
+		}
+		h.db.Model(&inst).Update("energy_used", gorm.Expr("energy_used + ?", energyDelta))
+	}
+
+	_ = userID // for audit
+	c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
+}
+
+// GET /brood/team-agent/instances/:id/chat
+func (h *TeamAgentHandler) GetChatHistory(c *gin.Context) {
+	instID := c.Param("id")
+	adminUser, _ := c.Get("admin_user")
+	var adminUserID string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		adminUserID = u.ID
+	}
+
+	var messages []model.ChatMessage
+	q := h.db.Where("instance_id = ?", instID)
+	// Non-admin users only see their own messages
+	role, _ := c.Get("admin_role")
+	roleStr, _ := role.(string)
+	if roleStr == "viewer" || roleStr == "operator" {
+		q = q.Where("user_id = ?", adminUserID)
+	}
+	q.Order("created_at ASC").Limit(100).Find(&messages)
+
+	c.JSON(http.StatusOK, gin.H{"messages": messages, "total": len(messages)})
+}
+
+// GET /brood/team-agent/usage/by-user — per-employee usage breakdown (for console)
+func (h *TeamAgentHandler) UsageByUser(c *gin.Context) {
+	type UserUsage struct {
+		UserID       string `json:"user_id"`
+		Username     string `json:"username"`
+		MessageCount int64  `json:"message_count"`
+		TotalTokens  int64  `json:"total_tokens"`
+		InputTokens  int64  `json:"input_tokens"`
+		OutputTokens int64  `json:"output_tokens"`
+	}
+
+	var results []UserUsage
+	h.db.Raw(`
+		SELECT u.user_id, a.username,
+			COUNT(*) as message_count,
+			SUM(u.total_tokens) as total_tokens,
+			SUM(u.input_tokens) as input_tokens,
+			SUM(u.output_tokens) as output_tokens
+		FROM usage_records u
+		LEFT JOIN admin_users a ON a.id = u.user_id
+		WHERE u.request_type = 'chat'
+		GROUP BY u.user_id, a.username
+		ORDER BY total_tokens DESC
+	`).Scan(&results)
+
+	c.JSON(http.StatusOK, gin.H{"users": results, "total": len(results)})
+}
+
 // ── Stats ──
 
 // GET /brood/team-agent/stats

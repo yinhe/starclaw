@@ -48,23 +48,23 @@ type CreateMissionReq struct {
 
 type CreateMissionResp struct {
 	Mission struct {
-		ID          string `json:"id"`
-		SquadID     string `json:"squad_id"`
-		Title       string `json:"title"`
-		Status      string `json:"status"`
-		TotalSteps  int    `json:"total_steps"`
-		DoneSteps   int    `json:"done_steps"`
+		ID         string `json:"id"`
+		SquadID    string `json:"squad_id"`
+		Title      string `json:"title"`
+		Status     string `json:"status"`
+		TotalSteps int    `json:"total_steps"`
+		DoneSteps  int    `json:"done_steps"`
 	} `json:"mission"`
 }
 
 type GetMissionResp struct {
 	Mission struct {
-		ID          string  `json:"id"`
-		Status      string  `json:"status"`
-		TotalSteps  int     `json:"total_steps"`
-		DoneSteps   int     `json:"done_steps"`
-		PreviewURL  string  `json:"preview_url"`
-		FinalResult string  `json:"final_result"`
+		ID          string `json:"id"`
+		Status      string `json:"status"`
+		TotalSteps  int    `json:"total_steps"`
+		DoneSteps   int    `json:"done_steps"`
+		PreviewURL  string `json:"preview_url"`
+		FinalResult string `json:"final_result"`
 	} `json:"mission"`
 	Steps []struct {
 		ID     string `json:"id"`
@@ -134,6 +134,44 @@ func (c *Client) GetSquad(nodeAddr, overlordToken, squadID string) (*GetSquadRes
 	var resp GetSquadResp
 	if err := c.get(nodeAddr, fmt.Sprintf("/v1/internal/squad/%s", squadID), overlordToken, &resp); err != nil {
 		return nil, fmt.Errorf("get squad: %w", err)
+	}
+	return &resp, nil
+}
+
+// ── Chat Completion (proxy to Claw's OpenAI-compatible chat API) ──
+
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ChatCompletionReq struct {
+	Model       string        `json:"model"`
+	Messages    []ChatMessage `json:"messages"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
+	Temperature float64       `json:"temperature,omitempty"`
+	Stream      bool          `json:"stream"`
+}
+
+type ChatCompletionResp struct {
+	ID      string `json:"id"`
+	Model   string `json:"model"`
+	Choices []struct {
+		Index   int         `json:"index"`
+		Message ChatMessage `json:"message"`
+	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// ChatCompletion sends a chat completion request to the Claw node's API.
+func (c *Client) ChatCompletion(nodeAddr, overlordToken string, req ChatCompletionReq) (*ChatCompletionResp, error) {
+	var resp ChatCompletionResp
+	if err := c.post(nodeAddr, "/api/chat/completions", overlordToken, req, &resp); err != nil {
+		return nil, fmt.Errorf("chat completion: %w", err)
 	}
 	return &resp, nil
 }

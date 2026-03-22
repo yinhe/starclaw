@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server } from 'lucide-react'
-import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode } from '../api/brood'
+import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, EmployeeUsage } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
 const statusColors: Record<string, string> = {
@@ -55,6 +55,7 @@ export default function TeamAgentPage() {
   const [selectedInstance, setSelectedInstance] = useState<TeamInstance | null>(null)
   const [missions, setMissions] = useState<TeamMission[]>([])
   const [loading, setLoading] = useState(true)
+  const [employeeUsage, setEmployeeUsage] = useState<EmployeeUsage[]>([])
 
   // Create modal (lobby)
   const [showCreate, setShowCreate] = useState(false)
@@ -89,14 +90,16 @@ export default function TeamAgentPage() {
   async function load() {
     setLoading(true)
     try {
-      const [s, t, i] = await Promise.all([
+      const [s, t, i, u] = await Promise.all([
         broodAPI.teamAgentStats(),
         broodAPI.listTeamTemplates(),
         broodAPI.listTeamInstances(),
+        broodAPI.teamAgentUsageByUser().catch(() => ({ users: [], total: 0 })),
       ])
       setStats(s)
       setTemplates(t.templates || [])
       setInstances(i.instances || [])
+      setEmployeeUsage(u.users || [])
     } catch { /* ignore */ }
     setLoading(false)
   }
@@ -465,6 +468,39 @@ export default function TeamAgentPage() {
           </div>
         )}
       </div>
+
+      {/* Employee Usage */}
+      {employeeUsage.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+            <Users className="w-4 h-4" /> 员工用量
+          </h2>
+          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700/50 text-gray-500 text-xs">
+                  <th className="text-left px-4 py-2.5 font-medium">员工</th>
+                  <th className="text-right px-4 py-2.5 font-medium">对话次数</th>
+                  <th className="text-right px-4 py-2.5 font-medium">输入 Tokens</th>
+                  <th className="text-right px-4 py-2.5 font-medium">输出 Tokens</th>
+                  <th className="text-right px-4 py-2.5 font-medium">总 Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employeeUsage.map(u => (
+                  <tr key={u.user_id} className="border-b border-gray-700/30 hover:bg-gray-700/20 transition">
+                    <td className="px-4 py-2.5 text-white font-medium">{u.username || u.user_id}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{u.message_count.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{u.input_tokens.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{u.output_tokens.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right text-white font-medium tabular-nums">{u.total_tokens.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Create Modal — Team Lobby */}
       {showCreate && (() => {

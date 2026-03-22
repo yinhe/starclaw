@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api } from '../api/client'
+import { useNavigate } from 'react-router-dom'
+import { api, isEmployee } from '../api/client'
 
 interface TeamInstance {
   id: string; name: string; template_name: string; status: string; goal: string
@@ -92,6 +93,7 @@ interface TeamStats {
 }
 
 export default function TeamPage() {
+  const navigate = useNavigate()
   const [instances, setInstances] = useState<TeamInstance[]>([])
   const [selected, setSelected] = useState<TeamInstance | null>(null)
   const [dash, setDash] = useState<DashboardData | null>(null)
@@ -134,6 +136,11 @@ export default function TeamPage() {
   }, [selected, refreshDash])
 
   async function selectTeam(inst: TeamInstance) {
+    // Employees go directly to chat
+    if (isEmployee()) {
+      navigate(`/chat/${inst.id}`)
+      return
+    }
     setSelected(inst)
     setDash(null)
   }
@@ -351,8 +358,8 @@ export default function TeamPage() {
         <div className="flex items-center gap-2">
           <span className="text-xl">🦞</span>
           <div>
-            <div className="text-base font-bold text-white">团队智能体</div>
-            <div className="text-[11px] text-gray-500">Team Agent · 提交任务，AI 团队自动执行</div>
+            <div className="text-base font-bold text-white">{isEmployee() ? 'AI 助手' : '团队智能体'}</div>
+            <div className="text-[11px] text-gray-500">{isEmployee() ? '选择 AI 助手开始对话' : 'Team Agent · 提交任务，AI 团队自动执行'}</div>
           </div>
         </div>
       </div>
@@ -387,16 +394,20 @@ export default function TeamPage() {
               <div className="text-4xl mb-3">🤖</div>
               <div className="text-sm text-gray-300 font-medium">暂无 AI 团队</div>
               <div className="text-xs text-gray-500 mt-1 mb-6">管理员将在控制台为你创建专属 AI 团队</div>
-              <div className="text-[11px] text-gray-600 font-medium uppercase tracking-wider mb-3">9 种团队模板 · 基于 Claw 开源引擎</div>
-              <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
-                {Object.entries(templateCapabilities).map(([name, { icon, clawFeatures }]) => (
-                  <div key={name} className="bg-gray-800/30 border border-gray-700/30 rounded-lg px-2.5 py-2 text-center">
-                    <div className="text-lg">{icon}</div>
-                    <div className="text-[11px] text-gray-300 font-medium mt-0.5">{name}</div>
-                    <div className="text-[9px] text-gray-600 mt-0.5 leading-tight">{clawFeatures[0]}</div>
+              {!isEmployee() && (
+                <>
+                  <div className="text-[11px] text-gray-600 font-medium uppercase tracking-wider mb-3">9 种团队模板 · 基于 Claw 开源引擎</div>
+                  <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
+                    {Object.entries(templateCapabilities).map(([name, { icon, clawFeatures }]) => (
+                      <div key={name} className="bg-gray-800/30 border border-gray-700/30 rounded-lg px-2.5 py-2 text-center">
+                        <div className="text-lg">{icon}</div>
+                        <div className="text-[11px] text-gray-300 font-medium mt-0.5">{name}</div>
+                        <div className="text-[9px] text-gray-600 mt-0.5 leading-tight">{clawFeatures[0]}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
             </div>
           ) : (
             <>

@@ -508,6 +508,10 @@ export const broodAPI = {
     request<{ missions: TeamMission[]; total: number }>(`/team-agent/instances/${instanceId}/missions`),
   createTeamMission: (instanceId: string, data: { goal: string; auto_confirm?: boolean }) =>
     request<{ mission: TeamMission }>(`/team-agent/instances/${instanceId}/missions`, { method: 'POST', body: JSON.stringify(data) }),
+  teamAgentUsageByUser: () =>
+    request<{ users: EmployeeUsage[]; total: number }>('/team-agent/usage/by-user'),
+  teamAgentChatHistory: (instanceId: string) =>
+    request<{ messages: ChatMessageRecord[]; total: number }>(`/team-agent/instances/${instanceId}/chat`),
 }
 
 // --- P4 Types ---
@@ -677,4 +681,26 @@ export interface TeamAgentStats {
   total_missions: number
   total_energy: number
   template_count: number
+}
+
+export interface EmployeeUsage {
+  user_id: string
+  username: string
+  message_count: number
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+}
+
+export interface ChatMessageRecord {
+  id: string
+  instance_id: string
+  user_id: string
+  role: string
+  content: string
+  model: string
+  tokens_in: number
+  tokens_out: number
+  duration_ms: number
+  created_at: string
 }

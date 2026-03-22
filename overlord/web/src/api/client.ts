@@ -64,4 +64,14 @@ export const api = {
   createTeamMission: (id: string, goal: string) =>
     request('POST', `/team-agent/instances/${id}/missions`, { goal }),
   teamStats: () => request('GET', '/team-agent/stats'),
+
+  // Chat
+  sendChat: (instanceId: string, message: string) =>
+    request('POST', `/team-agent/instances/${instanceId}/chat`, { message }),
+  chatHistory: (instanceId: string) =>
+    request('GET', `/team-agent/instances/${instanceId}/chat`),
+}
+
+export function isEmployee(): boolean {
+  return _user?.role === 'viewer'
 }

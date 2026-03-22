@@ -38,7 +38,7 @@ func main() {
 		&model.BrandConfig{}, &model.FeatureToggle{}, &model.LicenseKey{},
 		&model.ComplianceLog{}, &model.SensitiveWordRule{}, &model.DataFlowRecord{},
 		// Team Agent
-		&model.TeamAgentTemplate{}, &model.TeamInstance{}, &model.TeamMission{},
+		&model.TeamAgentTemplate{}, &model.TeamInstance{}, &model.TeamMission{}, &model.ChatMessage{},
 	)
 
 	// Seed default superadmin if none exists
@@ -299,6 +299,8 @@ func main() {
 			taRead.GET("/instances/:id/missions", teamAgentH.ListMissions)
 			taRead.GET("/instances/:id/missions/:mid", teamAgentH.GetMission)
 			taRead.GET("/stats", teamAgentH.Stats)
+			taRead.GET("/instances/:id/chat", teamAgentH.GetChatHistory)
+			taRead.GET("/usage/by-user", teamAgentH.UsageByUser)
 		}
 		taWrite := brood.Group("/team-agent")
 		taWrite.Use(middleware.RequirePermission("team_agent.write"))
@@ -306,6 +308,7 @@ func main() {
 			taWrite.POST("/instances", teamAgentH.CreateInstance)
 			taWrite.POST("/instances/:id/disband", teamAgentH.DisbandInstance)
 			taWrite.POST("/instances/:id/missions", teamAgentH.CreateMission)
+			taWrite.POST("/instances/:id/chat", teamAgentH.SendChat)
 		}
 
 		// --- Compliance ---
