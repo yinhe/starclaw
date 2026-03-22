@@ -165,8 +165,8 @@ func (h *HiveHandler) CreateInstance(c *gin.Context) {
 		JWTSecret:   randomHex(32),
 	}
 
-	// Hive mode: allocate local port
-	if plan.DeployMode == "hive" {
+	// Hive/Lite mode: allocate local port (both run on this server)
+	if plan.DeployMode == "hive" || plan.DeployMode == "lite" {
 		port, err := h.allocatePort()
 		if err != nil {
 			// Unfreeze if paid

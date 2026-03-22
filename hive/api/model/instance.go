@@ -8,15 +8,15 @@ import (
 
 // ClawInstance represents a managed Claw node in the Hive
 type ClawInstance struct {
-	ID          string     `gorm:"primaryKey;size:36" json:"id"`
-	Slug        string     `gorm:"uniqueIndex;size:30;not null" json:"slug"`
-	DisplayName string     `gorm:"size:100" json:"display_name"`
-	OwnerID     string     `gorm:"size:36;index" json:"owner_id"`
-	OwnerEmail  string     `gorm:"size:255" json:"owner_email"`
+	ID          string `gorm:"primaryKey;size:36" json:"id"`
+	Slug        string `gorm:"uniqueIndex;size:30;not null" json:"slug"`
+	DisplayName string `gorm:"size:100" json:"display_name"`
+	OwnerID     string `gorm:"size:36;index" json:"owner_id"`
+	OwnerEmail  string `gorm:"size:255" json:"owner_email"`
 
 	// Deployment
 	DeployMode  string `gorm:"size:20;default:hive" json:"deploy_mode"` // hive, ecs, spore
-	Port        int    `json:"port"`                                     // internal port (hive mode)
+	Port        int    `json:"port"`                                    // internal port (hive mode)
 	ContainerID string `gorm:"size:80" json:"container_id"`
 	ECSID       string `gorm:"size:80" json:"ecs_id"`
 	PublicIP    string `gorm:"size:45" json:"public_ip"`
@@ -38,7 +38,7 @@ type ClawInstance struct {
 	StorageMax  int64   `gorm:"default:2147483648" json:"storage_max"` // 2GB default
 
 	// JWT secret for this instance
-	JWTSecret string `gorm:"size:64" json:"-"`
+	JWTSecret string `gorm:"size:255" json:"-"`
 
 	// Timestamps
 	CreatedAt    time.Time  `json:"created_at"`
@@ -53,8 +53,8 @@ func (ClawInstance) TableName() string { return "claw_instances" }
 
 // SubdomainBlacklist holds reserved subdomains that cannot be used
 type SubdomainBlacklist struct {
-	Subdomain string `gorm:"primaryKey;size:50" json:"subdomain"`
-	Reason    string `gorm:"size:50" json:"reason"` // system, infrastructure, brand, service
+	Subdomain string    `gorm:"primaryKey;size:50" json:"subdomain"`
+	Reason    string    `gorm:"size:50" json:"reason"` // system, infrastructure, brand, service
 	CreatedAt time.Time `json:"created_at"`
 }
 
