@@ -29,6 +29,18 @@ func (t *TeamAgentTemplate) BeforeCreate(tx *gorm.DB) error {
 	if t.ID == "" {
 		t.ID = uuid.New().String()
 	}
+	if t.Roles == "" {
+		t.Roles = "[]"
+	}
+	if t.Topology == "" {
+		t.Topology = "{}"
+	}
+	if t.QualityGate == "" {
+		t.QualityGate = "{}"
+	}
+	if t.Escalation == "" {
+		t.Escalation = "{}"
+	}
 	return nil
 }
 
@@ -63,6 +75,12 @@ func (t *TeamInstance) BeforeCreate(tx *gorm.DB) error {
 	if t.ID == "" {
 		t.ID = uuid.New().String()
 	}
+	if t.RoleMap == "" {
+		t.RoleMap = "{}"
+	}
+	if t.Config == "" {
+		t.Config = "{}"
+	}
 	return nil
 }
 
@@ -89,6 +107,9 @@ type TeamMission struct {
 func (m *TeamMission) BeforeCreate(tx *gorm.DB) error {
 	if m.ID == "" {
 		m.ID = uuid.New().String()
+	}
+	if m.Deliverables == "" {
+		m.Deliverables = "[]"
 	}
 	return nil
 }
