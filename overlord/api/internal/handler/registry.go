@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"time"
 
@@ -42,6 +43,28 @@ func (h *RegistryHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if a node with the same address already exists — upsert
+	var existing model.ClawNode
+	if err := h.db.Where("address = ?", req.Address).First(&existing).Error; err == nil {
+		// Node exists — update and return existing credentials
+		h.db.Model(&existing).Updates(map[string]interface{}{
+			"name":           req.Name,
+			"version":        req.Version,
+			"claw_id":        req.ClawID,
+			"status":         "online",
+			"team":           req.Team,
+			"tags":           req.Tags,
+			"last_heartbeat": time.Now(),
+		})
+		audit(h.db, c, "re-register", existing.ID, "Claw re-registered: "+req.Name)
+		c.JSON(http.StatusOK, gin.H{
+			"node_id": existing.ID,
+			"token":   existing.Token,
+			"message": "claw re-registered to brood",
+		})
 		return
 	}
 
@@ -344,6 +367,25 @@ func (h *RegistryHandler) Resolve(c *gin.Context) {
 		"status":  node.Status,
 		"team":    node.Team,
 	})
+}
+
+// ---------- Sweeper: mark stale nodes offline ----------
+
+func (h *RegistryHandler) StartSweeper() {
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			threshold := time.Now().Add(-2 * time.Minute)
+			result := h.db.Model(&model.ClawNode{}).
+				Where("status IN ? AND last_heartbeat < ?", []string{"online", "feral"}, threshold).
+				Update("status", "offline")
+			if result.RowsAffected > 0 {
+				log.Printf("[registry] marked %d stale nodes offline", result.RowsAffected)
+			}
+		}
+	}()
+	log.Println("[registry] status sweeper started (60s interval)")
 }
 
 // ---------- helpers ----------
