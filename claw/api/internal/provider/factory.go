@@ -73,8 +73,8 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 		}
 		// Always try to inject Identity for Ed25519 signature auth.
 		// SignedTransport sends both signature headers AND keeps the API key,
-		// so Synapse's DualAuth will prefer the Claw signature path and check
-		// Queen star energy instead of local balance.
+		// so the remote DualAuth will prefer the Claw signature path and check
+		// star energy instead of local balance.
 		if registry != nil {
 			if rp, ok := registry.Get("star-ai"); ok {
 				if sp, ok := rp.(*StarAIProvider); ok && sp.inner.client.Transport != nil {
