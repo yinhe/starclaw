@@ -379,8 +379,10 @@ func (h *HiveHandler) provisionLite(inst *model.ClawInstance, order *model.Order
 		}
 	}
 
-	// Step 6: Wait for health check (lite starts much faster — 10s timeout)
-	if err := h.docker.WaitHealthy(inst.Port, 10*time.Second); err != nil {
+	// Step 6: Wait for health check (lite starts much faster — 15s timeout)
+	// Use container name on Docker network since controller runs in container too
+	containerName := fmt.Sprintf("claw-%s-lite", inst.Slug)
+	if err := h.docker.WaitHealthyByName(containerName, 8080, 15*time.Second); err != nil {
 		log.Printf("[hive] health check failed for lite %s: %v", inst.Slug, err)
 		updateStatus("error")
 		refundOnError()

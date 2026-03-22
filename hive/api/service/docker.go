@@ -186,6 +186,25 @@ func (d *DockerService) WaitHealthy(port int, timeout time.Duration) error {
 	return fmt.Errorf("health check timeout after %s", timeout)
 }
 
+// WaitHealthyByName polls the health endpoint via container name on the Docker network
+func (d *DockerService) WaitHealthyByName(containerName string, internalPort int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	url := fmt.Sprintf("http://%s:%d/health", containerName, internalPort)
+
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil && resp.StatusCode == 200 {
+			resp.Body.Close()
+			return nil
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("health check timeout after %s for %s", timeout, containerName)
+}
+
 // EnsureNetwork creates the hive Docker network if it doesn't exist
 func (d *DockerService) EnsureNetwork() error {
 	// Check if network exists
