@@ -12,6 +12,8 @@ issues:
     - linters: [staticcheck]
       text: "SA1019.*strings.Title"
     - linters: [staticcheck]
+      text: "SA4006"
+    - linters: [staticcheck]
       text: "SA4010"
     - linters: [gosimple]
       text: "S1000"
