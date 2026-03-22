@@ -988,12 +988,11 @@ func buildOfficialTemplates() []model.TeamAgentTemplate {
 		buildMarketClaw(),
 		buildSupportClaw(),
 		buildDataClaw(),
-		buildQuantClaw(),
+		buildMedClaw(),
 		buildEcomClaw(),
 		buildDramaClaw(),
 		buildSalesClaw(),
 		buildOpsClaw(),
-		buildMedClaw(),
 	}
 }
 
