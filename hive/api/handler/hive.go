@@ -282,7 +282,15 @@ func (h *HiveHandler) provisionHive(inst *model.ClawInstance, order *model.Order
 	}
 	h.db.Save(inst)
 
-	// Step 4: Generate nginx config
+	// Step 4: Wait for health check BEFORE nginx reload (prevents 502)
+	if err := h.docker.WaitHealthy(inst.Port, 60*time.Second); err != nil {
+		log.Printf("[hive] health check failed for %s: %v", inst.Slug, err)
+		updateStatus("error")
+		refundOnError()
+		return
+	}
+
+	// Step 5: Generate nginx config
 	if err := h.nginx.WriteConfig(inst.Slug, inst.Port); err != nil {
 		log.Printf("[hive] failed to write nginx config for %s: %v", inst.Slug, err)
 		updateStatus("error")
@@ -290,7 +298,7 @@ func (h *HiveHandler) provisionHive(inst *model.ClawInstance, order *model.Order
 		return
 	}
 
-	// Step 5: Test and reload nginx
+	// Step 6: Test and reload nginx (container is confirmed healthy, no 502 risk)
 	if err := h.nginx.TestConfig(); err != nil {
 		log.Printf("[hive] nginx config test failed: %v", err)
 		h.nginx.RemoveConfig(inst.Slug)
@@ -302,21 +310,13 @@ func (h *HiveHandler) provisionHive(inst *model.ClawInstance, order *model.Order
 		log.Printf("[hive] nginx reload failed: %v", err)
 	}
 
-	// Step 6: DNS record (if DNS service configured)
+	// Step 7: DNS record (if DNS service configured)
 	if h.dns != nil && h.cfg.HivePublicIP != "" {
 		if recordID, err := h.dns.AddRecord(inst.Slug, h.cfg.HivePublicIP); err != nil {
 			log.Printf("[hive] DNS record failed for %s: %v (non-fatal)", inst.Slug, err)
 		} else {
 			log.Printf("[hive] DNS A record created: %s.%s → %s (id=%s)", inst.Slug, h.cfg.Domain, h.cfg.HivePublicIP, recordID)
 		}
-	}
-
-	// Step 7: Wait for health check
-	if err := h.docker.WaitHealthy(inst.Port, 60*time.Second); err != nil {
-		log.Printf("[hive] health check failed for %s: %v", inst.Slug, err)
-		updateStatus("error")
-		refundOnError()
-		return
 	}
 
 	// Done — confirm billing
@@ -350,7 +350,17 @@ func (h *HiveHandler) provisionLite(inst *model.ClawInstance, order *model.Order
 	}
 	h.db.Save(inst)
 
-	// Step 3: Generate nginx config
+	// Step 3: Wait for health check BEFORE nginx reload (prevents 502 on first visit)
+	// Use container name on Docker network since controller runs in container too
+	containerName := fmt.Sprintf("claw-%s-lite", inst.Slug)
+	if err := h.docker.WaitHealthyByName(containerName, 8080, 15*time.Second); err != nil {
+		log.Printf("[hive] health check failed for lite %s: %v", inst.Slug, err)
+		updateStatus("error")
+		refundOnError()
+		return
+	}
+
+	// Step 4: Generate nginx config
 	if err := h.nginx.WriteConfig(inst.Slug, inst.Port); err != nil {
 		log.Printf("[hive] failed to write nginx config for %s: %v", inst.Slug, err)
 		updateStatus("error")
@@ -358,7 +368,7 @@ func (h *HiveHandler) provisionLite(inst *model.ClawInstance, order *model.Order
 		return
 	}
 
-	// Step 4: Test and reload nginx
+	// Step 5: Test and reload nginx (container is confirmed healthy, no 502 risk)
 	if err := h.nginx.TestConfig(); err != nil {
 		log.Printf("[hive] nginx config test failed: %v", err)
 		h.nginx.RemoveConfig(inst.Slug)
@@ -370,23 +380,13 @@ func (h *HiveHandler) provisionLite(inst *model.ClawInstance, order *model.Order
 		log.Printf("[hive] nginx reload failed: %v", err)
 	}
 
-	// Step 5: DNS record
+	// Step 6: DNS record
 	if h.dns != nil && h.cfg.HivePublicIP != "" {
 		if recordID, err := h.dns.AddRecord(inst.Slug, h.cfg.HivePublicIP); err != nil {
 			log.Printf("[hive] DNS record failed for %s: %v (non-fatal)", inst.Slug, err)
 		} else {
 			log.Printf("[hive] DNS A record created: %s.%s → %s (id=%s)", inst.Slug, h.cfg.Domain, h.cfg.HivePublicIP, recordID)
 		}
-	}
-
-	// Step 6: Wait for health check (lite starts much faster — 15s timeout)
-	// Use container name on Docker network since controller runs in container too
-	containerName := fmt.Sprintf("claw-%s-lite", inst.Slug)
-	if err := h.docker.WaitHealthyByName(containerName, 8080, 15*time.Second); err != nil {
-		log.Printf("[hive] health check failed for lite %s: %v", inst.Slug, err)
-		updateStatus("error")
-		refundOnError()
-		return
 	}
 
 	// Done — no billing for free tier
