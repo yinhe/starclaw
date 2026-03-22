@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant, type DiamondOrderResult } from '../lib/api';
+import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant } from '../lib/api';
 import { isLoggedIn } from '../lib/auth';
 import {
-  Diamond, Wallet, ArrowRight, CheckCircle, ArrowLeft,
-  FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar, CreditCard, ShoppingCart,
+  Diamond, Wallet, ArrowRight, CheckCircle, ArrowLeft, ExternalLink,
+  FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar,
 } from 'lucide-react';
 
 function fmt(yuan: number) { return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
@@ -24,16 +24,9 @@ export function InvestPage() {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
-  // Recharge (balance-based)
-  const [rechargeYuan, setRechargeYuan] = useState('');
-  const [recharging, setRecharging] = useState(false);
-
-  // Direct purchase (Alipay/WeChat)
+  // Purchase (star energy)
   const [purchaseYuan, setPurchaseYuan] = useState('');
-  const [payMethod, setPayMethod] = useState<'alipay' | 'wechatpay'>('alipay');
   const [purchasing, setPurchasing] = useState(false);
-  const [purchaseResult, setPurchaseResult] = useState<DiamondOrderResult | null>(null);
-  const [buyMode, setBuyMode] = useState<'pay' | 'balance'>('pay');
 
   // Agreement
   const [agreeTerm, setAgreeTerm] = useState(3);
@@ -102,33 +95,19 @@ export function InvestPage() {
     setAgreeing(false);
   }
 
-  async function handleRecharge() {
-    const yuan = parseFloat(rechargeYuan);
-    if (!yuan || yuan < 10000) { setErr('最低充值 ¥10,000'); return; }
-    setErr(''); setMsg(''); setRecharging(true);
+  async function handleBuy() {
+    const yuan = parseFloat(purchaseYuan);
+    if (!pool) return;
+    if (!yuan || yuan < pool.min_invest_yuan) { setErr(`${pool.current_round_label} 最低购买 ${fmt(pool.min_invest_yuan)}`); return; }
+    if (yuan > pool.max_invest_yuan) { setErr(`${pool.current_round_label} 最高购买 ${fmt(pool.max_invest_yuan)}`); return; }
+    setErr(''); setMsg(''); setPurchasing(true);
     try {
       const fen = Math.round(yuan * 100);
       const r = await investorAPI.recharge(fen);
       setMsg(r.message);
-      setRechargeYuan('');
+      setPurchaseYuan('');
       loadProfile();
       loadPool();
-    } catch (e: any) { setErr(e.message); }
-    setRecharging(false);
-  }
-
-  async function handlePurchase() {
-    const yuan = parseFloat(purchaseYuan);
-    if (!yuan || yuan < 10000) { setErr('最低购买 ¥10,000'); return; }
-    setErr(''); setMsg(''); setPurchasing(true); setPurchaseResult(null);
-    try {
-      const fen = Math.round(yuan * 100);
-      const r = await investorAPI.purchase(fen, payMethod, 'pc');
-      setPurchaseResult(r);
-      setPurchaseYuan('');
-      if (r.pay_url) {
-        window.open(r.pay_url, '_blank');
-      }
     } catch (e: any) { setErr(e.message); }
     setPurchasing(false);
   }
@@ -156,7 +135,7 @@ export function InvestPage() {
       {/* Hive header — Queen’s command center */}
       <header className="relative border-b border-purple-500/10 bg-gradient-to-r from-[#0d0b1a] via-[#130f24] to-[#0d0b1a] sticky top-0 z-50">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.06),transparent_70%)]" />
-        <div className="relative mx-auto max-w-5xl px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/')} className="p-1.5 rounded-lg hover:bg-purple-500/10 text-gray-500 hover:text-purple-300 transition" title="返回首页">
               <ArrowLeft size={18} />
@@ -177,7 +156,7 @@ export function InvestPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-purple-500/10 mb-8">
@@ -298,71 +277,44 @@ export function InvestPage() {
                   购买星钻
                 </h3>
 
-                {/* Buy mode toggle */}
-                <div className="flex gap-2 mb-6">
-                  <button onClick={() => setBuyMode('pay')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${
-                    buyMode === 'pay' ? 'border-purple-400 bg-purple-500/10 text-purple-400' : 'border-white/10 text-gray-400 hover:border-white/20'
-                  }`}><CreditCard size={14} />直接支付</button>
-                  <button onClick={() => setBuyMode('balance')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${
-                    buyMode === 'balance' ? 'border-purple-400 bg-purple-500/10 text-purple-400' : 'border-white/10 text-gray-400 hover:border-white/20'
-                  }`}><Wallet size={14} />余额购买</button>
-                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                  {/* Left: purchase form */}
+                  <div className="lg:col-span-3">
+                    <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
+                      <div className="rounded-lg border border-purple-500/10 bg-white/[0.02] p-3 text-center">
+                        <div className="text-gray-500 text-xs mb-0.5">当前价格</div>
+                        <div className="text-white font-bold">{fmt(pool.price_yuan)}<span className="text-gray-500 font-normal">/份</span></div>
+                      </div>
+                      <div className="rounded-lg border border-purple-500/10 bg-white/[0.02] p-3 text-center">
+                        <div className="text-gray-500 text-xs mb-0.5">单笔限额</div>
+                        <div className="text-purple-400 font-bold">{fmt(pool.min_invest_yuan)} - {fmt(pool.max_invest_yuan)}</div>
+                      </div>
+                      <div className="rounded-lg border border-purple-500/10 bg-white/[0.02] p-3 text-center">
+                        <div className="text-gray-500 text-xs mb-0.5">当前期</div>
+                        <div className="text-purple-400 font-bold">{pool.current_round_label || pool.current_round}</div>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <div className="text-sm text-gray-400 mb-2">当前价格: <span className="text-white font-medium">{fmt(pool.price_yuan)}/份</span> · {pool.current_round_label || pool.current_round}</div>
-                    <div className="text-sm text-gray-400 mb-4">最低购买: <span className="text-white font-medium">{fmt(pool.min_recharge_yuan)}</span></div>
-
-                    {buyMode === 'pay' ? (
-                      <>
-                        {/* Payment method selector */}
-                        <div className="flex gap-2 mb-3">
-                          <button onClick={() => setPayMethod('alipay')} className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
-                            payMethod === 'alipay' ? 'border-blue-400 bg-blue-500/10 text-blue-400' :
-                            'border-white/10 text-gray-400'
-                          }`}>支付宝</button>
-                          <button onClick={() => setPayMethod('wechatpay')} className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
-                            payMethod === 'wechatpay' ? 'border-green-400 bg-green-500/10 text-green-400' :
-                            'border-white/10 text-gray-400'
-                          }`}>微信支付</button>
-                        </div>
-                        <div className="flex gap-2">
-                          <input type="number" value={purchaseYuan} onChange={e => setPurchaseYuan(e.target.value)} placeholder="购买金额 (元)"
-                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
-                          <button onClick={handlePurchase} disabled={purchasing}
-                            className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0 flex items-center gap-1.5">
-                            <ShoppingCart size={14} />{purchasing ? '创建中...' : '支付购买'}
-                          </button>
-                        </div>
-                        {purchaseResult && (
-                          <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 text-sm">
-                            <div className="text-blue-400 font-medium mb-1">订单已创建: {purchaseResult.order_no}</div>
-                            <div className="text-gray-400 text-xs mb-2">{purchaseResult.shares} 份 @ ¥{purchaseResult.price_yuan}/份 = ¥{purchaseResult.amount_yuan}</div>
-                            {purchaseResult.pay_url && (
-                              <a href={purchaseResult.pay_url} target="_blank" rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition">
-                                <ArrowRight size={14} />前往支付
-                              </a>
-                            )}
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-600 mt-2">通过{payMethod === 'alipay' ? '支付宝' : '微信'}直接支付，到账自动发放星钻。</div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex gap-2">
-                          <input type="number" value={rechargeYuan} onChange={e => setRechargeYuan(e.target.value)} placeholder="购买金额 (元)"
-                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
-                          <button onClick={handleRecharge} disabled={recharging}
-                            className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
-                            {recharging ? '购买中...' : '余额购买'}
-                          </button>
-                        </div>
-                        <div className="text-xs text-gray-600 mt-2">从平台余额扣款。累计充值 ≥ {fmt(pool.activation_yuan)} 激活分润。</div>
-                      </>
-                    )}
+                    <div className="flex gap-2 mb-3">
+                      <input type="number" value={purchaseYuan} onChange={e => setPurchaseYuan(e.target.value)}
+                        placeholder={`购买金额 (${fmt(pool.min_invest_yuan)} - ${fmt(pool.max_invest_yuan)})`}
+                        className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
+                      <button onClick={handleBuy} disabled={purchasing}
+                        className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
+                        {purchasing ? '购买中...' : '星能购买'}
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>使用 StarAI 星能 (⚡) 支付，购买即扣除星能</span>
+                      <a href="https://star-ai.net" target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-purple-400 hover:text-purple-300 transition">
+                        <ExternalLink size={11} />前往充值星能
+                      </a>
+                    </div>
                   </div>
-                  <div className="space-y-2">
+
+                  {/* Right: investor stats */}
+                  <div className="lg:col-span-2 space-y-2 rounded-lg border border-purple-500/10 bg-white/[0.02] p-4">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">已投资</span>
                       <span className="text-white font-medium">{fmtFen(inv!.total_invested)}</span>
@@ -380,6 +332,9 @@ export function InvestPage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">协议期限</span>
                       <span className="text-white">{inv!.agreement_term} 年 (至 {inv!.agreement_expires_at?.slice(0, 10)})</span>
+                    </div>
+                    <div className="pt-2 mt-2 border-t border-purple-500/5 text-xs text-gray-500">
+                      累计投资 ≥ {fmt(pool.activation_yuan)} 激活分润
                     </div>
                   </div>
                 </div>
@@ -621,7 +576,7 @@ export function InvestPage() {
 
       {/* Hive footer */}
       <div className="border-t border-purple-500/10 mt-16 py-6 text-center text-xs text-gray-600">
-        <span className="text-purple-500/40">\u25c6</span> StarClaw · Queen’s Hive <span className="text-purple-500/40">\u25c6</span>
+        <span className="text-purple-500/40">◆</span> StarClaw · Queen's Hive <span className="text-purple-500/40">◆</span>
       </div>
     </div>
   );

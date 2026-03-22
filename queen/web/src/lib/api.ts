@@ -344,7 +344,8 @@ export interface InvestorPoolInfo {
   active_investors: number;
   total_raised_yuan: number;
   pool_balance_yuan: number;
-  min_recharge_yuan: number;
+  min_invest_yuan: number;
+  max_invest_yuan: number;
   activation_yuan: number;
   terms_available: number[];
 }

@@ -68,12 +68,14 @@ var RoundConfig = []struct {
 	Label      string
 	Multiplier int
 	Price      int64 // floor price per star diamond (分)
+	MinInvest  int64 // 每笔最低投资 (分)
+	MaxInvest  int64 // 每笔最高投资 (分)
 }{
-	{"spore", "孢子期", 1, 50},        // ¥0.50/份 → 募资 ¥500万
-	{"larva", "幼虫期", 5, 250},       // ¥2.50/份 → 募资 ¥2500万
-	{"zergling", "虫兵期", 25, 1250},  // ¥12.50/份 → 募资 ¥1.25亿
-	{"overlord", "领主期", 125, 6250}, // ¥62.50/份 → 募资 ¥6.25亿
-	{"queen", "虫后期", 625, 31250},   // ¥312.50/份 → 募资 ¥31.25亿
+	{"spore", "孢子期", 1, 50, 1_000_000, 5_000_000},            // ¥0.50/份, ¥1万-¥5万
+	{"larva", "幼虫期", 5, 250, 5_000_000, 25_000_000},          // ¥2.50/份, ¥5万-¥25万
+	{"zergling", "虫兵期", 25, 1250, 10_000_000, 100_000_000},   // ¥12.50/份, ¥10万-¥100万
+	{"overlord", "领主期", 125, 6250, 50_000_000, 500_000_000},  // ¥62.50/份, ¥50万-¥500万
+	{"queen", "虫后期", 625, 31250, 100_000_000, 2_000_000_000}, // ¥312.50/份, ¥100万-¥2000万
 }
 
 // NextRound returns the next round name after the given round, or "" if no more rounds.
@@ -94,7 +96,17 @@ func RoundFloorPrice(round string) int64 {
 			return rc.Price
 		}
 	}
-	return 20 // default spore price
+	return 50 // default spore price
+}
+
+// RoundLimits returns the min/max investment limits for a given round code (in 分).
+func RoundLimits(round string) (minFen, maxFen int64) {
+	for _, rc := range RoundConfig {
+		if rc.Round == round {
+			return rc.MinInvest, rc.MaxInvest
+		}
+	}
+	return 1_000_000, 5_000_000 // default spore limits
 }
 
 // RoundLabel returns the display label for a given round code.

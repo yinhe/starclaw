@@ -507,7 +507,7 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 
 	// Get current round for floor price
 	var round model.FundingRound
-	var floorPrice int64 = 20 // default seed ¥0.20
+	var floorPrice int64 = 50 // default spore ¥0.50
 	if err := database.DB.Where("status = ?", "open").First(&round).Error; err == nil {
 		floorPrice = round.SharePrice
 	}
@@ -515,6 +515,7 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 	nav := pool.CalcNAV()
 	dynPrice := pool.CalcPrice(floorPrice)
 
+	minFen, maxFen := model.RoundLimits(pool.CurrentRound)
 	c.JSON(http.StatusOK, gin.H{
 		"name":                "星钻 (Star Diamond)",
 		"total_supply":        model.StarDiamondTotal,
@@ -532,7 +533,8 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 		"active_investors":    investorCount,
 		"total_raised_yuan":   float64(pool.TotalRaised) / 100,
 		"pool_balance_yuan":   float64(pool.PoolBalance) / 100,
-		"min_recharge_yuan":   float64(MinRechargeFen) / 100,
+		"min_invest_yuan":     float64(minFen) / 100,
+		"max_invest_yuan":     float64(maxFen) / 100,
 		"activation_yuan":     float64(ActivationThreshold) / 100,
 		"terms_available":     []int{1, 3, 5},
 	})
@@ -543,7 +545,7 @@ func priceDriver(nav, floorPrice int64) string {
 	if nav > floorPrice {
 		return "NAV"
 	}
-	return "轮次地板价"
+	return "期次地板价"
 }
 
 // POST /v1/investor/register — Self-register as investor
@@ -632,23 +634,16 @@ func (h *InvestorHandler) SignAgreement(c *gin.Context) {
 	})
 }
 
-// POST /v1/investor/recharge — Purchase Star Diamonds (星钻)
-// ¥1万 min per txn, cumulative ≥ ¥10万 activates profit sharing.
-// Price = max(NAV, round floor price). Dynamic dual-driven pricing.
+// POST /v1/investor/recharge — Purchase Star Diamonds (星钻) using Star Energy (星能)
+// Per-round min/max limits. Cumulative ≥ ¥10万 activates profit sharing.
+// Price = max(NAV, round floor price). Payment via StarAI star energy.
 func (h *InvestorHandler) Recharge(c *gin.Context) {
 	userID := c.GetString("user_id")
 	var req struct {
 		Amount int64 `json:"amount" binding:"required"` // CNY in 分
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定充值金额 (分)"})
-		return
-	}
-	if req.Amount < MinRechargeFen {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      fmt.Sprintf("每次最低充值 ¥%.0f", float64(MinRechargeFen)/100),
-			"min_amount": MinRechargeFen,
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定购买金额 (分)"})
 		return
 	}
 
@@ -700,20 +695,38 @@ func (h *InvestorHandler) Recharge(c *gin.Context) {
 		}
 		cost := shares * dynPrice
 
-		// Deduct from user balance
-		var balance model.UserBalance
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", userID).First(&balance).Error; err != nil {
-			return fmt.Errorf("余额账户不存在，请先充值到平台余额")
+		// Per-round min/max validation
+		minFen, maxFen := model.RoundLimits(round.Round)
+		if req.Amount < minFen {
+			return fmt.Errorf("%s 最低购买 ¥%.0f", round.Label, float64(minFen)/100)
 		}
-		if balance.Balance < cost {
-			return fmt.Errorf("余额不足（当前 ¥%.2f，需要 ¥%.2f）",
-				float64(balance.Balance)/100, float64(cost)/100)
+		if req.Amount > maxFen {
+			return fmt.Errorf("%s 最高购买 ¥%.0f", round.Label, float64(maxFen)/100)
 		}
 
-		// Deduct balance
-		balance.Balance -= cost
-		balance.TotalOut += cost
-		tx.Save(&balance)
+		// Resolve claw_id for star energy deduction
+		clawID := userToClawID(userID)
+		if clawID == "" {
+			return fmt.Errorf("未绑定 StarAI 账户，请先在 star-ai.net 注册并充值星能")
+		}
+
+		// Deduct from CreditAccount (star energy)
+		energy := cost * int64(EnergyUnit) // 分 → energy units
+		var acct model.CreditAccount
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("claw_id = ?", clawID).First(&acct).Error; err != nil {
+			return fmt.Errorf("星能账户不存在，请先在 star-ai.net 充值")
+		}
+		if acct.Balance < energy {
+			return fmt.Errorf("星能不足（需要 %d⚡，可用 %d⚡），请先在 star-ai.net 充值",
+				cost, acct.Balance/int64(EnergyUnit))
+		}
+
+		// Deduct star energy
+		tx.Model(&acct).Updates(map[string]interface{}{
+			"balance":   gorm.Expr("balance - ?", energy),
+			"total_out": gorm.Expr("total_out + ?", energy),
+		})
 
 		// Issue shares to investor
 		investor.Shares += shares
@@ -771,14 +784,14 @@ func (h *InvestorHandler) Recharge(c *gin.Context) {
 			PricePerShare: dynPrice,
 			Remark:        fmt.Sprintf("%s 购买 %d 星钻 @ ¥%.2f/份 = ¥%.0f", round.Label, shares, float64(dynPrice)/100, float64(cost)/100),
 		})
-		tx.Create(&model.BalanceTransaction{
-			ID:     uuid.New().String(),
-			UserID: userID,
-			Type:   "invest",
-			Amount: -cost,
-			Before: balance.Balance + cost,
-			After:  balance.Balance,
-			Remark: fmt.Sprintf("%s 购买 %d 星钻", round.Label, shares),
+		tx.Create(&model.CreditTransaction{
+			ID:       uuid.New().String(),
+			FromClaw: clawID,
+			ToClaw:   "system:invest",
+			Amount:   energy,
+			Type:     "invest",
+			Remark:   fmt.Sprintf("%s 购买 %d 星钻 @ ¥%.2f/份", round.Label, shares, float64(dynPrice)/100),
+			Status:   "confirmed",
 		})
 
 		resultInvestor = investor
@@ -926,7 +939,7 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 
 	// Get current round for floor price
 	var round model.FundingRound
-	var floorPrice int64 = 20 // default seed ¥0.20
+	var floorPrice int64 = 50 // default spore ¥0.50
 	if err := database.DB.Where("status = ?", "open").First(&round).Error; err == nil {
 		floorPrice = round.SharePrice
 	}
@@ -945,7 +958,8 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 		"price_driver":      priceDriver(nav, floorPrice),
 		"pool_total_shares": pool.TotalShares,
 		"pool_balance":      pool.PoolBalance,
-		"min_recharge_yuan": float64(MinRechargeFen) / 100,
+		"min_invest_yuan":   float64(func() int64 { m, _ := model.RoundLimits(pool.CurrentRound); return m }()) / 100,
+		"max_invest_yuan":   float64(func() int64 { _, m := model.RoundLimits(pool.CurrentRound); return m }()) / 100,
 		"activation_yuan":   float64(ActivationThreshold) / 100,
 		"dividends":         dividends,
 		"transactions":      transactions,
