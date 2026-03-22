@@ -14,6 +14,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { label: t('nav.home'), to: '/' },
     { label: t('nav.enterprise'), to: '/enterprise' },
     { label: t('nav.star_ai'), to: '/star-ai' },
+    { label: t('nav.cloud'), to: '/create', external: true },
     { label: t('nav.pricing'), to: '/pricing' },
     { label: t('nav.download'), to: '/download' },
     { label: t('nav.docs'), to: '/docs' },
@@ -42,15 +43,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-8">
             {NAV.map((n) => (
-              <Link
-                key={n.to}
-                to={n.to}
-                className={`text-sm font-medium transition-colors hover:text-white ${
-                  pathname === n.to ? 'text-white' : 'text-gray-400'
-                }`}
-              >
-                {n.label}
-              </Link>
+              'external' in n && n.external ? (
+                <a
+                  key={n.to}
+                  href={n.to}
+                  className="text-sm font-medium text-claw-400 hover:text-claw-300 transition-colors"
+                >
+                  {n.label}
+                </a>
+              ) : (
+                <Link
+                  key={n.to}
+                  to={n.to}
+                  className={`text-sm font-medium transition-colors hover:text-white ${
+                    pathname === n.to ? 'text-white' : 'text-gray-400'
+                  }`}
+                >
+                  {n.label}
+                </Link>
+              )
             ))}
             <a
               href="https://app.starclaw.me"
@@ -108,14 +119,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {open && (
           <div className="md:hidden border-t border-white/10 px-6 py-4 space-y-3">
             {NAV.map((n) => (
-              <Link
-                key={n.to}
-                to={n.to}
-                onClick={() => setOpen(false)}
-                className="block text-sm font-medium text-gray-300 hover:text-white"
-              >
-                {n.label}
-              </Link>
+              'external' in n && n.external ? (
+                <a
+                  key={n.to}
+                  href={n.to}
+                  onClick={() => setOpen(false)}
+                  className="block text-sm font-medium text-claw-400 hover:text-claw-300"
+                >
+                  {n.label}
+                </a>
+              ) : (
+                <Link
+                  key={n.to}
+                  to={n.to}
+                  onClick={() => setOpen(false)}
+                  className="block text-sm font-medium text-gray-300 hover:text-white"
+                >
+                  {n.label}
+                </Link>
+              )
             ))}
             <a
               href="https://app.starclaw.me"
@@ -170,6 +192,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><a href="https://starclaw.net" className="hover:text-white transition-colors">{t('footer.portal')}</a></li>
                 <li><a href="https://star-ai.net" className="hover:text-white transition-colors">StarAI</a></li>
                 <li><a href="https://app.starclaw.me" className="hover:text-white transition-colors">{t('nav.demo')}</a></li>
+                <li><a href="/create" className="hover:text-white transition-colors">{t('nav.cloud')}</a></li>
               </ul>
             </div>
             <div>

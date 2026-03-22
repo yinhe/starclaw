@@ -30,6 +30,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'hero.cta': 'Get Started',
     'hero.demo': 'Try Demo',
     'hero.swarm': 'Swarm Ecosystem',
+    'hero.cloud': 'Cloud Create',
     'hero.install': 'Install Now',
     'hero.read_docs': 'Read the Docs',
     // Features
@@ -133,6 +134,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'nav.pricing': 'Pricing',
     'nav.enterprise': 'Enterprise',
     'nav.star_ai': 'StarAI',
+    'nav.cloud': 'Cloud',
     'nav.partners': 'Partners',
     'nav.about': 'About',
     // Pricing
@@ -370,6 +372,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'nav.pricing': '定价',
     'nav.enterprise': '企业版',
     'nav.star_ai': 'StarAI',
+    'nav.cloud': '云创建',
     'nav.partners': '合伙人',
     'nav.about': '关于我们',
     'pricing.title': '简单透明的定价',

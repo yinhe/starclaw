@@ -68,6 +68,13 @@ export function LandingPage() {
               {t('hero.cta')}
             </Link>
             <a
+              href="/create"
+              className="inline-flex items-center gap-2 rounded-lg border border-claw-500/30 bg-claw-500/10 px-6 py-3 text-sm font-semibold text-claw-400 hover:bg-claw-500/20 transition-colors"
+            >
+              <Zap size={16} />
+              {t('hero.cloud')}
+            </a>
+            <a
               href="https://app.starclaw.me"
               className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-6 py-3 text-sm font-semibold text-gray-300 hover:bg-white/5 transition-colors"
             >
