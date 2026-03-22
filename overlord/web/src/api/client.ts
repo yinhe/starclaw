@@ -71,11 +71,17 @@ export const api = {
     request('POST', `/team-agent/instances/${id}/missions`, { goal }),
   teamStats: () => request('GET', '/team-agent/stats'),
 
-  // Chat
+  // Chat (instance-based)
   sendChat: (instanceId: string, message: string) =>
     request('POST', `/team-agent/instances/${instanceId}/chat`, { message }),
   chatHistory: (instanceId: string) =>
     request('GET', `/team-agent/instances/${instanceId}/chat`),
+
+  // Direct Chat (no instance/template needed)
+  directChat: (message: string) =>
+    request('POST', '/chat', { message }),
+  directChatHistory: () =>
+    request('GET', '/chat/history'),
 }
 
 export function isEmployee(): boolean {

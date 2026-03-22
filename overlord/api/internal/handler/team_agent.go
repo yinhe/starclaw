@@ -457,6 +457,143 @@ func (h *TeamAgentHandler) GetMission(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"mission": m})
 }
 
+// ── Direct Chat (no instance/template required) ──
+
+const directInstanceID = "direct"
+
+// POST /brood/chat — direct chat without team instance
+func (h *TeamAgentHandler) SendDirectChat(c *gin.Context) {
+	var req struct {
+		Message string `json:"message" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	adminUser, _ := c.Get("admin_user")
+	var adminUserID string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		adminUserID = u.ID
+	}
+
+	// Save user message
+	userMsg := model.ChatMessage{
+		InstanceID: directInstanceID,
+		UserID:     adminUserID,
+		Role:       "user",
+		Content:    req.Message,
+	}
+	h.db.Create(&userMsg)
+
+	// Build conversation context from recent history (last 20 messages)
+	var history []model.ChatMessage
+	h.db.Where("instance_id = ? AND user_id = ?", directInstanceID, adminUserID).
+		Order("created_at DESC").Limit(20).Find(&history)
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
+	systemPrompt := "你是 StarClaw AI 助手。请用专业、简洁的方式回答用户问题。支持中英文。"
+	clawMessages := []claw.ChatMessage{{Role: "system", Content: systemPrompt}}
+	for _, m := range history {
+		clawMessages = append(clawMessages, claw.ChatMessage{Role: m.Role, Content: m.Content})
+	}
+
+	// Pick any online Claw node
+	var node model.ClawNode
+	if err := h.db.Where("status = ?", "online").Order("tasks_running ASC").First(&node).Error; err != nil {
+		// No online node — try feral
+		if err2 := h.db.Where("status = ?", "feral").First(&node).Error; err2 != nil {
+			assistantMsg := model.ChatMessage{
+				InstanceID: directInstanceID,
+				UserID:     adminUserID,
+				Role:       "assistant",
+				Content:    "⚠️ 暂无可用的 AI 节点，请联系管理员添加 Claw 节点。",
+			}
+			h.db.Create(&assistantMsg)
+			c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
+			return
+		}
+	}
+
+	start := time.Now()
+	chatResp, err := h.clawClient.ChatCompletion(node.Address, h.overlordToken, claw.ChatCompletionReq{
+		Model:    "deepseek-chat",
+		Messages: clawMessages,
+		Stream:   false,
+	})
+	durationMs := int(time.Since(start).Milliseconds())
+
+	var assistantContent string
+	var tokensIn, tokensOut int
+	var respModel string
+
+	if err != nil {
+		log.Printf("[direct-chat] completion failed: %v", err)
+		assistantContent = "⚠️ AI 响应失败，请稍后重试。错误: " + err.Error()
+	} else if len(chatResp.Choices) > 0 {
+		assistantContent = chatResp.Choices[0].Message.Content
+		tokensIn = chatResp.Usage.PromptTokens
+		tokensOut = chatResp.Usage.CompletionTokens
+		respModel = chatResp.Model
+	} else {
+		assistantContent = "⚠️ AI 返回了空响应。"
+	}
+
+	assistantMsg := model.ChatMessage{
+		InstanceID: directInstanceID,
+		UserID:     adminUserID,
+		Role:       "assistant",
+		Content:    assistantContent,
+		Model:      respModel,
+		TokensIn:   tokensIn,
+		TokensOut:  tokensOut,
+		DurationMs: durationMs,
+	}
+	h.db.Create(&assistantMsg)
+
+	// Track usage
+	if tokensIn > 0 || tokensOut > 0 {
+		teamID := ""
+		if tid, ok := c.Get("admin_team"); ok {
+			if s, ok := tid.(string); ok {
+				teamID = s
+			}
+		}
+		usage := model.UsageRecord{
+			TeamID:       teamID,
+			UserID:       adminUserID,
+			ClawID:       node.ID,
+			ModelName:    respModel,
+			InputTokens:  int64(tokensIn),
+			OutputTokens: int64(tokensOut),
+			TotalTokens:  int64(tokensIn + tokensOut),
+			RequestType:  "chat",
+			DurationMs:   durationMs,
+			Date:         time.Now().Format("2006-01-02"),
+		}
+		h.db.Create(&usage)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
+}
+
+// GET /brood/chat/history — direct chat history
+func (h *TeamAgentHandler) GetDirectChatHistory(c *gin.Context) {
+	adminUser, _ := c.Get("admin_user")
+	var adminUserID string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		adminUserID = u.ID
+	}
+
+	var messages []model.ChatMessage
+	h.db.Where("instance_id = ? AND user_id = ?", directInstanceID, adminUserID).
+		Order("created_at ASC").Limit(100).Find(&messages)
+
+	c.JSON(http.StatusOK, gin.H{"messages": messages, "total": len(messages)})
+}
+
 // ── Chat endpoints ──
 
 // POST /brood/team-agent/instances/:id/chat

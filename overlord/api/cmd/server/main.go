@@ -288,6 +288,18 @@ func main() {
 			featWrite.PUT("/:id", brandH.UpdateFeature)
 		}
 
+		// --- Direct Chat (no template/instance required) ---
+		chatRead := brood.Group("/chat")
+		chatRead.Use(middleware.RequirePermission("team_agent.read"))
+		{
+			chatRead.GET("/history", teamAgentH.GetDirectChatHistory)
+		}
+		chatWrite := brood.Group("/chat")
+		chatWrite.Use(middleware.RequirePermission("team_agent.write"))
+		{
+			chatWrite.POST("", teamAgentH.SendDirectChat)
+		}
+
 		// --- Team Agent ---
 		taRead := brood.Group("/team-agent")
 		taRead.Use(middleware.RequirePermission("team_agent.read"))
