@@ -54,7 +54,15 @@ Thumbs.db
 # ====== Data (runtime, volumes) ======
 **/data/
 
+# ====== Temp scripts (may contain secrets) ======
+tmp_*.sh
+tmp_*.ps1
+
 # ====== Deploy artifacts ======
 router_deploy.tar.gz
 starclaw.tar.gz
 starclaw.bundle
+
+# ====== Hive build artifacts ======
+hive/main.exe
+hive/main
