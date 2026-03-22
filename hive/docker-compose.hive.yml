@@ -1,0 +1,115 @@
+version: '3.8'
+
+# Hive infrastructure — shared services for all Claw instances
+# Run with: docker compose -f docker-compose.hive.yml up -d
+
+services:
+  # Shared MySQL for all Hive Claw instances + Hive Controller DB
+  mysql:
+    image: mysql:8.0
+    container_name: hive-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${HIVE_MYSQL_ROOT_PASS:-hive_prod_2026}
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max-connections=500
+      --innodb-buffer-pool-size=2G
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./init/create-hive-db.sql:/docker-entrypoint-initdb.d/01-hive.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hive-net
+    ports:
+      - "127.0.0.1:3307:3306"
+
+  # Shared Redis for all Hive Claw instances
+  redis:
+    image: redis:7-alpine
+    container_name: hive-redis
+    restart: always
+    command: >
+      redis-server
+      --requirepass ${HIVE_REDIS_PASSWORD:-hive_redis_2026}
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --databases 256
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${HIVE_REDIS_PASSWORD:-hive_redis_2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hive-net
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  # Shared Web frontend (all Claw instances use same UI)
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    container_name: hive-web
+    restart: always
+    networks:
+      - hive-net
+    ports:
+      - "127.0.0.1:8082:80"
+
+  # Hive Controller
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hive-controller
+    restart: always
+    environment:
+      HIVE_PORT: 9090
+      HIVE_DOMAIN: ${HIVE_DOMAIN:-starclaw.me}
+      HIVE_DATA_DIR: /opt/starclaw-hive
+      HIVE_NGINX_CONF_DIR: /etc/nginx/hive.d
+      HIVE_SSL_CERT: /etc/letsencrypt/live/starclaw.me/fullchain.pem
+      HIVE_SSL_KEY: /etc/letsencrypt/live/starclaw.me/privkey.pem
+      HIVE_CLAW_IMAGE: starclaw-api:latest
+      HIVE_NETWORK: hive-net
+      HIVE_PORT_START: 9001
+      HIVE_PORT_END: 9999
+      HIVE_MYSQL_HOST: hive-mysql
+      HIVE_MYSQL_PORT: 3306
+      HIVE_MYSQL_ROOT_USER: root
+      HIVE_MYSQL_ROOT_PASS: ${HIVE_MYSQL_ROOT_PASS:-hive_prod_2026}
+      HIVE_REDIS_HOST: hive-redis
+      HIVE_REDIS_PORT: 6379
+      HIVE_REDIS_PASSWORD: ${HIVE_REDIS_PASSWORD:-hive_redis_2026}
+      HIVE_OVERLORD_URL: ${HIVE_OVERLORD_URL:-https://overlord.starclaw.net}
+      HIVE_OVERLORD_TOKEN: ${HIVE_OVERLORD_TOKEN:-}
+      HIVE_ADMIN_TOKEN: ${HIVE_ADMIN_TOKEN:-}
+      HIVE_FREE_EXPIRE_DAYS: ${HIVE_FREE_EXPIRE_DAYS:-7}
+      HIVE_MAX_FREE: ${HIVE_MAX_FREE:-100}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./instances:/opt/starclaw-hive/instances
+      - /etc/nginx/hive.d:/etc/nginx/hive.d
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - hive-net
+
+networks:
+  hive-net:
+    driver: bridge
+    name: hive-net

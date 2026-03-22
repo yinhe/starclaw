@@ -1,0 +1,90 @@
+package config
+
+import (
+	"os"
+	"strconv"
+)
+
+type Config struct {
+	Port          int    // Hive Controller API port
+	Domain        string // Base domain, e.g. starclaw.me
+	DataDir       string // Base data directory
+	NginxConfDir  string // Nginx config directory for generated confs
+	SSLCertPath   string // Wildcard SSL cert path
+	SSLKeyPath    string // Wildcard SSL key path
+	ClawImage     string // Docker image for Claw API
+	WebImage      string // Docker image for Claw Web (shared)
+	NetworkName   string // Docker network name
+	PortRangeStart int   // Starting port for Claw instances
+	PortRangeEnd   int   // Ending port
+
+	// Shared MySQL for hive instances
+	MySQLHost     string
+	MySQLPort     int
+	MySQLRootUser string
+	MySQLRootPass string
+
+	// Shared Redis
+	RedisHost     string
+	RedisPort     int
+	RedisPassword string
+
+	// Overlord
+	OverlordURL   string
+	OverlordToken string
+
+	// Hive admin token
+	AdminToken    string
+
+	// Free tier limits
+	FreeTierExpireDays int
+	MaxFreeInstances   int
+}
+
+func Load() *Config {
+	return &Config{
+		Port:           envInt("HIVE_PORT", 9090),
+		Domain:         envStr("HIVE_DOMAIN", "starclaw.me"),
+		DataDir:        envStr("HIVE_DATA_DIR", "/opt/starclaw-hive"),
+		NginxConfDir:   envStr("HIVE_NGINX_CONF_DIR", "/opt/starclaw-hive/nginx/conf.d"),
+		SSLCertPath:    envStr("HIVE_SSL_CERT", "/etc/letsencrypt/live/starclaw.me/fullchain.pem"),
+		SSLKeyPath:     envStr("HIVE_SSL_KEY", "/etc/letsencrypt/live/starclaw.me/privkey.pem"),
+		ClawImage:      envStr("HIVE_CLAW_IMAGE", "starclaw-api:latest"),
+		WebImage:       envStr("HIVE_WEB_IMAGE", "starclaw-web:latest"),
+		NetworkName:    envStr("HIVE_NETWORK", "hive-net"),
+		PortRangeStart: envInt("HIVE_PORT_START", 9001),
+		PortRangeEnd:   envInt("HIVE_PORT_END", 9999),
+
+		MySQLHost:     envStr("HIVE_MYSQL_HOST", "127.0.0.1"),
+		MySQLPort:     envInt("HIVE_MYSQL_PORT", 3306),
+		MySQLRootUser: envStr("HIVE_MYSQL_ROOT_USER", "root"),
+		MySQLRootPass: envStr("HIVE_MYSQL_ROOT_PASS", ""),
+
+		RedisHost:     envStr("HIVE_REDIS_HOST", "127.0.0.1"),
+		RedisPort:     envInt("HIVE_REDIS_PORT", 6379),
+		RedisPassword: envStr("HIVE_REDIS_PASSWORD", ""),
+
+		OverlordURL:   envStr("HIVE_OVERLORD_URL", "https://overlord.starclaw.net"),
+		OverlordToken: envStr("HIVE_OVERLORD_TOKEN", ""),
+
+		AdminToken:         envStr("HIVE_ADMIN_TOKEN", ""),
+		FreeTierExpireDays: envInt("HIVE_FREE_EXPIRE_DAYS", 7),
+		MaxFreeInstances:   envInt("HIVE_MAX_FREE", 100),
+	}
+}
+
+func envStr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func envInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
