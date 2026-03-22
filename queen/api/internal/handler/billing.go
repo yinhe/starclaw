@@ -103,6 +103,12 @@ func (h *BillingHandler) initWechatPay() {
 	log.Printf("[billing] WeChat Pay client initialized (mchid=%s)", cfg.MchID)
 }
 
+// GetAlipayClient returns the Alipay client for use by other handlers (e.g. InvestorHandler).
+func (h *BillingHandler) GetAlipayClient() *alipay.Client { return h.alipayClient }
+
+// GetWechatClient returns the WeChat Pay client for use by other handlers.
+func (h *BillingHandler) GetWechatClient() *wechat.ClientV3 { return h.wechatClient }
+
 // ---------- Recharge Packages ----------
 
 // GET /pay/packages — list available recharge packages
@@ -316,7 +322,11 @@ func (h *BillingHandler) AlipayWebhook(c *gin.Context) {
 	log.Printf("[billing] Alipay notify: order=%s, trade=%s, status=%s", orderNo, tradeNo, tradeStatus)
 
 	if tradeStatus == "TRADE_SUCCESS" || tradeStatus == "TRADE_FINISHED" {
-		h.completeOrder(orderNo, tradeNo, notifyReq.JsonBody())
+		if IsDiamondOrder(orderNo) {
+			CompleteDiamondOrder(orderNo, tradeNo, notifyReq.JsonBody())
+		} else {
+			h.completeOrder(orderNo, tradeNo, notifyReq.JsonBody())
+		}
 	}
 
 	c.String(http.StatusOK, "success")
@@ -424,7 +434,11 @@ func (h *BillingHandler) WechatPayWebhook(c *gin.Context) {
 		result.OutTradeNo, result.TransactionId, result.TradeState)
 
 	if result.TradeState == "SUCCESS" {
-		h.completeOrder(result.OutTradeNo, result.TransactionId, notifyReq.Resource.Ciphertext)
+		if IsDiamondOrder(result.OutTradeNo) {
+			CompleteDiamondOrder(result.OutTradeNo, result.TransactionId, notifyReq.Resource.Ciphertext)
+		} else {
+			h.completeOrder(result.OutTradeNo, result.TransactionId, notifyReq.Resource.Ciphertext)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "OK"})

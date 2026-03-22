@@ -26,12 +26,12 @@
 总量: 1 亿 (100,000,000) 星钻
 
   ┌──────────────────────────────────────────────────────────┐
-  │  种子轮     10%  = 1000万   @ ¥0.20/份    募资 ¥200万     │
-  │  天使轮     10%  = 1000万   @ ¥1.00/份    募资 ¥1000万    │
-  │  A轮        10%  = 1000万   @ ¥5.00/份    募资 ¥5000万    │
-  │  B轮        10%  = 1000万   @ ¥25.00/份   募资 ¥2.5亿     │
-  │  C轮        10%  = 1000万   @ ¥125.00/份  募资 ¥12.5亿    │
-  │  平台储备   50%  = 5000万   未来生态激励/合伙人奖励          │
+  │  Spore:    10% @ ¥0.20/份  → 募资 ¥200万   (孢子轮)   │
+  │  Larva:    10% @ ¥1.00/份  → 募资 ¥1000万  (幼虫轮)   │
+  │  Zergling: 10% @ ¥5.00/份  → 募资 ¥5000万  (虫兵轮)   │
+  │  Overlord: 10% @ ¥25.00/份 → 募资 ¥2.5亿   (领主轮)   │
+  │  Queen:    10% @ ¥125.00/份→ 募资 ¥12.5亿  (虫后轮)   │
+  │  平台储备        50% = 5000万  未来生态激励/合伙人奖励   │
   └──────────────────────────────────────────────────────────┘
   
   5轮合计最大募资: ¥15.92 亿
@@ -66,46 +66,46 @@ NAV 随平台业务增长而自然上涨：
 
 每进一个融资轮次，地板价 5× 跳涨：
 
-| 轮次 | 地板价 | 倍数 |
-|------|:------:|:----:|
-| 种子轮 | ¥0.20 | 1× |
-| 天使轮 | ¥1.00 | 5× |
-| A轮 | ¥5.00 | 25× |
-| B轮 | ¥25.00 | 125× |
-| C轮 | ¥125.00 | 625× |
+| 轮次 | 代号 | 地板价 | 倍数 |
+|------|------|:------:|:----:|
+| 孢子轮 | spore | ¥0.20 | 1× |
+| 幼虫轮 | larva | ¥1.00 | 5× |
+| 虫兵轮 | zergling | ¥5.00 | 25× |
+| 领主轮 | overlord | ¥25.00 | 125× |
+| 虫后轮 | queen | ¥125.00 | 625× |
 
 ### 3.3 演进示例
 
 ```
-种子轮初期:
+孢子轮初期 (Spore):
   NAV = ¥0 (无利润), 地板 = ¥0.20
   → 价格 = ¥0.20 【地板价驱动】
 
-种子轮末期 (利润积累):
+孢子轮末期 (利润积累):
   NAV = ¥0.60, 地板 = ¥0.20
   → 价格 = ¥0.60 【NAV驱动 ✨ 利润推高了价格】
 
-天使轮开启:
+幼虫轮开启 (Larva):
   NAV = ¥0.60, 地板 = ¥1.00
   → 价格 = ¥1.00 【地板价驱动 ✨ 轮次推高了价格】
 
-天使轮末期 (业务增长):
+幼虫轮末期 (业务增长):
   NAV = ¥3.50, 地板 = ¥1.00
   → 价格 = ¥3.50 【NAV驱动 ✨ 利润再次推高】
 
-A轮开启:
+虫兵轮开启 (Zergling):
   NAV = ¥3.50, 地板 = ¥5.00
   → 价格 = ¥5.00 【地板价驱动】
 
-B轮开启:
+领主轮开启 (Overlord):
   NAV = ¥18.00, 地板 = ¥25.00
   → 价格 = ¥25.00 【地板价驱动】
 
-C轮中后期:
+虫后轮中后期 (Queen):
   NAV = ¥200.00, 地板 = ¥125.00
   → 价格 = ¥200.00 【NAV驱动】
 
-种子轮 ¥0.20 买入 → C轮时 ¥200.00 = 1000倍真实回报
+孢子轮 ¥0.20 买入 → 虫后轮时 ¥200.00 = 1000倍真实回报
 ```
 
 **设计哲学：** 价格永远只涨不跌（在正常经营下）。利润积累推高 NAV，新轮次推高地板价，两者互为安全网。即使某段时间利润放缓（NAV 增长慢），轮次地板价也确保价格不回落。
@@ -219,51 +219,51 @@ GET  /v1/investor/me                ← 查看持仓/市值/分红记录
 
 | 轮次 | 代号 | 地板价 | 配额 | 最大募资 | 状态流转 |
 |------|------|:------:|:----:|:-------:|---------|
-| 种子轮 | seed | ¥0.20 | 1000万份 | ¥200万 | upcoming → open → sold_out |
-| 天使轮 | angel | ¥1.00 | 1000万份 | ¥1000万 | upcoming → open → sold_out |
-| A轮 | a | ¥5.00 | 1000万份 | ¥5000万 | upcoming → open → sold_out |
-| B轮 | b | ¥25.00 | 1000万份 | ¥2.5亿 | upcoming → open → sold_out |
-| C轮 | c | ¥125.00 | 1000万份 | ¥12.5亿 | upcoming → open → sold_out |
+| 孢子轮 | spore | ¥0.20 | 1000万份 | ¥200万 | upcoming → open → sold_out |
+| 幼虫轮 | larva | ¥1.00 | 1000万份 | ¥1000万 | upcoming → open → sold_out |
+| 虫兵轮 | zergling | ¥5.00 | 1000万份 | ¥5000万 | upcoming → open → sold_out |
+| 领主轮 | overlord | ¥25.00 | 1000万份 | ¥2.5亿 | upcoming → open → sold_out |
+| 虫后轮 | queen | ¥125.00 | 1000万份 | ¥12.5亿 | upcoming → open → sold_out |
 
 > 注: 最大募资 = 配额 × 地板价。如果 NAV 推高了价格，实际募资会更多。
 
 ### 6.2 自动推进机制
 
 ```
-种子轮 (open)
+孢子轮 (open)
   ↓ SharesSold >= 1000万 (售罄)
-  ↓ 自动: 种子轮→sold_out, 天使轮→open, 价格→max(NAV, ¥1.00)
-天使轮 (open)
+  ↓ 自动: 孢子轮→sold_out, 幼虫轮→open, 价格→max(NAV, ¥1.00)
+幼虫轮 (open)
   ↓ 售罄
-  ↓ 自动: 天使轮→sold_out, A轮→open, 价格→max(NAV, ¥5.00)
-A轮 (open)
+  ↓ 自动: 幼虫轮→sold_out, 虫兵轮→open, 价格→max(NAV, ¥5.00)
+虫兵轮 (open)
   ↓ 售罄
-  ↓ 自动: A轮→sold_out, B轮→open, 价格→max(NAV, ¥25.00)
-B轮 (open)
+  ↓ 自动: 虫兵轮→sold_out, 领主轮→open, 价格→max(NAV, ¥25.00)
+领主轮 (open)
   ↓ 售罄
-  ↓ 自动: B轮→sold_out, C轮→open, 价格→max(NAV, ¥125.00)
-C轮 (open)
+  ↓ 自动: 领主轮→sold_out, 虫后轮→open, 价格→max(NAV, ¥125.00)
+虫后轮 (open)
   ↓ 售罄
-  ↓ 自动: C轮→sold_out, CurrentRound→"closed"
+  ↓ 自动: 虫后轮→sold_out, CurrentRound→"closed"
 ```
 
 轮次在投资人充值时自动推进（同一事务内，零停机）。管理员也可随时手动开启任意轮次：
 
 ```
 POST /admin/investor/round/open
-Body: { "round": "a" }
+Body: { "round": "zergling" }
 ```
 
 ### 6.3 轮次顺序
 
 ```
-seed → angel → a → b → c → closed
+spore → larva → zergling → overlord → queen → closed
 
-model.NextRound("seed")  → "angel"
-model.NextRound("angel") → "a"
-model.NextRound("a")     → "b"
-model.NextRound("b")     → "c"
-model.NextRound("c")     → ""  (no more rounds)
+model.NextRound("spore")    → "larva"
+model.NextRound("larva")    → "zergling"
+model.NextRound("zergling") → "overlord"
+model.NextRound("overlord") → "queen"
+model.NextRound("queen")    → ""  (no more rounds)
 ```
 
 ---
@@ -321,7 +321,10 @@ model.NextRound("c")     → ""  (no more rounds)
 |------|------|------|
 | POST | `/v1/investor/register` | 注册为投资人 |
 | POST | `/v1/investor/agree` | 签署收益权转让协议 |
-| POST | `/v1/investor/recharge` | 充值购买星钻 |
+| POST | `/v1/investor/recharge` | 余额购买星钻 |
+| POST | `/v1/investor/purchase` | 直接支付购买星钻 (Alipay/WeChat) |
+| GET | `/v1/investor/order/:order_no` | 查询星钻订单状态 |
+| GET | `/v1/investor/orders` | 我的星钻订单列表 |
 | GET | `/v1/investor/me` | 我的持仓/市值/交易记录 |
 | GET | `/v1/investor/earnings` | 近30天每日收益 |
 
@@ -359,15 +362,15 @@ model.NextRound("c")     → ""  (no more rounds)
 | TotalRaised | int64 | 投资人累计充值（分） |
 | SeedTotal | int64 | 种子轮预算 = 1000万星钻 |
 | SeedIssued | int64 | 已发放种子轮星钻数 |
-| CurrentRound | string | 当前轮次 seed/angel/a/b/c/closed |
+| CurrentRound | string | 当前轮次 spore/larva/zergling/overlord/queen/closed |
 | SharePrice | int64 | 当前价格（分）= max(NAV, 地板价) |
 
 ### 9.2 FundingRound（融资轮次）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| Round | string | seed / angel / a / b / c |
-| Label | string | 种子轮 / 天使轮 / A轮 / B轮 / C轮 |
+| Round | string | spore / larva / zergling / overlord / queen |
+| Label | string | 孢子轮 / 幼虫轮 / 虫兵轮 / 领主轮 / 虫后轮 |
 | SharePrice | int64 | 该轮地板价（分） |
 | SharesQuota | int64 | 该轮配额 = 1000万份 |
 | SharesSold | int64 | 已售数量 |

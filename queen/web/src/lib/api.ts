@@ -405,6 +405,31 @@ export interface EquityGrant {
   status: string;
 }
 
+export interface DiamondOrderResult {
+  order_no: string;
+  shares: number;
+  price_yuan: number;
+  amount_yuan: number;
+  round: string;
+  pay_method: string;
+  pay_form: string;
+  pay_url?: string;
+  code_url?: string;
+  h5_url?: string;
+}
+
+export interface DiamondOrderInfo {
+  order_no: string;
+  status: string;
+  amount_yuan: number;
+  shares: number;
+  price_per_share: number;
+  round: string;
+  round_label: string;
+  paid_at: string | null;
+  created_at: string;
+}
+
 export const investorAPI = {
   poolInfo: () => request<InvestorPoolInfo>('/investor/pool'),
   register: () => request<{ investor: any; message: string }>('/investor/register', { method: 'POST' }),
@@ -412,6 +437,13 @@ export const investorAPI = {
     request<{ investor: any; message: string }>('/investor/agree', { method: 'POST', body: JSON.stringify({ term }) }),
   recharge: (amount: number) =>
     request<any>('/investor/recharge', { method: 'POST', body: JSON.stringify({ amount }) }),
+  purchase: (amount: number, payMethod: string, payForm?: string) =>
+    request<DiamondOrderResult>('/investor/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ amount, pay_method: payMethod, pay_form: payForm || 'pc' }),
+    }),
+  queryOrder: (orderNo: string) => request<DiamondOrderInfo>(`/investor/order/${orderNo}`),
+  listOrders: () => request<{ orders: DiamondOrderInfo[] }>('/investor/orders'),
   myProfile: () => request<InvestorProfile>('/investor/me'),
   dailyEarnings: () =>
     request<{ investor: any; share_ratio: number; share_percent: string; today_earning: number; last_30d_total: number; daily_earnings: DailyEarning[] }>('/investor/earnings'),

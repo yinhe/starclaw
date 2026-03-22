@@ -92,6 +92,7 @@ func main() {
 		&model.InvestorDividend{},
 		&model.PoolDeposit{},
 		&model.FundingRound{},
+		&model.DiamondOrder{},
 		// Team Elections
 		&model.TeamVote{},
 		&model.TeamElection{},

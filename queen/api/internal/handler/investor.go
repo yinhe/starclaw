@@ -1,15 +1,21 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-pay/gopay"
+	"github.com/go-pay/gopay/alipay"
+	wechat "github.com/go-pay/gopay/wechat/v3"
 	"github.com/google/uuid"
+	"github.com/yinhe/starclaw-queen/api/internal/config"
 	"github.com/yinhe/starclaw-queen/api/internal/database"
 	"github.com/yinhe/starclaw-queen/api/internal/middleware"
 	"github.com/yinhe/starclaw-queen/api/internal/model"
@@ -17,7 +23,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type InvestorHandler struct{}
+type InvestorHandler struct {
+	AlipayClient *alipay.Client
+	WechatClient *wechat.ClientV3
+}
 
 // ════════════════════════════════════════════════════════════
 // Admin: Pool Management
@@ -38,10 +47,10 @@ func (h *InvestorHandler) InitPool(c *gin.Context) {
 		TotalShares:  0,
 		MaxShares:    model.StarDiamondTotal, // 1亿 star diamonds
 		PoolBalance:  0,
-		SeedTotal:    model.StarDiamondTotal / 10, // 10% = 1000万 star diamonds for seed round
+		SeedTotal:    model.StarDiamondTotal / 10, // 10% = 1000万 star diamonds for spore round
 		SeedIssued:   0,
-		CurrentRound: "seed",
-		SharePrice:   20, // ¥0.20 per star diamond (seed floor price)
+		CurrentRound: "spore",
+		SharePrice:   20, // ¥0.20 per star diamond (spore floor price)
 		Status:       "active",
 	}
 	db.Create(&pool)
@@ -50,7 +59,7 @@ func (h *InvestorHandler) InitPool(c *gin.Context) {
 	quota := pool.MaxShares / 10 // 10% = 1000万 shares per round
 	for _, rc := range model.RoundConfig {
 		status := "upcoming"
-		if rc.Round == "seed" {
+		if rc.Round == "spore" {
 			status = "open"
 		}
 		db.Create(&model.FundingRound{
@@ -98,7 +107,7 @@ func (h *InvestorHandler) OpenRound(c *gin.Context) {
 		Round string `json:"round" binding:"required"` // seed / angel / a / b / c
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定轮次: seed / angel / a / b / c"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定轮次: spore / larva / zergling / overlord / queen"})
 		return
 	}
 
@@ -941,4 +950,380 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 		"dividends":         dividends,
 		"transactions":      transactions,
 	})
+}
+
+// ════════════════════════════════════════════════════════════
+// Direct Payment: Buy Star Diamonds via Alipay/WeChat
+//
+// Flow: CreatePurchaseOrder → user pays → webhook → CompleteDiamondOrder → shares issued
+// ════════════════════════════════════════════════════════════
+
+// POST /v1/investor/purchase — Create a payment order for buying Star Diamonds
+func (h *InvestorHandler) CreatePurchaseOrder(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req struct {
+		Amount    int64  `json:"amount" binding:"required"`     // CNY in 分
+		PayMethod string `json:"pay_method" binding:"required"` // alipay / wechatpay
+		PayForm   string `json:"pay_form"`                      // pc / h5 / native
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定金额和支付方式"})
+		return
+	}
+	if req.Amount < MinRechargeFen {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      fmt.Sprintf("每次最低购买 ¥%.0f", float64(MinRechargeFen)/100),
+			"min_amount": MinRechargeFen,
+		})
+		return
+	}
+	if req.PayForm == "" {
+		req.PayForm = "h5"
+	}
+
+	db := database.DB
+
+	// Validate investor
+	var investor model.Investor
+	if err := db.Where("user_id = ?", userID).First(&investor).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "请先注册为投资人"})
+		return
+	}
+	if investor.Status != "active" {
+		c.JSON(http.StatusConflict, gin.H{"error": "投资人账户状态: " + investor.Status})
+		return
+	}
+	if investor.AgreementTerm == 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "请先签署投资人协议"})
+		return
+	}
+
+	// Get pool + current round
+	var pool model.InvestorPool
+	if err := db.First(&pool).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "星钻池未初始化"})
+		return
+	}
+	var round model.FundingRound
+	if err := db.Where("status = ?", "open").First(&round).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "当前没有开放的融资轮次"})
+		return
+	}
+
+	dynPrice := pool.CalcPrice(round.SharePrice)
+	shares := req.Amount / dynPrice
+	if shares <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("金额不足以购买星钻（当前价格 ¥%.2f/份）", float64(dynPrice)/100)})
+		return
+	}
+	remaining := round.SharesQuota - round.SharesSold
+	if shares > remaining {
+		shares = remaining
+	}
+	cost := shares * dynPrice
+
+	// Create diamond order (prefix SD = Star Diamond)
+	orderNo := fmt.Sprintf("SD%s%04d", time.Now().Format("20060102150405"), time.Now().Nanosecond()/1000000)
+	expire := time.Now().Add(30 * time.Minute)
+	order := model.DiamondOrder{
+		ID:            uuid.New().String(),
+		OrderNo:       orderNo,
+		UserID:        userID,
+		InvestorID:    investor.ID,
+		Amount:        cost,
+		Shares:        shares,
+		PricePerShare: dynPrice,
+		Round:         round.Round,
+		PayMethod:     req.PayMethod,
+		PayForm:       req.PayForm,
+		Status:        "pending",
+		Subject:       fmt.Sprintf("星钻购买 - %s %d份 @ ¥%.2f", round.Label, shares, float64(dynPrice)/100),
+		ExpireAt:      &expire,
+	}
+	if err := db.Create(&order).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建订单失败"})
+		return
+	}
+
+	// Call payment gateway
+	switch req.PayMethod {
+	case "alipay":
+		h.createDiamondAlipayOrder(c, &order)
+	case "wechatpay":
+		h.createDiamondWechatOrder(c, &order)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的支付方式，请使用 alipay 或 wechatpay"})
+	}
+}
+
+func (h *InvestorHandler) createDiamondAlipayOrder(c *gin.Context, order *model.DiamondOrder) {
+	if h.AlipayClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "支付宝尚未配置"})
+		return
+	}
+
+	amountYuan := fmt.Sprintf("%.2f", float64(order.Amount)/100.0)
+	bm := gopay.BodyMap{}
+	bm.Set("subject", order.Subject)
+	bm.Set("out_trade_no", order.OrderNo)
+	bm.Set("total_amount", amountYuan)
+
+	switch order.PayForm {
+	case "pc":
+		bm.Set("product_code", "FAST_INSTANT_TRADE_PAY")
+		payURL, err := h.AlipayClient.TradePagePay(context.Background(), bm)
+		if err != nil {
+			log.Printf("[investor] Alipay page pay error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
+			return
+		}
+		database.DB.Model(order).Update("pay_url", payURL)
+		c.JSON(http.StatusOK, gin.H{
+			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
+			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
+			"pay_method": "alipay", "pay_form": "pc", "pay_url": payURL,
+		})
+	default:
+		bm.Set("product_code", "QUICK_WAP_WAY")
+		bm.Set("quit_url", config.C.Pay.Alipay.ReturnURL)
+		payURL, err := h.AlipayClient.TradeWapPay(context.Background(), bm)
+		if err != nil {
+			log.Printf("[investor] Alipay wap pay error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
+			return
+		}
+		database.DB.Model(order).Update("pay_url", payURL)
+		c.JSON(http.StatusOK, gin.H{
+			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
+			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
+			"pay_method": "alipay", "pay_form": "h5", "pay_url": payURL,
+		})
+	}
+}
+
+func (h *InvestorHandler) createDiamondWechatOrder(c *gin.Context, order *model.DiamondOrder) {
+	if h.WechatClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "微信支付尚未配置"})
+		return
+	}
+
+	cfg := config.C.Pay.WechatPay
+	expire := time.Now().Add(30 * time.Minute).Format(time.RFC3339)
+
+	bm := gopay.BodyMap{}
+	bm.Set("appid", cfg.AppID)
+	bm.Set("mchid", cfg.MchID)
+	bm.Set("description", order.Subject)
+	bm.Set("out_trade_no", order.OrderNo)
+	bm.Set("time_expire", expire)
+	bm.Set("notify_url", cfg.NotifyURL)
+	bm.SetBodyMap("amount", func(am gopay.BodyMap) {
+		am.Set("total", order.Amount)
+		am.Set("currency", "CNY")
+	})
+
+	switch order.PayForm {
+	case "native":
+		resp, err := h.WechatClient.V3TransactionNative(context.Background(), bm)
+		if err != nil {
+			log.Printf("[investor] WeChat native pay error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
+			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
+			"pay_method": "wechatpay", "pay_form": "native", "code_url": resp.Response.CodeUrl,
+		})
+	default:
+		bm.SetBodyMap("scene_info", func(si gopay.BodyMap) {
+			si.Set("payer_client_ip", c.ClientIP())
+			si.SetBodyMap("h5_info", func(h5 gopay.BodyMap) {
+				h5.Set("type", "Wap")
+				h5.Set("wap_url", cfg.H5WapURL)
+				h5.Set("wap_name", cfg.H5WapName)
+			})
+		})
+		resp, err := h.WechatClient.V3TransactionH5(context.Background(), bm)
+		if err != nil {
+			log.Printf("[investor] WeChat H5 pay error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
+			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
+			"pay_method": "wechatpay", "pay_form": "h5", "h5_url": resp.Response.H5Url,
+		})
+	}
+}
+
+// CompleteDiamondOrder is called by payment webhooks when a diamond purchase succeeds.
+// It issues shares to the investor and updates the pool/round state.
+func CompleteDiamondOrder(orderNo, tradeNo, callbackRaw string) {
+	db := database.DB
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var order model.DiamondOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("order_no = ?", orderNo).First(&order).Error; err != nil {
+			return fmt.Errorf("diamond order not found: %s", orderNo)
+		}
+		if order.Status == "paid" {
+			return nil // idempotent
+		}
+
+		now := time.Now()
+		order.Status = "paid"
+		order.TradeNo = tradeNo
+		order.PaidAt = &now
+		if callbackRaw != "" {
+			order.CallbackRaw = callbackRaw
+		}
+		tx.Save(&order)
+
+		// Lock pool
+		var pool model.InvestorPool
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&pool).Error; err != nil {
+			return fmt.Errorf("pool not initialized")
+		}
+
+		// Lock current round
+		var round model.FundingRound
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("round = ?", order.Round).First(&round).Error; err != nil {
+			return fmt.Errorf("round %s not found", order.Round)
+		}
+
+		// Recalculate shares at current price (price may have changed since order)
+		dynPrice := pool.CalcPrice(round.SharePrice)
+		shares := order.Amount / dynPrice
+		if shares <= 0 {
+			return fmt.Errorf("price increased, insufficient amount for shares")
+		}
+		remaining := round.SharesQuota - round.SharesSold
+		if shares > remaining {
+			shares = remaining
+		}
+
+		// Load investor
+		var investor model.Investor
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", order.InvestorID).First(&investor).Error; err != nil {
+			return fmt.Errorf("investor %s not found", order.InvestorID)
+		}
+
+		// Issue shares
+		investor.Shares += shares
+		investor.TotalInvested += order.Amount
+		if !investor.Activated && investor.TotalInvested >= ActivationThreshold {
+			investor.Activated = true
+			investor.ActivatedAt = &now
+		}
+		tx.Save(&investor)
+
+		// Update pool
+		pool.TotalShares += shares
+		pool.TotalRaised += order.Amount
+		tx.Save(&pool)
+
+		// Update round
+		round.SharesSold += shares
+		round.AmountRaised += order.Amount
+		round.InvestorCount++
+		if round.SharesSold >= round.SharesQuota {
+			round.Status = "sold_out"
+			round.ClosedAt = &now
+			if next := model.NextRound(round.Round); next != "" {
+				var nextRound model.FundingRound
+				if err := tx.Where("round = ? AND status = ?", next, "upcoming").First(&nextRound).Error; err == nil {
+					nextRound.Status = "open"
+					nextRound.OpenedAt = &now
+					tx.Save(&nextRound)
+					pool.CurrentRound = next
+					log.Printf("[investor] Auto-advanced: %s sold out → %s opened", round.Label, nextRound.Label)
+				}
+			} else {
+				pool.CurrentRound = "closed"
+			}
+		}
+		tx.Save(&round)
+
+		// Update pool share price
+		pool.SharePrice = pool.CalcPrice(model.RoundFloorPrice(pool.CurrentRound))
+		tx.Save(&pool)
+
+		// Record transaction
+		tx.Create(&model.InvestorTransaction{
+			ID:            uuid.New().String(),
+			InvestorID:    investor.ID,
+			Type:          "purchase",
+			Shares:        shares,
+			Amount:        order.Amount,
+			PricePerShare: dynPrice,
+			Remark:        fmt.Sprintf("%s 购买 %d 星钻 @ ¥%.2f/份 (订单 %s)", model.RoundLabel(round.Round), shares, float64(dynPrice)/100, orderNo),
+		})
+
+		// Update order with actual shares issued
+		tx.Model(&order).Update("shares", shares)
+
+		log.Printf("[investor] DiamondOrder completed: order=%s user=%s round=%s shares=%d price=¥%.2f amount=¥%.0f",
+			orderNo, order.UserID, round.Label, shares, float64(dynPrice)/100, float64(order.Amount)/100)
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[investor] CompleteDiamondOrder error: %v", err)
+	}
+}
+
+// IsDiamondOrder checks if an order number belongs to a diamond purchase (prefix "SD").
+func IsDiamondOrder(orderNo string) bool {
+	return strings.HasPrefix(orderNo, "SD")
+}
+
+// GET /v1/investor/order/:order_no — Query diamond order status
+func (h *InvestorHandler) QueryDiamondOrder(c *gin.Context) {
+	userID := c.GetString("user_id")
+	orderNo := c.Param("order_no")
+
+	var order model.DiamondOrder
+	if err := database.DB.Where("order_no = ? AND user_id = ?", orderNo, userID).First(&order).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "订单不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"order_no":        order.OrderNo,
+		"status":          order.Status,
+		"amount_yuan":     float64(order.Amount) / 100,
+		"shares":          order.Shares,
+		"price_per_share": float64(order.PricePerShare) / 100,
+		"round":           order.Round,
+		"round_label":     model.RoundLabel(order.Round),
+		"paid_at":         order.PaidAt,
+		"created_at":      order.CreatedAt,
+	})
+}
+
+// GET /v1/investor/orders — List my diamond orders
+func (h *InvestorHandler) ListDiamondOrders(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var orders []model.DiamondOrder
+	database.DB.Where("user_id = ?", userID).Order("created_at DESC").Limit(50).Find(&orders)
+
+	items := make([]gin.H, 0, len(orders))
+	for _, o := range orders {
+		items = append(items, gin.H{
+			"order_no":    o.OrderNo,
+			"status":      o.Status,
+			"amount_yuan": float64(o.Amount) / 100,
+			"shares":      o.Shares,
+			"round":       o.Round,
+			"round_label": model.RoundLabel(o.Round),
+			"paid_at":     o.PaidAt,
+			"created_at":  o.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"orders": items})
 }

@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant } from '../lib/api';
+import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant, type DiamondOrderResult } from '../lib/api';
 import { isLoggedIn } from '../lib/auth';
 import {
   Diamond, Wallet, ArrowRight, CheckCircle,
-  FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar,
+  FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar, CreditCard, ShoppingCart,
 } from 'lucide-react';
 
 function fmt(yuan: number) { return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
@@ -26,9 +26,16 @@ export function InvestPage() {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
-  // Recharge
+  // Recharge (balance-based)
   const [rechargeYuan, setRechargeYuan] = useState('');
   const [recharging, setRecharging] = useState(false);
+
+  // Direct purchase (Alipay/WeChat)
+  const [purchaseYuan, setPurchaseYuan] = useState('');
+  const [payMethod, setPayMethod] = useState<'alipay' | 'wechatpay'>('alipay');
+  const [purchasing, setPurchasing] = useState(false);
+  const [purchaseResult, setPurchaseResult] = useState<DiamondOrderResult | null>(null);
+  const [buyMode, setBuyMode] = useState<'pay' | 'balance'>('pay');
 
   // Agreement
   const [agreeTerm, setAgreeTerm] = useState(3);
@@ -110,6 +117,22 @@ export function InvestPage() {
       loadPool();
     } catch (e: any) { setErr(e.message); }
     setRecharging(false);
+  }
+
+  async function handlePurchase() {
+    const yuan = parseFloat(purchaseYuan);
+    if (!yuan || yuan < 10000) { setErr('最低购买 ¥10,000'); return; }
+    setErr(''); setMsg(''); setPurchasing(true); setPurchaseResult(null);
+    try {
+      const fen = Math.round(yuan * 100);
+      const r = await investorAPI.purchase(fen, payMethod, 'pc');
+      setPurchaseResult(r);
+      setPurchaseYuan('');
+      if (r.pay_url) {
+        window.open(r.pay_url, '_blank');
+      }
+    } catch (e: any) { setErr(e.message); }
+    setPurchasing(false);
   }
 
   const inv = profile?.investor;
@@ -263,29 +286,68 @@ export function InvestPage() {
                   <Zap className="w-5 h-5 text-amber-400" />
                   购买星钻
                 </h3>
+
+                {/* Buy mode toggle */}
+                <div className="flex gap-2 mb-6">
+                  <button onClick={() => setBuyMode('pay')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${
+                    buyMode === 'pay' ? 'border-amber-400 bg-amber-500/10 text-amber-400' : 'border-white/10 text-gray-400 hover:border-white/20'
+                  }`}><CreditCard size={14} />直接支付</button>
+                  <button onClick={() => setBuyMode('balance')} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${
+                    buyMode === 'balance' ? 'border-amber-400 bg-amber-500/10 text-amber-400' : 'border-white/10 text-gray-400 hover:border-white/20'
+                  }`}><Wallet size={14} />余额购买</button>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <div className="text-sm text-gray-400 mb-2">当前价格: <span className="text-white font-medium">{fmt(pool.price_yuan)}/份</span></div>
-                    <div className="text-sm text-gray-400 mb-4">最低充值: <span className="text-white font-medium">{fmt(pool.min_recharge_yuan)}</span></div>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        value={rechargeYuan}
-                        onChange={e => setRechargeYuan(e.target.value)}
-                        placeholder="充值金额 (元)"
-                        className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50"
-                      />
-                      <button
-                        onClick={handleRecharge}
-                        disabled={recharging}
-                        className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0"
-                      >
-                        {recharging ? '购买中...' : '购买'}
-                      </button>
-                    </div>
-                    <div className="text-xs text-gray-600 mt-2">
-                      从平台余额扣款。累计充值 ≥ {fmt(pool.activation_yuan)} 激活分润。
-                    </div>
+                    <div className="text-sm text-gray-400 mb-2">当前价格: <span className="text-white font-medium">{fmt(pool.price_yuan)}/份</span> · {pool.current_round_label || pool.current_round}</div>
+                    <div className="text-sm text-gray-400 mb-4">最低购买: <span className="text-white font-medium">{fmt(pool.min_recharge_yuan)}</span></div>
+
+                    {buyMode === 'pay' ? (
+                      <>
+                        {/* Payment method selector */}
+                        <div className="flex gap-2 mb-3">
+                          <button onClick={() => setPayMethod('alipay')} className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
+                            payMethod === 'alipay' ? 'border-blue-400 bg-blue-500/10 text-blue-400' : 'border-white/10 text-gray-400'
+                          }`}>支付宝</button>
+                          <button onClick={() => setPayMethod('wechatpay')} className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
+                            payMethod === 'wechatpay' ? 'border-green-400 bg-green-500/10 text-green-400' : 'border-white/10 text-gray-400'
+                          }`}>微信支付</button>
+                        </div>
+                        <div className="flex gap-2">
+                          <input type="number" value={purchaseYuan} onChange={e => setPurchaseYuan(e.target.value)} placeholder="购买金额 (元)"
+                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50" />
+                          <button onClick={handlePurchase} disabled={purchasing}
+                            className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0 flex items-center gap-1.5">
+                            <ShoppingCart size={14} />{purchasing ? '创建中...' : '支付购买'}
+                          </button>
+                        </div>
+                        {purchaseResult && (
+                          <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 text-sm">
+                            <div className="text-blue-400 font-medium mb-1">订单已创建: {purchaseResult.order_no}</div>
+                            <div className="text-gray-400 text-xs mb-2">{purchaseResult.shares} 份 @ ¥{purchaseResult.price_yuan}/份 = ¥{purchaseResult.amount_yuan}</div>
+                            {purchaseResult.pay_url && (
+                              <a href={purchaseResult.pay_url} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition">
+                                <ArrowRight size={14} />前往支付
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-600 mt-2">通过{payMethod === 'alipay' ? '支付宝' : '微信'}直接支付，到账自动发放星钻。</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          <input type="number" value={rechargeYuan} onChange={e => setRechargeYuan(e.target.value)} placeholder="购买金额 (元)"
+                            className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50" />
+                          <button onClick={handleRecharge} disabled={recharging}
+                            className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
+                            {recharging ? '购买中...' : '余额购买'}
+                          </button>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-2">从平台余额扣款。累计充值 ≥ {fmt(pool.activation_yuan)} 激活分润。</div>
+                      </>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">

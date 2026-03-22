@@ -56,29 +56,79 @@ type FundingRound struct {
 // StarDiamondTotal is the fixed total supply of Star Diamonds.
 const StarDiamondTotal int64 = 100_000_000 // 1亿
 
-// RoundConfig defines the 5 funding rounds.
+// RoundConfig defines the 5 funding rounds (虫族命名).
+//
+//	spore    孢子轮 — 生命起源，最早期支持者
+//	larva    幼虫轮 — 初具雏形，天使投资人
+//	zergling 虫兵轮 — 成军出征，A轮战略投资
+//	overlord 领主轮 — 领主加持，B轮规模扩张
+//	queen    虫后轮 — 虫后降临，C轮终极融资
 var RoundConfig = []struct {
 	Round      string
 	Label      string
 	Multiplier int
 	Price      int64 // floor price per star diamond (分)
 }{
-	{"seed", "种子轮", 1, 20},   // ¥0.20/份 → 募资 ¥200万
-	{"angel", "天使轮", 5, 100}, // ¥1.00/份 → 募资 ¥1000万
-	{"a", "A轮", 25, 500},     // ¥5.00/份 → 募资 ¥5000万
-	{"b", "B轮", 125, 2500},   // ¥25.00/份 → 募资 ¥2.5亿
-	{"c", "C轮", 625, 12500},  // ¥125.00/份 → 募资 ¥12.5亿
+	{"spore", "孢子轮", 1, 20},        // ¥0.20/份 → 募资 ¥200万
+	{"larva", "幼虫轮", 5, 100},       // ¥1.00/份 → 募资 ¥1000万
+	{"zergling", "虫兵轮", 25, 500},   // ¥5.00/份 → 募资 ¥5000万
+	{"overlord", "领主轮", 125, 2500}, // ¥25.00/份 → 募资 ¥2.5亿
+	{"queen", "虫后轮", 625, 12500},   // ¥125.00/份 → 募资 ¥12.5亿
 }
 
 // NextRound returns the next round name after the given round, or "" if no more rounds.
 func NextRound(current string) string {
-	order := []string{"seed", "angel", "a", "b", "c"}
+	order := []string{"spore", "larva", "zergling", "overlord", "queen"}
 	for i, r := range order {
 		if r == current && i+1 < len(order) {
 			return order[i+1]
 		}
 	}
 	return ""
+}
+
+// RoundFloorPrice returns the floor price for a given round code.
+func RoundFloorPrice(round string) int64 {
+	for _, rc := range RoundConfig {
+		if rc.Round == round {
+			return rc.Price
+		}
+	}
+	return 20 // default spore price
+}
+
+// RoundLabel returns the display label for a given round code.
+func RoundLabel(round string) string {
+	for _, rc := range RoundConfig {
+		if rc.Round == round {
+			return rc.Label
+		}
+	}
+	return round
+}
+
+// DiamondOrder represents a direct payment order for purchasing Star Diamonds.
+// Flow: create order → pay via Alipay/WeChat → callback issues shares.
+type DiamondOrder struct {
+	ID            string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	OrderNo       string     `json:"order_no" gorm:"type:varchar(64);uniqueIndex"`
+	UserID        string     `json:"user_id" gorm:"type:varchar(36);index"`
+	InvestorID    string     `json:"investor_id" gorm:"type:varchar(36);index"`
+	Amount        int64      `json:"amount"`                                         // 支付金额 (分)
+	Shares        int64      `json:"shares"`                                         // 预计获得星钻数
+	PricePerShare int64      `json:"price_per_share"`                                // 下单时价格 (分)
+	Round         string     `json:"round" gorm:"type:varchar(20)"`                  // 下单时轮次
+	PayMethod     string     `json:"pay_method" gorm:"type:varchar(20)"`             // alipay / wechatpay
+	PayForm       string     `json:"pay_form" gorm:"type:varchar(20);default:h5"`    // pc / h5 / native
+	Status        string     `json:"status" gorm:"type:varchar(20);default:pending"` // pending / paid / failed / expired / refunded
+	TradeNo       string     `json:"trade_no" gorm:"type:varchar(128)"`              // 第三方交易号
+	Subject       string     `json:"subject" gorm:"type:varchar(200)"`
+	PayURL        string     `json:"pay_url" gorm:"type:text"` // 支付链接
+	CallbackRaw   string     `json:"-" gorm:"type:text"`
+	PaidAt        *time.Time `json:"paid_at"`
+	ExpireAt      *time.Time `json:"expire_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // CalcNAV computes the Net Asset Value per Star Diamond (分).

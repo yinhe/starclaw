@@ -302,13 +302,19 @@ func Setup() *gin.Engine {
 	v1.POST("/credits/transfer", writeRL.Middleware(), credit.Transfer)
 
 	// ---- Investor Pool (投资人池) ----
-	investor := &handler.InvestorHandler{}
+	investor := &handler.InvestorHandler{
+		AlipayClient: billing.GetAlipayClient(),
+		WechatClient: billing.GetWechatClient(),
+	}
 	// Public: pool info (no auth needed)
 	v1.GET("/investor/pool", investor.PublicPoolInfo)
 	// Investor portal (authenticated)
 	authed.POST("/investor/register", writeRL.UserRateLimit(), investor.Register)
 	authed.POST("/investor/agree", writeRL.UserRateLimit(), investor.SignAgreement)
 	authed.POST("/investor/recharge", writeRL.UserRateLimit(), investor.Recharge)
+	authed.POST("/investor/purchase", writeRL.UserRateLimit(), investor.CreatePurchaseOrder)
+	authed.GET("/investor/order/:order_no", investor.QueryDiamondOrder)
+	authed.GET("/investor/orders", investor.ListDiamondOrders)
 	authed.GET("/investor/me", investor.MyProfile)
 	authed.GET("/investor/earnings", investor.DailyEarnings)
 	// Admin investor management
