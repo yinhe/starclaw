@@ -6,14 +6,13 @@ import { isLoggedIn, setAuth, clearAuth, getUserDisplayName } from '../lib/auth'
 import { Fingerprint, CheckCircle2, AlertCircle, Loader2 as Spinner, Shield, Mail, Lock, UserPlus } from 'lucide-react';
 
 const isInvestDomain = window.location.hostname === 'invest.starclaw.net';
-const isQueenDomain = !isInvestDomain;
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const logged = isLoggedIn();
-  const initTab = searchParams.get('tab') || (isInvestDomain ? 'login' : 'claw');
-  const [mode, setMode] = useState<'login' | 'register' | 'claw'>(isQueenDomain ? 'claw' : initTab as any);
+  const initTab = isInvestDomain ? 'claw' : (searchParams.get('tab') || 'claw');
+  const [mode, setMode] = useState<'login' | 'register' | 'claw'>(initTab as any);
   const defaultRedirect = isInvestDomain ? '/' : '/dashboard';
 
   // Email/password login state
@@ -159,8 +158,8 @@ export function AuthPage() {
             </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
-              {/* Mode Tabs — only show on invest domain (queen domain = Claw only) */}
-              {isInvestDomain && (
+              {/* Mode Tabs — hidden on invest domain (Claw-only auth) */}
+              {!isInvestDomain && (
                 <div className="flex border-b border-gray-100">
                   <button onClick={() => { setMode('login'); setAuthMsg(null); }}
                     className={`flex-1 py-3 text-sm font-medium transition ${mode === 'login' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
@@ -306,7 +305,7 @@ export function AuthPage() {
                     )}
 
                     <p className="text-center text-xs text-gray-400 pt-2">
-                      没有 Claw 节点？<a href="https://github.com/yinhe/starclaw" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">免费部署一个</a>
+                      没有 Claw 节点？<a href="https://starclaw.me/create" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">免费部署一个</a>
                     </p>
                   </>
                 )}
