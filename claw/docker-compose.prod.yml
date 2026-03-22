@@ -58,7 +58,7 @@ services:
       STARCLAW_REDIS_PASSWORD: ${REDIS_PASSWORD:-starclaw_redis_2026}
       STARCLAW_JWT_SECRET: ${JWT_SECRET}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      STARCLAW_NODE_ADDRESS: https://starclaw.me
+      STARCLAW_NODE_ADDRESS: https://app.starclaw.me
       STARCLAW_SWARM_ENABLED: ${SWARM_ENABLED:-false}
       STARCLAW_SWARM_QUEEN_URL: ${SWARM_QUEEN_URL:-https://swarm.starclaw.net}
       OVERLORD_CLAW_TOKEN: ${OVERLORD_CLAW_TOKEN:-overlord-internal-default}

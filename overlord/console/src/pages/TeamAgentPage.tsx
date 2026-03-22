@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield } from 'lucide-react'
+import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server } from 'lucide-react'
 import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
@@ -56,14 +56,15 @@ export default function TeamAgentPage() {
   const [missions, setMissions] = useState<TeamMission[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Create modal
+  // Create modal (lobby)
   const [showCreate, setShowCreate] = useState(false)
+  const [createStep, setCreateStep] = useState<1 | 2>(1)
   const [createTmplId, setCreateTmplId] = useState('')
   const [createName, setCreateName] = useState('')
   const [createGoal, setCreateGoal] = useState('')
-  const [createNodeId, setCreateNodeId] = useState('')
   const [createBudget, setCreateBudget] = useState(5000)
   const [nodes, setNodes] = useState<ClawNode[]>([])
+  const [roleNodeMap, setRoleNodeMap] = useState<Record<string, string>>({})
   const [creating, setCreating] = useState(false)
 
   // New mission modal
@@ -102,25 +103,34 @@ export default function TeamAgentPage() {
 
   async function openCreate(tmplId: string) {
     setCreateTmplId(tmplId)
+    setCreateStep(1)
     setCreateName('')
     setCreateGoal('')
-    setCreateNodeId('')
     setCreateBudget(5000)
+    setRoleNodeMap({})
     setShowCreate(true)
     try {
       const res = await broodAPI.listClaws({ status: 'online' })
       setNodes(res.claws || [])
-      if (res.claws?.length) setCreateNodeId(res.claws[0].id)
+      // Auto-assign first node to all roles
+      const tmpl = templates.find(t => t.id === tmplId)
+      if (tmpl && res.claws?.length) {
+        const roles = parseRoles(tmpl.roles)
+        const map: Record<string, string> = {}
+        roles.forEach(r => { map[r.code] = res.claws[0].id })
+        setRoleNodeMap(map)
+      }
     } catch { /* ignore */ }
   }
 
   async function handleCreate() {
-    if (!createTmplId || !createNodeId || !createName) return
+    const primaryNodeId = Object.values(roleNodeMap)[0] || ''
+    if (!createTmplId || !primaryNodeId || !createName) return
     setCreating(true)
     try {
       await broodAPI.createTeamInstance({
         template_id: createTmplId,
-        claw_node_id: createNodeId,
+        claw_node_id: primaryNodeId,
         name: createName,
         goal: createGoal,
         energy_budget: createBudget,
@@ -129,6 +139,23 @@ export default function TeamAgentPage() {
       load()
     } catch { /* ignore */ }
     setCreating(false)
+  }
+
+  function assignNode(roleCode: string, nodeId: string) {
+    setRoleNodeMap(prev => ({ ...prev, [roleCode]: nodeId }))
+  }
+
+  const modelColors: Record<string, string> = {
+    'gpt-4o': 'text-green-400 bg-green-500/10',
+    'deepseek-chat': 'text-blue-400 bg-blue-500/10',
+    'claude-3': 'text-orange-400 bg-orange-500/10',
+  }
+
+  const roleIcons: Record<string, string> = {
+    architect: '🏗️', designer: '🏗️', drone: '⚡', coder: '⚡',
+    tester: '🧪', reviewer: '🔍', docbot: '📝', reporter: '📊',
+    strategist: '🎯', copywriter: '✍️', analyst: '📈',
+    dispatcher: '📡', guardian: '🛡️', scout: '🔭',
   }
 
   async function selectInstance(inst: TeamInstance) {
@@ -163,7 +190,16 @@ export default function TeamAgentPage() {
     setCreatingMission(false)
   }
 
-  function parseRoles(rolesJSON: string): { code: string; name: string; max_instances: number }[] {
+  interface ParsedRole {
+    code: string
+    name: string
+    system_prompt?: string
+    model?: string
+    tools?: string[]
+    max_instances: number
+  }
+
+  function parseRoles(rolesJSON: string): ParsedRole[] {
     try { return JSON.parse(rolesJSON) } catch { return [] }
   }
 
@@ -430,45 +466,214 @@ export default function TeamAgentPage() {
         )}
       </div>
 
-      {/* Create Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
-          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-white mb-4">创建 AI 团队</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">团队名称</label>
-                <input className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none" placeholder="如: DevClaw-电商项目" value={createName} onChange={e => setCreateName(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">目标描述</label>
-                <textarea className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none" rows={3} placeholder="描述这支 AI 团队要做什么..." value={createGoal} onChange={e => setCreateGoal(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">部署节点</label>
-                <select className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-overlord-500 focus:outline-none" value={createNodeId} onChange={e => setCreateNodeId(e.target.value)}>
-                  {nodes.length === 0 && <option value="">无在线节点</option>}
-                  {nodes.map(n => <option key={n.id} value={n.id}>{n.name || n.claw_id} ({n.status})</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">星能预算</label>
+      {/* Create Modal — Team Lobby */}
+      {showCreate && (() => {
+        const tmpl = templates.find(t => t.id === createTmplId)
+        const roles = tmpl ? parseRoles(tmpl.roles) : []
+        const TmplIcon = tmpl ? (categoryIcons[tmpl.category] || Bot) : Bot
+        const allAssigned = roles.every(r => roleNodeMap[r.code])
+
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowCreate(false)}>
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* Lobby Header */}
+              <div className="bg-gray-900/80 border-b border-gray-700 px-6 py-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-overlord-600/20 flex items-center justify-center">
+                  <TmplIcon className="w-5 h-5 text-overlord-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-white">组建团队智能体</h3>
+                    {tmpl && <span className="text-xs bg-overlord-600/20 text-overlord-400 px-2 py-0.5 rounded">{tmpl.name}</span>}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">{tmpl?.description}</p>
+                </div>
+                {/* Step indicator */}
                 <div className="flex items-center gap-2">
-                  <input type="number" className="w-32 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-overlord-500 focus:outline-none" value={createBudget} onChange={e => setCreateBudget(Number(e.target.value))} min={0} step={1000} />
-                  <Zap className="w-4 h-4 text-yellow-400" />
-                  <span className="text-xs text-gray-500">0 = 不限</span>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${createStep === 1 ? 'bg-overlord-600 text-white' : 'bg-gray-700 text-gray-400'}`}>1</div>
+                  <div className="w-6 h-px bg-gray-700" />
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${createStep === 2 ? 'bg-overlord-600 text-white' : 'bg-gray-700 text-gray-400'}`}>2</div>
+                </div>
+              </div>
+
+              {/* Lobby Body */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {createStep === 1 ? (
+                  /* Step 1: 选将配阵 */
+                  <div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <Users className="w-4 h-4 text-overlord-400" />
+                      <h4 className="text-sm font-semibold text-white">选将配阵</h4>
+                      <span className="text-xs text-gray-500">为每个角色分配 Claw 节点</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {roles.map((role, idx) => {
+                        const assigned = roleNodeMap[role.code]
+                        const assignedNode = nodes.find(n => n.id === assigned)
+                        return (
+                          <div key={role.code} className={`bg-gray-900/60 border rounded-xl p-4 transition ${
+                            assigned ? 'border-overlord-600/50 shadow-lg shadow-overlord-600/5' : 'border-gray-700/50'
+                          }`}>
+                            <div className="flex items-start gap-3">
+                              {/* Role avatar */}
+                              <div className="w-12 h-12 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center text-xl shrink-0">
+                                {roleIcons[role.code] || '🤖'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-white">{role.name}</span>
+                                  {role.max_instances > 1 && (
+                                    <span className="text-[10px] bg-yellow-500/10 text-yellow-400 px-1.5 py-0.5 rounded">×{role.max_instances}</span>
+                                  )}
+                                  <span className="text-[10px] text-gray-600">#{idx + 1}</span>
+                                </div>
+                                {/* Model + Tools */}
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  {role.model && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 ${modelColors[role.model] || 'text-gray-400 bg-gray-700/50'}`}>
+                                      <Cpu className="w-2.5 h-2.5" />{role.model}
+                                    </span>
+                                  )}
+                                  {role.tools && role.tools.length > 0 && (
+                                    <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                                      <Wrench className="w-2.5 h-2.5" />{role.tools.length} 工具
+                                    </span>
+                                  )}
+                                </div>
+                                {/* System prompt snippet */}
+                                {role.system_prompt && (
+                                  <div className="text-[10px] text-gray-600 mt-1 line-clamp-1">{role.system_prompt.slice(0, 60)}...</div>
+                                )}
+                              </div>
+                            </div>
+                            {/* Node selector */}
+                            <div className="mt-3 flex items-center gap-2">
+                              <Server className="w-3.5 h-3.5 text-gray-500" />
+                              <select
+                                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:border-overlord-500 focus:outline-none"
+                                value={assigned || ''}
+                                onChange={e => assignNode(role.code, e.target.value)}
+                              >
+                                <option value="">选择节点...</option>
+                                {nodes.map(n => (
+                                  <option key={n.id} value={n.id}>{n.name || n.claw_id?.slice(0, 12)} ({n.status})</option>
+                                ))}
+                              </select>
+                              {assigned && (
+                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="已分配" />
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {/* Topology hint */}
+                    {tmpl?.topology && (() => {
+                      try {
+                        const topo = JSON.parse(tmpl.topology)
+                        if (topo.flow?.length) {
+                          return (
+                            <div className="mt-4 bg-gray-900/40 border border-gray-700/30 rounded-lg p-3">
+                              <div className="text-[10px] text-gray-500 mb-2">协作拓扑</div>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {topo.flow.map((f: { from: string; to: string; type: string }, i: number) => {
+                                  const fromRole = roles.find(r => r.code === f.from)
+                                  const toRole = roles.find(r => r.code === f.to)
+                                  return (
+                                    <div key={i} className="flex items-center gap-1">
+                                      <span className="text-[10px] text-overlord-400">{fromRole?.name || f.from}</span>
+                                      <ArrowRight className="w-3 h-3 text-gray-600" />
+                                      <span className="text-[10px] text-overlord-400">{toRole?.name || f.to}</span>
+                                      {i < topo.flow.length - 1 && <span className="text-gray-700 mx-1">·</span>}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+                      } catch { /* ignore */ }
+                      return null
+                    })()}
+                  </div>
+                ) : (
+                  /* Step 2: 团队设置 */
+                  <div className="max-w-lg mx-auto space-y-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Bot className="w-4 h-4 text-overlord-400" />
+                      <h4 className="text-sm font-semibold text-white">团队设置</h4>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">团队名称 *</label>
+                      <input className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none" placeholder={`如: ${tmpl?.name || 'My'}-电商项目`} value={createName} onChange={e => setCreateName(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">目标描述</label>
+                      <textarea className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none" rows={3} placeholder="描述这支 AI 团队要做什么..." value={createGoal} onChange={e => setCreateGoal(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">星能预算</label>
+                      <div className="flex items-center gap-2">
+                        <input type="number" className="w-40 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-overlord-500 focus:outline-none" value={createBudget} onChange={e => setCreateBudget(Number(e.target.value))} min={0} step={1000} />
+                        <Zap className="w-4 h-4 text-yellow-400" />
+                        <span className="text-xs text-gray-500">0 = 不限</span>
+                      </div>
+                    </div>
+                    {/* Role summary */}
+                    <div className="bg-gray-900/40 border border-gray-700/30 rounded-lg p-3">
+                      <div className="text-xs text-gray-500 mb-2">阵容确认</div>
+                      <div className="flex flex-wrap gap-2">
+                        {roles.map(r => {
+                          const node = nodes.find(n => n.id === roleNodeMap[r.code])
+                          return (
+                            <div key={r.code} className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2 py-1">
+                              <span className="text-sm">{roleIcons[r.code] || '🤖'}</span>
+                              <span className="text-xs text-white">{r.name}</span>
+                              <span className="text-[10px] text-gray-500">→</span>
+                              <span className="text-[10px] text-overlord-400">{node?.name || '未分配'}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Lobby Footer */}
+              <div className="bg-gray-900/60 border-t border-gray-700 px-6 py-4 flex items-center justify-between">
+                <div className="text-xs text-gray-500">
+                  {roles.length} 个角色 · {Object.values(roleNodeMap).filter(Boolean).length} 已分配
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">取消</button>
+                  {createStep === 1 ? (
+                    <button
+                      onClick={() => setCreateStep(2)}
+                      disabled={!allAssigned}
+                      className="px-5 py-2 bg-overlord-600 hover:bg-overlord-500 text-white rounded-lg text-sm transition disabled:opacity-50 flex items-center gap-2"
+                    >
+                      下一步 <ArrowRight className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => setCreateStep(1)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">上一步</button>
+                      <button
+                        onClick={handleCreate}
+                        disabled={creating || !createName}
+                        className="px-5 py-2 bg-overlord-600 hover:bg-overlord-500 text-white rounded-lg text-sm transition disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                        {creating ? '组建中...' : '组建团队'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">取消</button>
-              <button onClick={handleCreate} disabled={creating || !createName || !createNodeId} className="px-4 py-2 bg-overlord-600 hover:bg-overlord-500 text-white rounded-lg text-sm transition disabled:opacity-50">
-                {creating ? '创建中...' : '创建团队'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
