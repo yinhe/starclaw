@@ -6,7 +6,7 @@ import { isLoggedIn } from '../lib/api';
 const STARAI_BASE = 'https://star-ai.net/downloads';
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases';
 
-const V = 'v2026.0318.0738';
+const V = 'v2026.0322.1533';
 
 const PACKAGES = [
   {
