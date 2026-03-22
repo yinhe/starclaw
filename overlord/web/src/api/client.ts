@@ -1,10 +1,11 @@
 const API_BASE = '/brood'
 
-let _token = localStorage.getItem('web_token') || ''
+// Shared auth: check web_token first, fallback to overlord_token (console SSO)
+let _token = localStorage.getItem('web_token') || localStorage.getItem('overlord_token') || ''
 let _user: { username: string; role: string; team_id: string } | null = null
 
 try {
-  const raw = localStorage.getItem('web_user')
+  const raw = localStorage.getItem('web_user') || localStorage.getItem('overlord_user')
   if (raw) _user = JSON.parse(raw)
 } catch {}
 
@@ -14,8 +15,11 @@ export function getUser() { return _user }
 export function setAuth(token: string, user: any) {
   _token = token
   _user = user
+  // Write to both key sets so console stays in sync
   localStorage.setItem('web_token', token)
   localStorage.setItem('web_user', JSON.stringify(user))
+  localStorage.setItem('overlord_token', token)
+  localStorage.setItem('overlord_user', JSON.stringify(user))
 }
 
 export function clearAuth() {
@@ -23,6 +27,8 @@ export function clearAuth() {
   _user = null
   localStorage.removeItem('web_token')
   localStorage.removeItem('web_user')
+  localStorage.removeItem('overlord_token')
+  localStorage.removeItem('overlord_user')
 }
 
 async function request(method: string, path: string, body?: any) {
@@ -74,4 +80,8 @@ export const api = {
 
 export function isEmployee(): boolean {
   return _user?.role === 'viewer'
+}
+
+export function isAdmin(): boolean {
+  return _user?.role === 'superadmin' || _user?.role === 'admin' || _user?.role === 'operator'
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { MessageSquare, User, LogOut } from 'lucide-react'
-import { getToken, getUser, clearAuth, isEmployee, api } from './api/client'
+import { MessageSquare, User, LogOut, Settings } from 'lucide-react'
+import { getToken, getUser, clearAuth, isEmployee, isAdmin, api } from './api/client'
 import { getBrand } from './lib/brand'
 import LoginPage from './pages/LoginPage'
 import ProfilePage from './pages/ProfilePage'
@@ -84,6 +84,15 @@ export default function App() {
                 {user.username.charAt(0).toUpperCase()}
               </span>
             </div>
+          )}
+          {isAdmin() && (
+            <a
+              href="/"
+              title="管理控制台"
+              className="w-11 h-11 flex items-center justify-center text-gray-600 hover:text-brand-400 hover:bg-gray-800 rounded-xl transition"
+            >
+              <Settings className="w-4 h-4" />
+            </a>
           )}
           <button
             onClick={handleLogout}

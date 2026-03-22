@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield, CreditCard, BarChart3, Paintbrush, ShieldCheck, Bot, ChevronDown, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield, CreditCard, BarChart3, Paintbrush, ShieldCheck, Bot, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import { getStoredToken, getStoredUser, clearAuth } from './api/brood'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -126,6 +126,13 @@ export default function App() {
               </div>
             </div>
           )}
+          <a
+            href="/app/"
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-500 hover:text-overlord-400 hover:bg-gray-800 rounded-lg transition"
+          >
+            <ExternalLink className="w-4 h-4" />
+            员工工作台
+          </a>
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded-lg transition"

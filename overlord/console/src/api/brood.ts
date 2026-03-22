@@ -13,11 +13,16 @@ export function getStoredUser(): { username: string; role: string } | null {
 export function storeAuth(token: string, user: { username: string; role: string }) {
   localStorage.setItem(TOKEN_KEY, token)
   localStorage.setItem(USER_KEY, JSON.stringify(user))
+  // Sync to web app keys so /app/ auto-authenticates
+  localStorage.setItem('web_token', token)
+  localStorage.setItem('web_user', JSON.stringify(user))
 }
 
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+  localStorage.removeItem('web_token')
+  localStorage.removeItem('web_user')
 }
 
 async function request<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
