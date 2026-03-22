@@ -1,11 +1,9 @@
 linters:
+  disable-all: true
   enable:
     - govet
     - staticcheck
     - gosimple
-  disable:
-    - errcheck
-    - unused
 
 issues:
   max-issues-per-linter: 0
