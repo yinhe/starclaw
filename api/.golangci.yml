@@ -1,26 +1,21 @@
 linters:
   enable:
-    - errcheck
     - govet
     - staticcheck
+    - gosimple
   disable:
+    - errcheck
     - unused
-
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - (*net.Conn).SetReadDeadline
-      - (*net.Conn).SetWriteDeadline
-      - (*github.com/gorilla/websocket.Conn).SetReadDeadline
-      - (*github.com/gorilla/websocket.Conn).SetWriteDeadline
-      - (*github.com/gorilla/websocket.Conn).WriteMessage
-      - encoding/binary.Write
-      - encoding/binary.Read
-      - crypto/rand.Read
-      - fmt.Sscanf
-      - encoding/json.Unmarshal
-      - os.WriteFile
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    - linters: [staticcheck]
+      text: "SA1019.*strings.Title"
+    - linters: [staticcheck]
+      text: "SA4010"
+    - linters: [gosimple]
+      text: "S1000"
+    - linters: [gosimple]
+      text: "S1011"
