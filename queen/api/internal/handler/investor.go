@@ -136,7 +136,7 @@ func (h *InvestorHandler) OpenRound(c *gin.Context) {
 		// Update pool's current round + dynamic price
 		var pool model.InvestorPool
 		if err := tx.First(&pool).Error; err != nil {
-			return fmt.Errorf("投资人池未初始化")
+			return fmt.Errorf("合伙人池未初始化")
 		}
 		dynPrice := pool.CalcPrice(round.SharePrice)
 		tx.Model(&pool).Updates(map[string]interface{}{
@@ -579,7 +579,7 @@ func (h *InvestorHandler) Register(c *gin.Context) {
 	log.Printf("[investor] Registered: user=%s name=%s", userID, user.Username)
 	c.JSON(http.StatusCreated, gin.H{
 		"investor": investor,
-		"message":  "注册成功，请先签署投资人协议（选择 1/3/5 年期限），再进行充值",
+		"message":  "注册成功，请先签署合伙人协议（选择 1/3/5 年期限），再进行购买",
 		"next":     "POST /v1/investor/agree",
 	})
 }
@@ -602,7 +602,7 @@ func (h *InvestorHandler) SignAgreement(c *gin.Context) {
 	db := database.DB
 	var investor model.Investor
 	if err := db.Where("user_id = ?", userID).First(&investor).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "请先注册为投资人"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "请先注册为合伙人"})
 		return
 	}
 	if investor.AgreementTerm > 0 {
@@ -626,7 +626,7 @@ func (h *InvestorHandler) SignAgreement(c *gin.Context) {
 
 	log.Printf("[investor] Agreement signed: user=%s term=%d years expires=%s", userID, req.Term, expires.Format("2006-01-02"))
 	c.JSON(http.StatusOK, gin.H{
-		"message":  fmt.Sprintf("已签署 %d 年投资人协议，可开始充值（每次 ¥1万 起，累计 ¥10万 激活分润）", req.Term),
+		"message":  fmt.Sprintf("已签署 %d 年合伙人协议，可开始购买星钻（每次 ¥1万 起，累计 ¥10万 激活分润）", req.Term),
 		"investor": investor,
 		"next":     "POST /v1/investor/recharge",
 	})
@@ -660,21 +660,21 @@ func (h *InvestorHandler) Recharge(c *gin.Context) {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var investor model.Investor
 		if err := tx.Where("user_id = ?", userID).First(&investor).Error; err != nil {
-			return fmt.Errorf("请先注册为投资人")
+			return fmt.Errorf("请先注册为合伙人")
 		}
 		if investor.Status != "active" {
-			return fmt.Errorf("投资人账户状态: %s", investor.Status)
+			return fmt.Errorf("合伙人账户状态: %s", investor.Status)
 		}
 		if investor.AgreementTerm == 0 {
-			return fmt.Errorf("请先签署投资人协议（POST /v1/investor/agree）")
+			return fmt.Errorf("请先签署合伙人协议")
 		}
 
 		var pool model.InvestorPool
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&pool).Error; err != nil {
-			return fmt.Errorf("投资人池未初始化")
+			return fmt.Errorf("合伙人池未初始化")
 		}
 		if pool.Status != "active" {
-			return fmt.Errorf("投资人池暂停中")
+			return fmt.Errorf("合伙人池暂停中")
 		}
 
 		// Get current open round
@@ -986,15 +986,15 @@ func (h *InvestorHandler) CreatePurchaseOrder(c *gin.Context) {
 	// Validate investor
 	var investor model.Investor
 	if err := db.Where("user_id = ?", userID).First(&investor).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "请先注册为投资人"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "请先注册为合伙人"})
 		return
 	}
 	if investor.Status != "active" {
-		c.JSON(http.StatusConflict, gin.H{"error": "投资人账户状态: " + investor.Status})
+		c.JSON(http.StatusConflict, gin.H{"error": "合伙人账户状态: " + investor.Status})
 		return
 	}
 	if investor.AgreementTerm == 0 {
-		c.JSON(http.StatusConflict, gin.H{"error": "请先签署投资人协议"})
+		c.JSON(http.StatusConflict, gin.H{"error": "请先签署合伙人协议"})
 		return
 	}
 
