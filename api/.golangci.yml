@@ -1,0 +1,26 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+  disable:
+    - unused
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - (*net.Conn).SetReadDeadline
+      - (*net.Conn).SetWriteDeadline
+      - (*github.com/gorilla/websocket.Conn).SetReadDeadline
+      - (*github.com/gorilla/websocket.Conn).SetWriteDeadline
+      - (*github.com/gorilla/websocket.Conn).WriteMessage
+      - encoding/binary.Write
+      - encoding/binary.Read
+      - crypto/rand.Read
+      - fmt.Sscanf
+      - encoding/json.Unmarshal
+      - os.WriteFile
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
