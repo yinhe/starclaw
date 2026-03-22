@@ -740,10 +740,10 @@ func (h *HiveHandler) findInstance(c *gin.Context) (model.ClawInstance, bool) {
 }
 
 func (h *HiveHandler) allocatePort() (int, error) {
-	// Find the highest used port
+	// Find the highest used port (both hive and lite modes use local ports)
 	var maxPort struct{ Port int }
 	h.db.Model(&model.ClawInstance{}).
-		Where("status != 'destroying' AND deploy_mode = 'hive'").
+		Where("status != 'destroying' AND deploy_mode IN ('hive','lite')").
 		Select("COALESCE(MAX(port), ?) as port", h.cfg.PortRangeStart-1).
 		Scan(&maxPort)
 
@@ -752,7 +752,7 @@ func (h *HiveHandler) allocatePort() (int, error) {
 		// Try to find a gap
 		var usedPorts []int
 		h.db.Model(&model.ClawInstance{}).
-			Where("status != 'destroying' AND deploy_mode = 'hive'").
+			Where("status != 'destroying' AND deploy_mode IN ('hive','lite')").
 			Pluck("port", &usedPorts)
 		used := make(map[int]bool)
 		for _, p := range usedPorts {
