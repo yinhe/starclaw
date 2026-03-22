@@ -6,6 +6,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw/carapace"
+	"github.com/yinhe/starclaw/carapace/backend"
 	"github.com/yinhe/starclaw/hive/config"
 	"github.com/yinhe/starclaw/hive/handler"
 	"github.com/yinhe/starclaw/hive/model"
@@ -44,18 +46,22 @@ func main() {
 	}
 	nginxSvc := service.NewNginxService(cfg)
 
-	cryptoSvc, err := service.NewCryptoService()
+	vault, err := carapace.New(carapace.Config{
+		Backend: backend.NewEnvBackend("HIVE_MASTER_KEY"),
+		Service: "hive",
+	})
 	if err != nil {
-		log.Fatalf("[hive] crypto service init failed: %v", err)
+		// Fallback to ephemeral vault if master key not set
+		log.Printf("[hive] warning: %v — using ephemeral vault", err)
+		vault, _ = carapace.New(carapace.Config{Service: "hive"})
 	}
-	log.Printf("[hive] encryption active (key fingerprint: %s)", cryptoSvc.Fingerprint())
 
 	// Ensure Docker network exists
 	if err := dockerSvc.EnsureNetwork(); err != nil {
 		log.Printf("[hive] warning: ensure network: %v", err)
 	}
 
-	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc, cryptoSvc)
+	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc, vault)
 
 	// Router
 	gin.SetMode(gin.ReleaseMode)

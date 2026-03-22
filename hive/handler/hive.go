@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/yinhe/starclaw/carapace"
 	"github.com/yinhe/starclaw/hive/config"
 	"github.com/yinhe/starclaw/hive/model"
 	"github.com/yinhe/starclaw/hive/service"
@@ -28,11 +29,11 @@ type HiveHandler struct {
 	docker *service.DockerService
 	mysql  *service.MySQLService
 	nginx  *service.NginxService
-	crypto *service.CryptoService
+	vault  *carapace.Vault
 }
 
-func NewHiveHandler(db *gorm.DB, cfg *config.Config, docker *service.DockerService, mysql *service.MySQLService, nginx *service.NginxService, crypto *service.CryptoService) *HiveHandler {
-	return &HiveHandler{db: db, cfg: cfg, docker: docker, mysql: mysql, nginx: nginx, crypto: crypto}
+func NewHiveHandler(db *gorm.DB, cfg *config.Config, docker *service.DockerService, mysql *service.MySQLService, nginx *service.NginxService, vault *carapace.Vault) *HiveHandler {
+	return &HiveHandler{db: db, cfg: cfg, docker: docker, mysql: mysql, nginx: nginx, vault: vault}
 }
 
 // ──── Create Claw Instance ────
@@ -158,11 +159,11 @@ func (h *HiveHandler) provisionInstance(inst *model.ClawInstance) {
 	inst.ContainerID = containerID
 
 	// Encrypt sensitive fields before persisting to DB
-	if h.crypto != nil {
-		if enc, err := h.crypto.Encrypt(inst.DBPassword, "db_password"); err == nil {
+	if h.vault != nil {
+		if enc, err := h.vault.Seal("db_password", inst.DBPassword); err == nil {
 			inst.DBPassword = enc
 		}
-		if enc, err := h.crypto.Encrypt(inst.JWTSecret, "jwt_secret"); err == nil {
+		if enc, err := h.vault.Seal("jwt_secret", inst.JWTSecret); err == nil {
 			inst.JWTSecret = enc
 		}
 	}
@@ -454,14 +455,14 @@ func (h *HiveHandler) allocatePort() (int, error) {
 // decryptInstance returns a copy of the instance with sensitive fields decrypted.
 // Use this when you need plaintext credentials (e.g., recreating a container).
 func (h *HiveHandler) decryptInstance(inst *model.ClawInstance) *model.ClawInstance {
-	if h.crypto == nil {
+	if h.vault == nil {
 		return inst
 	}
 	copy := *inst
-	if dec, err := h.crypto.Decrypt(copy.DBPassword, "db_password"); err == nil {
+	if dec, err := h.vault.Unseal("db_password", copy.DBPassword); err == nil {
 		copy.DBPassword = dec
 	}
-	if dec, err := h.crypto.Decrypt(copy.JWTSecret, "jwt_secret"); err == nil {
+	if dec, err := h.vault.Unseal("jwt_secret", copy.JWTSecret); err == nil {
 		copy.JWTSecret = dec
 	}
 	return &copy
