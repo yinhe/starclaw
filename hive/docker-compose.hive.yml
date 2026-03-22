@@ -108,6 +108,7 @@ services:
       HIVE_MAX_FREE: ${HIVE_MAX_FREE:-100}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/nginx.pid:/var/run/nginx.pid:ro
       - ./instances:/opt/starclaw-hive/instances
       - /etc/nginx/hive.d:/etc/nginx/hive.d
       - /etc/letsencrypt:/etc/letsencrypt:ro
