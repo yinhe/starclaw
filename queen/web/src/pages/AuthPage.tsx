@@ -6,13 +6,15 @@ import { isLoggedIn, setAuth, clearAuth, getUserDisplayName } from '../lib/auth'
 import { Fingerprint, CheckCircle2, AlertCircle, Loader2 as Spinner, Shield, Mail, Lock, UserPlus } from 'lucide-react';
 
 const isInvestDomain = window.location.hostname === 'invest.starclaw.net';
+const isQueenDomain = !isInvestDomain; // starclaw.net / queen.starclaw.net → Claw only
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const logged = isLoggedIn();
   const initTab = searchParams.get('tab') || (isInvestDomain ? 'login' : 'claw');
-  const [mode, setMode] = useState<'login' | 'register' | 'claw'>(initTab as any);
+  const [mode, setMode] = useState<'login' | 'register' | 'claw'>(isQueenDomain ? 'claw' : initTab as any);
+  const defaultRedirect = isInvestDomain ? '/' : '/dashboard';
 
   // Email/password login state
   const [email, setEmail] = useState('');
@@ -29,7 +31,7 @@ export function AuthPage() {
       const data = await authAPI.login(body);
       setAuth(data.token, data.user);
       setAuthMsg({ text: '登录成功', error: false });
-      setTimeout(() => navigate(searchParams.get('redirect') || '/dashboard'), 500);
+      setTimeout(() => navigate(defaultRedirect), 500);
     } catch (e: any) { setAuthMsg({ text: e.message || '登录失败', error: true }); }
     setSubmitting(false);
   }
@@ -108,7 +110,7 @@ export function AuthPage() {
               setClawStep('done');
               setAuth(data.token, data.user);
               setMsg({ text: `${info.node_id.slice(0, 18)}... 身份验证成功`, error: false });
-              setTimeout(() => navigate(searchParams.get('redirect') || '/dashboard'), 1200);
+              setTimeout(() => navigate(defaultRedirect), 1200);
               resolve();
             } else if (status.status === 'rejected') {
               if (pollRef.current) clearInterval(pollRef.current);
@@ -157,21 +159,23 @@ export function AuthPage() {
             </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
-              {/* Mode Tabs */}
-              <div className="flex border-b border-gray-100">
-                <button onClick={() => { setMode('login'); setAuthMsg(null); }}
-                  className={`flex-1 py-3 text-sm font-medium transition ${mode === 'login' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                  <Mail className="w-4 h-4 inline mr-1.5 -mt-0.5" />登录
-                </button>
-                <button onClick={() => { setMode('register'); setAuthMsg(null); }}
-                  className={`flex-1 py-3 text-sm font-medium transition ${mode === 'register' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                  <UserPlus className="w-4 h-4 inline mr-1.5 -mt-0.5" />注册
-                </button>
-                <button onClick={() => { setMode('claw'); setAuthMsg(null); }}
-                  className={`flex-1 py-3 text-sm font-medium transition ${mode === 'claw' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                  <Fingerprint className="w-4 h-4 inline mr-1.5 -mt-0.5" />Claw
-                </button>
-              </div>
+              {/* Mode Tabs — only show on invest domain (queen domain = Claw only) */}
+              {isInvestDomain && (
+                <div className="flex border-b border-gray-100">
+                  <button onClick={() => { setMode('login'); setAuthMsg(null); }}
+                    className={`flex-1 py-3 text-sm font-medium transition ${mode === 'login' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <Mail className="w-4 h-4 inline mr-1.5 -mt-0.5" />登录
+                  </button>
+                  <button onClick={() => { setMode('register'); setAuthMsg(null); }}
+                    className={`flex-1 py-3 text-sm font-medium transition ${mode === 'register' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <UserPlus className="w-4 h-4 inline mr-1.5 -mt-0.5" />注册
+                  </button>
+                  <button onClick={() => { setMode('claw'); setAuthMsg(null); }}
+                    className={`flex-1 py-3 text-sm font-medium transition ${mode === 'claw' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <Fingerprint className="w-4 h-4 inline mr-1.5 -mt-0.5" />Claw
+                  </button>
+                </div>
+              )}
 
               <div className="p-8 space-y-5">
 
