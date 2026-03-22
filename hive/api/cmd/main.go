@@ -175,14 +175,30 @@ func seedBlacklist(db *gorm.DB) {
 }
 
 func seedPlans(db *gorm.DB) {
-	var count int64
-	db.Model(&model.Plan{}).Count(&count)
-	if count > 0 {
-		return
-	}
 	plans := model.DefaultPlans()
 	for _, p := range plans {
-		db.Create(&p)
+		var existing model.Plan
+		if err := db.Where("id = ?", p.ID).First(&existing).Error; err != nil {
+			db.Create(&p)
+		} else {
+			db.Model(&existing).Updates(map[string]interface{}{
+				"display_name":  p.DisplayName,
+				"deploy_mode":   p.DeployMode,
+				"price_daily":   p.PriceDaily,
+				"price_monthly": p.PriceMonthly,
+				"cpu":           p.CPU,
+				"memory_mb":     p.MemoryMB,
+				"storage_gb":    p.StorageGB,
+				"expire_days":   p.ExpireDays,
+				"is_active":     p.IsActive,
+			})
+		}
 	}
-	log.Printf("[hive] seeded %d plans", len(plans))
+	// Deactivate old plan IDs that are no longer in defaults
+	defaultIDs := make([]string, len(plans))
+	for i, p := range plans {
+		defaultIDs[i] = p.ID
+	}
+	db.Model(&model.Plan{}).Where("id NOT IN ?", defaultIDs).Update("is_active", false)
+	log.Printf("[hive] synced %d plans", len(plans))
 }
