@@ -13,6 +13,7 @@ type Config struct {
 	CORS     CORSConfig     `mapstructure:"cors"`
 	OAuth    OAuthConfig    `mapstructure:"oauth"`
 	Pay      PayConfig
+	StarAI   StarAIConfig  `mapstructure:"starai"`
 	Gateway  GatewayConfig `mapstructure:"gateway"`
 }
 
@@ -102,6 +103,12 @@ type WechatPayConfig struct {
 	H5WapName            string `mapstructure:"h5_wap_name"`
 }
 
+// StarAIConfig holds connection info for StarAI Router (payment gateway)
+type StarAIConfig struct {
+	URL   string `mapstructure:"url"`   // e.g. http://starai-api:8080
+	Token string `mapstructure:"token"` // X-Internal-Token for service auth
+}
+
 var C Config
 
 // GetConfig returns the viper instance for flexible key lookups
@@ -138,6 +145,14 @@ func Load() {
 
 	// Env override for gateway provider API keys
 	loadGatewayEnv()
+
+	// StarAI Router config from env
+	if url := viper.GetString("STARAI_URL"); url != "" {
+		C.StarAI.URL = url
+	}
+	if token := viper.GetString("STARAI_TOKEN"); token != "" {
+		C.StarAI.Token = token
+	}
 
 	// Load payment config from .env
 	loadPayConfig()

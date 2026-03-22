@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant } from '../lib/api';
+import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant, type DiamondOrderResult } from '../lib/api';
 import { isLoggedIn, setAuth, clearAuth, getUser } from '../lib/auth';
 import {
-  Diamond, Wallet, ArrowRight, CheckCircle, ExternalLink, LogOut,
+  Diamond, Wallet, ArrowRight, CheckCircle, ExternalLink, LogOut, CreditCard, Smartphone,
   FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar, Fingerprint,
 } from 'lucide-react';
 
@@ -26,9 +26,11 @@ export function InvestPage() {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
-  // Purchase (star energy)
+  // Purchase (Alipay / WeChat)
   const [purchaseYuan, setPurchaseYuan] = useState('');
   const [purchasing, setPurchasing] = useState(false);
+  const [payMethod, setPayMethod] = useState<'alipay' | 'wechatpay'>('alipay');
+  const [orderResult, setOrderResult] = useState<DiamondOrderResult | null>(null);
 
   // Agreement
   const [agreeTerm, setAgreeTerm] = useState(3);
@@ -109,7 +111,7 @@ export function InvestPage() {
     setAgreeing(false);
   }
 
-  async function handleBuy() {
+  async function handlePurchase() {
     const yuan = parseFloat(purchaseYuan);
     if (!pool) return;
     if (!yuan || yuan < pool.min_invest_yuan) { setErr(`${pool.current_round_label} 最低购买 ${fmt(pool.min_invest_yuan)}`); return; }
@@ -117,10 +119,29 @@ export function InvestPage() {
     setErr(''); setMsg(''); setPurchasing(true);
     try {
       const fen = Math.round(yuan * 100);
-      const r = await investorAPI.recharge(fen);
-      setMsg(r.message); setPurchaseYuan(''); loadProfile(); loadPool();
+      const r = await investorAPI.purchase(fen, payMethod, 'pc');
+      setOrderResult(r);
+      // Redirect to payment
+      if (r.pay_url) {
+        window.open(r.pay_url, '_blank');
+        setMsg(`订单已创建 (${r.order_no})，请在新窗口完成支付`);
+      } else if (r.code_url) {
+        setMsg(`微信支付二维码已生成 (${r.order_no})`);
+      }
+      setPurchaseYuan('');
     } catch (e: any) { setErr(e.message); }
     setPurchasing(false);
+  }
+
+  async function pollOrder(orderNo: string) {
+    try {
+      const o = await investorAPI.queryOrder(orderNo);
+      if (o.status === 'paid') {
+        setMsg('支付成功！星钻已到账');
+        setOrderResult(null);
+        loadProfile(); loadPool();
+      }
+    } catch { /* ignore */ }
   }
 
   const inv = profile?.investor;
@@ -315,21 +336,54 @@ export function InvestPage() {
                     <div className="text-purple-400 font-bold">{pool.current_round_label || pool.current_round}</div>
                   </div>
                 </div>
+
+                <div className="flex gap-2 mb-3">
+                  <button onClick={() => setPayMethod('alipay')}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${payMethod === 'alipay' ? 'border-blue-400 bg-blue-500/10 text-blue-400' : 'border-white/10 text-gray-400 hover:border-white/20'}`}>
+                    <CreditCard size={14} />支付宝
+                  </button>
+                  <button onClick={() => setPayMethod('wechatpay')}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition border ${payMethod === 'wechatpay' ? 'border-green-400 bg-green-500/10 text-green-400' : 'border-white/10 text-gray-400 hover:border-white/20'}`}>
+                    <Smartphone size={14} />微信支付
+                  </button>
+                </div>
+
                 <div className="flex gap-2 mb-3">
                   <input type="number" value={purchaseYuan} onChange={e => setPurchaseYuan(e.target.value)}
                     placeholder={`购买金额 (${fmt(pool.min_invest_yuan)} - ${fmt(pool.max_invest_yuan)})`}
                     className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
-                  <button onClick={handleBuy} disabled={purchasing}
+                  <button onClick={handlePurchase} disabled={purchasing}
                     className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
-                    {purchasing ? '购买中...' : '星能购买'}
+                    {purchasing ? '创建订单...' : payMethod === 'alipay' ? '支付宝购买' : '微信购买'}
                   </button>
                 </div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>使用 StarAI 星能 (⚡) 支付，购买即扣除星能</span>
-                  <a href="https://star-ai.net" target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-purple-400 hover:text-purple-300 transition">
-                    <ExternalLink size={11} />前往充值星能
-                  </a>
+
+                {orderResult && (
+                  <div className="rounded-lg border border-purple-500/10 bg-white/[0.03] p-3 mb-3">
+                    <div className="flex items-center justify-between text-sm mb-2">
+                      <span className="text-gray-400">订单 {orderResult.order_no}</span>
+                      <span className="text-yellow-400 text-xs">待支付</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mb-2">
+                      {orderResult.shares} 份 × {fmt(orderResult.price_yuan)} = {fmt(orderResult.amount_yuan)}
+                    </div>
+                    <div className="flex gap-2">
+                      {orderResult.pay_url && (
+                        <a href={orderResult.pay_url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+                          <ExternalLink size={11} />打开支付页面
+                        </a>
+                      )}
+                      <button onClick={() => pollOrder(orderResult.order_no)}
+                        className="text-xs text-purple-400 hover:text-purple-300 transition">
+                        刷新支付状态
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-xs text-gray-500">
+                  通过 StarAI 支付通道完成支付，支付成功后星钻自动到账
                 </div>
               </div>
               <div className="lg:col-span-2 space-y-2 rounded-lg border border-purple-500/10 bg-white/[0.02] p-4">

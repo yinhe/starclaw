@@ -463,11 +463,51 @@ func (h *PaymentHandler) creditOrder(orderNo, tradeNo string) error {
 	})
 
 	if err == nil {
-		// Sync star energy to Queen credit ledger for Claw
-		go h.syncStarEnergy(orderNo)
+		// Check if this is an invest order → call Queen callback
+		var completed model.PaymentOrder
+		h.db.Where("order_no = ?", orderNo).First(&completed)
+		if completed.Purpose == "invest" && completed.CallbackURL != "" {
+			go h.notifyInvestCallback(completed)
+		} else {
+			// Sync star energy to Queen credit ledger for Claw
+			go h.syncStarEnergy(orderNo)
+		}
 	}
 
 	return err
+}
+
+// notifyInvestCallback tells Queen that a diamond purchase payment succeeded.
+func (h *PaymentHandler) notifyInvestCallback(order model.PaymentOrder) {
+	body, _ := json.Marshal(map[string]interface{}{
+		"external_order_no": order.ExternalOrderNo,
+		"router_order_no":   order.OrderNo,
+		"trade_no":          order.TradeNo,
+		"amount_cents":      order.AmountCents,
+		"channel":           order.Channel,
+	})
+
+	req, _ := http.NewRequest("POST", order.CallbackURL, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if h.queenCfg.Token != "" {
+		req.Header.Set("X-Node-Token", h.queenCfg.Token)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[star-ai] invest callback failed for %s → %s: %v", order.OrderNo, order.CallbackURL, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 200 {
+		log.Printf("[star-ai] invest callback OK: router=%s queen=%s amount=¥%.2f",
+			order.OrderNo, order.ExternalOrderNo, float64(order.AmountCents)/100)
+	} else {
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("[star-ai] invest callback returned %d for %s: %s", resp.StatusCode, order.ExternalOrderNo, string(respBody))
+	}
 }
 
 // syncStarEnergy grants star energy to the user's Claw node via Queen's internal API.
@@ -521,6 +561,106 @@ func (h *PaymentHandler) syncStarEnergy(orderNo string) {
 	} else {
 		respBody, _ := io.ReadAll(resp.Body)
 		log.Printf("[star-ai] sync energy to Queen returned %d: %s", resp.StatusCode, string(respBody))
+	}
+}
+
+// CreateInvestOrder creates an Alipay/WeChat payment order for Queen's star diamond investment.
+// Called by Queen's internal API. Returns pay_url for the user to complete payment.
+// POST /internal/payment/invest-order
+func (h *PaymentHandler) CreateInvestOrder(c *gin.Context) {
+	var req struct {
+		Channel         string `json:"channel" binding:"required"`           // alipay / wechat
+		AmountCents     int64  `json:"amount_cents" binding:"required"`      // CNY in 分
+		Subject         string `json:"subject"`                              // order description
+		ExternalOrderNo string `json:"external_order_no" binding:"required"` // Queen's diamond order_no
+		CallbackURL     string `json:"callback_url" binding:"required"`      // Queen's callback URL
+		PayForm         string `json:"pay_form"`                             // pc / h5 / native
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields: " + err.Error()})
+		return
+	}
+	if req.PayForm == "" {
+		req.PayForm = "pc"
+	}
+	if req.Subject == "" {
+		req.Subject = fmt.Sprintf("星钻购买 ¥%.2f", float64(req.AmountCents)/100)
+	}
+
+	orderNo := generateOrderNo("IV") // IV = invest
+
+	order := model.PaymentOrder{
+		UserID:          "queen-invest", // placeholder; not a Router user
+		OrderNo:         orderNo,
+		Channel:         req.Channel,
+		AmountCents:     req.AmountCents,
+		BonusCents:      0,
+		TotalCents:      req.AmountCents,
+		Status:          "pending",
+		Purpose:         "invest",
+		ExternalOrderNo: req.ExternalOrderNo,
+		CallbackURL:     req.CallbackURL,
+	}
+	if err := h.db.Create(&order).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create order"})
+		return
+	}
+
+	amountYuan := fmt.Sprintf("%.2f", float64(req.AmountCents)/100.0)
+
+	switch req.Channel {
+	case "alipay":
+		if h.aliClient == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Alipay not configured"})
+			return
+		}
+		trade := alipay.TradePagePay{
+			Trade: alipay.Trade{
+				NotifyURL:   h.aliCfg.NotifyURL,
+				ReturnURL:   h.aliCfg.ReturnURL,
+				Subject:     req.Subject,
+				OutTradeNo:  orderNo,
+				TotalAmount: amountYuan,
+				ProductCode: "FAST_INSTANT_TRADE_PAY",
+			},
+		}
+		url, err := h.aliClient.TradePagePay(trade)
+		if err != nil {
+			log.Printf("[star-ai] invest Alipay error: %v", err)
+			h.db.Model(&order).Update("status", "failed")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Alipay order failed"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"order_no":          orderNo,
+			"external_order_no": req.ExternalOrderNo,
+			"channel":           "alipay",
+			"pay_url":           url.String(),
+			"amount_yuan":       amountYuan,
+		})
+
+	case "wechat":
+		if h.wxClient == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WeChat Pay not configured"})
+			return
+		}
+		codeURL, err := h.wxClient.CreateNativeOrder(req.Subject, orderNo, int(req.AmountCents))
+		if err != nil {
+			log.Printf("[star-ai] invest WeChat error: %v", err)
+			h.db.Model(&order).Update("status", "failed")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "WeChat order failed"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"order_no":          orderNo,
+			"external_order_no": req.ExternalOrderNo,
+			"channel":           "wechat",
+			"code_url":          codeURL,
+			"amount_yuan":       amountYuan,
+		})
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported channel, use alipay or wechat"})
 	}
 }
 

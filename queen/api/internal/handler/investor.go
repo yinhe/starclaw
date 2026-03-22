@@ -1,8 +1,10 @@
 package handler
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -11,9 +13,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/alipay"
-	wechat "github.com/go-pay/gopay/wechat/v3"
 	"github.com/google/uuid"
 	"github.com/yinhe/starclaw-queen/api/internal/config"
 	"github.com/yinhe/starclaw-queen/api/internal/database"
@@ -23,10 +22,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type InvestorHandler struct {
-	AlipayClient *alipay.Client
-	WechatClient *wechat.ClientV3
-}
+type InvestorHandler struct{}
 
 // ════════════════════════════════════════════════════════════
 // Admin: Pool Management
@@ -984,11 +980,20 @@ func (h *InvestorHandler) CreatePurchaseOrder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定金额和支付方式"})
 		return
 	}
-	if req.Amount < MinRechargeFen {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      fmt.Sprintf("每次最低购买 ¥%.0f", float64(MinRechargeFen)/100),
-			"min_amount": MinRechargeFen,
-		})
+	// Per-round min/max validation
+	minFen, maxFen := model.RoundLimits(func() string {
+		var p model.InvestorPool
+		if database.DB.First(&p).Error == nil {
+			return p.CurrentRound
+		}
+		return "spore"
+	}())
+	if req.Amount < minFen {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("本期最低购买 ¥%.0f", float64(minFen)/100)})
+		return
+	}
+	if req.Amount > maxFen {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("本期最高购买 ¥%.0f", float64(maxFen)/100)})
 		return
 	}
 	if req.PayForm == "" {
@@ -1061,115 +1066,113 @@ func (h *InvestorHandler) CreatePurchaseOrder(c *gin.Context) {
 
 	// Call payment gateway
 	switch req.PayMethod {
-	case "alipay":
-		h.createDiamondAlipayOrder(c, &order)
-	case "wechatpay":
-		h.createDiamondWechatOrder(c, &order)
+	case "alipay", "wechatpay":
+		h.createDiamondPayOrder(c, &order)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的支付方式，请使用 alipay 或 wechatpay"})
 	}
 }
 
-func (h *InvestorHandler) createDiamondAlipayOrder(c *gin.Context, order *model.DiamondOrder) {
-	if h.AlipayClient == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "支付宝尚未配置"})
+// createDiamondPayOrder proxies the payment creation through StarAI Router's
+// Alipay/WeChat channels. Router creates the actual payment and calls back Queen
+// when the user completes payment.
+func (h *InvestorHandler) createDiamondPayOrder(c *gin.Context, order *model.DiamondOrder) {
+	starAI := config.C.StarAI
+	if starAI.URL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "支付通道尚未配置"})
 		return
 	}
 
-	amountYuan := fmt.Sprintf("%.2f", float64(order.Amount)/100.0)
-	bm := gopay.BodyMap{}
-	bm.Set("subject", order.Subject)
-	bm.Set("out_trade_no", order.OrderNo)
-	bm.Set("total_amount", amountYuan)
-
-	switch order.PayForm {
-	case "pc":
-		bm.Set("product_code", "FAST_INSTANT_TRADE_PAY")
-		payURL, err := h.AlipayClient.TradePagePay(context.Background(), bm)
-		if err != nil {
-			log.Printf("[investor] Alipay page pay error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
-			return
-		}
-		database.DB.Model(order).Update("pay_url", payURL)
-		c.JSON(http.StatusOK, gin.H{
-			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
-			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
-			"pay_method": "alipay", "pay_form": "pc", "pay_url": payURL,
-		})
-	default:
-		bm.Set("product_code", "QUICK_WAP_WAY")
-		bm.Set("quit_url", config.C.Pay.Alipay.ReturnURL)
-		payURL, err := h.AlipayClient.TradeWapPay(context.Background(), bm)
-		if err != nil {
-			log.Printf("[investor] Alipay wap pay error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
-			return
-		}
-		database.DB.Model(order).Update("pay_url", payURL)
-		c.JSON(http.StatusOK, gin.H{
-			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
-			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
-			"pay_method": "alipay", "pay_form": "h5", "pay_url": payURL,
-		})
+	// Build callback URL (Queen's internal endpoint)
+	queenBase := strings.TrimRight(starAI.URL, "/")
+	// Use Queen's own base URL for the callback
+	callbackURL := ""
+	if port := config.C.Server.Port; port != "" {
+		callbackURL = fmt.Sprintf("http://queen-api:%s/internal/investor/payment-confirmed", port)
+	} else {
+		callbackURL = "http://queen-api:8080/internal/investor/payment-confirmed"
 	}
-}
+	_ = queenBase
 
-func (h *InvestorHandler) createDiamondWechatOrder(c *gin.Context, order *model.DiamondOrder) {
-	if h.WechatClient == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "微信支付尚未配置"})
-		return
-	}
-
-	cfg := config.C.Pay.WechatPay
-	expire := time.Now().Add(30 * time.Minute).Format(time.RFC3339)
-
-	bm := gopay.BodyMap{}
-	bm.Set("appid", cfg.AppID)
-	bm.Set("mchid", cfg.MchID)
-	bm.Set("description", order.Subject)
-	bm.Set("out_trade_no", order.OrderNo)
-	bm.Set("time_expire", expire)
-	bm.Set("notify_url", cfg.NotifyURL)
-	bm.SetBodyMap("amount", func(am gopay.BodyMap) {
-		am.Set("total", order.Amount)
-		am.Set("currency", "CNY")
+	body, _ := json.Marshal(map[string]interface{}{
+		"channel":           order.PayMethod,
+		"amount_cents":      order.Amount,
+		"subject":           order.Subject,
+		"external_order_no": order.OrderNo,
+		"callback_url":      callbackURL,
+		"pay_form":          order.PayForm,
 	})
 
-	switch order.PayForm {
-	case "native":
-		resp, err := h.WechatClient.V3TransactionNative(context.Background(), bm)
-		if err != nil {
-			log.Printf("[investor] WeChat native pay error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
-			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
-			"pay_method": "wechatpay", "pay_form": "native", "code_url": resp.Response.CodeUrl,
-		})
-	default:
-		bm.SetBodyMap("scene_info", func(si gopay.BodyMap) {
-			si.Set("payer_client_ip", c.ClientIP())
-			si.SetBodyMap("h5_info", func(h5 gopay.BodyMap) {
-				h5.Set("type", "Wap")
-				h5.Set("wap_url", cfg.H5WapURL)
-				h5.Set("wap_name", cfg.H5WapName)
-			})
-		})
-		resp, err := h.WechatClient.V3TransactionH5(context.Background(), bm)
-		if err != nil {
-			log.Printf("[investor] WeChat H5 pay error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "创建支付失败"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"order_no": order.OrderNo, "shares": order.Shares, "price_yuan": float64(order.PricePerShare) / 100,
-			"amount_yuan": float64(order.Amount) / 100, "round": order.Round,
-			"pay_method": "wechatpay", "pay_form": "h5", "h5_url": resp.Response.H5Url,
-		})
+	req, _ := http.NewRequest("POST", starAI.URL+"/internal/payment/invest-order", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if starAI.Token != "" {
+		req.Header.Set("X-Internal-Token", starAI.Token)
 	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[investor] StarAI payment proxy error: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "支付通道暂不可用"})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		log.Printf("[investor] StarAI payment returned %d: %s", resp.StatusCode, string(respBody))
+		var errResp map[string]interface{}
+		json.Unmarshal(respBody, &errResp)
+		errMsg := "创建支付失败"
+		if e, ok := errResp["error"].(string); ok {
+			errMsg = e
+		}
+		c.JSON(http.StatusBadGateway, gin.H{"error": errMsg})
+		return
+	}
+
+	var result map[string]interface{}
+	json.Unmarshal(respBody, &result)
+
+	// Build response for frontend
+	out := gin.H{
+		"order_no":    order.OrderNo,
+		"shares":      order.Shares,
+		"price_yuan":  float64(order.PricePerShare) / 100,
+		"amount_yuan": float64(order.Amount) / 100,
+		"round":       order.Round,
+		"pay_method":  order.PayMethod,
+	}
+	if v, ok := result["pay_url"]; ok {
+		out["pay_url"] = v
+	}
+	if v, ok := result["code_url"]; ok {
+		out["code_url"] = v
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// POST /internal/investor/payment-confirmed — Called by StarAI Router when payment succeeds
+func (h *InvestorHandler) PaymentConfirmed(c *gin.Context) {
+	var req struct {
+		ExternalOrderNo string `json:"external_order_no" binding:"required"`
+		RouterOrderNo   string `json:"router_order_no"`
+		TradeNo         string `json:"trade_no"`
+		AmountCents     int64  `json:"amount_cents"`
+		Channel         string `json:"channel"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid callback payload"})
+		return
+	}
+
+	log.Printf("[investor] Payment confirmed from StarAI: queen_order=%s router_order=%s trade=%s amount=%d channel=%s",
+		req.ExternalOrderNo, req.RouterOrderNo, req.TradeNo, req.AmountCents, req.Channel)
+
+	callbackRaw, _ := json.Marshal(req)
+	CompleteDiamondOrder(req.ExternalOrderNo, req.TradeNo, string(callbackRaw))
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // CompleteDiamondOrder is called by payment webhooks when a diamond purchase succeeds.

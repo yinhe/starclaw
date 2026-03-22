@@ -302,10 +302,7 @@ func Setup() *gin.Engine {
 	v1.POST("/credits/transfer", writeRL.Middleware(), credit.Transfer)
 
 	// ---- Investor Pool (投资人池) ----
-	investor := &handler.InvestorHandler{
-		AlipayClient: billing.GetAlipayClient(),
-		WechatClient: billing.GetWechatClient(),
-	}
+	investor := &handler.InvestorHandler{}
 	// Public: pool info (no auth needed)
 	v1.GET("/investor/pool", investor.PublicPoolInfo)
 	// Investor portal (authenticated)
@@ -358,6 +355,9 @@ func Setup() *gin.Engine {
 
 		// Investor pool (internal — for Billing Gateway profit deposit)
 		internal.POST("/investor/deposit", investor.InternalDeposit)
+
+		// Payment callback from StarAI Router (diamond purchase confirmed)
+		internal.POST("/investor/payment-confirmed", investor.PaymentConfirmed)
 	}
 
 	return r

@@ -128,6 +128,18 @@ func main() {
 	r.POST("/pay/callback/alipay", payHandler.CallbackAlipay)
 	r.POST("/pay/callback/wechat", payHandler.CallbackWechat)
 
+	// ── Internal routes (service-to-service, token auth) ──
+	internal := r.Group("/internal")
+	internal.Use(func(c *gin.Context) {
+		token := c.GetHeader("X-Internal-Token")
+		if token == "" || token != cfg.Queen.Token {
+			c.AbortWithStatusJSON(403, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Next()
+	})
+	internal.POST("/payment/invest-order", payHandler.CreateInvestOrder)
+
 	// ── Admin routes (JWT + RBAC) ──
 	adminHandler := handler.NewAdminHandler(db, reg)
 	admin := r.Group("/admin")

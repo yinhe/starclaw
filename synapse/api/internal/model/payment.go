@@ -9,20 +9,23 @@ import (
 
 // PaymentOrder tracks recharge orders (Alipay / WeChat Pay)
 type PaymentOrder struct {
-	ID          string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	UserID      string         `json:"user_id" gorm:"type:varchar(36);index;not null"`
-	OrderNo     string         `json:"order_no" gorm:"type:varchar(64);uniqueIndex"`           // our order number
-	Channel     string         `json:"channel" gorm:"type:varchar(20)"`                        // alipay, wechat
-	AmountCents int64          `json:"amount_cents"`                                           // paid amount in cents (分)
-	BonusCents  int64          `json:"bonus_cents" gorm:"default:0"`                           // bonus amount
-	TotalCents  int64          `json:"total_cents"`                                            // amount + bonus credited
-	Status      string         `json:"status" gorm:"type:varchar(20);default:'pending';index"` // pending, paid, failed, expired
-	TradeNo     string         `json:"trade_no" gorm:"type:varchar(100)"`                      // third-party transaction ID
-	PayURL      string         `json:"pay_url,omitempty" gorm:"-"`                             // payment URL (not stored)
-	PaidAt      *time.Time     `json:"paid_at"`
-	CreatedAt   time.Time      `json:"created_at" gorm:"index"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	ID              string         `json:"id" gorm:"type:varchar(36);primaryKey"`
+	UserID          string         `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	OrderNo         string         `json:"order_no" gorm:"type:varchar(64);uniqueIndex"`           // our order number
+	Channel         string         `json:"channel" gorm:"type:varchar(20)"`                        // alipay, wechat
+	AmountCents     int64          `json:"amount_cents"`                                           // paid amount in cents (分)
+	BonusCents      int64          `json:"bonus_cents" gorm:"default:0"`                           // bonus amount
+	TotalCents      int64          `json:"total_cents"`                                            // amount + bonus credited
+	Status          string         `json:"status" gorm:"type:varchar(20);default:'pending';index"` // pending, paid, failed, expired
+	TradeNo         string         `json:"trade_no" gorm:"type:varchar(100)"`                      // third-party transaction ID
+	PayURL          string         `json:"pay_url,omitempty" gorm:"-"`                             // payment URL (not stored)
+	Purpose         string         `json:"purpose" gorm:"type:varchar(20);default:'recharge'"`     // recharge, invest
+	ExternalOrderNo string         `json:"external_order_no" gorm:"type:varchar(64)"`              // Queen's order_no (for invest)
+	CallbackURL     string         `json:"-" gorm:"type:varchar(255)"`                             // callback URL on payment success
+	PaidAt          *time.Time     `json:"paid_at"`
+	CreatedAt       time.Time      `json:"created_at" gorm:"index"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (o *PaymentOrder) BeforeCreate(tx *gorm.DB) error {
