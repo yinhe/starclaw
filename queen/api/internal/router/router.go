@@ -336,6 +336,7 @@ func Setup() *gin.Engine {
 		internal.POST("/billing/unfreeze", billing.InternalUnfreeze)
 		internal.POST("/billing/settle", billing.InternalSettle)
 		internal.GET("/billing/resolve-partners", billing.InternalResolvePartners)
+		internal.POST("/billing/profit-split", billing.InternalProfitSplit)
 		internal.GET("/billing/consumption", billing.InternalConsumptionRecords)
 
 		// Star Energy (internal — for Router/Swarm services)

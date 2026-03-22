@@ -799,6 +799,152 @@ func (h *BillingHandler) AdminUpdatePackage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "套餐已更新"})
 }
 
+// POST /internal/billing/profit-split — Distribute margin from API consumption
+// Called by Router after successful star-energy deduction.
+// Flow: margin → city partner commission → team partner mgmt fee → investor pool deposit
+func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
+	var req struct {
+		ClawID        string  `json:"claw_id" binding:"required"`
+		CostCents     float64 `json:"cost_cents" binding:"required"` // what user paid (分, float for sub-cent)
+		UpstreamCents float64 `json:"upstream_cents"`                // what we paid provider (分)
+		Model         string  `json:"model"`
+		Endpoint      string  `json:"endpoint"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing fields"})
+		return
+	}
+
+	margin := req.CostCents - req.UpstreamCents
+	if margin <= 0 {
+		c.JSON(http.StatusOK, gin.H{"margin": 0, "splits": gin.H{}})
+		return
+	}
+	marginFen := int64(margin) // truncate to whole 分
+
+	db := database.DB
+	splits := gin.H{}
+
+	// ── 1. Resolve partner chain: claw_id → user → city partner → team partner ──
+	var binding model.NodeBinding
+	if err := db.Where("node_id = ? AND status = ?", req.ClawID, "active").First(&binding).Error; err != nil {
+		// No binding — no partner chain, still deposit to investor pool
+		investDeposit := int64(float64(marginFen) * 0.10)
+		if investDeposit > 0 {
+			depositToInvestorPool(db, investDeposit, marginFen, "token_usage", req.ClawID)
+			splits["investor_pool"] = investDeposit
+		}
+		c.JSON(http.StatusOK, gin.H{"margin": marginFen, "splits": splits})
+		return
+	}
+	userID := binding.QueenUserID
+
+	// ── 2. City partner commission ──
+	var cityCommAmt int64
+	var cityPartnerID string
+
+	var cityClient model.CityClient
+	if err := db.Where("user_id = ?", userID).First(&cityClient).Error; err == nil {
+		var cityPartner model.CityPartner
+		if err := db.Where("id = ? AND status = ?", cityClient.PartnerID, "approved").First(&cityPartner).Error; err == nil {
+			cityPartnerID = cityPartner.ID
+			cityCommAmt = int64(float64(marginFen) * cityPartner.CommRate)
+			if cityCommAmt > 0 {
+				month := time.Now().Format("2006-01")
+				db.Create(&model.Commission{
+					ID:         uuid.New().String(),
+					PartnerID:  cityPartner.ID,
+					ClientID:   cityClient.ID,
+					Type:       "usage",
+					Amount:     cityCommAmt,
+					Rate:       cityPartner.CommRate,
+					BaseAmount: marginFen,
+					Status:     "pending",
+					Month:      month,
+				})
+				db.Model(&cityPartner).UpdateColumn("total_earned", gorm.Expr("total_earned + ?", cityCommAmt))
+				splits["city_partner"] = gin.H{"id": cityPartner.ID, "name": cityPartner.Name, "amount": cityCommAmt, "rate": cityPartner.CommRate}
+			}
+		}
+	}
+
+	// ── 3. Team partner management fee (% of city commission) ──
+	if cityPartnerID != "" && cityCommAmt > 0 {
+		var cityPartner model.CityPartner
+		db.Where("id = ?", cityPartnerID).First(&cityPartner)
+
+		var teamPartner model.TeamPartner
+		found := false
+		if cityPartner.TeamPartnerID != "" {
+			if err := db.Where("id = ? AND status = ?", cityPartner.TeamPartnerID, "active").First(&teamPartner).Error; err == nil {
+				found = true
+			}
+		}
+		if !found && cityPartner.City != "" {
+			if err := db.Where("region = ? AND status = ?", cityPartner.City, "active").First(&teamPartner).Error; err == nil {
+				found = true
+			}
+		}
+		if found && teamPartner.ManageFeeRate > 0 {
+			mgmtFee := int64(float64(cityCommAmt) * teamPartner.ManageFeeRate)
+			if mgmtFee > 0 {
+				month := time.Now().Format("2006-01")
+				db.Create(&model.PartnerCommission{
+					ID:         uuid.New().String(),
+					PartnerID:  teamPartner.ID,
+					CityID:     cityPartnerID,
+					Type:       "manage_fee",
+					Amount:     mgmtFee,
+					Rate:       teamPartner.ManageFeeRate,
+					BaseAmount: cityCommAmt,
+					Status:     "pending",
+					Month:      month,
+				})
+				db.Model(&teamPartner).UpdateColumn("total_commission", gorm.Expr("total_commission + ?", mgmtFee))
+				splits["team_partner"] = gin.H{"id": teamPartner.ID, "name": teamPartner.Name, "amount": mgmtFee, "rate": teamPartner.ManageFeeRate}
+			}
+		}
+	}
+
+	// ── 4. Investor pool deposit (10% of margin) ──
+	investDeposit := int64(float64(marginFen) * 0.10)
+	if investDeposit > 0 {
+		depositToInvestorPool(db, investDeposit, marginFen, "token_usage", req.ClawID)
+		splits["investor_pool"] = investDeposit
+	}
+
+	log.Printf("[billing] profit-split: claw=%s margin=%d分 city=%d team_mgmt=%v invest=%d",
+		req.ClawID, marginFen, cityCommAmt, splits["team_partner"], investDeposit)
+
+	c.JSON(http.StatusOK, gin.H{"margin": marginFen, "splits": splits})
+}
+
+// depositToInvestorPool adds margin share to the investor pool (reused by profit-split).
+func depositToInvestorPool(db *gorm.DB, amount, marginTotal int64, sourceType, clawID string) {
+	db.Transaction(func(tx *gorm.DB) error {
+		var pool model.InvestorPool
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&pool).Error; err != nil {
+			return nil // pool not initialized — skip silently
+		}
+		if pool.Status != "active" {
+			return nil
+		}
+		pool.PoolBalance += amount
+		pool.TotalDeposited += amount
+		tx.Save(&pool)
+
+		tx.Create(&model.PoolDeposit{
+			ID:          uuid.New().String(),
+			SourceType:  sourceType,
+			Amount:      amount,
+			MarginTotal: marginTotal,
+			Rate:        0.10,
+			ClawID:      clawID,
+		})
+		return nil
+	})
+}
+
 // InternalConsumptionRecords returns recent consume-type CreditTransactions for a claw.
 // GET /internal/billing/consumption?claw_id=xxx&days=7
 func (h *BillingHandler) InternalConsumptionRecords(c *gin.Context) {

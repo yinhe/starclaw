@@ -339,6 +339,16 @@ func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug
 			middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via+"/claw", "ok").Inc()
 			middleware.BillingDeductionsTotal.WithLabelValues("star_energy").Inc()
 			middleware.BillingDeductionAmount.WithLabelValues("star_energy").Add(costCents)
+			// Async profit split: margin → city partner → team partner → investor pool
+			if qc := h.meter.QueenCredit(); qc != nil && qc.Enabled() && costCents > upstreamCents {
+				go qc.ProfitSplit(&billing.ProfitSplitRequest{
+					ClawID:        clawID,
+					CostCents:     costCents,
+					UpstreamCents: upstreamCents,
+					Model:         modelName,
+					Endpoint:      endpoint,
+				})
+			}
 		}
 	} else {
 		// Traditional ¥ balance billing

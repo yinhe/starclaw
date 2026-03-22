@@ -131,6 +131,48 @@ func (q *QueenCreditClient) Consume(req *ConsumeRequest) (*ConsumeResponse, erro
 	return &result, nil
 }
 
+// ProfitSplitRequest is sent to Queen after successful billing to distribute margin.
+type ProfitSplitRequest struct {
+	ClawID        string  `json:"claw_id"`
+	CostCents     float64 `json:"cost_cents"`
+	UpstreamCents float64 `json:"upstream_cents"`
+	Model         string  `json:"model"`
+	Endpoint      string  `json:"endpoint"`
+}
+
+// ProfitSplit calls Queen's /internal/billing/profit-split to distribute margin
+// to city partner, team partner, and investor pool. Fire-and-forget (async).
+func (q *QueenCreditClient) ProfitSplit(req *ProfitSplitRequest) {
+	if req.CostCents <= req.UpstreamCents {
+		return // no margin
+	}
+	body, _ := json.Marshal(req)
+	url := fmt.Sprintf("%s/internal/billing/profit-split", q.baseURL)
+	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("[star-ai] profit-split request build failed: %v", err)
+		return
+	}
+	httpReq.Header.Set("X-Node-Token", q.token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := q.client.Do(httpReq)
+	if err != nil {
+		log.Printf("[star-ai] profit-split call failed for claw=%s: %v", req.ClawID, err)
+		return
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("[star-ai] profit-split OK: claw=%s cost=%.2f upstream=%.2f → %s",
+			req.ClawID, req.CostCents, req.UpstreamCents, string(respBody))
+	} else {
+		log.Printf("[star-ai] profit-split returned %d for claw=%s: %s",
+			resp.StatusCode, req.ClawID, string(respBody))
+	}
+}
+
 // ConsumptionRecord represents a single tool consumption record from Queen.
 type ConsumptionRecord struct {
 	ID        string    `json:"id"`
