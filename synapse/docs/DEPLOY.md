@@ -1,6 +1,6 @@
 # Star-AI ⛽ 部署指南
 
-> 服务器 B — star-ai.net (Router/Extractor AI 算力平台)
+> 服务器 B — star-ai.net (Synapse/Extractor AI 算力平台)
 
 ## 一、架构
 
@@ -58,7 +58,7 @@ sudo systemctl daemon-reload && sudo systemctl restart docker
 ```bash
 cd /opt
 git clone https://github.com/yinhe/starclaw.git
-cd starclaw/router
+cd starclaw/synapse
 ```
 
 ### 2. 配置环境变量
@@ -128,12 +128,12 @@ sudo certbot certonly --nginx -d star-ai.net -d api.star-ai.net
 ### 3. 配置 Nginx
 
 ```bash
-sudo cp /opt/starclaw/router/deploy/nginx-starai.conf /etc/nginx/sites-available/star-ai
+sudo cp /opt/starclaw/synapse/deploy/nginx-starai.conf /etc/nginx/sites-available/star-ai
 sudo ln -sf /etc/nginx/sites-available/star-ai /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-配置文件 `router/deploy/nginx-starai.conf` 已包含：
+配置文件 `synapse/deploy/nginx-starai.conf` 已包含：
 - HTTP → HTTPS 自动跳转
 - star-ai.net → Web 前端（暂代理到 API）
 - api.star-ai.net → Go API（含 SSE/WebSocket 支持）
@@ -148,12 +148,12 @@ sudo crontab -e
 
 ## 六、支付证书
 
-Router 的计费系统支持支付宝和微信支付充值，需要手动部署支付证书（不跟踪在 Git 中）。
+Synapse 的计费系统支持支付宝和微信支付充值，需要手动部署支付证书（不跟踪在 Git 中）。
 
 ### 证书文件
 
 ```
-router/api/certs/
+synapse/api/certs/
 ├── alipayCertPublicKey_RSA2.crt              # 支付宝公钥证书
 ├── alipayRootCert.crt                        # 支付宝根证书
 ├── appCertPublicKey_2021004192620828.crt      # 应用公钥证书
@@ -168,7 +168,7 @@ router/api/certs/
 证书已被 `.gitignore` 排除，需手动上传到服务器：
 
 ```bash
-scp -r router/api/certs/ root@47.103.51.32:/opt/starclaw/router/api/certs/
+scp -r synapse/api/certs/ root@47.103.51.32:/opt/starclaw/synapse/api/certs/
 ```
 
 > Dockerfile 已配置 `COPY certs/ ./certs/`，Docker 构建时会自动打包。
@@ -179,7 +179,7 @@ scp -r router/api/certs/ root@47.103.51.32:/opt/starclaw/router/api/certs/
 ### 更新
 
 ```bash
-cd /opt/starclaw/router
+cd /opt/starclaw/synapse
 git pull origin main
 docker compose build api
 docker compose up -d api

@@ -101,8 +101,8 @@ starclaw/                              # 私有 Monorepo 根目录
 │   │   └── nginx.conf                 # 反代 /brood/ → manager:8095
 │   └── docker-compose.yml             # manager + mysql + console
 │
-├── router/ ⛽                          # 闭源（官方运营）— 提取器 AI 算力网关
-│   ├── api/                           # 🚪 Go 后端（:8096）— 认证/计费/路由
+├── synapse/ ⛽                        # 闭源（官方运营）— 突触 AI 算力网关
+│   ├── api/                           # 🚣 Go 后端（:8096）— 认证/计费/路由
 │   │   ├── cmd/server/main.go         # 入口
 │   │   ├── internal/
 │   │   │   ├── handler/               # 代理端点（国内直连 / 海外转发 Proxy）
@@ -181,7 +181,7 @@ StarClaw 采用 **虫后 Queen → 领主 Overlord → 小龙虾 Claw** 三级�
 ### 3.1 虫后 Queen（闭源）
 
 - **角色：** 中央管控节点，整个 StarClaw 虫群的大脑
-- **模块：** `queen/api/` + `queen/swarm/` + `queen/bounty/` + `queen/forum/` + `queen/arena/` + `queen/core/` + `queen/web/` + `queen/mobile/`
+- **模块：** `queen/api/` + `queen/swarm/` + `queen/bounty/` + `queen/forum/` + `queen/arena/` + `queen/core/` + `queen/web/` + `larva/`
 - **职责：**
   - 全局节点注册 & 健康监控（心跳检测）
   - 任务路由与负载均衡（将用户请求分发到最优 Claw）
@@ -634,12 +634,12 @@ make tag → git push → CI/CD release.yml 触发
 ### 3.8 Claw 地址登录（Web3 式身份认证）
 
 类似 MetaMask 钱包连接 dApp，Claw 的 Ed25519 地址可以作为统一身份凭证，
-无需传统注册流程即可连接 Queen、Router 等所有服务。
+无需传统注册流程即可连接 Queen、Synapse 等所有服务。
 
 ```
 MetaMask 钱包地址  0xABC...     ←→   Claw 地址  claw:a3f8b2c1...
 私钥签名交易                     ←→   Claw 私钥签名 challenge
-连接 dApp 无需注册               ←→   连接 Queen/Router 无需注册
+连接 dApp 无需注册               ←→   连接 Queen/Synapse 无需注册
 钱包余额                         ←→   Claw 用量余额
 ```
 
@@ -659,10 +659,10 @@ MetaMask 钱包地址  0xABC...     ←→   Claw 地址  claw:a3f8b2c1...
 用户在 star-ai.net 点击 "使用 Claw 登录"
   → 显示 QR Code（含 challenge）
   → Claw 本地扫码 → 私钥签名 → 提交
-  → Router 验证签名 → 签发 JWT → 登录成功
+  → Synapse 验证签名 → 签发 JWT → 登录成功
 
 或手动输入 Claw 地址：
-  → Router 通过 Queen Swarm 查找该 Claw
+  → Synapse 通过 Queen Swarm 查找该 Claw
   → 发送 challenge → Claw 签名回传 → 验证通过
 ```
 
@@ -670,14 +670,14 @@ MetaMask 钱包地址  0xABC...     ←→   Claw 地址  claw:a3f8b2c1...
 
 | 阶段 | 范围 | 说明 |
 |------|------|------|
-| **Phase 1（当前）** | Router 独立用户系统 | 邮箱+密码注册/登录，快速上线 star-ai.net |
+| **Phase 1（当前）** | Synapse 独立用户系统 | 邮箱+密码注册/登录，快速上线 star-ai.net |
 | **Phase 2** | Claw 地址登录 | 作为额外登录方式，Claw 端生成密钥对+签名 |
-| **Phase 3** | 统一身份 | 一个 claw: 地址通行所有服务（Router/Queen/Overlord） |
+| **Phase 3** | 统一身份 | 一个 claw: 地址通行所有服务（Synapse/Queen/Overlord） |
 
 **设计原则：**
 - **渐进增强** — Phase 1 传统注册保证立即可用，Phase 2 加 Claw 登录不影响现有用户
 - **零摩擦** — 首次 Claw 登录自动创建账户，无需填写任何信息
-- **已有预留** — Router 用户表的 `queen_uid` 字段用于 Phase 3 账户关联
+- **已有预留** — Synapse 用户表的 `queen_uid` 字段用于 Phase 3 账户关联
 - **去中心化友好** — Claw 地址基于密钥对，不依赖中央用户数据库
 
 ### 3.9 星能经济（Star Energy Economy）
@@ -717,20 +717,20 @@ claw 地址同时就是钱包地址，星能余额归零意味着 Claw 休眠（
 - Ed25519 签名 = 转账/支付授权
 - Queen = 中央银行（记账 + 发行 + 汇率调控）
 
-#### 3.9.2 Router API Key → claw 地址签名认证
+#### 3.9.2 Synapse API Key → claw 地址签名认证
 
-**当前：** Router (star-ai.net) 使用独立 API Key 认证。
+**当前：** Synapse (star-ai.net) 使用独立 API Key 认证。
 **目标：** claw 私钥签名替代 API Key，实现身份认证 + 支付一体化。
 
 ```
-Claw 调用 Router API（目标流程）：
+Claw 调用 Synapse API（目标流程）：
 
   请求头:
     X-Claw-ID: claw:b49edd9cebbc...
     X-Claw-Timestamp: 1710000000
     X-Claw-Signature: <Ed25519(private_key, "POST|/v1/chat|1710000000")>
 
-  Router 验证:
+  Synapse 验证:
     ├── 签名有效？ → Ed25519 verify(public_key, signature)
     ├── 公钥 → claw 地址匹配？
     ├── 时间戳新鲜？（防重放，±5min）
@@ -755,14 +755,14 @@ Claw 调用 Router API（目标流程）：
 
 ```
 仍然可用（本地功能不受影响）：
-  ✅ BYOK 模式（用户自己的 API Key，不走 Router）
+  ✅ BYOK 模式（用户自己的 API Key，不走 Synapse）
   ✅ 本地 Ollama/vLLM 模型推理
   ✅ 已有数据/对话/文件/知识库
   ✅ P2P 通信（Gossip/DHT，Nydus 直连）
   ✅ 接收星能转账（可被"复活"）
 
 不可用（需要星能驱动）：
-  ❌ Router API 调用（签名认证通过但余额不足 → 拒绝）
+  ❌ Synapse API 调用（签名认证通过但余额不足 → 拒绝）
   ❌ 发布赏金任务
   ❌ 购买市场模板/插件
   ❌ 虫群任务分配（被跳过）
@@ -820,7 +820,7 @@ Claw 调用 Router API（目标流程）：
 | 市场购买 | 模板/插件售价（卖家定价） |
 | 节点间转账 | 转出金额（无手续费） |
 
-> BYOK 模式（用户自己的 API Key）不消耗星能，仅走 Router 转发。
+> BYOK 模式（用户自己的 API Key）不消耗星能，仅走 Synapse 转发。
 
 #### 3.9.6 与区块链的异同
 
@@ -846,7 +846,7 @@ Claw 调用 Router API（目标流程）：
 |------|------|------|
 | **Phase 1** | 密钥基础设施：BIP-39 + HD + 冷/热钱包 + 多签原语 | ✅ 已完成（v2026.0312） |
 | **Phase 2** | Queen 账本 API：余额查询 / 转账 / 冻结 / 交易历史 | ✅ 已完成（`queen/api/internal/handler/credit.go`） |
-| **Phase 3** | Router 签名认证：claw 签名替代 API Key + 按调用扣费 | ✅ 已完成（DualAuth + ClawSignatureAuth + QueenCreditClient） |
+| **Phase 3** | Synapse 签名认证：claw 签名替代 API Key + 按调用扣费 | ✅ 已完成（DualAuth + ClawSignatureAuth + QueenCreditClient） |
 | **Phase 4** | 血量系统：Claw 端余额监控 + 休眠/复活机制 | ✅ 已完成（`swarm/credit_client.go` HP 监控 + CLI） |
 | **Phase 5** | 充值通道：star-ai.net 充值 → claw 地址到账 | ✅ 已完成（支付回调自动到账 + ¥余额→星能兑换 + UI） |
 | **Phase 6** | 推理挖矿：GPU 贡献 → Queen 调度 → 星能发放（见 §3.10） | ✅ 已完成（ContributorService + 90/10 结算） |
@@ -862,7 +862,7 @@ Claw 调用 Router API（目标流程）：
 
 > **实现状态：** 算力贡献（ContributorService v2026.0312.1855）、信任体系（TrustScore + SpotChecker v2026.0312.1934）、NAT 穿透（Nydus v2026.0312.2039）、星能账本（Queen credit API）、Claw 端星能客户端（CreditClient + HP 监控 + CLI v2026.0313）均已完成。
 
-有 GPU 的 Claw 向 Queen 注册为 **算力提供者**，为其他无 GPU 节点或 Router 用户提供推理服务：
+有 GPU 的 Claw 向 Queen 注册为 **算力提供者**，为其他无 GPU 节点或 Synapse 用户提供推理服务：
 
 ```
 🦞 Claw-B（无 GPU，需要推理）             🦞 Claw-A（有 GPU，矿工）
@@ -1247,7 +1247,7 @@ inference:
 | `claw/scripts/` | 工具脚本 | ✅ |
 | `overlord/manager/` | 领主管理服务 | ❌ |
 | `overlord/console/` | 领主管理控制台 | ❌ |
-| `queen/mobile/` | Flutter 官方客户端 | ❌ |
+| `larva/` | Flutter 官方客户端 | ❌ |
 | `queen/docs/` | 全局架构文档 | ❌ |
 | `queen/core/` | 管理后台（虫后） | ❌ |
 | `queen/billing/` | 充值计费平台 | ❌ |
@@ -2500,7 +2500,7 @@ Queen 宕机进入 Feral 模式时，共识最有价值：
 | 蜕皮 | Molt | OTA 自动更新 | §3.7 | 基础✅ |
 | 虫群 | Swarm | 全网节点注册 + claw: 地址解析 | `queen/swarm/` | ✅ |
 | 虫巢 | Brood | 企业级节点注册 + claw: 地址解析 | `overlord/` | ✅ |
-| 提取器 | Extractor | AI 算力提取（LLM 路由 + 媒体算力 + 算力市场） | `router/` | ✅ |
+| 提取器/突触 | Extractor/Synapse | AI 算力提取（LLM 路由 + 媒体算力 + 算力市场） | `synapse/` | ✅ |
 | 虫群意志 | Hivemind | 分布式信任共识（投票/评价/仲裁） | §7.6 | 规划中 |
 | 脑虫 | Cerebrate | 跨会话记忆（5 类自动提取 + 对话注入 + CRUD） | §7.10 | ✅ v2026.0313 |
 | 星能 | Star Energy | 内部货币（Queen 账本 + Ed25519 签名转账 + HP 血量） | §3.9 | ✅ v2026.0313 |
@@ -2951,7 +2951,7 @@ docker run -d --name my-claw -p 8080:8080 ghcr.io/yinhe/starclaw:latest
 ```
 小龙虾可以活在你的口袋里——手机上的 Claw 是 🐕 Zergling（小狗）体型。
 
-Flutter App（已有 queen/mobile/）内嵌 Zergling Claw：
+Flutter App（已有 larva/）内嵌 Zergling Claw：
   ┌─────────────────────────────┐
   │  StarClaw App               │
   │  ┌───────────────────────┐  │
@@ -3503,7 +3503,7 @@ services:
 │  └────────────────────────────────────────────────────────────┘         │
 │        │ SSH (Nydus deploy)                                              │
 │        ▼                                                                 │
-│  Server B: star-ai.net (47.103.51.32) ─── Router (AI 算力网关)           │
+│  Server B: star-ai.net (47.103.51.32) ─── Synapse (AI 算力网关)           │
 │  ┌────────────────────────────────────────┐                              │
 │  │  star-ai.net/v1/* → gateway:8080      │                              │
 │  │  OpenAI 兼容 API 代理 + 按量计费        │                              │
@@ -3538,9 +3538,9 @@ services:
 | `overseer.starclaw.net` | Server C | Overseer | 监察王 — 技术监控面板 |
 | `grafana.starclaw.net` | Server C | Grafana | Prometheus 可视化（备用） |
 | `nydus.starclaw.net` | Server C | Nydus Dashboard | CI/CD 管理面板 |
-| `star-ai.net` | Server B | Router Gateway | AI 算力网关（OpenAI 兼容） |
+| `star-ai.net` | Server B | Synapse Gateway | AI 算力网关（OpenAI 兼容） |
 | `proxy.starclaw.net` | Server D | Proxy | 海外中转代理 |
-| `m.starclaw.me` | — | mobile/ | 移动端（未来） |
+| `m.starclaw.me` | — | larva/ | 移动端（未来） |
 
 ### 9.4 Queen API 网关架构
 
@@ -3626,7 +3626,7 @@ Queen 有 5 个后端微服务，需要统一的 API 网关层：
 | `deploy/` → `claw/deploy/` | 开源模块移入 claw/ |
 | `scripts/` → `claw/scripts/` | 开源模块移入 claw/ |
 | `site/` → `queen/site/` | 闭源模块移入 queen/ |
-| `mobile/` → `queen/mobile/` | 闭源模块移入 queen/ |
+| `mobile/` → `queen/mobile/` → `larva/` | 闭源模块移入 queen/ → 提升为根目录 |
 | `docs/` → `queen/docs/` | 全局架构文档移入 queen/ |
 | 新建 `claw/docs/` | 开源专属文档（README, DEPLOY, API） |
 | 新建 `overlord/` | 领主企业管理层（闭源） |
@@ -4469,7 +4469,7 @@ StarClaw:  Claw 自愿加入虫群 → 匿名心跳 → Queen 全网态势感知
 - [x] 计费模块 — 充值/扣费/支付宝+微信支付 V3（实现在 `queen/api/` 内，非独立服务）
 - [x] `queen/api/` 管理端点 — 用户管理（列表/角色/封禁）+ 内容审核（举报/审核/处理）+ 服务代理（bounty/forum/arena）
 - [x] `queen/web/` 用户门户 — 12 页（首页/注册/仪表盘/商城/商城详情/文档/社区/竞技/赏金/充值/开发者/Claw登录）
-- [x] `queen/mobile/` Flutter 客户端 — 8 屏（登录/首页/赏金/社区/充值/个人中心）
+- [x] `larva/` Flutter 客户端 — 8 屏（登录/首页/赏金/社区/充值/个人中心）
 - [ ] Molt 蜕皮更新 — 灰度发布、版本管理（通过 swarm 推送，Overlord 级已实现）
 - [ ] 节点自动发现 & 负载均衡
 
@@ -4691,8 +4691,8 @@ star-ai.net 就是虫群的提取器——坐落在各家 AI 提供商（气矿�
 **角色：** 统一 AI API 代理 + 媒体算力 API + 算力提供商市场。融合 [OpenRouter.ai](https://openrouter.ai)（LLM 路由）+ [fal.ai](https://fal.ai)（Serverless 媒体/算力 API）+ 算力商合作平台。
 **核心价值：** 用户无需自己申请各家 API Key，充值 Token 即可调用所有主流模型和算力服务。
 
-**代码位置：** `router/` 根目录（`router/gateway/` Go 服务 + `router/console/` React 控制台）
-**Provider 配置：** `router/providers/*.yaml`（每个 Provider = 一个气矿）
+**代码位置：** `synapse/` 根目录（`synapse/api/` Go 服务 + `synapse/web/` React 控制台）
+**Provider 配置：** `synapse/api/providers/*.yaml`（每个 Provider = 一个气矿）
 
 #### 17.4.1 与 OpenRouter 的异同
 
@@ -4921,7 +4921,7 @@ providers:
 - 共享片段：`queen/deploy/cdn-common.conf`
 
 **前端 nginx 覆盖范围：**
-`claw/web` · `queen/web` · `queen/core` · `queen/site` · `router/web` · `router/core` · `overlord/console` · `nydus/web`
+`claw/web` · `queen/web` · `queen/core` · `queen/site` · `synapse/web` · `synapse/core` · `overlord/console` · `nydus/web`
 
 ### 17.8 实施优先级
 

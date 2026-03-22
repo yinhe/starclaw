@@ -16,13 +16,20 @@ starclaw/
 │   ├── deploy/       部署配置
 │   ├── scripts/      工具脚本
 │   └── docs/         开源文档
+├── synapse/ ⛽       闭源（官方运营）— 突触 AI 算力网关
+│   ├── api/          Go 后端（star-ai.net）
+│   ├── web/          React 用户控制台
+│   └── proxy/        海外 AI API 中转
+├── larva/ 🐛         闭源（官方运营）— 幼虫跨平台客户端
+│   └── lib/          Flutter App（iOS/Android/桌面/Web）
 ├── overlord/ 👁️     闭源（企业付费）— 领主管理层
 │   ├── manager/      领主管理服务
 │   └── console/      领主管理控制台
 ├── queen/ 👑        闭源（官方运营）— 虫后中央管控
-│   ├── mobile/       Flutter 官方客户端
 │   ├── site/         官网落地页
 │   └── docs/         全局架构文档
+├── nydus/ 🕳️        闭源（官方运营）— 虫道部署管道
+├── spore/ 🍄        闭源（官方运营）— 孢子桌面安装器
 ├── docker-compose.yml
 └── .env.example
 ```

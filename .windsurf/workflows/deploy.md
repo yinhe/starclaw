@@ -1,5 +1,5 @@
 ---
-description: Deploy code to servers (Claw/Router/Queen). Use after git push nydus master.
+description: Deploy code to servers (Claw/Synapse/Queen). Use after git push nydus master.
 auto_execution_mode: 3
 ---
 
@@ -30,19 +30,19 @@ ssh -i ~/.ssh/claw_deploy root@starclaw.me "cd /opt/starclaw; bash scripts/serve
 ```
 This takes about 2 minutes. Expected output ends with Deploy complete.
 
-## Deploy Router (Server B - star-ai.net)
+## Deploy Synapse (Server B - star-ai.net)
 
 Two steps: sync code from Nydus then rebuild on Server B.
 
 // turbo
-4. Sync code from Nydus (Server C) to Router (Server B):
+4. Sync code from Nydus (Server C) to Synapse (Server B):
 ```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:router/ | ssh root@47.103.51.32 'cd /opt/starclaw/router && tar xf -'"
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:synapse/ | ssh root@47.103.51.32 'cd /opt/starclaw/synapse && tar xf -'"
 ```
 
-5. Build and restart Router API:
+5. Build and restart Synapse API:
 ```
-ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "cd /opt/starclaw/router/api && docker compose build --no-cache api 2>&1 | tail -5 && docker compose up -d api 2>&1"
+ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "cd /opt/starclaw/synapse/api && docker compose build --no-cache api 2>&1 | tail -5 && docker compose up -d api 2>&1"
 ```
 Expected: Container star-ai-api Started
 
@@ -70,7 +70,7 @@ ssh -i ~/.ssh/claw_deploy root@starclaw.me "curl -s http://localhost:8080/health
 ```
 
 // turbo
-9. Verify Router API health:
+9. Verify Synapse API health:
 ```
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "curl -s http://localhost:8096/health | head -1"
 ```
@@ -87,4 +87,4 @@ Note: Server C is accessed with starai_deploy key (not queen_deploy). The Nydus 
 
 - Nydus auto-deploy SSH failure: Server C to Server A SSH key is broken. Use manual sync (step 2+3).
 - git archive fails on wrong server: The bare repo only exists on Server C. Always run git archive FROM Server C via SSH.
-- Router build uses cache: Add --no-cache flag to docker compose build if code changes are not reflected.
+- Synapse build uses cache: Add --no-cache flag to docker compose build if code changes are not reflected.

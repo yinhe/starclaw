@@ -28,7 +28,7 @@
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌───────────────┐
-│   Claw 节点  │────▶│  Router/StarAI│────▶│  上游 LLM API  │
+│   Claw 节点  │────▶│ Synapse/StarAI│────▶│  上游 LLM API  │
 │  (用户端)    │◀────│  (star-ai.net)│◀────│  (OpenAI 等)   │
 └──────┬──────┘     └──────┬───────┘     └───────────────┘
        │                   │
@@ -87,7 +87,7 @@
 | 充值套餐 | `billing.go` SeedDefaultPackages | 体验包 ¥10 ~ 专业包 ¥1000，含赠送比例 |
 | Star Energy 发放 | `billing.go` grantStarEnergy() | 充值完成后自动将星能发放到绑定的 Claw 节点 |
 | StarAI Gateway 按次扣费 | `gateway.go` calculateAndBill() | 按 token 数量 × 模型单价计费，从 Queen 用户余额扣除 |
-| Router 消费 Star Energy | `queen_credit.go` Consume() | Router 每次 API 调用后通知 Queen 扣除星能 |
+| Synapse 消费 Star Energy | `queen_credit.go` Consume() | Synapse 每次 API 调用后通知 Queen 扣除星能 |
 | Queen Credit 系统 | `credit.go` | 完整的余额/消费/冻结/结算/转账功能 |
 | 节点绑定 | `node_binding.go` | Claw 节点 ↔ Queen 用户双向绑定，支持内部 API |
 | 城市合伙人 | `city.go` | 申请/审核/客户管理/佣金计算/Dashboard |
@@ -204,18 +204,18 @@ Claw 首次启动
 ```
 用户在 Claw 发送消息
     │
-    ├─ Claw inference router 选择模型
+    ├─ Claw inference 选择模型
     │
     ├─ 如果走 StarAI (star-ai.net)：
     │     Claw → POST star-ai.net/v1/chat/completions
     │     │       (带 Ed25519 签名 或 API Key)
     │     │
-    │     ├─ Router 鉴权 → 识别 claw_id / user_id
-    │     ├─ Router → upstream LLM API (OpenAI/Qwen/Claude...)
-    │     ├─ Router 收到响应 + usage{prompt_tokens, completion_tokens}
+    │     ├─ Synapse 鉴权 → 识别 claw_id / user_id
+    │     ├─ Synapse → upstream LLM API (OpenAI/Qwen/Claude...)
+    │     ├─ Synapse 收到响应 + usage{prompt_tokens, completion_tokens}
     │     │
     │     ├─ [方式 A] Claw 签名用户：
-    │     │     Router → Queen /internal/credits/consume
+    │     │     Synapse → Queen /internal/credits/consume
     │     │     扣除 Star Energy，返回 {deducted, balance}
     │     │
     │     ├─ [方式 B] API Key 用户 (star-ai.net 网页)：
@@ -306,7 +306,7 @@ Overseer 仪表盘
     │
     ├── 实时监控
     │     ├─ 节点在线状态（Swarm heartbeat，30s 间隔）
-    │     ├─ 服务健康（Queen/Router/Forum/Bounty/Arena ping）
+    │     ├─ 服务健康（Queen/Synapse/Forum/Bounty/Arena ping）
     │     └─ 告警（节点离线 / 服务异常 / 余额异常）
     │
     ├── 星能监控
@@ -548,7 +548,7 @@ SettlementBill              # 月度结算账单
 ## 九、风险和注意事项
 
 1. **支付安全**：支付宝/微信回调必须验签，防止伪造充值
-2. **星能超扣**：Router 消费是异步的，需要允许小额透支但设上限
+2. **星能超扣**：Synapse 消费是异步的，需要允许小额透支但设上限
 3. **佣金防刷**：城市合伙人自己充值不应产生佣金（需过滤 self-referral）
 4. **数据一致性**：充值 → 星能 → 佣金必须在同一事务中完成（已实现）
 5. **退款处理**：支付退款需要同步扣回星能和佣金（待实现）

@@ -1,4 +1,4 @@
-# Router ⛽ — Extractor（提取器/气矿）
+# Synapse ⛽ — Extractor（提取器/突触）
 
 > star-ai.net — StarClaw 生态的 AI 算力提取器
 
@@ -109,7 +109,7 @@ star-ai.net 融合三大能力：
 ## 目录结构
 
 ```
-router/                              # ⛽ Extractor — star-ai.net
+synapse/                             # ⛽ Synapse/Extractor — star-ai.net
 │
 ├── api/                             # 🚪 Go 后端（:8096）— 认证/计费/路由
 │   ├── cmd/server/main.go           # 入口
@@ -430,8 +430,8 @@ model 前缀是 qwen/* 或 deepseek/* 或国内算力商?
 ## 与其他模块关系
 
 ```
-router/ ⛽ Extractor
-    ├── api/     🚪 Go 后端 (:8096)            ← 公网入口 (star-ai.net)
+synapse/ ⛽ Synapse/Extractor
+    ├── api/     � Go 后端 (:8096)            ← 公网入口 (star-ai.net)
     │   ├── 🇨🇳 国内模型 → 直连 (Qwen/DeepSeek)
     │   └── 🇺🇸 海外模型 → 转发 Proxy
     ├── web/     🖥️ React 前端 (:3096)          ← 用户控制台

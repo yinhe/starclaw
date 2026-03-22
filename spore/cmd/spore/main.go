@@ -11,7 +11,7 @@ import (
 	"github.com/yinhe/starclaw-spore/pkg/runtime"
 )
 
-const version = "2026.0320.1502"
+const version = "2026.0321.0629"
 
 func main() {
 	if len(os.Args) < 2 {

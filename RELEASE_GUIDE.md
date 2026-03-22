@@ -323,8 +323,8 @@ When pushing to `nydus master`, the post-receive hook auto-detects changed direc
 | `queen/api/` | Server C (本地) | `docker compose build queen-api` |
 | `queen/swarm/` | Server C (本地) | `docker compose build swarm` |
 | `queen/site/` | **Server A** (starclaw.me) | SSH → Docker 构建 → 静态文件到 `/var/www/starclaw/website/` |
-| `router/api/` | Server B (star-ai.net) | SSH → `docker compose build api` |
-| `router/web/` | Server B (star-ai.net) | SSH → `docker compose build web` |
+| `synapse/api/` | Server B (star-ai.net) | SSH → `docker compose build api` |
+| `synapse/web/` | Server B (star-ai.net) | SSH → `docker compose build web` |
 
 Hook 位置: `/data/nydus/repos/starclaw.git/hooks/post-receive`
 

@@ -28,7 +28,7 @@
 | 代号 | 域名 | IP | 用途 | SSH |
 |------|------|----|------|-----|
 | A | starclaw.me | — | Claw 官方实例 | `ssh -i ~/.ssh/claw_deploy root@starclaw.me` |
-| B | star-ai.net | 47.103.51.32 | Router (AI 算力平台) | `ssh -i ~/.ssh/starai_deploy root@47.103.51.32` |
+| B | star-ai.net | 47.103.51.32 | Synapse (AI 算力平台) | `ssh -i ~/.ssh/starai_deploy root@47.103.51.32` |
 | C | starclaw.net | 43.106.158.26 | Queen + Nydus CI/CD | `ssh -i ~/.ssh/queen_deploy root@43.106.158.26` |
 | D | proxy.starclaw.net | 47.237.11.193 | 海外中转 Proxy | `ssh -i ~/.ssh/starai_proxy_deploy root@47.237.11.193` |
 
@@ -203,7 +203,7 @@ git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-### Router/Gateway (Server B)
+### Synapse/Gateway (Server B)
 
 ```bash
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32

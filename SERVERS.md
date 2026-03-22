@@ -5,7 +5,7 @@
 | 服务器 | 域名 | IP | 角色 | SSH |
 |--------|------|-----|------|-----|
 | A | starclaw.me | (域名直连) | Claw — 开源官网 + app + api | `ssh -i ~/.ssh/claw_deploy root@starclaw.me` |
-| B | star-ai.net | 47.103.51.32 | Router — AI 算力平台 (国内) | `ssh -i ~/.ssh/starai_deploy root@47.103.51.32` |
+| B | star-ai.net | 47.103.51.32 | Synapse — AI 算力平台 (国内) | `ssh -i ~/.ssh/starai_deploy root@47.103.51.32` |
 | C | starclaw.net | 43.106.158.26 | Queen + Nydus + Proxy — 中央控制 (新加坡) | `ssh -i ~/.ssh/queen_deploy root@43.106.158.26` |
 
 ## 架构全景
@@ -17,7 +17,7 @@
  │    ├── app.starclaw.me    → claw-web (:3000)
  │    └── api.starclaw.me    → claw-api (:8080)
  │
- ├── star-ai.net ─────────── Server B (Router)
+ ├── star-ai.net ─────────── Server B (Synapse)
  │    ├── star-ai.net        → star-ai-web (:3096)
  │    ├── api.star-ai.net    → star-ai-api (:8096)
  │    ├── star-ai.net/v1/*   → star-ai-gateway (:8085)  ← API Gateway
@@ -80,7 +80,7 @@ ssh -i ~/.ssh/queen_deploy root@43.106.158.26 "\
 
 > **注意：** Server A 没有 npm，必须用 Docker 多阶段构建。`queen-web` 容器 (Server C :8086) 是 Queen Dashboard (starclaw.net)，不是官网。
 
-## Server B — Router (star-ai.net)
+## Server B — Synapse (star-ai.net)
 
 AI 算力平台 + API Gateway，面向付费用户和开发者。
 
@@ -95,8 +95,8 @@ AI 算力平台 + API Gateway，面向付费用户和开发者。
 | nginx | nginx | 80/443 | 反向代理 |
 | **Nydus Worm** | **systemd** | **8097** | **部署执行 Agent（本地监听）** |
 
-**代码目录：** `router/` (api + web + core), Gateway 用 `queen/api`
-**部署路径：** `/opt/starclaw/router/` + `/opt/starclaw/gateway/`
+**代码目录：** `synapse/` (api + web + core), Gateway 用 `queen/api`
+**部署路径：** `/opt/starclaw/synapse/` + `/opt/starclaw/gateway/`
 **nginx 配置：** `/dnmp/services/nginx/conf.d/starai-router.conf`
 **Worm 二进制：** `/opt/nydus-worm`，配置 `/opt/nydus/worm.yaml`，systemd: `nydus-worm.service`
 
@@ -107,7 +107,7 @@ star-ai.net/v1/models           → gateway:8085  (模型列表)
 star-ai.net/v1/chat/completions → gateway:8085  (聊天代理)
 star-ai.net/v1/api-keys         → gateway:8085  (API Key 管理)
 star-ai.net/*                   → web:3096      (前端)
-api.star-ai.net/*               → api:8096      (Router API)
+api.star-ai.net/*               → api:8096      (Synapse API)
 ```
 
 ### Gateway 更新流程
@@ -213,7 +213,7 @@ starclaw.net                             star-ai.net/v1/*
 ```
 starclaw/                        # 私有 monorepo
 ├── claw/           🦞           # Server A — 开源 Claw
-├── router/         ⛽           # Server B — star-ai.net
+├── synapse/        ⛽           # Server B — star-ai.net
 ├── queen/proxy/    🌏           # Server C — AI API 海外中转 (proxy.starclaw.net)
 ├── queen/          👑           # Server C — Queen 中央控制
 ├── overlord/       👁️           # Server C — 企业 AI 管控 (overlord.starclaw.net)
@@ -247,7 +247,7 @@ starclaw/                        # 私有 monorepo
      ┌────────▼──────┐  ┌─▼──────────┐ │
      │  Server A     │  │ Server B   │ │
      │  starclaw.me  │  │ star-ai.net│ │
-     │  (Claw)       │  │ (Router)   │ │
+     │  (Claw)       │  │ (Synapse)  │ │
      └───────┬───────┘  └──┬──────┬──┘ │
              │             │      │    │
              │    ┌────────▼──┐   │    │
