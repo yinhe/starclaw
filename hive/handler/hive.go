@@ -28,10 +28,11 @@ type HiveHandler struct {
 	docker *service.DockerService
 	mysql  *service.MySQLService
 	nginx  *service.NginxService
+	crypto *service.CryptoService
 }
 
-func NewHiveHandler(db *gorm.DB, cfg *config.Config, docker *service.DockerService, mysql *service.MySQLService, nginx *service.NginxService) *HiveHandler {
-	return &HiveHandler{db: db, cfg: cfg, docker: docker, mysql: mysql, nginx: nginx}
+func NewHiveHandler(db *gorm.DB, cfg *config.Config, docker *service.DockerService, mysql *service.MySQLService, nginx *service.NginxService, crypto *service.CryptoService) *HiveHandler {
+	return &HiveHandler{db: db, cfg: cfg, docker: docker, mysql: mysql, nginx: nginx, crypto: crypto}
 }
 
 // ──── Create Claw Instance ────
@@ -139,8 +140,7 @@ func (h *HiveHandler) provisionInstance(inst *model.ClawInstance) {
 	}
 	inst.DBName = dbName
 	inst.DBUser = dbUser
-	inst.DBPassword = dbPass
-	h.db.Save(inst)
+	inst.DBPassword = dbPass // plaintext for Docker
 
 	// Step 2: Create data directories
 	dataDir := filepath.Join(h.cfg.DataDir, "instances", inst.Slug)
@@ -148,7 +148,7 @@ func (h *HiveHandler) provisionInstance(inst *model.ClawInstance) {
 		os.MkdirAll(filepath.Join(dataDir, sub), 0755)
 	}
 
-	// Step 3: Create and start Docker container
+	// Step 3: Create and start Docker container (needs plaintext credentials)
 	containerID, err := h.docker.CreateContainer(inst)
 	if err != nil {
 		log.Printf("[hive] failed to create container for %s: %v", inst.Slug, err)
@@ -156,6 +156,16 @@ func (h *HiveHandler) provisionInstance(inst *model.ClawInstance) {
 		return
 	}
 	inst.ContainerID = containerID
+
+	// Encrypt sensitive fields before persisting to DB
+	if h.crypto != nil {
+		if enc, err := h.crypto.Encrypt(inst.DBPassword, "db_password"); err == nil {
+			inst.DBPassword = enc
+		}
+		if enc, err := h.crypto.Encrypt(inst.JWTSecret, "jwt_secret"); err == nil {
+			inst.JWTSecret = enc
+		}
+	}
 	h.db.Save(inst)
 
 	// Step 4: Generate nginx config
@@ -439,6 +449,22 @@ func (h *HiveHandler) allocatePort() (int, error) {
 		return 0, fmt.Errorf("no ports available in range %d-%d", h.cfg.PortRangeStart, h.cfg.PortRangeEnd)
 	}
 	return next, nil
+}
+
+// decryptInstance returns a copy of the instance with sensitive fields decrypted.
+// Use this when you need plaintext credentials (e.g., recreating a container).
+func (h *HiveHandler) decryptInstance(inst *model.ClawInstance) *model.ClawInstance {
+	if h.crypto == nil {
+		return inst
+	}
+	copy := *inst
+	if dec, err := h.crypto.Decrypt(copy.DBPassword, "db_password"); err == nil {
+		copy.DBPassword = dec
+	}
+	if dec, err := h.crypto.Decrypt(copy.JWTSecret, "jwt_secret"); err == nil {
+		copy.JWTSecret = dec
+	}
+	return &copy
 }
 
 func randomHex(length int) string {

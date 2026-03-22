@@ -44,12 +44,18 @@ func main() {
 	}
 	nginxSvc := service.NewNginxService(cfg)
 
+	cryptoSvc, err := service.NewCryptoService()
+	if err != nil {
+		log.Fatalf("[hive] crypto service init failed: %v", err)
+	}
+	log.Printf("[hive] encryption active (key fingerprint: %s)", cryptoSvc.Fingerprint())
+
 	// Ensure Docker network exists
 	if err := dockerSvc.EnsureNetwork(); err != nil {
 		log.Printf("[hive] warning: ensure network: %v", err)
 	}
 
-	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc)
+	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc, cryptoSvc)
 
 	// Router
 	gin.SetMode(gin.ReleaseMode)
