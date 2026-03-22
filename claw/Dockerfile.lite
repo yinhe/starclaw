@@ -1,12 +1,20 @@
-# Claw Lite — Spore + SQLite, single container, ~30MB
+# Claw Lite — Spore + SQLite + Web UI, single container
 # Used for Spark tier (free forever)
 
-# Stage 1: Build claw-api binary (needs CGO for SQLite)
+# Stage 0: Build web frontend
+FROM node:20-alpine AS build-web
+WORKDIR /web
+COPY claw/web/package.json claw/web/package-lock.json ./
+RUN npm ci --prefer-offline
+COPY claw/web/ ./
+RUN npm run build
+
+# Stage 1: Build claw-api binary (needs CGO for SQLite, embeds web dist)
 FROM golang:1.24-alpine AS build-claw
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
 COPY claw/api/ ./
-RUN mkdir -p internal/web/dist && echo "lite" > internal/web/dist/.keep
+COPY --from=build-web /web/dist ./internal/web/dist
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /claw-api ./cmd/server
 
