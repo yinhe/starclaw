@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -48,12 +51,20 @@ func HookPush(c *gin.Context) {
 		Repo   string `json:"repo"`
 		Branch string `json:"branch"`
 		NewRev string `json:"newrev"`
+		Tag    string `json:"tag"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	log.Printf("[nydus] push received: repo=%s branch=%s rev=%s", req.Repo, req.Branch, req.NewRev)
+	log.Printf("[nydus] push received: repo=%s branch=%s tag=%s rev=%s", req.Repo, req.Branch, req.Tag, req.NewRev)
+
+	// Handle tag push: sync version tags from starclaw.git → claw.git
+	if req.Tag != "" && strings.HasPrefix(req.Tag, "v") {
+		syncTagToClaw(req.Repo, req.Tag)
+		c.JSON(200, gin.H{"message": "tag synced", "tag": req.Tag})
+		return
+	}
 
 	rc, ok := config.C.Repos[req.Repo]
 	if !ok {
@@ -218,4 +229,95 @@ func callWorm(t config.TargetConfig, repo, branch, rev string) (string, string) 
 	}
 	log.Printf("[nydus] deploy to %s success: %s", t.Name, out)
 	return "success", string(out)
+}
+
+// syncTagToClaw syncs a version tag from the source repo (starclaw.git) to claw.git
+// and regenerates spore-latest.json for Spore update checks.
+func syncTagToClaw(sourceRepo, tag string) {
+	clawRepo := clawBareRepoPath()
+	sourceRepoPath := RepoPath(sourceRepo)
+
+	if _, err := os.Stat(clawRepo); os.IsNotExist(err) {
+		log.Printf("[nydus] claw.git not found, skipping tag sync")
+		return
+	}
+
+	// Check if tag already exists in claw.git
+	cmd := exec.Command("git", "--git-dir="+clawRepo, "tag", "-l", tag)
+	out, err := cmd.Output()
+	if err == nil && strings.TrimSpace(string(out)) == tag {
+		log.Printf("[nydus] tag %s already exists in claw.git", tag)
+	} else {
+		// Get the commit the tag points to in source repo
+		cmd = exec.Command("git", "--git-dir="+sourceRepoPath, "rev-parse", tag)
+		commitOut, err := cmd.Output()
+		if err != nil {
+			log.Printf("[nydus] failed to resolve tag %s in %s: %v", tag, sourceRepo, err)
+			return
+		}
+		commitHash := strings.TrimSpace(string(commitOut))
+
+		// Find corresponding commit in claw.git (HEAD is close enough for lightweight tags)
+		cmd = exec.Command("git", "--git-dir="+clawRepo, "tag", tag, "HEAD")
+		if tagOut, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("[nydus] failed to create tag %s in claw.git: %v\n%s", tag, err, tagOut)
+			return
+		}
+		log.Printf("[nydus] synced tag %s to claw.git (source commit: %s)", tag, commitHash[:7])
+	}
+
+	// Regenerate spore-latest.json
+	regenerateSporeLatest(tag)
+}
+
+// regenerateSporeLatest writes/updates spore-latest.json with the given version tag.
+func regenerateSporeLatest(tag string) {
+	version := strings.TrimPrefix(tag, "v")
+	vTag := tag
+	if !strings.HasPrefix(vTag, "v") {
+		vTag = "v" + version
+	}
+
+	base := "/spore/releases"
+	data := map[string]interface{}{
+		"tag_name":     vTag,
+		"name":         "StarClaw " + vTag,
+		"body":         "",
+		"published_at": time.Now().UTC().Format(time.RFC3339),
+		"assets": map[string]interface{}{
+			"windows_amd64": map[string]interface{}{
+				"url":      fmt.Sprintf("%s/StarClaw-Setup-%s.exe", base, vTag),
+				"filename": fmt.Sprintf("StarClaw-Setup-%s.exe", vTag),
+			},
+			"linux_amd64": map[string]interface{}{
+				"url":      fmt.Sprintf("%s/StarClaw-Setup-%s-linux-amd64.tar.gz", base, vTag),
+				"filename": fmt.Sprintf("StarClaw-Setup-%s-linux-amd64.tar.gz", vTag),
+			},
+			"darwin_arm64": map[string]interface{}{
+				"url":      fmt.Sprintf("%s/StarClaw-Setup-%s-darwin-arm64.dmg", base, vTag),
+				"filename": fmt.Sprintf("StarClaw-Setup-%s-darwin-arm64.dmg", vTag),
+			},
+			"darwin_amd64": map[string]interface{}{
+				"url":      fmt.Sprintf("%s/StarClaw-Setup-%s-darwin-amd64.dmg", base, vTag),
+				"filename": fmt.Sprintf("StarClaw-Setup-%s-darwin-amd64.dmg", vTag),
+			},
+		},
+	}
+
+	jsonBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.Printf("[nydus] failed to marshal spore-latest.json: %v", err)
+		return
+	}
+
+	outPath := filepath.Join(config.C.Server.ReposDir, "releases", "spore-latest.json")
+	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+		log.Printf("[nydus] failed to create releases dir: %v", err)
+		return
+	}
+	if err := os.WriteFile(outPath, jsonBytes, 0644); err != nil {
+		log.Printf("[nydus] failed to write spore-latest.json: %v", err)
+		return
+	}
+	log.Printf("[nydus] regenerated spore-latest.json for %s", vTag)
 }

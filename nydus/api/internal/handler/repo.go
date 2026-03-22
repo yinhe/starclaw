@@ -57,14 +57,22 @@ func InitBareRepo(name string) {
 func InstallHook(name string) {
 	hookPath := filepath.Join(RepoPath(name), "hooks", "post-receive")
 	script := fmt.Sprintf(`#!/bin/sh
-# Nydus post-receive hook — notify server on push
+# Nydus post-receive hook — notify server on push (branches + tags)
 while read oldrev newrev refname; do
-  branch=$(echo "$refname" | sed 's|refs/heads/||')
-  curl -sf -X POST "http://127.0.0.1:%s/hooks/push?secret=%s" \
-    -H "Content-Type: application/json" \
-    -d "{\"repo\":\"%s\",\"branch\":\"$branch\",\"newrev\":\"$newrev\"}" || true
+  if echo "$refname" | grep -q '^refs/tags/'; then
+    tag=$(echo "$refname" | sed 's|refs/tags/||')
+    curl -sf -X POST "http://127.0.0.1:%s/hooks/push?secret=%s" \
+      -H "Content-Type: application/json" \
+      -d "{\"repo\":\"%s\",\"branch\":\"\",\"newrev\":\"$newrev\",\"tag\":\"$tag\"}" || true
+  else
+    branch=$(echo "$refname" | sed 's|refs/heads/||')
+    curl -sf -X POST "http://127.0.0.1:%s/hooks/push?secret=%s" \
+      -H "Content-Type: application/json" \
+      -d "{\"repo\":\"%s\",\"branch\":\"$branch\",\"newrev\":\"$newrev\",\"tag\":\"\"}" || true
+  fi
 done
-`, config.C.Server.Port, config.C.Server.Secret, name)
+`, config.C.Server.Port, config.C.Server.Secret, name,
+		config.C.Server.Port, config.C.Server.Secret, name)
 	os.WriteFile(hookPath, []byte(script), 0755)
 }
 
