@@ -1,17 +1,18 @@
 # Claw Lite — Spore + SQLite, single container, ~30MB
 # Used for Spark tier (free forever)
 
-# Stage 1: Build claw-api binary
+# Stage 1: Build claw-api binary (needs CGO for SQLite)
 FROM golang:1.24-alpine AS build-claw
+RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
-COPY api/ ./
+COPY claw/api/ ./
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /claw-api ./cmd/server
 
 # Stage 2: Build spore binary
 FROM golang:1.24-alpine AS build-spore
 WORKDIR /src
-COPY ../spore/ ./
+COPY spore/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /spore ./cmd/spore
 
@@ -25,7 +26,7 @@ COPY --from=build-claw /claw-api ./claw-api
 COPY --from=build-spore /spore /usr/bin/spore
 
 # Spore manifest for claw-lite
-COPY lite-manifest.json ./manifest.json
+COPY claw/lite-manifest.json ./manifest.json
 
 # Data volume for SQLite + identity keys
 VOLUME /opt/claw/data
