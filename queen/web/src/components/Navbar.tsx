@@ -22,6 +22,7 @@ export function Navbar() {
           {navLink('/forum', '论坛')}
           {navLink('/arena', '龙虾社区')}
           {navLink('/bounty', '赏金')}
+          {navLink('/invest', '投资')}
           {navLink('/docs', '文档')}
         </div>
         <div className="flex items-center gap-3">

@@ -11,6 +11,7 @@ import { BountyPage } from './pages/BountyPage';
 import { BillingPage } from './pages/BillingPage';
 import { DeveloperPage } from './pages/DeveloperPage';
 import { ClawLoginPage } from './pages/ClawLoginPage';
+import { InvestPage } from './pages/InvestPage';
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/bounty" element={<BountyPage />} />
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/developer" element={<DeveloperPage />} />
+        <Route path="/invest" element={<InvestPage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -325,6 +325,99 @@ export interface RechargeOrder {
   created_at: string;
 }
 
+// ─── Investor (星钻) ───
+
+export interface InvestorPoolInfo {
+  name: string;
+  total_supply: number;
+  issued: number;
+  remaining: number;
+  nav_fen: number;
+  nav_yuan: number;
+  floor_price_fen: number;
+  floor_price_yuan: number;
+  price_fen: number;
+  price_yuan: number;
+  price_driver: string;
+  current_round: string;
+  current_round_label: string;
+  active_investors: number;
+  total_raised_yuan: number;
+  pool_balance_yuan: number;
+  min_recharge_yuan: number;
+  activation_yuan: number;
+  terms_available: number[];
+}
+
+export interface InvestorProfile {
+  investor: {
+    id: string;
+    user_id: string;
+    name: string;
+    email: string;
+    phone: string;
+    shares: number;
+    total_dividends: number;
+    total_invested: number;
+    activated: boolean;
+    activated_at: string | null;
+    agreement_term: number;
+    agreement_signed_at: string | null;
+    agreement_expires_at: string | null;
+    source: string;
+    status: string;
+    joined_at: string;
+  };
+  share_percent: string;
+  portfolio_yuan: number;
+  nav_yuan: number;
+  price_yuan: number;
+  price_driver: string;
+  pool_total_shares: number;
+  pool_balance: number;
+  min_recharge_yuan: number;
+  activation_yuan: number;
+  dividends: any[];
+  transactions: any[];
+}
+
+export interface DailyEarning {
+  date: string;
+  pool_fen: number;
+  pool_yuan: number;
+  my_fen: number;
+  my_yuan: number;
+  transactions: number;
+}
+
+export interface EquityGrant {
+  id: string;
+  partner_id: string;
+  total_shares: number;
+  vested_shares: number;
+  cliff_months: number;
+  vesting_months: number;
+  grant_date: string;
+  cliff_date: string;
+  full_vest_date: string;
+  strike_price: number;
+  current_value: number;
+  status: string;
+}
+
+export const investorAPI = {
+  poolInfo: () => request<InvestorPoolInfo>('/investor/pool'),
+  register: () => request<{ investor: any; message: string }>('/investor/register', { method: 'POST' }),
+  signAgreement: (term: number) =>
+    request<{ investor: any; message: string }>('/investor/agree', { method: 'POST', body: JSON.stringify({ term }) }),
+  recharge: (amount: number) =>
+    request<any>('/investor/recharge', { method: 'POST', body: JSON.stringify({ amount }) }),
+  myProfile: () => request<InvestorProfile>('/investor/me'),
+  dailyEarnings: () =>
+    request<{ investor: any; share_ratio: number; share_percent: string; today_earning: number; last_30d_total: number; daily_earnings: DailyEarning[] }>('/investor/earnings'),
+  equity: () => request<{ grants: EquityGrant[] }>('/partner/equity'),
+};
+
 export const billingAPI = {
   packages: () => request<{ packages: RechargePackage[] }>('/pay/packages'),
   methods: () => request<{ methods: string[] }>('/pay/methods'),
