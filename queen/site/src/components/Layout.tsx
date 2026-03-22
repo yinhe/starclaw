@@ -18,7 +18,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { label: t('nav.pricing'), to: '/pricing' },
     { label: t('nav.download'), to: '/download' },
     { label: t('nav.docs'), to: '/docs' },
-    { label: '星钻', to: '/invest' },
   ]
 
   useEffect(() => {
@@ -183,7 +182,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><a href="https://github.com/yinhe/starclaw" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a></li>
                 <li><Link to="/docs" className="hover:text-white transition-colors">{t('nav.docs')}</Link></li>
                 <li><Link to="/partners" className="hover:text-white transition-colors">{t('nav.partners')}</Link></li>
-                <li><Link to="/invest" className="hover:text-white transition-colors">星钻 Star Diamond</Link></li>
               </ul>
             </div>
             <div>
