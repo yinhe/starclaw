@@ -72,12 +72,12 @@ foreach ($p in $platforms) {
     $sz = '{0:N1}' -f ((Get-Item $sporeBin).Length / 1MB)
     Write-Host "  -> spore ($sz MB)"
 
-    # 2. Cross-compile Claw API
+    # 2. Cross-compile Claw API (with version stamp matching Docker builds)
     $clawBinName = "claw-api$($p.Ext)"
     $clawBin = Join-Path $Dist "claw-api-$label$($p.Ext)"
     Write-Host "  [2/5] Cross-compiling Claw API..."
     Push-Location $ClawDir
-    go build -ldflags="-s -w" -o $clawBin ./cmd/server
+    go build -ldflags="-s -w -X github.com/yinhe/starclaw/internal/molt.Version=$gitVersion" -o $clawBin ./cmd/server
     if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Failed to build claw for $label" }
     Pop-Location
     $sz = '{0:N1}' -f ((Get-Item $clawBin).Length / 1MB)
