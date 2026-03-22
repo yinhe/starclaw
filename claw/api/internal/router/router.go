@@ -343,6 +343,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 		// P9: Security engine
 		keyMgr, _ := security.NewKeyManager()
+		security.SetGlobalKeyManager(keyMgr)
 		auditChain := security.NewAuditChain(db)
 
 		// P10: AI-Native engines

@@ -4,11 +4,15 @@ import (
 	"log"
 
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/security"
 )
 
 // CreateFromConfig creates a ModelProvider from a ModelConfig, checking the registry first.
 // This is a shared factory used by both the chat handler and the system tool (for agent delegation).
 func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
+	// Decrypt API key if stored encrypted (transparent: handles both enc: and plaintext)
+	cfg.APIKey = security.DecryptAPIKey(cfg.APIKey)
+
 	// Check registry first, but only if no user-specific API key override.
 	// This allows user-configured API keys (e.g. star-ai sk-star-xxx) to
 	// take priority over pre-registered providers (e.g. Ed25519 identity auth).

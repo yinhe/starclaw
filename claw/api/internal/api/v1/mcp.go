@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/security"
 	"github.com/yinhe/starclaw/internal/tool"
 	"gorm.io/gorm"
 )
@@ -68,7 +69,7 @@ func (h *MCPHandler) AddServer(c *gin.Context) {
 		UserID:    userID,
 		Name:      req.Name,
 		BaseURL:   req.BaseURL,
-		APIKey:    req.APIKey,
+		APIKey:    security.EncryptAPIKey(req.APIKey),
 		Status:    "active",
 		ToolCount: len(tools),
 	}
@@ -117,7 +118,7 @@ func (h *MCPHandler) TestServer(c *gin.Context) {
 		return
 	}
 
-	cfg := mcp.ServerConfig{BaseURL: server.BaseURL, APIKey: server.APIKey, Name: server.Name}
+	cfg := mcp.ServerConfig{BaseURL: server.BaseURL, APIKey: security.DecryptAPIKey(server.APIKey), Name: server.Name}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
