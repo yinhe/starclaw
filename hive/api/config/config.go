@@ -6,17 +6,17 @@ import (
 )
 
 type Config struct {
-	Port          int    // Hive Controller API port
-	Domain        string // Base domain, e.g. starclaw.me
-	DataDir       string // Base data directory
-	NginxConfDir  string // Nginx config directory for generated confs
-	SSLCertPath   string // Wildcard SSL cert path
-	SSLKeyPath    string // Wildcard SSL key path
-	ClawImage     string // Docker image for Claw API
-	WebImage      string // Docker image for Claw Web (shared)
-	NetworkName   string // Docker network name
-	PortRangeStart int   // Starting port for Claw instances
-	PortRangeEnd   int   // Ending port
+	Port           int    // Hive Controller API port
+	Domain         string // Base domain, e.g. starclaw.me
+	DataDir        string // Base data directory
+	NginxConfDir   string // Nginx config directory for generated confs
+	SSLCertPath    string // Wildcard SSL cert path
+	SSLKeyPath     string // Wildcard SSL key path
+	ClawImage      string // Docker image for Claw API
+	WebImage       string // Docker image for Claw Web (shared)
+	NetworkName    string // Docker network name
+	PortRangeStart int    // Starting port for Claw instances
+	PortRangeEnd   int    // Ending port
 
 	// Shared MySQL for hive instances
 	MySQLHost     string
@@ -33,8 +33,27 @@ type Config struct {
 	OverlordURL   string
 	OverlordToken string
 
+	// Queen billing (StarAI payment)
+	QueenURL   string
+	QueenToken string
+
+	// Aliyun ECS
+	AliyunAccessKeyID     string
+	AliyunAccessKeySecret string
+	AliyunRegionID        string
+	AliyunVPCID           string
+	AliyunVSwitchID       string
+	AliyunSecurityGroupID string
+	AliyunImageID         string
+
+	// Aliyun DNS
+	AliyunDNSDomain string // same as Domain by default
+
+	// Hive server public IP (for DNS A records in hive mode)
+	HivePublicIP string
+
 	// Hive admin token
-	AdminToken    string
+	AdminToken string
 
 	// Free tier limits
 	FreeTierExpireDays int
@@ -66,6 +85,20 @@ func Load() *Config {
 
 		OverlordURL:   envStr("HIVE_OVERLORD_URL", "https://overlord.starclaw.net"),
 		OverlordToken: envStr("HIVE_OVERLORD_TOKEN", ""),
+
+		QueenURL:   envStr("HIVE_QUEEN_URL", "https://queen.starclaw.net"),
+		QueenToken: envStr("HIVE_QUEEN_TOKEN", ""),
+
+		AliyunAccessKeyID:     envStr("ALIYUN_ACCESS_KEY_ID", ""),
+		AliyunAccessKeySecret: envStr("ALIYUN_ACCESS_KEY_SECRET", ""),
+		AliyunRegionID:        envStr("ALIYUN_REGION_ID", "cn-shanghai"),
+		AliyunVPCID:           envStr("ALIYUN_VPC_ID", ""),
+		AliyunVSwitchID:       envStr("ALIYUN_VSWITCH_ID", ""),
+		AliyunSecurityGroupID: envStr("ALIYUN_SECURITY_GROUP_ID", ""),
+		AliyunImageID:         envStr("ALIYUN_IMAGE_ID", ""),
+
+		AliyunDNSDomain: envStr("ALIYUN_DNS_DOMAIN", envStr("HIVE_DOMAIN", "starclaw.me")),
+		HivePublicIP:    envStr("HIVE_PUBLIC_IP", ""),
 
 		AdminToken:         envStr("HIVE_ADMIN_TOKEN", ""),
 		FreeTierExpireDays: envInt("HIVE_FREE_EXPIRE_DAYS", 7),

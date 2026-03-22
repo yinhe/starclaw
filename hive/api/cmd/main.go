@@ -28,12 +28,13 @@ func main() {
 	}
 
 	// Auto-migrate
-	if err := db.AutoMigrate(&model.ClawInstance{}, &model.SubdomainBlacklist{}); err != nil {
+	if err := db.AutoMigrate(&model.ClawInstance{}, &model.SubdomainBlacklist{}, &model.Plan{}, &model.Order{}); err != nil {
 		log.Fatalf("[hive] auto-migrate failed: %v", err)
 	}
 
-	// Seed blacklist
+	// Seed blacklist + plans
 	seedBlacklist(db)
+	seedPlans(db)
 
 	// Init services
 	dockerSvc, err := service.NewDockerService(cfg)
@@ -61,7 +62,42 @@ func main() {
 		log.Printf("[hive] warning: ensure network: %v", err)
 	}
 
-	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc, vault)
+	// Queen billing service (optional — needed for paid plans)
+	var billingSvc *service.BillingService
+	if cfg.QueenURL != "" && cfg.QueenToken != "" {
+		billingSvc = service.NewBillingService(cfg.QueenURL, cfg.QueenToken)
+		log.Printf("[hive] billing service connected to %s", cfg.QueenURL)
+	} else {
+		log.Printf("[hive] warning: Queen billing not configured (paid plans disabled)")
+	}
+
+	// Aliyun ECS service (optional — needed for pro/enterprise plans)
+	var ecsSvc *service.ECSService
+	if cfg.AliyunAccessKeyID != "" {
+		ecsSvc = service.NewECSService(service.ECSConfig{
+			AccessKeyID:     cfg.AliyunAccessKeyID,
+			AccessKeySecret: cfg.AliyunAccessKeySecret,
+			RegionID:        cfg.AliyunRegionID,
+			VPCID:           cfg.AliyunVPCID,
+			VSwitchID:       cfg.AliyunVSwitchID,
+			SecurityGroupID: cfg.AliyunSecurityGroupID,
+			ImageID:         cfg.AliyunImageID,
+		})
+		log.Printf("[hive] ECS service ready (region: %s)", cfg.AliyunRegionID)
+	}
+
+	// Aliyun DNS service (optional — auto DNS record management)
+	var dnsSvc *service.DNSService
+	if cfg.AliyunAccessKeyID != "" && cfg.AliyunDNSDomain != "" {
+		dnsSvc = service.NewDNSService(service.DNSConfig{
+			AccessKeyID:     cfg.AliyunAccessKeyID,
+			AccessKeySecret: cfg.AliyunAccessKeySecret,
+			Domain:          cfg.AliyunDNSDomain,
+		})
+		log.Printf("[hive] DNS service ready (domain: %s)", cfg.AliyunDNSDomain)
+	}
+
+	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc, vault, billingSvc, ecsSvc, dnsSvc)
 
 	// Router
 	gin.SetMode(gin.ReleaseMode)
@@ -80,6 +116,8 @@ func main() {
 	// Public API (with rate limiting in production)
 	hive := r.Group("/hive")
 	{
+		hive.GET("/plans", h.ListPlans)
+		hive.GET("/balance", h.CheckBalance)
 		hive.POST("/claws", h.CreateInstance)
 		hive.GET("/claws", h.ListInstances)
 		hive.GET("/claws/:slug", h.GetInstance)
@@ -134,4 +172,17 @@ func seedBlacklist(db *gorm.DB) {
 		db.Create(&e)
 	}
 	log.Printf("[hive] seeded %d reserved subdomains", len(entries))
+}
+
+func seedPlans(db *gorm.DB) {
+	var count int64
+	db.Model(&model.Plan{}).Count(&count)
+	if count > 0 {
+		return
+	}
+	plans := model.DefaultPlans()
+	for _, p := range plans {
+		db.Create(&p)
+	}
+	log.Printf("[hive] seeded %d plans", len(plans))
 }
