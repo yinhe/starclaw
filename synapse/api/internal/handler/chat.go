@@ -49,8 +49,13 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	// Balance check — route by auth type
 	if authType == "claw" {
 		if err := h.meter.CheckClawBalance(clawID); err != nil {
-			c.JSON(http.StatusPaymentRequired, openAIError("insufficient star energy (⚡)", "billing_error"))
-			return
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "insufficient") || strings.Contains(errMsg, "hibernated") {
+				c.JSON(http.StatusPaymentRequired, openAIError("insufficient star energy (⚡)", "billing_error"))
+				return
+			}
+			// Queen unreachable — allow request through (graceful degradation)
+			log.Printf("[star-ai] balance check failed (allowing through): claw=%s err=%v", clawID, err)
 		}
 	} else {
 		if err := h.meter.CheckBalance(userID); err != nil {
@@ -328,7 +333,7 @@ func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug
 		record.Via = via + "/claw"
 		record.UserID = clawID // use claw_id as user identifier for records
 		if err := h.meter.DeductClaw(clawID, costCents, modelName, endpoint, record); err != nil {
-			log.Printf("[star-ai] star energy deduct failed for %s: %v", clawID, err)
+			log.Printf("[star-ai] star energy deduct failed for %s: cost=%.2f err=%v", clawID, costCents, err)
 			middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via+"/claw", "billing_error").Inc()
 		} else {
 			middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via+"/claw", "ok").Inc()
