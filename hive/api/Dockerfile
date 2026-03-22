@@ -17,7 +17,7 @@ COPY hive/api/ .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /build/hive-controller ./cmd/main.go
 
 FROM alpine:3.19
-RUN apk add --no-cache ca-certificates tzdata docker-cli
+RUN apk add --no-cache ca-certificates tzdata docker-cli util-linux
 WORKDIR /app
 COPY --from=builder /build/hive-controller .
 

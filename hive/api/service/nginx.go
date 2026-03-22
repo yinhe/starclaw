@@ -118,7 +118,7 @@ func (n *NginxService) RemoveConfig(slug string) error {
 
 // Reload triggers nginx to reload its configuration
 func (n *NginxService) Reload() error {
-	cmd := exec.Command("nginx", "-s", "reload")
+	cmd := exec.Command("nsenter", "-t", "1", "-m", "--", "nginx", "-s", "reload")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("nginx reload: %s: %w", string(out), err)
 	}
@@ -128,7 +128,7 @@ func (n *NginxService) Reload() error {
 
 // TestConfig validates the nginx configuration
 func (n *NginxService) TestConfig() error {
-	cmd := exec.Command("nginx", "-t")
+	cmd := exec.Command("nsenter", "-t", "1", "-m", "--", "nginx", "-t")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("nginx test: %s: %w", string(out), err)
 	}

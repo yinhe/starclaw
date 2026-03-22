@@ -71,6 +71,7 @@ services:
       dockerfile: hive/api/Dockerfile
     container_name: hive-controller
     restart: always
+    pid: "host"
     environment:
       HIVE_PORT: 9090
       HIVE_DOMAIN: ${HIVE_DOMAIN:-starclaw.me}
