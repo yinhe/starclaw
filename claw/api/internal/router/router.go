@@ -34,6 +34,7 @@ import (
 	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/observe"
+	"github.com/yinhe/starclaw/internal/overlord"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
 	"github.com/yinhe/starclaw/internal/sandbox"
@@ -1038,7 +1039,19 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			if len(swarmClient) > 0 {
 				sc = swarmClient[0]
 			}
-			systemHandler := v1.NewSystemHandler(cfg, sc, identity)
+			var oc *overlord.Client
+			if cfg.Overlord.Enabled && cfg.Overlord.OverlordURL != "" {
+				oc = overlord.NewClient(cfg.Overlord)
+				if identity != nil {
+					oc.SetClawID(identity.NodeID)
+				}
+				if cfg.Node.Address != "" {
+					oc.SetAddress(cfg.Node.Address)
+				}
+				oc.Start()
+				log.Printf("[router] overlord client started: url=%s", cfg.Overlord.OverlordURL)
+			}
+			systemHandler := v1.NewSystemHandler(cfg, sc, identity, oc)
 			protected.GET("/system/update", systemHandler.GetUpdateInfo)
 			protected.POST("/system/update", systemHandler.TriggerUpdate)
 			protected.POST("/system/update/check", systemHandler.ForceCheck)
