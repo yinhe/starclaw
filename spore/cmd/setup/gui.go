@@ -181,10 +181,15 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	saveInstallInfo(installDir)
 
 	// Step 0: Stop existing instance if running (prevents "file in use" on Windows)
-	existingSporePath := sporePath
-	if _, err := os.Stat(existingSporePath); err == nil {
-		sse.log("Stopping existing instance...", 5)
-		exec.Command(existingSporePath, "stop", instName).Run()
+	sse.log("Stopping existing instance...", 5)
+	if existingSpore := sporePath; true {
+		_ = exec.Command(existingSpore, "stop", instName).Run()
+	}
+	if goruntime.GOOS == "windows" {
+		// Direct kill: old spore may have broken SIGTERM, so taskkill claw-api.exe directly
+		exec.Command("taskkill", "/IM", "claw-api.exe", "/F").Run()
+		time.Sleep(2 * time.Second)
+	} else {
 		time.Sleep(1 * time.Second)
 	}
 

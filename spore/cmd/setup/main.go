@@ -122,12 +122,16 @@ func main() {
 	saveInstallInfo(installDir)
 
 	// Step 0: Stop existing instance if running (prevents "file in use" on Windows)
-	if _, err := os.Stat(sporePath); err == nil {
-		fmt.Print("  Stopping existing instance...")
-		exec.Command(sporePath, "stop", "claw").Run()
+	fmt.Print("  Stopping existing instance...")
+	exec.Command(sporePath, "stop", "claw").Run()
+	if goruntime.GOOS == "windows" {
+		// Direct kill: old spore may have broken SIGTERM, so taskkill claw-api.exe directly
+		exec.Command("taskkill", "/IM", "claw-api.exe", "/F").Run()
+		time.Sleep(2 * time.Second)
+	} else {
 		time.Sleep(1 * time.Second)
-		fmt.Println(" ✓")
 	}
+	fmt.Println(" ✓")
 
 	// Step 1: Extract embedded Spore runtime (instant — no download)
 	fmt.Printf(green+"  [1/4]"+reset+" Extracting Spore runtime (%d MB)...", len(sporeBin)/(1024*1024))
