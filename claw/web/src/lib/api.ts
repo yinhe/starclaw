@@ -59,6 +59,7 @@ export const systemAPI = {
   getUpdate: () => api.get('/system/update'),
   triggerUpdate: () => api.post('/system/update'),
   forceCheck: () => api.post('/system/update/check'),
+  getUpdateLog: () => api.get('/system/update-log'),
   getSwarm: () => api.get('/system/swarm'),
   joinSwarm: (data: { queen_url: string; node_name?: string; region?: string; invite_code?: string }) => api.post('/system/swarm/join', data),
   leaveSwarm: () => api.post('/system/swarm/leave'),

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -357,21 +358,24 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[molt] user triggered update: %s → %s", vi.Current, vi.Latest)
+	resetUpdateLog()
+	ulogInfo("开始更新: %s → %s", vi.Current, vi.Latest)
 
 	// Detect runtime mode
 	runtimeMode := detectRuntimeMode()
+	ulogInfo("运行模式: %s", runtimeMode)
 
 	switch runtimeMode {
 	case "docker":
 		// Try Docker socket first (fast pull), fall back to MCP Bridge (source build)
 		if hasDockerSocket() {
-			log.Println("[molt] Docker socket available, using pull-based update")
+			ulogInfo("检测到 Docker Socket，使用镜像拉取更新")
 			go func() {
+				defer finishUpdateLog()
 				if err := performDockerSocketUpdate(vi.Latest); err != nil {
-					log.Printf("[molt] Docker socket update failed: %v, trying MCP Bridge...", err)
+					ulogError("Docker Socket 更新失败: %v，尝试 MCP Bridge...", err)
 					if err2 := performDockerUpdate(); err2 != nil {
-						log.Printf("[molt] MCP Bridge update also failed: %v", err2)
+						ulogError("MCP Bridge 更新也失败: %v", err2)
 					}
 				}
 			}()
@@ -385,23 +389,28 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 				return
 			}
 			go func() {
+				defer finishUpdateLog()
 				if err := performDockerUpdate(); err != nil {
-					log.Printf("[molt] update failed: %v", err)
+					ulogError("更新失败: %v", err)
 				}
 			}()
 		}
 
 	case "spore":
+		ulogInfo("Spore 模式，使用二进制替换更新")
 		go func() {
+			defer finishUpdateLog()
 			if err := performSporeUpdate(vi.Latest); err != nil {
-				log.Printf("[molt] Spore update failed: %v", err)
+				ulogError("Spore 更新失败: %v", err)
 			}
 		}()
 
 	default: // standalone
+		ulogInfo("独立模式，使用二进制替换更新")
 		go func() {
+			defer finishUpdateLog()
 			if err := performStandaloneUpdate(vi.Latest); err != nil {
-				log.Printf("[molt] standalone update failed: %v", err)
+				ulogError("独立更新失败: %v", err)
 			}
 		}()
 	}
@@ -596,6 +605,63 @@ func execOnHostTimeout(client *mcp.Client, command string, timeoutSec int) (stri
 	return client.CallTool(context.Background(), "shell_exec", string(args))
 }
 
+// ── Update log buffer (real-time progress visible in frontend) ──
+
+var (
+	updateLogMu    sync.Mutex
+	updateLogLines []updateLogEntry
+	updateRunning  bool
+)
+
+type updateLogEntry struct {
+	Time    string `json:"time"`
+	Message string `json:"message"`
+	Level   string `json:"level"` // info, error, success
+}
+
+// ulog writes to both the standard log and the update log buffer.
+func ulog(level, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	log.Printf("[molt] %s", msg)
+	updateLogMu.Lock()
+	updateLogLines = append(updateLogLines, updateLogEntry{
+		Time:    time.Now().Format("15:04:05"),
+		Message: msg,
+		Level:   level,
+	})
+	updateLogMu.Unlock()
+}
+
+func ulogInfo(format string, args ...interface{})    { ulog("info", format, args...) }
+func ulogError(format string, args ...interface{})   { ulog("error", format, args...) }
+func ulogSuccess(format string, args ...interface{}) { ulog("success", format, args...) }
+
+func resetUpdateLog() {
+	updateLogMu.Lock()
+	updateLogLines = nil
+	updateRunning = true
+	updateLogMu.Unlock()
+}
+
+func finishUpdateLog() {
+	updateLogMu.Lock()
+	updateRunning = false
+	updateLogMu.Unlock()
+}
+
+// GetUpdateLog returns the current update log buffer for the frontend
+func (h *SystemHandler) GetUpdateLog(c *gin.Context) {
+	updateLogMu.Lock()
+	lines := make([]updateLogEntry, len(updateLogLines))
+	copy(lines, updateLogLines)
+	running := updateRunning
+	updateLogMu.Unlock()
+	c.JSON(http.StatusOK, gin.H{
+		"lines":   lines,
+		"running": running,
+	})
+}
+
 // ── Helpers: runtime detection ──
 
 func detectRuntimeMode() string {
@@ -626,29 +692,32 @@ func performDockerSocketUpdate(targetVersion string) error {
 	// (mounted at same path for correct volume resolution)
 	if hostDir != "" {
 		composePath := filepath.Join(hostDir, composeFile)
-		log.Printf("[molt] Docker socket update via compose: %s", composePath)
+		ulogInfo("compose 文件: %s", composePath)
 
 		// Pull latest images
 		pullCmd := exec.Command("docker", "compose", "-f", composePath, "pull", "api", "web")
 		pullCmd.Env = append(os.Environ(), "STARCLAW_VERSION="+targetVersion)
+		ulogInfo("正在拉取最新镜像...")
 		if out, err := pullCmd.CombinedOutput(); err != nil {
-			log.Printf("[molt] compose pull output: %s", string(out))
+			ulogError("compose pull 失败: %s", string(out))
 			return fmt.Errorf("docker compose pull failed: %w", err)
 		}
+		ulogInfo("镜像拉取完成")
 
 		// Recreate containers with new images
 		upCmd := exec.Command("docker", "compose", "-f", composePath, "up", "-d", "--no-deps", "api", "web")
 		upCmd.Env = append(os.Environ(), "STARCLAW_VERSION="+targetVersion)
+		ulogInfo("正在重建容器...")
 		if out, err := upCmd.CombinedOutput(); err != nil {
-			log.Printf("[molt] compose up output: %s", string(out))
+			ulogError("compose up 失败: %s", string(out))
 			return fmt.Errorf("docker compose up failed: %w", err)
 		}
-		log.Printf("[molt] ✅ Docker socket update to v%s complete", targetVersion)
+		ulogSuccess("✅ Docker 更新到 v%s 完成，服务重启中...", targetVersion)
 		return nil
 	}
 
 	// Fallback: pull images directly by name (no compose file needed)
-	log.Println("[molt] STARCLAW_HOST_DIR not set, pulling images directly...")
+	ulogInfo("STARCLAW_HOST_DIR 未设置，直接拉取镜像...")
 	imageTag := targetVersion
 	if imageTag == "" {
 		imageTag = "latest"
@@ -657,9 +726,9 @@ func performDockerSocketUpdate(targetVersion string) error {
 	webImage := fmt.Sprintf("ghcr.io/yinhe/starclaw-web:%s", imageTag)
 
 	for _, img := range []string{apiImage, webImage} {
-		log.Printf("[molt] pulling %s...", img)
+		ulogInfo("拉取 %s...", img)
 		if out, err := exec.Command("docker", "pull", img).CombinedOutput(); err != nil {
-			log.Printf("[molt] pull %s failed: %s", img, string(out))
+			ulogError("拉取 %s 失败: %s", img, string(out))
 			return fmt.Errorf("docker pull %s failed: %w", img, err)
 		}
 	}
@@ -679,14 +748,15 @@ func performDockerSocketUpdate(targetVersion string) error {
 		for _, cf := range []string{"docker-compose.prod.yml", "docker-compose.yml"} {
 			cp := filepath.Join(dir, cf)
 			if _, err := os.Stat(cp); err == nil {
-				log.Printf("[molt] found compose at %s, using it for up", cp)
+				ulogInfo("找到 compose 文件: %s", cp)
 				upCmd := exec.Command("docker", "compose", "-f", cp, "up", "-d", "--no-deps", "api", "web")
 				upCmd.Env = append(os.Environ(), "STARCLAW_VERSION="+imageTag)
+				ulogInfo("正在重建容器...")
 				if out, err := upCmd.CombinedOutput(); err != nil {
-					log.Printf("[molt] compose up output: %s", string(out))
+					ulogError("compose up 失败: %s", string(out))
 					continue
 				}
-				log.Printf("[molt] ✅ Docker socket update to v%s complete", targetVersion)
+				ulogSuccess("✅ Docker 更新到 v%s 完成", targetVersion)
 				return nil
 			}
 		}
@@ -698,7 +768,7 @@ func performDockerSocketUpdate(targetVersion string) error {
 // ── Spore update (download binary, replace in-place, exit for auto-restart) ──
 
 func performSporeUpdate(targetVersion string) error {
-	log.Printf("[molt] Spore update: downloading v%s binary...", targetVersion)
+	ulogInfo("下载 v%s 二进制文件...", targetVersion)
 
 	// Determine download URL based on platform
 	binaryURL := sporeDownloadURL(targetVersion)
@@ -736,7 +806,7 @@ func performSporeUpdate(targetVersion string) error {
 	tmpFile.Close()
 	os.Chmod(tmpPath, 0755)
 
-	log.Printf("[molt] downloaded %s to %s", binaryURL, tmpPath)
+	ulogInfo("下载完成: %s", binaryURL)
 
 	// Find current binary path
 	currentBin, err := os.Executable()
@@ -766,7 +836,7 @@ func performSporeUpdate(targetVersion string) error {
 		}
 	}
 
-	log.Printf("[molt] ✅ binary replaced at %s, exiting for restart...", currentBin)
+	ulogSuccess("✅ 二进制已替换: %s，正在重启...", currentBin)
 
 	// Give the HTTP response time to flush, then exit.
 	// Spore runtime's restart loop (or systemd/launchd) will restart with new binary.
@@ -817,11 +887,11 @@ func performDockerUpdate() error {
 	// MCP Bridge is required — the container cannot rebuild itself
 	bridgeURL := mcp.DetectBridgeURL()
 	if !mcp.ProbeBridge(bridgeURL) {
-		log.Println("[molt] MCP Bridge not available, cannot update from inside container")
+		ulogError("MCP Bridge 不可用，无法从容器内更新")
 		return fmt.Errorf("MCP Bridge 未运行，无法执行一键更新。请在宿主机手动执行 update.sh")
 	}
 
-	log.Println("[molt] MCP Bridge detected, updating via host shell...")
+	ulogInfo("MCP Bridge 已连接，通过宿主机 Shell 更新...")
 	client := mcp.NewClientWithTimeout(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"}, 15*time.Minute)
 
 	// Step 1: Find project root directory
@@ -830,7 +900,7 @@ func performDockerUpdate() error {
 	if projectDir == "" {
 		projectDir = "/opt/starclaw"
 	}
-	log.Printf("[molt] project dir: %s", projectDir)
+	ulogInfo("项目目录: %s", projectDir)
 
 	// Step 2: Detect compose file — all compose files use api/web service names
 	// Prefer claw/ subdir compose (standalone/monorepo OSS layout), then root
@@ -846,7 +916,7 @@ func performDockerUpdate() error {
 	} else if strings.Contains(checkResult, "ROOT_PROD") {
 		composeFile = "docker-compose.prod.yml"
 	}
-	log.Printf("[molt] compose: %s/%s", projectDir, composeFile)
+	ulogInfo("compose: %s/%s", projectDir, composeFile)
 
 	// Step 3: Update source code — try GitHub first, fallback to Nydus tarball
 	// Monorepo layout: git may be in claw/ subdir (OSS repo maps claw/ → root)
@@ -854,36 +924,36 @@ func performDockerUpdate() error {
 	pullResult, _ := execOnHost(client, fmt.Sprintf(
 		`cd "%s" && if [ -d .git ]; then git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; elif [ -d claw/.git ]; then cd claw && git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; else echo "NO_GIT"; fi`,
 		projectDir))
-	log.Printf("[molt] source update: %.500s", pullResult)
+	ulogInfo("源码更新: %.200s", pullResult)
 
 	// Fallback: if git fetch failed or no git, download tarball from Nydus mirror
 	gitFailed := strings.Contains(pullResult, "NO_GIT") || strings.Contains(pullResult, "fatal:") || strings.Contains(pullResult, "error:")
 	if gitFailed {
-		log.Printf("[molt] GitHub git failed, trying Nydus source tarball fallback...")
+		ulogInfo("Git 拉取失败，尝试 Nydus 源码包...")
 		nydusResult, nydusErr := execOnHostTimeout(client, fmt.Sprintf(
 			`cd "%s" && curl -sfL --connect-timeout 10 --max-time 120 "%s" | tar xz --strip-components=1 2>&1 && echo "NYDUS_OK"`,
 			projectDir, molt.NydusSourceURL), 180)
 		if nydusErr != nil || !strings.Contains(nydusResult, "NYDUS_OK") {
-			log.Printf("[molt] Nydus fallback also failed: %v %.500s", nydusErr, nydusResult)
-			log.Println("[molt] WARNING: source code not updated. Build will use existing code.")
+			ulogError("Nydus 回退也失败: %v", nydusErr)
+			ulogError("警告: 源码未更新，将使用现有代码构建")
 		} else {
-			log.Printf("[molt] source updated via Nydus tarball")
+			ulogInfo("源码已通过 Nydus 更新")
 		}
 	}
 
 	// Step 3.5: Write version to .version file so Dockerfile picks it up during build
 	targetVersion := molt.GetVersionInfo().Latest
 	execOnHost(client, fmt.Sprintf(`echo -n "%s" > "%s/api/.version"`, targetVersion, projectDir))
-	log.Printf("[molt] wrote version %s to api/.version", targetVersion)
+	ulogInfo("写入版本 %s 到 api/.version", targetVersion)
 
 	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)
 	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,
 		projectDir, composeFile, composeFile)
 	result, err := execOnHostTimeout(client, updateCmd, 900)
 	if err != nil {
-		log.Printf("[molt] update failed: %v", err)
+		ulogError("构建/重启失败: %v", err)
 		return fmt.Errorf("更新失败: %v", err)
 	}
-	log.Printf("[molt] update result: %.500s", result)
+	ulogSuccess("✅ MCP Bridge 更新完成: %.200s", result)
 	return nil
 }

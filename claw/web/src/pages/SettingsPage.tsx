@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff, Network, Trash2, Radio, Copy, Pencil, X, Link, ChevronDown, ChevronRight, Share2, AlertTriangle, Crown, LogOut } from 'lucide-react'
 import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI, queenAPI, deviceAPI } from '../lib/api'
 
@@ -137,6 +137,12 @@ export default function SettingsPage() {
   }
 
   const [updateStep, setUpdateStep] = useState(0) // 0=idle, 1=pulling, 2=building, 3=restarting, 4=verifying, 5=done
+  const [updateLogs, setUpdateLogs] = useState<{time: string, message: string, level: string}[]>([])
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [updateLogs])
 
   const updateSteps = [
     '',
@@ -163,12 +169,23 @@ export default function SettingsPage() {
         setTimeout(() => setUpdateStep(3), isFast ? 8000 : 60000)
         setTimeout(() => setUpdateStep(4), isFast ? 12000 : 90000)
 
+        // Poll update logs in real-time
+        const logPoll = setInterval(async () => {
+          try {
+            const logRes = await systemAPI.getUpdateLog()
+            if (logRes.data?.lines) {
+              setUpdateLogs(logRes.data.lines)
+            }
+          } catch { /* API may be restarting */ }
+        }, 1500)
+
         let attempts = 0
         let apiWasDown = false
         const poll = setInterval(async () => {
           attempts++
           if (attempts > 120) { // 10 min timeout
             clearInterval(poll)
+            clearInterval(logPoll)
             setUpdateMsg('更新超时，请手动检查服务器状态。请稍后刷新页面。')
             setUpdateStep(0)
             setUpdating(false)
@@ -179,10 +196,13 @@ export default function SettingsPage() {
             const current = vRes.data?.version?.current
             if (current === targetVersion) {
               clearInterval(poll)
+              clearInterval(logPoll)
+              // Fetch final logs
+              try { const lr = await systemAPI.getUpdateLog(); if (lr.data?.lines) setUpdateLogs(lr.data.lines) } catch {}
               setUpdateStep(5)
               setUpdateMsg(`✅ 已成功更新到 v${targetVersion}！`)
               setUpdateInfo(vRes.data)
-              setTimeout(() => { setUpdateStep(0); setUpdating(false) }, 5000)
+              setTimeout(() => { setUpdateStep(0); setUpdating(false); setUpdateLogs([]) }, 5000)
             } else if (apiWasDown) {
               // API came back but version didn't change yet, keep polling
               setUpdateStep(4)
@@ -472,6 +492,26 @@ export default function SettingsPage() {
                 {[1,2,3,4].map(s => (
                   <div key={s} className="h-1.5 flex-1 rounded-full bg-green-500" />
                 ))}
+              </div>
+            </div>
+          )}
+          {updateLogs.length > 0 && (updateStep > 0 || updateStep === 5) && (
+            <div className="mb-4 bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
+              <div className="px-3 py-1.5 bg-gray-800 border-b border-gray-700 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[11px] text-gray-400 font-mono">更新日志</span>
+              </div>
+              <div className="p-3 max-h-48 overflow-y-auto font-mono text-xs leading-relaxed">
+                {updateLogs.map((l, i) => (
+                  <div key={i} className={`flex gap-2 ${
+                    l.level === 'error' ? 'text-red-400' :
+                    l.level === 'success' ? 'text-green-400' : 'text-gray-300'
+                  }`}>
+                    <span className="text-gray-500 shrink-0">{l.time}</span>
+                    <span>{l.message}</span>
+                  </div>
+                ))}
+                <div ref={logEndRef} />
               </div>
             </div>
           )}
