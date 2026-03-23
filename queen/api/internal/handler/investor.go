@@ -533,6 +533,8 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 		"max_invest_yuan":     float64(maxFen) / 100,
 		"activation_yuan":     float64(ActivationThreshold) / 100,
 		"terms_available":     []int{1, 3, 5},
+		"payment_available":   config.C.StarAI.URL != "",
+		"payment_channels":    paymentChannels(),
 	})
 }
 
@@ -542,6 +544,14 @@ func priceDriver(nav, floorPrice int64) string {
 		return "NAV"
 	}
 	return "期次地板价"
+}
+
+// paymentChannels returns which payment channels are configured via StarAI.
+func paymentChannels() []string {
+	if config.C.StarAI.URL == "" {
+		return []string{}
+	}
+	return []string{"alipay", "wechatpay"}
 }
 
 // POST /v1/investor/register — Self-register as investor

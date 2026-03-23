@@ -348,6 +348,8 @@ export interface InvestorPoolInfo {
   max_invest_yuan: number;
   activation_yuan: number;
   terms_available: number[];
+  payment_available: boolean;
+  payment_channels: string[];
 }
 
 export interface InvestorProfile {

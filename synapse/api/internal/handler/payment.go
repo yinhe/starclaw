@@ -639,7 +639,7 @@ func (h *PaymentHandler) CreateInvestOrder(c *gin.Context) {
 			"amount_yuan":       amountYuan,
 		})
 
-	case "wechat":
+	case "wechat", "wechatpay":
 		if h.wxClient == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WeChat Pay not configured"})
 			return
@@ -660,7 +660,7 @@ func (h *PaymentHandler) CreateInvestOrder(c *gin.Context) {
 		})
 
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported channel, use alipay or wechat"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported channel, use alipay or wechatpay"})
 	}
 }
 

@@ -236,6 +236,12 @@ export function InvestPage() {
         {msg && <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm">{msg}</div>}
         {err && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{err}</div>}
 
+        {pool && !pool.payment_available && (
+          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+            支付通道配置中，购买功能暂未开放。如需购买星钻请联系管理员。
+          </div>
+        )}
+
         {pool && (<>
 
         {/* ═══ Section 1: Pool Stats Hero ═══ */}
@@ -352,9 +358,9 @@ export function InvestPage() {
                   <input type="number" value={purchaseYuan} onChange={e => setPurchaseYuan(e.target.value)}
                     placeholder={`购买金额 (${fmt(pool.min_invest_yuan)} - ${fmt(pool.max_invest_yuan)})`}
                     className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
-                  <button onClick={handlePurchase} disabled={purchasing}
+                  <button onClick={handlePurchase} disabled={purchasing || !pool.payment_available}
                     className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
-                    {purchasing ? '创建订单...' : payMethod === 'alipay' ? '支付宝购买' : '微信购买'}
+                    {purchasing ? '创建订单...' : !pool.payment_available ? '支付通道配置中' : payMethod === 'alipay' ? '支付宝购买' : '微信购买'}
                   </button>
                 </div>
 
