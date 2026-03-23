@@ -400,6 +400,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			// Skills & Agents (marketplace integration for Overlord)
 			internal.GET("/skills", overlordH.ListSkills)
 			internal.GET("/agents", overlordH.ListAgents)
+			// Agent Development (DevClaw sandbox + publish)
+			internal.POST("/agent-sandbox", overlordH.AgentSandbox)
+			internal.POST("/agent-publish", overlordH.AgentPublish)
 		}
 
 		// Inference Router (public status + signed contributor endpoints)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server, HeartPulse } from 'lucide-react'
-import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, ClawModel, ClawSkill, ClawAgentTemplate, EmployeeUsage, ProvisionResult } from '../api/brood'
+import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, ClawModel, ClawSkill, ClawAgentTemplate, AgentSandboxResp, EmployeeUsage, ProvisionResult } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
 const statusColors: Record<string, string> = {
@@ -88,6 +88,22 @@ export default function TeamAgentPage() {
   const [nodeSkills, setNodeSkills] = useState<ClawSkill[]>([])
   const [nodeAgents, setNodeAgents] = useState<ClawAgentTemplate[]>([])
   const [showAgentPicker, setShowAgentPicker] = useState(false)
+
+  // Agent Dev Workshop
+  const [showDevWorkshop, setShowDevWorkshop] = useState(false)
+  const [devAgentName, setDevAgentName] = useState('')
+  const [devAgentPrompt, setDevAgentPrompt] = useState('')
+  const [devAgentModel, setDevAgentModel] = useState('')
+  const [devAgentTools, setDevAgentTools] = useState<string[]>([])
+  const [devAgentCategory, setDevAgentCategory] = useState('assistant')
+  const [devAgentIcon, setDevAgentIcon] = useState('')
+  const [devAgentDesc, setDevAgentDesc] = useState('')
+  const [devTestInput, setDevTestInput] = useState('')
+  const [devTestMessages, setDevTestMessages] = useState<{ role: string; content: string }[]>([])
+  const [sandboxResult, setSandboxResult] = useState<AgentSandboxResp | null>(null)
+  const [sandboxLoading, setSandboxLoading] = useState(false)
+  const [publishLoading, setPublishLoading] = useState(false)
+  const [publishResult, setPublishResult] = useState<string | null>(null)
 
   // Real-time WS updates — refresh missions when status changes
   const onMissionUpdate = useCallback((data: { mission_id?: string; instance_id?: string; status?: string }) => {
@@ -249,6 +265,64 @@ export default function TeamAgentPage() {
       ...prev,
       [code]: { ...(prev[code] || { model: '', system_prompt: '', tools: [] }), [field]: value },
     }))
+  }
+
+  // Agent Dev Workshop functions
+  async function runSandboxTest() {
+    if (!selectedInstance || devTestMessages.length === 0) return
+    setSandboxLoading(true)
+    setSandboxResult(null)
+    try {
+      const res = await broodAPI.agentSandbox(selectedInstance.id, {
+        name: devAgentName || 'Untitled Agent',
+        system_prompt: devAgentPrompt,
+        model: devAgentModel || undefined,
+        tools: devAgentTools.length > 0 ? JSON.stringify(devAgentTools) : undefined,
+        test_messages: devTestMessages,
+      })
+      setSandboxResult(res)
+    } catch (e: unknown) {
+      alert('沙箱测试失败: ' + (e instanceof Error ? e.message : '未知错误'))
+    }
+    setSandboxLoading(false)
+  }
+
+  async function publishAgent() {
+    if (!selectedInstance || !devAgentName || !devAgentPrompt) return
+    setPublishLoading(true)
+    setPublishResult(null)
+    try {
+      const res = await broodAPI.agentPublish(selectedInstance.id, {
+        name: devAgentName,
+        description: devAgentDesc,
+        system_prompt: devAgentPrompt,
+        model: devAgentModel || undefined,
+        tools: devAgentTools.length > 0 ? JSON.stringify(devAgentTools) : undefined,
+        category: devAgentCategory,
+        icon: devAgentIcon,
+      })
+      setPublishResult(`上架成功! 模板 ID: ${res.template_id}`)
+    } catch (e: unknown) {
+      alert('发布失败: ' + (e instanceof Error ? e.message : '未知错误'))
+    }
+    setPublishLoading(false)
+  }
+
+  function addTestMessage() {
+    if (!devTestInput.trim()) return
+    setDevTestMessages(prev => [...prev, { role: 'user', content: devTestInput.trim() }])
+    setDevTestInput('')
+  }
+
+  function openDevWorkshop() {
+    setShowDevWorkshop(true)
+    setSandboxResult(null)
+    setPublishResult(null)
+    // Fetch models and skills if not loaded
+    if (selectedInstance?.claw_node_id && roleModels.length === 0) {
+      broodAPI.nodeModels(selectedInstance.claw_node_id).then(r => setRoleModels(r.models || [])).catch(() => {})
+      broodAPI.nodeSkills(selectedInstance.claw_node_id).then(r => setNodeSkills(r.skills || [])).catch(() => {})
+    }
   }
 
   async function saveRoleOverrides() {
@@ -607,6 +681,157 @@ export default function TeamAgentPage() {
             </div>
           )
         })()}
+
+        {/* Agent Dev Workshop Button — only for DevClaw instances */}
+        {selectedInstance && templates.find(t => t.id === selectedInstance.template_id)?.name === 'DevClaw' && !showDevWorkshop && (
+          <button
+            onClick={openDevWorkshop}
+            className="w-full bg-gradient-to-r from-overlord-600/20 to-purple-600/20 border border-overlord-500/30 rounded-xl p-4 flex items-center gap-3 hover:border-overlord-500/60 transition group"
+          >
+            <div className="w-10 h-10 bg-overlord-600/30 rounded-lg flex items-center justify-center">
+              <Wrench className="w-5 h-5 text-overlord-400" />
+            </div>
+            <div className="flex-1 text-left">
+              <div className="text-sm font-bold text-white">Agent 开发工坊</div>
+              <div className="text-[11px] text-gray-400">在 DevClaw 中开发新的智能体、技能、工作流，测试后一键上架到市场</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-500 group-hover:text-overlord-400 transition" />
+          </button>
+        )}
+
+        {/* Agent Dev Workshop Panel */}
+        {showDevWorkshop && selectedInstance && (
+          <div className="bg-gray-800/50 border border-overlord-500/30 rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-700/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-overlord-400" />
+                <span className="text-sm font-bold text-white">Agent 开发工坊</span>
+                <span className="text-[10px] text-gray-500 bg-gray-700/50 px-1.5 py-0.5 rounded">DevClaw</span>
+              </div>
+              <button onClick={() => setShowDevWorkshop(false)} className="text-gray-500 hover:text-white transition">
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Basic info row */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] text-gray-500 mb-1 block">智能体名称 *</label>
+                  <input className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:border-overlord-500 focus:outline-none" placeholder="例: 药理虫" value={devAgentName} onChange={e => setDevAgentName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500 mb-1 block">分类</label>
+                  <select className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-overlord-500 focus:outline-none" value={devAgentCategory} onChange={e => setDevAgentCategory(e.target.value)}>
+                    <option value="assistant">通用助手</option>
+                    <option value="coding">编程开发</option>
+                    <option value="writing">写作创作</option>
+                    <option value="data">数据分析</option>
+                    <option value="medical">医疗健康</option>
+                    <option value="finance">金融财务</option>
+                    <option value="legal">法律合规</option>
+                    <option value="education">教育培训</option>
+                    <option value="creative">创意设计</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500 mb-1 block">图标 + 模型</label>
+                  <div className="flex gap-2">
+                    <input className="w-16 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-center focus:border-overlord-500 focus:outline-none" placeholder="emoji" value={devAgentIcon} onChange={e => setDevAgentIcon(e.target.value)} />
+                    <select className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white focus:border-overlord-500 focus:outline-none" value={devAgentModel} onChange={e => setDevAgentModel(e.target.value)}>
+                      <option value="">默认模型</option>
+                      {roleModels.map(m => <option key={m.id} value={m.model_name}>{m.model_name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              {/* Description */}
+              <div>
+                <label className="text-[10px] text-gray-500 mb-1 block">一句话描述</label>
+                <input className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:border-overlord-500 focus:outline-none" placeholder="这个智能体能做什么..." value={devAgentDesc} onChange={e => setDevAgentDesc(e.target.value)} />
+              </div>
+              {/* System Prompt */}
+              <div>
+                <label className="text-[10px] text-gray-500 mb-1 block">System Prompt *</label>
+                <textarea className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-overlord-500 focus:outline-none font-mono" rows={6} placeholder="你是一个..." value={devAgentPrompt} onChange={e => setDevAgentPrompt(e.target.value)} />
+              </div>
+              {/* Skills selection */}
+              {nodeSkills.length > 0 && (
+                <div>
+                  <label className="text-[10px] text-gray-500 mb-1 block">技能 / 工具</label>
+                  <div className="flex flex-wrap gap-1">
+                    {nodeSkills.map(s => {
+                      const active = devAgentTools.includes(s.name)
+                      return (
+                        <button key={s.name} title={s.description} onClick={() => setDevAgentTools(prev => active ? prev.filter(t => t !== s.name) : [...prev, s.name])}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border transition ${active ? 'bg-overlord-600/20 text-overlord-300 border-overlord-500/40' : 'bg-gray-700/20 text-gray-500 border-gray-700/40 hover:border-gray-600'}`}
+                        >
+                          {s.name}{active && ' ✓'}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Test Messages */}
+              <div className="border-t border-gray-700/50 pt-4">
+                <label className="text-[10px] text-gray-500 mb-1.5 block">沙箱测试用例</label>
+                {devTestMessages.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    {devTestMessages.map((tm, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="text-gray-600 w-4">{i + 1}.</span>
+                        <span className="flex-1 text-gray-300 truncate">{tm.content}</span>
+                        <button onClick={() => setDevTestMessages(prev => prev.filter((_, j) => j !== i))} className="text-gray-600 hover:text-red-400"><XCircle className="w-3 h-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:border-overlord-500 focus:outline-none" placeholder="输入测试问题..." value={devTestInput} onChange={e => setDevTestInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTestMessage()} />
+                  <button onClick={addTestMessage} className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs transition">添加</button>
+                </div>
+              </div>
+              {/* Sandbox Results */}
+              {sandboxResult && (
+                <div className="border-t border-gray-700/50 pt-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-xs font-bold text-white">测试结果</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded ${sandboxResult.ready_to_publish ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+                      {sandboxResult.ready_to_publish ? '可以发布' : '需要改进'} · 得分 {sandboxResult.overall_score.toFixed(1)}
+                    </span>
+                    <span className="text-[10px] text-gray-500">{sandboxResult.pass_count}/{sandboxResult.total_tests} 通过</span>
+                  </div>
+                  <div className="space-y-2">
+                    {sandboxResult.results.map((r, i) => (
+                      <div key={i} className="bg-gray-900/50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${r.verdict === 'pass' ? 'bg-green-500/15 text-green-400' : r.verdict === 'warning' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-red-500/15 text-red-400'}`}>{r.verdict}</span>
+                          <span className="text-[10px] text-gray-400 truncate">{r.input}</span>
+                        </div>
+                        <div className="text-[11px] text-gray-300 line-clamp-3">{r.output || r.error}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Publish Result */}
+              {publishResult && (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-xs text-green-400">{publishResult}</div>
+              )}
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={runSandboxTest} disabled={sandboxLoading || !devAgentPrompt || devTestMessages.length === 0}
+                  className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-lg text-xs transition disabled:opacity-30 flex items-center gap-1.5">
+                  {sandboxLoading ? <><Loader2 className="w-3 h-3 animate-spin" /> 测试中...</> : <><Zap className="w-3 h-3" /> 沙箱测试</>}
+                </button>
+                <button onClick={publishAgent} disabled={publishLoading || !devAgentName || !devAgentPrompt}
+                  className="px-4 py-2 bg-overlord-600 hover:bg-overlord-500 text-white rounded-lg text-xs transition disabled:opacity-30 flex items-center gap-1.5">
+                  {publishLoading ? <><Loader2 className="w-3 h-3 animate-spin" /> 发布中...</> : <><ArrowRight className="w-3 h-3" /> 上架到市场</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Missions */}
         <div>

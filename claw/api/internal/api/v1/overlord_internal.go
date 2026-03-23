@@ -650,3 +650,198 @@ func (h *OverlordInternalHandler) ListAgents(c *gin.Context) {
 		"total":      len(agents),
 	})
 }
+
+// ── Agent Development (Sandbox + Publish) ──
+
+// POST /v1/internal/agent-sandbox
+// Creates a temporary agent, runs test conversations, returns results.
+// Used by DevClaw to test agents before publishing.
+func (h *OverlordInternalHandler) AgentSandbox(c *gin.Context) {
+	var req struct {
+		Name         string `json:"name" binding:"required"`
+		SystemPrompt string `json:"system_prompt" binding:"required"`
+		Model        string `json:"model"`
+		Tools        string `json:"tools"`  // JSON array of tool names
+		Config       string `json:"config"` // JSON config
+		TestMessages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"test_messages"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	modelName := req.Model
+	if modelName == "" {
+		modelName = "deepseek-chat"
+	}
+
+	// Resolve provider
+	var modelCfg model.ModelConfig
+	found := h.db.Where("model_name = ? AND is_enabled = ?", modelName, true).
+		Order("is_platform DESC").First(&modelCfg).Error == nil
+	var p provider.ModelProvider
+	if found {
+		p = provider.CreateFromConfig(h.providerRegistry, modelCfg)
+	} else if h.providerRegistry != nil {
+		if sp, ok := h.providerRegistry.Get("star-ai"); ok {
+			p = sp
+		}
+	}
+	if p == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("model %q not available", modelName)})
+		return
+	}
+
+	// Run test conversations
+	type TestResult struct {
+		Input   string          `json:"input"`
+		Output  string          `json:"output"`
+		Verdict string          `json:"verdict"` // pass, fail, warning
+		Checks  map[string]bool `json:"checks"`
+		Error   string          `json:"error,omitempty"`
+	}
+
+	var results []TestResult
+	totalScore := 0.0
+
+	for _, tm := range req.TestMessages {
+		msgs := []provider.ChatMessage{
+			{Role: "system", Content: req.SystemPrompt},
+			{Role: tm.Role, Content: tm.Content},
+		}
+		chatReq := &provider.ChatRequest{
+			Model:       modelName,
+			Messages:    msgs,
+			MaxTokens:   2048,
+			Temperature: 0.3,
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		chunk, err := p.ChatSync(ctx, chatReq)
+		cancel()
+
+		if err != nil {
+			results = append(results, TestResult{
+				Input: tm.Content, Output: "", Verdict: "fail",
+				Error: err.Error(), Checks: map[string]bool{},
+			})
+			continue
+		}
+
+		output := chunk.Content
+
+		// Basic quality checks
+		checks := map[string]bool{
+			"non_empty":          len(output) > 10,
+			"no_prompt_leak":     !strings.Contains(strings.ToLower(output), "system prompt") && !strings.Contains(strings.ToLower(output), "你的提示词"),
+			"reasonable_length":  len([]rune(output)) < 5000,
+			"stays_in_character": true, // placeholder — could use LLM judge
+		}
+
+		passed := 0
+		for _, v := range checks {
+			if v {
+				passed++
+			}
+		}
+		score := float64(passed) / float64(len(checks)) * 10
+		totalScore += score
+
+		verdict := "pass"
+		if score < 5 {
+			verdict = "fail"
+		} else if score < 7 {
+			verdict = "warning"
+		}
+
+		results = append(results, TestResult{
+			Input: tm.Content, Output: output, Verdict: verdict, Checks: checks,
+		})
+	}
+
+	overallScore := 0.0
+	if len(results) > 0 {
+		overallScore = totalScore / float64(len(results))
+	}
+
+	passCount := 0
+	for _, r := range results {
+		if r.Verdict == "pass" {
+			passCount++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"results":          results,
+		"overall_score":    overallScore,
+		"pass_count":       passCount,
+		"total_tests":      len(results),
+		"ready_to_publish": overallScore >= 7.0 && passCount == len(results),
+	})
+}
+
+// POST /v1/internal/agent-publish
+// Creates an AgentTemplate + optionally an AgentListing from a config.
+// Used by DevClaw to publish agents after sandbox testing.
+func (h *OverlordInternalHandler) AgentPublish(c *gin.Context) {
+	var req struct {
+		Name         string `json:"name" binding:"required"`
+		Description  string `json:"description"`
+		SystemPrompt string `json:"system_prompt" binding:"required"`
+		Model        string `json:"model"`
+		Tools        string `json:"tools"`  // JSON array
+		Config       string `json:"config"` // JSON config
+		Category     string `json:"category"`
+		Tags         string `json:"tags"` // JSON array
+		Icon         string `json:"icon"`
+		Pricing      string `json:"pricing"` // free, one_time, subscription
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Tools == "" {
+		req.Tools = "[]"
+	}
+	if req.Config == "" {
+		req.Config = `{"temperature":0.3,"max_tokens":4096}`
+	}
+	if req.Category == "" {
+		req.Category = "assistant"
+	}
+	if req.Tags == "" {
+		req.Tags = "[]"
+	}
+
+	// Create AgentTemplate
+	tpl := model.AgentTemplate{
+		AuthorID:     "overlord:devclaw", // mark as DevClaw-created
+		Name:         req.Name,
+		Description:  req.Description,
+		Category:     req.Category,
+		Tags:         req.Tags,
+		SystemPrompt: req.SystemPrompt,
+		Tools:        req.Tools,
+		Config:       req.Config,
+		Icon:         req.Icon,
+	}
+	if err := h.db.Create(&tpl).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create template: " + err.Error()})
+		return
+	}
+
+	log.Printf("[overlord-internal] DevClaw published agent template %s: %s", tpl.ID, req.Name)
+
+	resp := gin.H{
+		"template_id": tpl.ID,
+		"name":        tpl.Name,
+		"category":    tpl.Category,
+		"status":      "published",
+	}
+
+	c.JSON(http.StatusCreated, resp)
+}

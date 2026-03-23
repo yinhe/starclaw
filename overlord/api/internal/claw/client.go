@@ -354,6 +354,74 @@ func (c *Client) ListAgents(nodeAddr, overlordToken string) (*ListAgentsResp, er
 	return &resp, nil
 }
 
+// ── Agent Development (Sandbox + Publish) ──
+
+type AgentSandboxReq struct {
+	Name         string `json:"name"`
+	SystemPrompt string `json:"system_prompt"`
+	Model        string `json:"model"`
+	Tools        string `json:"tools"`
+	Config       string `json:"config"`
+	TestMessages []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	} `json:"test_messages"`
+}
+
+type AgentSandboxResult struct {
+	Input   string          `json:"input"`
+	Output  string          `json:"output"`
+	Verdict string          `json:"verdict"`
+	Checks  map[string]bool `json:"checks"`
+	Error   string          `json:"error,omitempty"`
+}
+
+type AgentSandboxResp struct {
+	Results        []AgentSandboxResult `json:"results"`
+	OverallScore   float64              `json:"overall_score"`
+	PassCount      int                  `json:"pass_count"`
+	TotalTests     int                  `json:"total_tests"`
+	ReadyToPublish bool                 `json:"ready_to_publish"`
+}
+
+// AgentSandbox tests an agent config in a sandbox on a Claw node.
+func (c *Client) AgentSandbox(nodeAddr, overlordToken string, req AgentSandboxReq) (*AgentSandboxResp, error) {
+	var resp AgentSandboxResp
+	if err := c.post(nodeAddr, "/v1/internal/agent-sandbox", overlordToken, req, &resp); err != nil {
+		return nil, fmt.Errorf("agent sandbox: %w", err)
+	}
+	return &resp, nil
+}
+
+type AgentPublishReq struct {
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	SystemPrompt string `json:"system_prompt"`
+	Model        string `json:"model"`
+	Tools        string `json:"tools"`
+	Config       string `json:"config"`
+	Category     string `json:"category"`
+	Tags         string `json:"tags"`
+	Icon         string `json:"icon"`
+	Pricing      string `json:"pricing"`
+}
+
+type AgentPublishResp struct {
+	TemplateID string `json:"template_id"`
+	Name       string `json:"name"`
+	Category   string `json:"category"`
+	Status     string `json:"status"`
+}
+
+// AgentPublish publishes an agent to the marketplace on a Claw node.
+func (c *Client) AgentPublish(nodeAddr, overlordToken string, req AgentPublishReq) (*AgentPublishResp, error) {
+	var resp AgentPublishResp
+	if err := c.post(nodeAddr, "/v1/internal/agent-publish", overlordToken, req, &resp); err != nil {
+		return nil, fmt.Errorf("agent publish: %w", err)
+	}
+	return &resp, nil
+}
+
 // ── HTTP helpers ──
 
 func (c *Client) post(nodeAddr, path, token string, body interface{}, out interface{}) error {

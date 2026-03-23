@@ -521,6 +521,10 @@ export const broodAPI = {
     request<{ skills: ClawSkill[]; plugins: ClawPlugin[]; mcp_servers: ClawMCP[]; total: number; node_name: string }>(`/team-agent/node-skills/${nodeId}`),
   nodeAgents: (nodeId: string) =>
     request<{ agents: ClawAgentTemplate[]; categories: { category: string; count: number }[]; total: number; node_name: string }>(`/team-agent/node-agents/${nodeId}`),
+  agentSandbox: (instanceId: string, data: AgentSandboxReq) =>
+    request<AgentSandboxResp>(`/team-agent/instances/${instanceId}/agent-sandbox`, { method: 'POST', body: JSON.stringify(data) }),
+  agentPublish: (instanceId: string, data: AgentPublishReq) =>
+    request<AgentPublishResp>(`/team-agent/instances/${instanceId}/agent-publish`, { method: 'POST', body: JSON.stringify(data) }),
   teamAgentUsageByUser: () =>
     request<{ users: EmployeeUsage[]; total: number }>('/team-agent/usage/by-user'),
   teamAgentChatHistory: (instanceId: string) =>
@@ -715,6 +719,51 @@ export interface ClawAgentTemplate {
   rating: number
   install_count: number
   is_official: boolean
+}
+
+export interface AgentSandboxReq {
+  name: string
+  system_prompt: string
+  model?: string
+  tools?: string
+  config?: string
+  test_messages: { role: string; content: string }[]
+}
+
+export interface AgentSandboxResult {
+  input: string
+  output: string
+  verdict: string
+  checks: Record<string, boolean>
+  error?: string
+}
+
+export interface AgentSandboxResp {
+  results: AgentSandboxResult[]
+  overall_score: number
+  pass_count: number
+  total_tests: number
+  ready_to_publish: boolean
+}
+
+export interface AgentPublishReq {
+  name: string
+  description?: string
+  system_prompt: string
+  model?: string
+  tools?: string
+  config?: string
+  category?: string
+  tags?: string
+  icon?: string
+  pricing?: string
+}
+
+export interface AgentPublishResp {
+  template_id: string
+  name: string
+  category: string
+  status: string
 }
 
 export interface ClawModel {
