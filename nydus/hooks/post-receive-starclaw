@@ -7,7 +7,7 @@ CLAW_REPO=/data/nydus/repos/claw.git
 LOG=/var/log/nydus-deploy.log
 SERVER_A="root@starclaw.me"
 SERVER_B="root@47.103.51.32"
-SSH_KEY="/root/.ssh/id_ed25519"
+SSH_KEY="/home/git/.ssh/id_ed25519"
 SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10"
 
 while read oldrev newrev refname; do
