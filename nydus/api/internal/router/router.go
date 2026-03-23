@@ -102,6 +102,20 @@ func Setup() *gin.Engine {
 		api.GET("/releases", handler.ListReleases)
 	}
 
+	// ── Node registration (requires admin secret — nodes self-register via Claw) ──
+	api.POST("/nodes/register", handler.RegisterNode)
+	api.GET("/nodes", handler.ListNodes)
+	api.GET("/nodes/:node_id", handler.GetNode)
+	api.PUT("/nodes/:node_id/role", handler.UpdateNodeRole)
+	api.DELETE("/nodes/:node_id", handler.DeleteNode)
+
+	// ── Authenticated node endpoints (Ed25519 or Bearer token) ──
+	node := r.Group("/node")
+	node.Use(middleware.ClawAuth())
+	{
+		node.GET("/me", handler.MyNode)
+	}
+
 	// Hook endpoint (called by post-receive, uses same secret)
 	r.POST("/hooks/push", middleware.SecretAuth(), handler.HookPush)
 

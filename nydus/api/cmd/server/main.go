@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/yinhe/starclaw/nydus/internal/config"
+	"github.com/yinhe/starclaw/nydus/internal/database"
 	"github.com/yinhe/starclaw/nydus/internal/handler"
 	"github.com/yinhe/starclaw/nydus/internal/router"
 )
@@ -16,6 +17,9 @@ func main() {
 		cfgPath = v
 	}
 	config.LoadServer(cfgPath)
+
+	// Init SQLite database
+	database.Init(config.C.Server.DBPath)
 
 	// Ensure repos dir exists
 	os.MkdirAll(config.C.Server.ReposDir, 0755)

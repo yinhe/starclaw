@@ -17,6 +17,7 @@ type ServerConfig struct {
 	Secret   string `yaml:"secret"`
 	ReposDir string `yaml:"repos_dir"`
 	SSHUser  string `yaml:"ssh_user"`
+	DBPath   string `yaml:"db_path"`
 }
 
 type RepoConfig struct {
@@ -61,6 +62,9 @@ func LoadServer(path string) {
 	}
 	if C.Server.SSHUser == "" {
 		C.Server.SSHUser = "git"
+	}
+	if C.Server.DBPath == "" {
+		C.Server.DBPath = "/data/nydus/nydus.db"
 	}
 	log.Printf("[nydus] loaded config: %d repos, repos_dir=%s", len(C.Repos), C.Server.ReposDir)
 }
