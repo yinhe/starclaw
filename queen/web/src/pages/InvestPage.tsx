@@ -393,16 +393,47 @@ export function InvestPage() {
                   通过 StarAI 支付通道完成支付，支付成功后星钻自动到账
                 </div>
               </div>
-              <div className="lg:col-span-2 space-y-2 rounded-lg border border-purple-500/10 bg-white/[0.02] p-4">
+              <div className="lg:col-span-2 space-y-3 rounded-lg border border-purple-500/10 bg-white/[0.02] p-4">
                 <div className="flex justify-between text-sm"><span className="text-gray-400">已投资</span><span className="text-white font-medium">{fmtFen(inv!.total_invested)}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-gray-400">持有星钻</span><span className="text-white font-medium">{inv!.shares.toLocaleString()} 份</span></div>
-                <div className="flex justify-between text-sm"><span className="text-gray-400">分润状态</span>
-                  <span className={isActivated ? 'text-green-400 font-medium' : 'text-gray-500'}>
-                    {isActivated ? '✓ 已激活' : `还需 ${fmtFen(Math.max(0, 10000000 - inv!.total_invested))}`}
-                  </span>
-                </div>
                 <div className="flex justify-between text-sm"><span className="text-gray-400">协议期限</span><span className="text-white">{inv!.agreement_term} 年 (至 {inv!.agreement_expires_at?.slice(0, 10)})</span></div>
-                <div className="pt-2 mt-2 border-t border-purple-500/5 text-xs text-gray-500">累计投资 ≥ {fmt(pool.activation_yuan)} 激活分润</div>
+
+                {/* T+1 分润状态 */}
+                <div className="pt-3 mt-1 border-t border-purple-500/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-400">分润状态</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${isActivated ? 'bg-green-500/10 border border-green-500/30 text-green-400' : 'bg-gray-500/10 border border-white/10 text-gray-500'}`}>
+                      {isActivated ? 'T+1 每日结算' : '未激活'}
+                    </span>
+                  </div>
+
+                  {!isActivated && profile?.settlement && (
+                    <div className="space-y-2">
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-400 rounded-full transition-all"
+                          style={{ width: `${(profile.settlement.activation_progress * 100).toFixed(1)}%` }} />
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">{fmtFen(inv!.total_invested)} / {fmt(pool.activation_yuan)}</span>
+                        <span className="text-purple-400">{(profile.settlement.activation_progress * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="text-xs text-gray-600">虫后每日 T+1 结算利润池，累投 ≥ {fmt(pool.activation_yuan)} 激活分润</div>
+                    </div>
+                  )}
+
+                  {isActivated && profile?.settlement && (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">昨日分润</span><span className="text-green-400 font-medium">{fmt(profile.settlement.yesterday_earning)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">今日预估</span><span className="text-yellow-400/80">{fmt(profile.settlement.today_estimate)} <span className="text-xs text-gray-600">明日结算</span></span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">本月累计</span><span className="text-white">{fmt(profile.settlement.month_earning)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">累计分润</span><span className="text-purple-400 font-medium">{fmt(profile.settlement.total_earning)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">我的占比</span><span className="text-white">{profile.settlement.share_percent}</span></div>
+                      <div className="pt-1.5 mt-1 border-t border-purple-500/5 text-xs text-gray-600">
+                        {profile.settlement.next_settlement_label}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

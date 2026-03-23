@@ -383,6 +383,22 @@ export interface InvestorProfile {
   pool_balance: number;
   min_recharge_yuan: number;
   activation_yuan: number;
+  settlement: {
+    mode: string;
+    activated: boolean;
+    activation_threshold: number;
+    activation_progress: number;
+    activation_remaining: number;
+    share_ratio: number;
+    share_percent: string;
+    yesterday_earning: number;
+    today_estimate: number;
+    month_earning: number;
+    total_earning: number;
+    pool_balance: number;
+    next_settlement: string;
+    next_settlement_label: string;
+  };
   dividends: any[];
   transactions: any[];
 }

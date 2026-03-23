@@ -564,6 +564,13 @@ func paymentChannels() []string {
 	return []string{"alipay", "wechatpay"}
 }
 
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // POST /v1/investor/register — Self-register as investor
 func (h *InvestorHandler) Register(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -965,6 +972,61 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 	// Portfolio value = shares × current price
 	portfolioFen := investor.Shares * dynPrice
 
+	// ── T+1 Settlement Info ──
+	var shareRatio float64
+	if pool.TotalShares > 0 {
+		shareRatio = float64(investor.Shares) / float64(pool.TotalShares)
+	}
+
+	now := time.Now()
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+	today := now.Format("2006-01-02")
+	monthStart := now.Format("2006-01") + "-01"
+
+	// Yesterday's pool income (already settled via T+1)
+	var yesterdayPool int64
+	database.DB.Model(&model.PoolDeposit{}).
+		Where("DATE(created_at) = ?", yesterday).
+		Select("COALESCE(SUM(amount),0)").Scan(&yesterdayPool)
+	yesterdayEarning := int64(float64(yesterdayPool) * shareRatio)
+
+	// Today's pool income (will settle tomorrow)
+	var todayPool int64
+	database.DB.Model(&model.PoolDeposit{}).
+		Where("DATE(created_at) = ?", today).
+		Select("COALESCE(SUM(amount),0)").Scan(&todayPool)
+	todayEstimate := int64(float64(todayPool) * shareRatio)
+
+	// This month's cumulative
+	var monthPool int64
+	database.DB.Model(&model.PoolDeposit{}).
+		Where("created_at >= ?", monthStart).
+		Select("COALESCE(SUM(amount),0)").Scan(&monthPool)
+	monthEarning := int64(float64(monthPool) * shareRatio)
+
+	// Activation progress
+	activationProgress := float64(investor.TotalInvested) / float64(ActivationThreshold)
+	if activationProgress > 1 {
+		activationProgress = 1
+	}
+
+	settlement := gin.H{
+		"mode":                  "T+1",
+		"activated":             investor.Activated,
+		"activation_threshold":  float64(ActivationThreshold) / 100,
+		"activation_progress":   activationProgress,
+		"activation_remaining":  float64(max64(0, ActivationThreshold-investor.TotalInvested)) / 100,
+		"share_ratio":           shareRatio,
+		"share_percent":         fmt.Sprintf("%.4f%%", shareRatio*100),
+		"yesterday_earning":     float64(yesterdayEarning) / 100,
+		"today_estimate":        float64(todayEstimate) / 100,
+		"month_earning":         float64(monthEarning) / 100,
+		"total_earning":         float64(investor.TotalDividends) / 100,
+		"pool_balance":          float64(pool.PoolBalance) / 100,
+		"next_settlement":       now.AddDate(0, 0, 1).Format("2006-01-02") + " 08:00",
+		"next_settlement_label": "明天 08:00 结算今日利润",
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"investor":          investor,
 		"share_percent":     fmt.Sprintf("%.4f%%", sharePercent),
@@ -977,6 +1039,7 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 		"min_invest_yuan":   float64(func() int64 { m, _ := model.RoundLimits(pool.CurrentRound); return m }()) / 100,
 		"max_invest_yuan":   float64(func() int64 { _, m := model.RoundLimits(pool.CurrentRound); return m }()) / 100,
 		"activation_yuan":   float64(ActivationThreshold) / 100,
+		"settlement":        settlement,
 		"dividends":         dividends,
 		"transactions":      transactions,
 	})
