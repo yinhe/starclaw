@@ -919,11 +919,19 @@ func (h *ChatHandler) resolveModelConfig(userID, conversationModelID, agentModel
 			return cfg, nil
 		}
 	}
-	// 3. User's first enabled model
+	// 3. User's star-ai config (preferred in hosted/swarm mode — needs no API key)
+	if err := h.db.Where("user_id = ? AND provider = ? AND is_enabled = ?", userID, "star-ai", true).First(&cfg).Error; err == nil {
+		return cfg, nil
+	}
+	// 4. User's first enabled model with a non-empty API key (skip misconfigured providers)
+	if err := h.db.Where("user_id = ? AND is_enabled = ? AND api_key != ''", userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
+		return cfg, nil
+	}
+	// 5. User's first enabled model (any, including ollama which needs no key)
 	if err := h.db.Where("user_id = ? AND is_enabled = ?", userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
 		return cfg, nil
 	}
-	// 4. Platform model
+	// 6. Platform model
 	if err := h.db.Where("user_id = 'platform' AND is_enabled = ?", true).Order("created_at ASC").First(&cfg).Error; err == nil {
 		return cfg, nil
 	}
