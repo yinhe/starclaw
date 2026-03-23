@@ -67,9 +67,9 @@ Expected: Container star-ai-api Started
 
 Queen auto-deploys via Nydus hook on git push. Manual fallback:
 
-8. Queen (if auto-deploy failed):
+8. Queen (if auto-deploy failed) — **must clean api/ first** to remove stale files:
 ```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/starclaw-queen && git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/ | tar xf - && docker compose -f docker-compose.prod.yml up -d --build 2>&1 | tail -10"
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/starclaw-queen && rm -rf api/ && git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/ | tar xf - && mkdir -p api/certs && docker compose -f docker-compose.prod.yml build --no-cache queen-api 2>&1 | tail -5 && docker compose -f docker-compose.prod.yml up -d queen-api 2>&1"
 ```
 
 9. Gateway on Server B (queen/api code):
@@ -121,3 +121,16 @@ Note: Server C is accessed with starai_deploy key (not queen_deploy). The Nydus 
 - Synapse build uses cache: Add --no-cache flag to docker compose build if code changes are not reflected.
 - Hive controller build needs carapace: Always sync both `hive/` AND `carapace/` dirs (step 4). The Dockerfile uses `context: ..` to access `../../carapace`.
 - Hive .env not in git: The `.env` file on Server A at `/opt/starclaw/hive/.env` is NOT tracked in git. Edit it directly on server for secrets.
+- Queen stale files: `tar xf` only adds/overwrites, never deletes removed files. Always `rm -rf api/` before extracting queen archive. Stale `.go` files with old imports will break Docker build.
+- Queen api/certs: Dockerfile expects `certs/` dir. Run `mkdir -p api/certs` after extraction if it doesn't exist.
+
+## Go Module Vanity Import (starclaw.net/*)
+
+All private Go modules use `starclaw.net/*` vanity import paths (commit `07c96da`).
+
+- **Meta tag handler**: nginx on `starclaw.net` serves `?go-get=1` → points to `nydus.starclaw.net/git/starclaw.git`
+- **Git HTTP backend**: `nydus.starclaw.net/git/` serves bare repo read-only via `git-http-backend`
+- **Claw (open-source)**: stays at `github.com/yinhe/starclaw`, NOT migrated
+- **Dockerfiles**: Queen + Synapse have `GOPRIVATE=starclaw.net` for sum DB bypass
+- **Config doc**: `nydus/deploy/nginx-go-module.conf`
+- **nginx backup**: `/etc/nginx/sites-enabled/queen.bak` on Server C
