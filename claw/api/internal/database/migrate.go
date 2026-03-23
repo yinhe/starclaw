@@ -71,6 +71,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.GenerationLog{},
 		&model.ImageRecord{},
 		&model.MusicRecord{},
+		&model.ForgeProject{},
+		&model.ForgeIssue{},
+		&model.ForgeIssueComment{},
+		&model.ForgeMilestone{},
+		&model.ForgeBoard{},
 	); err != nil {
 		return err
 	}

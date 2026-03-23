@@ -1012,6 +1012,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/missions/:id/feedback", squadHandler.SubmitFeedback)
 			protected.GET("/missions/:id/reviews", squadHandler.ListStepReviews)
 
+			// Forge (AI-Native Project Management)
+			forgeHandler := v1.NewForgeHandler(db)
+			protected.POST("/forge/projects", forgeHandler.CreateProject)
+			protected.GET("/forge/projects", forgeHandler.ListProjects)
+			protected.GET("/forge/projects/:id", forgeHandler.GetProject)
+			protected.PUT("/forge/projects/:id", forgeHandler.UpdateProject)
+			protected.POST("/forge/projects/:id/issues", forgeHandler.CreateIssue)
+			protected.GET("/forge/projects/:id/issues", forgeHandler.ListIssues)
+			protected.GET("/forge/projects/:id/issues/:number", forgeHandler.GetIssue)
+			protected.PUT("/forge/projects/:id/issues/:number", forgeHandler.UpdateIssue)
+			protected.POST("/forge/projects/:id/issues/:number/comments", forgeHandler.AddIssueComment)
+			protected.POST("/forge/projects/:id/milestones", forgeHandler.CreateMilestone)
+			protected.GET("/forge/projects/:id/milestones", forgeHandler.ListMilestones)
+			protected.POST("/forge/milestones/:ms_id/close", forgeHandler.CloseMilestone)
+			protected.GET("/forge/projects/:id/board", forgeHandler.GetBoard)
+
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
