@@ -12,7 +12,7 @@ export default function InvitesPage() {
   const [invites, setInvites] = useState<PartnerInvite[]>([])
   const [stats, setStats] = useState<{ total_invites: number; total_uses: number; active_invites: number; conversion_rate: string } | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ alias: '', label: '', max_uses: 1, region: '', comm_rate: 0.2, preset_name: '', preset_phone: '', preset_email: '' })
+  const [form, setForm] = useState({ alias: '', label: '', max_uses: 1, region: '', comm_rate: 0.3, preset_name: '', preset_phone: '', preset_email: '' })
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
@@ -38,7 +38,7 @@ export default function InvitesPage() {
         preset_email: form.preset_email || undefined,
       })
       setShowCreate(false)
-      setForm({ alias: '', label: '', max_uses: 1, region: '', comm_rate: 0.2, preset_name: '', preset_phone: '', preset_email: '' })
+      setForm({ alias: '', label: '', max_uses: 1, region: '', comm_rate: 0.3, preset_name: '', preset_phone: '', preset_email: '' })
       load()
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败')
