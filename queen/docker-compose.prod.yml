@@ -141,6 +141,18 @@ services:
     networks:
       - starqueen
 
+  # ===================== Official Site (starclaw.net landing + download) =====================
+
+  queen-site:
+    build:
+      context: ./site
+    container_name: starclaw-queen-site
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8095:80"
+    networks:
+      - starqueen
+
   # ===================== Overseer (monitoring dashboard) =====================
 
   overseer:
