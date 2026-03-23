@@ -717,9 +717,11 @@ func performDockerSocketUpdate(targetVersion string) error {
 	}
 
 	// Build the update script that runs inside a helper container on the host.
-	// The script auto-detects project layout (monorepo vs standalone),
-	// tries pull first (fast if registry images exist), falls back to source build.
-	// Uses temp dir for tar extraction to avoid overwrite conflicts.
+	// Key fixes:
+	//  1. Read original project-name from container labels → seamless container replacement
+	//  2. Use --project-directory → compose relative paths resolve correctly
+	//  3. Verify pull got real images → avoid false-positive when compose has build+image
+	//  4. Temp dir for tar → avoid overwrite conflicts
 	nydusURL := molt.NydusSourceURL
 	script := fmt.Sprintf(`#!/bin/sh
 set -e
@@ -734,32 +736,54 @@ VER="%s"
 NYDUS="%s"
 cd "$HOSTDIR"
 
-# Detect project layout: monorepo (has claw/ subdir) vs standalone
+# ── Detect project layout ──
 if [ -f "claw/docker-compose.prod.yml" ]; then
   COMPOSE="$HOSTDIR/claw/docker-compose.prod.yml"
   SRCDIR="$HOSTDIR/claw"
-  echo "@@LAYOUT:monorepo (compose=claw/docker-compose.prod.yml)"
+  echo "@@LAYOUT:monorepo"
 elif [ -f "docker-compose.prod.yml" ]; then
   COMPOSE="$HOSTDIR/docker-compose.prod.yml"
   SRCDIR="$HOSTDIR"
-  echo "@@LAYOUT:standalone (compose=docker-compose.prod.yml)"
+  echo "@@LAYOUT:standalone"
 else
   COMPOSE="$HOSTDIR/docker-compose.yml"
   SRCDIR="$HOSTDIR"
-  echo "@@LAYOUT:dev (compose=docker-compose.yml)"
+  echo "@@LAYOUT:dev"
 fi
 
+COMPOSEDIR=$(dirname "$COMPOSE")
+
+# ── Read original project name from running container labels ──
+# This is CRITICAL: docker compose tracks containers by project name.
+# Without matching the original, "up" tries to create NEW containers
+# instead of replacing existing ones → container name conflict.
+PROJECT=$(docker inspect starclaw-api --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)
+if [ -z "$PROJECT" ]; then
+  PROJECT=$(basename "$COMPOSEDIR")
+fi
+
+DC="docker compose --project-name $PROJECT --project-directory $COMPOSEDIR -f $COMPOSE"
+echo "@@PROJECT:$PROJECT"
 echo "@@COMPOSE:$COMPOSE"
 echo "@@SRCDIR:$SRCDIR"
 
-# Try pulling pre-built images first (fast path)
+# ── Try pulling pre-built images (fast path) ──
+NEED_BUILD=true
 echo "@@PULL_START"
-if STARCLAW_VERSION="$VER" docker compose -f "$COMPOSE" pull api web 2>&1; then
+STARCLAW_VERSION="$VER" $DC pull api web > /dev/null 2>&1 || true
+
+# Verify pull actually got the versioned image (not just exit code 0)
+API_IMG="ghcr.io/yinhe/starclaw-api:$VER"
+if docker image inspect "$API_IMG" > /dev/null 2>&1; then
+  NEED_BUILD=false
   echo "@@PULL_OK"
 else
-  echo "@@PULL_FAILED"
+  echo "@@PULL_NOIMAGE"
+fi
 
-  # Update source code from Nydus (use temp dir to avoid tar overwrite issues)
+# ── Build from source if needed ──
+if [ "$NEED_BUILD" = "true" ]; then
+  # Update source code from Nydus (temp dir avoids tar overwrite conflicts)
   echo "@@SOURCE_START"
   TMP=$(mktemp -d)
   curl -sfL --connect-timeout 10 --max-time 120 "$NYDUS" | tar xz -C "$TMP" --strip-components=1
@@ -768,15 +792,15 @@ else
   echo -n "$VER" > "$SRCDIR/api/.version"
   echo "@@SOURCE_OK"
 
-  # Build images from source
+  # Build images
   echo "@@BUILD_START"
-  STARCLAW_VERSION="$VER" docker compose -f "$COMPOSE" build api web 2>&1
+  STARCLAW_VERSION="$VER" $DC build api web 2>&1
   echo "@@BUILD_OK"
 fi
 
-# Recreate containers with new images
+# ── Recreate containers ──
 echo "@@UP_START"
-STARCLAW_VERSION="$VER" docker compose -f "$COMPOSE" up -d --no-deps api web 2>&1
+STARCLAW_VERSION="$VER" $DC up -d --no-deps api web 2>&1
 echo "@@UPDATE_COMPLETE"
 `, hostDir, targetVersion, nydusURL)
 
@@ -824,9 +848,11 @@ echo "@@UPDATE_COMPLETE"
 		case line == "@@PULL_START":
 			ulogInfo("尝试拉取预构建镜像...")
 		case line == "@@PULL_OK":
-			ulogInfo("镜像拉取完成")
-		case line == "@@PULL_FAILED":
-			ulogInfo("预构建镜像不存在，切换到源码构建...")
+			ulogInfo("预构建镜像已拉取，跳过源码构建")
+		case line == "@@PULL_NOIMAGE":
+			ulogInfo("镜像不存在，切换到源码构建...")
+		case strings.HasPrefix(line, "@@PROJECT:"):
+			ulogInfo("项目名: %s", strings.TrimPrefix(line, "@@PROJECT:"))
 		case line == "@@SOURCE_START":
 			ulogInfo("正在从 Nydus 下载源码...")
 		case line == "@@SOURCE_OK":
