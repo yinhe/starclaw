@@ -30,6 +30,7 @@ const PROVIDERS = [
   { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀', base_url: 'https://openrouter.ai/api/v1' },
   { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡', base_url: 'https://fal.run/fal-ai/any-llm/v1' },
   { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏', base_url: 'https://api.x.ai/v1' },
+  { value: 'volcengine', label: '字节跳动 (豆包)', desc: 'Doubao-seed 旗舰、豆包Pro/Lite、视觉、思考、DeepSeek', icon: '🔥', base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
   { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimaxi.com/v1' },
   { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
   { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙', base_url: 'https://api.moonshot.cn/v1' },
@@ -67,6 +68,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter',
   fal: 'fal.ai',
   grok: 'Grok (xAI)',
+  volcengine: '字节跳动 (豆包)',
   zhipu: '智谱 (GLM)',
   moonshot: 'Moonshot',
   custom: '自定义',
@@ -154,7 +156,7 @@ export default function ModelsPage() {
     } catch { /* ignore */ }
   }
 
-  const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
+  const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'volcengine', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
   const isStarAI = form.provider === 'star-ai'
   const isOllama = form.provider === 'ollama'
   const isCustom = form.provider === 'custom'

@@ -102,6 +102,8 @@ func defaultModelForProvider(p string) string {
 		return "glm-4-plus"
 	case "moonshot":
 		return "moonshot-v1-128k"
+	case "volcengine":
+		return "doubao-seed-2-0-pro-260215"
 	default:
 		return ""
 	}

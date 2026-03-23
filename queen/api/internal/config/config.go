@@ -168,9 +168,10 @@ func loadGatewayEnv() {
 	}
 	// 国内直连 Provider — 用各自的 API Key
 	directEnv := map[string]string{
-		"deepseek": "DEEPSEEK_API_KEY",
-		"qwen":     "DASHSCOPE_API_KEY",
-		"minimax":  "MINIMAX_API_KEY",
+		"deepseek":   "DEEPSEEK_API_KEY",
+		"qwen":       "DASHSCOPE_API_KEY",
+		"minimax":    "MINIMAX_API_KEY",
+		"volcengine": "VOLCENGINE_API_KEY",
 	}
 	for provider, envKey := range directEnv {
 		if key := viper.GetString(envKey); key != "" {

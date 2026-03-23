@@ -15,11 +15,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"starclaw.net/queen/api/internal/config"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/model"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // GatewayHandler handles star-ai.net OpenAI-compatible API gateway
@@ -745,17 +745,34 @@ var supportedModels = []modelEntry{
 	{ID: "MiniMax-M2", Provider: "minimax"},
 	{ID: "MiniMax-Text-01", Provider: "minimax"},
 	{ID: "MiniMax-VL-01", Provider: "minimax"},
+	// ── Volcengine / ByteDance (豆包) ──
+	{ID: "doubao-seed-2-0-pro-260215", Provider: "volcengine"},
+	{ID: "doubao-seed-2-0-lite-260215", Provider: "volcengine"},
+	{ID: "doubao-1.5-pro-256k-250115", Provider: "volcengine"},
+	{ID: "doubao-1.5-pro-32k-250115", Provider: "volcengine"},
+	{ID: "doubao-1.5-lite-32k-250115", Provider: "volcengine"},
+	{ID: "doubao-pro-256k-241115", Provider: "volcengine"},
+	{ID: "doubao-pro-32k-241115", Provider: "volcengine"},
+	{ID: "doubao-lite-128k-241115", Provider: "volcengine"},
+	{ID: "doubao-lite-32k-241115", Provider: "volcengine"},
+	{ID: "doubao-1.5-thinking-pro-250415", Provider: "volcengine"},
+	{ID: "doubao-1.5-thinking-pro-m-250415", Provider: "volcengine"},
+	{ID: "doubao-1.5-vision-pro-250328", Provider: "volcengine"},
+	{ID: "doubao-vision-pro-32k-241028", Provider: "volcengine"},
+	{ID: "doubao-character-pro-32k", Provider: "volcengine"},
+	{ID: "doubao-1.5-coder-pro", Provider: "volcengine"},
 }
 
 // Default upstream URLs (OpenAI-compatible)
 var defaultUpstreams = map[string]string{
-	"openai":    "https://api.openai.com/v1",
-	"anthropic": "https://api.anthropic.com/v1",
-	"deepseek":  "https://api.deepseek.com/v1",
-	"qwen":      "https://dashscope.aliyuncs.com/compatible-mode/v1",
-	"gemini":    "https://generativelanguage.googleapis.com/v1beta/openai",
-	"grok":      "https://api.x.ai/v1",
-	"minimax":   "https://api.minimax.io/v1",
+	"openai":     "https://api.openai.com/v1",
+	"anthropic":  "https://api.anthropic.com/v1",
+	"deepseek":   "https://api.deepseek.com/v1",
+	"qwen":       "https://dashscope.aliyuncs.com/compatible-mode/v1",
+	"gemini":     "https://generativelanguage.googleapis.com/v1beta/openai",
+	"grok":       "https://api.x.ai/v1",
+	"minimax":    "https://api.minimax.io/v1",
+	"volcengine": "https://ark.cn-beijing.volces.com/api/v3",
 }
 
 func (h *GatewayHandler) resolveProvider(modelName string) (providerName, upstreamURL, apiKey string) {
@@ -785,6 +802,8 @@ func (h *GatewayHandler) resolveProvider(modelName string) (providerName, upstre
 			provider = "grok"
 		case strings.HasPrefix(modelName, "MiniMax-"):
 			provider = "minimax"
+		case strings.HasPrefix(modelName, "doubao-"):
+			provider = "volcengine"
 		default:
 			return "", "", ""
 		}
@@ -843,6 +862,15 @@ func getModelPricing(modelName string) modelPricing {
 	// MiniMax
 	case strings.HasPrefix(modelName, "MiniMax-"):
 		return modelPricing{InputPer1M: 50, OutputPer1M: 200}
+	// Volcengine / Doubao
+	case modelName == "doubao-seed-2-0-pro-260215":
+		return modelPricing{InputPer1M: 30, OutputPer1M: 120}
+	case strings.Contains(modelName, "thinking"):
+		return modelPricing{InputPer1M: 30, OutputPer1M: 120}
+	case strings.Contains(modelName, "-pro-") && strings.HasPrefix(modelName, "doubao-"):
+		return modelPricing{InputPer1M: 20, OutputPer1M: 60}
+	case strings.HasPrefix(modelName, "doubao-"):
+		return modelPricing{InputPer1M: 5, OutputPer1M: 10}
 	default:
 		return modelPricing{InputPer1M: 100, OutputPer1M: 400}
 	}
