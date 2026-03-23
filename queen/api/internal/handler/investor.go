@@ -512,11 +512,21 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 	dynPrice := pool.CalcPrice(floorPrice)
 
 	minFen, maxFen := model.RoundLimits(pool.CurrentRound)
+	// Current round supply info
+	roundSupply := round.SharesQuota // 本期总配额 (e.g. 1000万)
+	roundIssued := round.SharesSold  // 本期已售出
+	if roundSupply == 0 {
+		roundSupply = model.StarDiamondTotal / 10 // fallback: 10% per round
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"name":                "星钻 (Star Diamond)",
 		"total_supply":        model.StarDiamondTotal,
 		"issued":              pool.TotalShares,
 		"remaining":           model.StarDiamondTotal - pool.TotalShares,
+		"round_supply":        roundSupply,
+		"round_issued":        roundIssued,
+		"round_remaining":     roundSupply - roundIssued,
 		"nav_fen":             nav,
 		"nav_yuan":            float64(nav) / 100,
 		"floor_price_fen":     floorPrice,

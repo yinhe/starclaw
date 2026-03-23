@@ -332,6 +332,9 @@ export interface InvestorPoolInfo {
   total_supply: number;
   issued: number;
   remaining: number;
+  round_supply: number;
+  round_issued: number;
+  round_remaining: number;
   nav_fen: number;
   nav_yuan: number;
   floor_price_fen: number;

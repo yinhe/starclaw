@@ -271,13 +271,14 @@ export function InvestPage() {
         {/* ═══ Section 2: Supply Overview ═══ */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5">
-            <div className="text-sm text-gray-500 mb-1">虫巢总供应</div>
-            <div className="text-xl font-bold text-white">{(pool.total_supply / 10000).toLocaleString()}万 <span className="text-sm font-normal text-gray-500">份</span></div>
+            <div className="text-sm text-gray-500 mb-1">本期释放</div>
+            <div className="text-xl font-bold text-white">{(pool.round_supply / 10000).toLocaleString()}万 <span className="text-sm font-normal text-gray-500">份</span></div>
+            <div className="text-xs text-gray-600 mt-0.5">总供应 {(pool.total_supply / 10000).toLocaleString()}万份</div>
           </div>
           <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5">
             <div className="text-sm text-gray-500 mb-1">已孵化</div>
-            <div className="text-xl font-bold text-white">{pool.issued.toLocaleString()} <span className="text-sm font-normal text-gray-500">份</span></div>
-            <div className="text-xs text-purple-400/60 mt-0.5">{pct(pool.issued, pool.total_supply)}</div>
+            <div className="text-xl font-bold text-white">{pool.round_issued.toLocaleString()} <span className="text-sm font-normal text-gray-500">份</span></div>
+            <div className="text-xs text-purple-400/60 mt-0.5">{pct(pool.round_issued, pool.round_supply)}</div>
           </div>
           <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-5">
             <div className="text-sm text-gray-500 mb-1">利润池余额</div>
