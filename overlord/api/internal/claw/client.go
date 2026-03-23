@@ -279,6 +279,81 @@ func (c *Client) ListModels(nodeAddr, overlordToken string) (*ListModelsResp, er
 	return &resp, nil
 }
 
+// ── Skills ──
+
+type ClawSkill struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
+	Status      string `json:"status"`
+}
+
+type ClawPlugin struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+	Icon        string `json:"icon"`
+	Version     string `json:"version"`
+	Pricing     string `json:"pricing"`
+}
+
+type ClawMCPServer struct {
+	Name    string `json:"name"`
+	BaseURL string `json:"base_url"`
+}
+
+type ListSkillsResp struct {
+	Skills     []ClawSkill     `json:"skills"`
+	Plugins    []ClawPlugin    `json:"plugins"`
+	MCPServers []ClawMCPServer `json:"mcp_servers"`
+	Total      int             `json:"total"`
+}
+
+// ListSkills fetches available skills/tools from a Claw node.
+func (c *Client) ListSkills(nodeAddr, overlordToken string) (*ListSkillsResp, error) {
+	var resp ListSkillsResp
+	if err := c.get(nodeAddr, "/v1/internal/skills", overlordToken, &resp); err != nil {
+		return nil, fmt.Errorf("list skills: %w", err)
+	}
+	return &resp, nil
+}
+
+// ── Agents ──
+
+type ClawAgent struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	Category     string  `json:"category"`
+	SystemPrompt string  `json:"system_prompt"`
+	Model        string  `json:"model"`
+	Tools        string  `json:"tools"`
+	Icon         string  `json:"icon"`
+	Rating       float64 `json:"rating"`
+	InstallCount int     `json:"install_count"`
+	IsOfficial   bool    `json:"is_official"`
+}
+
+type ListAgentsResp struct {
+	Agents     []ClawAgent `json:"agents"`
+	Categories []struct {
+		Category string `json:"category"`
+		Count    int    `json:"count"`
+	} `json:"categories"`
+	Total int `json:"total"`
+}
+
+// ListAgents fetches published agent templates from a Claw node's marketplace.
+func (c *Client) ListAgents(nodeAddr, overlordToken string) (*ListAgentsResp, error) {
+	var resp ListAgentsResp
+	if err := c.get(nodeAddr, "/v1/internal/agents", overlordToken, &resp); err != nil {
+		return nil, fmt.Errorf("list agents: %w", err)
+	}
+	return &resp, nil
+}
+
 // ── HTTP helpers ──
 
 func (c *Client) post(nodeAddr, path, token string, body interface{}, out interface{}) error {

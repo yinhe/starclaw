@@ -321,6 +321,8 @@ func main() {
 			taRead.GET("/instances/:id/conversations", teamAgentH.ListConversations)
 			taRead.GET("/instances/:id/access", teamAgentH.ListInstanceAccess)
 			taRead.GET("/node-models/:nodeId", teamAgentH.NodeModels)
+			taRead.GET("/node-skills/:nodeId", teamAgentH.NodeSkills)
+			taRead.GET("/node-agents/:nodeId", teamAgentH.NodeAgents)
 			taRead.GET("/usage/by-user", teamAgentH.UsageByUser)
 		}
 		// --- Team Agent submit (viewer+) — chat + mission creation ---

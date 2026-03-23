@@ -517,6 +517,10 @@ export const broodAPI = {
     request<{ message: string; config: string }>(`/team-agent/instances/${id}/roles`, { method: 'PUT', body: JSON.stringify(data) }),
   nodeModels: (nodeId: string) =>
     request<{ models: ClawModel[]; total: number; node_name: string }>(`/team-agent/node-models/${nodeId}`),
+  nodeSkills: (nodeId: string) =>
+    request<{ skills: ClawSkill[]; plugins: ClawPlugin[]; mcp_servers: ClawMCP[]; total: number; node_name: string }>(`/team-agent/node-skills/${nodeId}`),
+  nodeAgents: (nodeId: string) =>
+    request<{ agents: ClawAgentTemplate[]; categories: { category: string; count: number }[]; total: number; node_name: string }>(`/team-agent/node-agents/${nodeId}`),
   teamAgentUsageByUser: () =>
     request<{ users: EmployeeUsage[]; total: number }>('/team-agent/usage/by-user'),
   teamAgentChatHistory: (instanceId: string) =>
@@ -674,6 +678,43 @@ export interface TeamInstance {
   created_at: string
   updated_at: string
   disbanded_at: string | null
+}
+
+export interface ClawSkill {
+  name: string
+  description: string
+  type: string  // builtin, plugin, mcp
+  status: string
+}
+
+export interface ClawPlugin {
+  id: string
+  name: string
+  display_name: string
+  description: string
+  category: string
+  icon: string
+  version: string
+  pricing: string
+}
+
+export interface ClawMCP {
+  name: string
+  base_url: string
+}
+
+export interface ClawAgentTemplate {
+  id: string
+  name: string
+  description: string
+  category: string
+  system_prompt: string
+  model: string
+  tools: string  // JSON array
+  icon: string
+  rating: number
+  install_count: number
+  is_official: boolean
 }
 
 export interface ClawModel {

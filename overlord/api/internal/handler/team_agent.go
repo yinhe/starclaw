@@ -1270,6 +1270,49 @@ func (h *TeamAgentHandler) NodeModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"models": resp.Models, "total": resp.Total, "node_name": node.Name})
 }
 
+// GET /brood/team-agent/node-skills/:nodeId — list skills from a specific Claw node
+func (h *TeamAgentHandler) NodeSkills(c *gin.Context) {
+	nodeID := c.Param("nodeId")
+	var node model.ClawNode
+	if err := h.db.First(&node, "id = ?", nodeID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "node not found"})
+		return
+	}
+	resp, err := h.clawClient.ListSkills(node.Address, h.overlordToken)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch skills: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"skills":      resp.Skills,
+		"plugins":     resp.Plugins,
+		"mcp_servers": resp.MCPServers,
+		"total":       resp.Total,
+		"node_name":   node.Name,
+	})
+}
+
+// GET /brood/team-agent/node-agents/:nodeId — list marketplace agents from a specific Claw node
+func (h *TeamAgentHandler) NodeAgents(c *gin.Context) {
+	nodeID := c.Param("nodeId")
+	var node model.ClawNode
+	if err := h.db.First(&node, "id = ?", nodeID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "node not found"})
+		return
+	}
+	resp, err := h.clawClient.ListAgents(node.Address, h.overlordToken)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch agents: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"agents":     resp.Agents,
+		"categories": resp.Categories,
+		"total":      resp.Total,
+		"node_name":  node.Name,
+	})
+}
+
 // GET /brood/models — list available models from all online Claw nodes
 func (h *TeamAgentHandler) ListModels(c *gin.Context) {
 	var nodes []model.ClawNode

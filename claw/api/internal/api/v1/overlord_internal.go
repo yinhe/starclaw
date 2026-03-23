@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,7 @@ import (
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/provider"
+	"github.com/yinhe/starclaw/internal/tool"
 	"gorm.io/gorm"
 )
 
@@ -28,12 +30,18 @@ type OverlordInternalHandler struct {
 	token            string
 	cfg              *config.Config
 	providerRegistry *provider.Registry
+	toolRegistry     *tool.Registry
 }
 
 // NewOverlordInternalHandler creates the handler.
 // SetProviderRegistry injects the provider registry for chat proxy.
 func (h *OverlordInternalHandler) SetProviderRegistry(pr *provider.Registry) {
 	h.providerRegistry = pr
+}
+
+// SetToolRegistry injects the tool registry for skill listing.
+func (h *OverlordInternalHandler) SetToolRegistry(tr *tool.Registry) {
+	h.toolRegistry = tr
 }
 
 func NewOverlordInternalHandler(db *gorm.DB, identity *node.Identity, cfg ...*config.Config) *OverlordInternalHandler {
@@ -509,4 +517,136 @@ func (h *OverlordInternalHandler) ListModels(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"models": safe, "total": len(safe)})
+}
+
+// GET /v1/internal/skills
+// Returns all available skills/tools from the ToolRegistry and installed plugins.
+func (h *OverlordInternalHandler) ListSkills(c *gin.Context) {
+	type SkillInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Type        string `json:"type"`   // builtin, plugin, mcp
+		Status      string `json:"status"` // active
+	}
+
+	builtinNames := map[string]bool{
+		"system": true, "code": true, "web_search": true, "http_request": true,
+		"browser": true, "video_generation": true, "deploy_web": true,
+		"bind_domain": true, "verify_online": true,
+	}
+
+	var skills []SkillInfo
+
+	if h.toolRegistry != nil {
+		for _, name := range h.toolRegistry.List() {
+			t, ok := h.toolRegistry.Get(name)
+			if !ok {
+				continue
+			}
+			typ := "builtin"
+			if !builtinNames[name] {
+				if strings.HasPrefix(name, "mcp_") {
+					typ = "mcp"
+				} else {
+					typ = "plugin"
+				}
+			}
+			skills = append(skills, SkillInfo{
+				Name:        name,
+				Description: t.Description(),
+				Type:        typ,
+				Status:      "active",
+			})
+		}
+	}
+
+	// Also include installed plugins from DB
+	var plugins []model.PluginListing
+	h.db.Where("status = ?", "published").Order("install_count DESC").Find(&plugins)
+	type PluginInfo struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+		Description string `json:"description"`
+		Category    string `json:"category"`
+		Icon        string `json:"icon"`
+		Version     string `json:"version"`
+		Pricing     string `json:"pricing"`
+	}
+	pluginList := make([]PluginInfo, 0, len(plugins))
+	for _, p := range plugins {
+		pluginList = append(pluginList, PluginInfo{
+			ID: p.ID, Name: p.Name, DisplayName: p.DisplayName,
+			Description: p.Description, Category: p.Category,
+			Icon: p.Icon, Version: p.Version, Pricing: p.Pricing,
+		})
+	}
+
+	// MCP servers (node-level)
+	var mcpServers []model.MCPServer
+	h.db.Where("status = ?", "active").Find(&mcpServers)
+	type MCPInfo struct {
+		Name    string `json:"name"`
+		BaseURL string `json:"base_url"`
+	}
+	mcpList := make([]MCPInfo, 0, len(mcpServers))
+	for _, s := range mcpServers {
+		mcpList = append(mcpList, MCPInfo{Name: s.Name, BaseURL: s.BaseURL})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"skills":      skills,
+		"plugins":     pluginList,
+		"mcp_servers": mcpList,
+		"total":       len(skills),
+	})
+}
+
+// GET /v1/internal/agents
+// Returns published agent templates from the marketplace for Overlord to use as role presets.
+func (h *OverlordInternalHandler) ListAgents(c *gin.Context) {
+	category := c.Query("category")
+
+	type AgentInfo struct {
+		ID           string  `json:"id"`
+		Name         string  `json:"name"`
+		Description  string  `json:"description"`
+		Category     string  `json:"category"`
+		SystemPrompt string  `json:"system_prompt"`
+		Model        string  `json:"model"`
+		Tools        string  `json:"tools"` // JSON array
+		Icon         string  `json:"icon"`
+		Rating       float64 `json:"rating"`
+		InstallCount int     `json:"install_count"`
+		IsOfficial   bool    `json:"is_official"`
+	}
+
+	q := h.db.Table("agent_templates").
+		Select("agent_templates.id, agent_templates.name, agent_templates.description, agent_templates.category, agent_templates.system_prompt, agent_templates.model, agent_templates.tools, agent_templates.icon, agent_templates.rating, agent_templates.install_count, agent_templates.is_official").
+		Where("agent_templates.is_public = ? OR agent_templates.is_official = ?", true, true)
+
+	if category != "" {
+		q = q.Where("agent_templates.category = ?", category)
+	}
+
+	q = q.Order("agent_templates.install_count DESC, agent_templates.rating DESC").Limit(100)
+
+	var agents []AgentInfo
+	q.Find(&agents)
+
+	// Also get categories for filtering
+	var categories []struct {
+		Category string `json:"category"`
+		Count    int    `json:"count"`
+	}
+	h.db.Table("agent_templates").
+		Select("category, COUNT(*) as count").
+		Where("is_public = ? OR is_official = ?", true, true).
+		Group("category").Having("count > 0").Find(&categories)
+
+	c.JSON(http.StatusOK, gin.H{
+		"agents":     agents,
+		"categories": categories,
+		"total":      len(agents),
+	})
 }
