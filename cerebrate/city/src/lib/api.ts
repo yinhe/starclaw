@@ -121,6 +121,16 @@ export interface Material {
   created_at: string;
 }
 
+export interface CityInvite {
+  id: string; code: string; alias: string; display_code: string;
+  type: string; creator_id: string; creator_type: string; creator_name: string;
+  label: string; max_uses: number; used_count: number;
+  region: string; comm_rate: number;
+  preset_name: string; preset_phone: string; preset_email: string;
+  expires_at: string | null; status: string;
+  join_url: string; created_at: string; updated_at: string;
+}
+
 export interface ClientStat {
   id: string;
   client_name: string;
@@ -190,4 +200,13 @@ export const city = {
 
   refLink: () =>
     request<{ ref_code: string; ref_url: string; utm_url: string }>('GET', '/city/ref-link'),
+
+  listInvites: () =>
+    request<{ invites: CityInvite[]; total: number }>('GET', '/city/invites'),
+
+  createInvite: (data: { alias?: string; label?: string; max_uses?: number }) =>
+    request<{ invite: CityInvite }>('POST', '/city/invites', data),
+
+  revokeInvite: (id: string) =>
+    request<{ message: string }>('DELETE', `/city/invites/${id}`),
 };

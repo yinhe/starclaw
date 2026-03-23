@@ -7,6 +7,7 @@ import ClientsPage from './pages/ClientsPage'
 import CommissionsPage from './pages/CommissionsPage'
 import MaterialsPage from './pages/MaterialsPage'
 import ClientStatsPage from './pages/ClientStatsPage'
+import InvitesPage from './pages/InvitesPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
@@ -25,6 +26,7 @@ export default function App() {
           }
         >
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/invites" element={<InvitesPage />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/commissions" element={<CommissionsPage />} />
           <Route path="/client-stats" element={<ClientStatsPage />} />

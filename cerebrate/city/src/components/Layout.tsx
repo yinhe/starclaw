@@ -1,9 +1,10 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Coins, FileBox, LogOut, Link2, BarChart3 } from 'lucide-react'
+import { LayoutDashboard, Users, Coins, FileBox, LogOut, Link2, BarChart3, Ticket } from 'lucide-react'
 import { clearToken } from '../lib/api'
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: '我的大盘' },
+  { to: '/invites', icon: Ticket, label: '推荐码管理' },
   { to: '/clients', icon: Users, label: '我的客户' },
   { to: '/commissions', icon: Coins, label: '我的佣金' },
   { to: '/client-stats', icon: BarChart3, label: '消费统计' },

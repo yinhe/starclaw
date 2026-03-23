@@ -111,6 +111,16 @@ export interface SwarmNode {
   tasks_running: number; last_heartbeat: string;
 }
 
+export interface PartnerInvite {
+  id: string; code: string; alias: string; display_code: string;
+  type: string; creator_id: string; creator_type: string; creator_name: string;
+  label: string; max_uses: number; used_count: number;
+  region: string; comm_rate: number; level: string; base_salary: number;
+  preset_name: string; preset_phone: string; preset_email: string;
+  expires_at: string | null; status: string;
+  join_url: string; created_at: string; updated_at: string;
+}
+
 // Partner Hub API
 export const partner = {
   dashboard: () =>
@@ -192,4 +202,16 @@ export const partner = {
 
   removeCityPartnerClaw: (id: string) =>
     request<{ message: string }>('DELETE', `/partner/city-partners/${id}/claw`),
+
+  listInvites: () =>
+    request<{ invites: PartnerInvite[]; total: number }>('GET', '/partner/invites'),
+
+  createInvite: (data: { alias?: string; label?: string; max_uses?: number; region?: string; comm_rate?: number; preset_name?: string; preset_phone?: string; preset_email?: string; expires_at?: string }) =>
+    request<{ invite: PartnerInvite }>('POST', '/partner/invites', data),
+
+  revokeInvite: (id: string) =>
+    request<{ message: string }>('DELETE', `/partner/invites/${id}`),
+
+  inviteStats: () =>
+    request<{ total_invites: number; total_uses: number; active_invites: number; conversion_rate: string }>('GET', '/partner/invite-stats'),
 };
