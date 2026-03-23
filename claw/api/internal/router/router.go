@@ -24,7 +24,6 @@ import (
 	"github.com/yinhe/starclaw/internal/billing"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
-	"github.com/yinhe/starclaw/internal/database"
 	"github.com/yinhe/starclaw/internal/forge"
 	"github.com/yinhe/starclaw/internal/inference"
 	"github.com/yinhe/starclaw/internal/instinct"
@@ -201,8 +200,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// NOTE: Built-in agent templates are now in Queen marketplace (seed_marketplace.go).
 	// Local SeedBuiltinTemplates is no longer called.
 
-	// Seed star-ai models for all existing users (idempotent)
-	go database.SeedStarAIForAllUsers(db)
+	// NOTE: star-ai model seeding now only happens on user creation (setup.go).
+	// Removed SeedStarAIForAllUsers from startup — it was re-creating configs
+	// that users intentionally deleted.
 
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)

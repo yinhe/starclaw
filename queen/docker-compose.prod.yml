@@ -141,7 +141,7 @@ services:
     networks:
       - starqueen
 
-  # ===================== Official Site (starclaw.net landing + download) =====================
+  # ===================== Landing Page (starclaw.net site) =====================
 
   queen-site:
     build:
@@ -149,7 +149,7 @@ services:
     container_name: starclaw-queen-site
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8095:80"
+      - "127.0.0.1:8097:80"
     networks:
       - starqueen
 

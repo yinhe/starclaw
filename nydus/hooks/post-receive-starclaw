@@ -47,9 +47,9 @@ while read oldrev newrev refname; do
         echo "  -> queen-api rebuilt" | tee -a "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/site/"; then
-        git --git-dir="$REPO" archive HEAD:queen/site | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /tmp/queen-site && cd /tmp/queen-site && rm -rf * && tar xf -"
-        ssh $SSH_OPTS "$SERVER_A" "cd /tmp/queen-site && docker build -t queen-site-build . && docker create --name queen-site-tmp queen-site-build && mkdir -p /var/www/starclaw/website && rm -rf /var/www/starclaw/website/* && docker cp queen-site-tmp:/usr/share/nginx/html/. /var/www/starclaw/website/ && docker rm queen-site-tmp && rm -rf /tmp/queen-site"
-        echo "  -> queen-site deployed to Server A (starclaw.me)" | tee -a "$LOG"
+        docker compose -f docker-compose.prod.yml build --no-cache queen-site
+        docker compose -f docker-compose.prod.yml up -d queen-site
+        echo "  -> queen-site rebuilt (Server C :8097)" | tee -a "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/swarm/"; then
         docker compose -f docker-compose.prod.yml build --no-cache swarm
