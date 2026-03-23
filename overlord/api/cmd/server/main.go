@@ -165,6 +165,20 @@ func main() {
 			tunnelsWrite.DELETE("/:id", nydusH.DeleteTunnel)
 		}
 
+		// --- Forge (Nydus proxy) ---
+		forgeH := handler.NewForgeHandler()
+		forgeRead := brood.Group("/forge")
+		forgeRead.Use(middleware.RequirePermission("nydus.read"))
+		{
+			forgeRead.GET("/summary", forgeH.ForgeSummary)
+			forgeRead.GET("/repos", forgeH.ListRepos)
+			forgeRead.GET("/nodes", forgeH.ListNodes)
+			forgeRead.GET("/repos/:name/pulls", forgeH.ListPRs)
+			forgeRead.GET("/repos/:name/forks", forgeH.ListForks)
+			forgeRead.GET("/repos/:name/webhooks", forgeH.ListWebhooks)
+			forgeRead.GET("/repos/:name/branches/protect", forgeH.ListBranchProtections)
+		}
+
 		// --- Molt update management ---
 		moltRead := brood.Group("/molt")
 		moltRead.Use(middleware.RequirePermission("molt.read"))

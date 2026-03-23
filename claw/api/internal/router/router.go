@@ -25,6 +25,7 @@ import (
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
+	"github.com/yinhe/starclaw/internal/forge"
 	"github.com/yinhe/starclaw/internal/inference"
 	"github.com/yinhe/starclaw/internal/instinct"
 	"github.com/yinhe/starclaw/internal/mcp"
@@ -368,6 +369,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Hivemind inter-node (public)
 		apiV1.POST("/peer/hivemind/capability", p2pHandler.HandleHivemindCapability)
 		apiV1.POST("/peer/hivemind/execute", p2pHandler.HandleHivemindExecute)
+
+		// Forge: Nydus webhook receiver (HMAC-verified)
+		apiV1.POST("/forge/nydus/webhook", forge.HandleNydusWebhook(db))
 
 		// Squad inter-node (public, signature-verified)
 		squadPeerHandler := v1.NewSquadPeerHandler(db, identity)

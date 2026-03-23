@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield, CreditCard, BarChart3, Paintbrush, ShieldCheck, Bot, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import { LayoutDashboard, Server, ScrollText, Search, Eye, Users, Network, Package, Bell, LogOut, Shield, CreditCard, BarChart3, Paintbrush, ShieldCheck, Bot, ChevronDown, ChevronRight, ExternalLink, GitBranch } from 'lucide-react'
 import { getStoredToken, getStoredUser, clearAuth } from './api/brood'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -17,6 +17,7 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import BrandPage from './pages/BrandPage'
 import CompliancePage from './pages/CompliancePage'
 import TeamAgentPage from './pages/TeamAgentPage'
+import ForgePage from './pages/ForgePage'
 
 const primaryNav = [
   { to: '/', icon: LayoutDashboard, label: '总览' },
@@ -29,6 +30,7 @@ const primaryNav = [
 ]
 
 const moreNav = [
+  { to: '/forge', icon: GitBranch, label: 'Forge 代码' },
   { to: '/tunnels', icon: Network, label: 'Nydus 隧道' },
   { to: '/molt', icon: Package, label: 'Molt 更新' },
   { to: '/webhooks', icon: Bell, label: 'Webhook' },
@@ -151,6 +153,7 @@ export default function App() {
           <Route path="/claws/:id" element={<ClawDetailPage />} />
           <Route path="/teams" element={<TeamsPage />} />
           <Route path="/team-agent" element={<TeamAgentPage />} />
+          <Route path="/forge" element={<ForgePage />} />
           <Route path="/tunnels" element={<TunnelsPage />} />
           <Route path="/molt" element={<MoltPage />} />
           <Route path="/webhooks" element={<WebhooksPage />} />
