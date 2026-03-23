@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"time"
 
 	"starclaw.net/spore/pkg/archive"
 	"starclaw.net/spore/pkg/platform"
@@ -68,15 +69,20 @@ func main() {
 
 func cmdInstall(mgr *runtime.Manager) {
 	if len(os.Args) < 3 {
-		fatal("usage: spore install <path-to-.spore-or-dir> [--name <instance-name>]")
+		fatal("usage: spore install <path-to-.spore-or-dir> [--name <name>] [--port <port>]")
 	}
 	src := os.Args[2]
 
-	// Parse --name flag for multi-instance support
+	// Parse flags for multi-instance support
 	customName := ""
+	customPort := ""
 	for i := 3; i < len(os.Args); i++ {
 		if os.Args[i] == "--name" && i+1 < len(os.Args) {
 			customName = os.Args[i+1]
+			i++
+		}
+		if os.Args[i] == "--port" && i+1 < len(os.Args) {
+			customPort = os.Args[i+1]
 			i++
 		}
 	}
@@ -110,7 +116,18 @@ func cmdInstall(mgr *runtime.Manager) {
 		fatal("install: %v", err)
 	}
 
-	fmt.Printf("✅ Installed %s v%s\n", inst.Name, inst.Version)
+	// Auto-generate config if --port is specified (multi-instance)
+	if customPort != "" {
+		jwtSecret := fmt.Sprintf("sc-%d-%d", time.Now().UnixNano(), os.Getpid())
+		config := fmt.Sprintf("server:\n  port: %s\n\ndatabase:\n  driver: sqlite\n  sqlite_path: \"./data/claw.db\"\n\njwt:\n  secret: \"%s\"\n", customPort, jwtSecret)
+		os.MkdirAll(filepath.Join(inst.InstallDir, "data"), 0755)
+		os.WriteFile(filepath.Join(inst.InstallDir, "config.yaml"), []byte(config), 0644)
+		envContent := fmt.Sprintf("GIN_MODE=release\nCLAW_DATA_DIR=./data\nCLAW_PORT=%s\nDEFAULT_PROVIDER=starai\n", customPort)
+		os.WriteFile(filepath.Join(inst.InstallDir, ".env"), []byte(envContent), 0644)
+		fmt.Printf("   Port: %s\n", customPort)
+	}
+
+	fmt.Printf(" Installed %s v%s\n", inst.Name, inst.Version)
 	fmt.Printf("   Location: %s\n", inst.InstallDir)
 	fmt.Printf("   Start with: spore start %s\n", inst.Name)
 }

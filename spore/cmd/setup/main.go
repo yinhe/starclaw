@@ -121,6 +121,14 @@ func main() {
 	// Save install path for uninstall
 	saveInstallInfo(installDir)
 
+	// Step 0: Stop existing instance if running (prevents "file in use" on Windows)
+	if _, err := os.Stat(sporePath); err == nil {
+		fmt.Print("  Stopping existing instance...")
+		exec.Command(sporePath, "stop", "claw").Run()
+		time.Sleep(1 * time.Second)
+		fmt.Println(" ✓")
+	}
+
 	// Step 1: Extract embedded Spore runtime (instant — no download)
 	fmt.Printf(green+"  [1/4]"+reset+" Extracting Spore runtime (%d MB)...", len(sporeBin)/(1024*1024))
 	if err := os.WriteFile(sporePath, sporeBin, 0755); err != nil {

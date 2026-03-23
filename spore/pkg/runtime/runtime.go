@@ -278,17 +278,22 @@ func (m *Manager) Stop(name string) error {
 		return fmt.Errorf("%s is not running (no PID file)", name)
 	}
 
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		os.Remove(inst.PidFile)
-		return fmt.Errorf("process %d not found", pid)
-	}
-
-	// Send SIGTERM (or equivalent)
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		// Process may already be dead
+	if !isProcessRunning(pid) {
 		os.Remove(inst.PidFile)
 		return nil
+	}
+
+	// Platform-specific graceful stop
+	if goruntime.GOOS == "windows" {
+		// Windows: SIGTERM is not supported; use taskkill for graceful shutdown
+		exec.Command("taskkill", "/PID", strconv.Itoa(pid)).Run()
+	} else {
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			os.Remove(inst.PidFile)
+			return nil
+		}
+		proc.Signal(syscall.SIGTERM)
 	}
 
 	// Wait up to 10 seconds for graceful shutdown
@@ -302,7 +307,13 @@ func (m *Manager) Stop(name string) error {
 	}
 
 	// Force kill
-	proc.Kill()
+	if goruntime.GOOS == "windows" {
+		exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid)).Run()
+	} else {
+		if proc, err := os.FindProcess(pid); err == nil {
+			proc.Kill()
+		}
+	}
 	os.Remove(inst.PidFile)
 	log.Printf("[spore] force-killed %s (PID %d)", name, pid)
 	return nil

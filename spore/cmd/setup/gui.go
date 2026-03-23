@@ -180,6 +180,14 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	os.MkdirAll(binDir, 0755)
 	saveInstallInfo(installDir)
 
+	// Step 0: Stop existing instance if running (prevents "file in use" on Windows)
+	existingSporePath := sporePath
+	if _, err := os.Stat(existingSporePath); err == nil {
+		sse.log("Stopping existing instance...", 5)
+		exec.Command(existingSporePath, "stop", instName).Run()
+		time.Sleep(1 * time.Second)
+	}
+
 	// Step 1: Extract Spore runtime
 	sse.log(fmt.Sprintf("[1/4] Extracting Spore runtime (%d MB)...", len(sporeBin)/(1024*1024)), 10)
 	if err := os.WriteFile(sporePath, sporeBin, 0755); err != nil {
