@@ -83,19 +83,19 @@ while read oldrev newrev refname; do
     ) >> "$LOG" 2>&1 &
   fi
 
-  # --- Router (Server B — star-ai.net) ---
-  if echo "$CHANGED" | grep -q "^router/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Router changed — deploying to server B..." | tee -a "$LOG"
+  # --- Synapse (Server B — star-ai.net) ---
+  if echo "$CHANGED" | grep -q "^synapse/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Synapse changed — deploying to server B..." | tee -a "$LOG"
     (
-      git --git-dir="$REPO" archive HEAD:router | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/router && tar xf -"
+      git --git-dir="$REPO" archive HEAD:synapse | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && tar xf -"
 
-      if echo "$CHANGED" | grep -q "^router/api/\|^router/docker-compose"; then
-        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache api && docker compose up -d api"
-        echo "  -> router-api rebuilt on B" | tee -a "$LOG"
+      if echo "$CHANGED" | grep -q "^synapse/api/\|^synapse/docker-compose"; then
+        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache api && docker compose up -d api"
+        echo "  -> synapse-api rebuilt on B" | tee -a "$LOG"
       fi
-      if echo "$CHANGED" | grep -q "^router/web/"; then
-        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/router && docker compose build --no-cache web && docker compose up -d web"
-        echo "  -> router-web rebuilt on B" | tee -a "$LOG"
+      if echo "$CHANGED" | grep -q "^synapse/web/\|^synapse/core/"; then
+        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache web && docker compose up -d web"
+        echo "  -> synapse-web rebuilt on B" | tee -a "$LOG"
       fi
     ) >> "$LOG" 2>&1 &
   fi
