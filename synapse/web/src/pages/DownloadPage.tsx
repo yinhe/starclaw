@@ -6,63 +6,67 @@ import { isLoggedIn } from '../lib/api';
 const STARAI_BASE = 'https://star-ai.net/downloads';
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases';
 
-const V = 'v2026.0323.1809';
+const V_FALLBACK = 'v2026.0323.1809';
 
-const PACKAGES = [
-  {
-    platform: 'Windows',
-    icon: Monitor,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}.exe`,
-    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}.exe`,
-    size: '~26 MB',
-    arch: 'x86_64',
-    filename: `StarClaw-Setup-${V}.exe`,
-    note: '下载后双击运行，图形界面引导安装',
-  },
-  {
-    platform: 'Linux',
-    icon: Terminal,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
-    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
-    size: '~19 MB',
-    arch: 'x86_64',
-    filename: `StarClaw-Setup-${V}-linux-amd64.tar.gz`,
-    note: '下载解压后运行 ./StarClaw-Setup',
-  },
-  {
-    platform: 'macOS (Apple 芯片)',
-    icon: Apple,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
-    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
-    size: '~26 MB',
-    arch: 'Apple Silicon (M1/M2/M3/M4)',
-    filename: `StarClaw-Setup-${V}-darwin-arm64.dmg`,
-    note: '下载后打开 DMG，双击 Install StarClaw',
-  },
-  {
-    platform: 'macOS (Intel)',
-    icon: Apple,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
-    fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
-    size: '~27 MB',
-    arch: 'Intel x86_64',
-    filename: `StarClaw-Setup-${V}-darwin-amd64.dmg`,
-    note: '下载后打开 DMG，双击 Install StarClaw',
-  },
-];
+function getPackages(v: string) {
+  return [
+    {
+      platform: 'Windows',
+      icon: Monitor,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}.exe`,
+      fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}.exe`,
+      size: '~26 MB',
+      arch: 'x86_64',
+      filename: `StarClaw-Setup-${v}.exe`,
+      note: '下载后双击运行，图形界面引导安装',
+    },
+    {
+      platform: 'Linux',
+      icon: Terminal,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}-linux-amd64.tar.gz`,
+      fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}-linux-amd64.tar.gz`,
+      size: '~19 MB',
+      arch: 'x86_64',
+      filename: `StarClaw-Setup-${v}-linux-amd64.tar.gz`,
+      note: '下载解压后运行 ./StarClaw-Setup',
+    },
+    {
+      platform: 'macOS (Apple 芯片)',
+      icon: Apple,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}-darwin-arm64.dmg`,
+      fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}-darwin-arm64.dmg`,
+      size: '~26 MB',
+      arch: 'Apple Silicon (M1/M2/M3/M4)',
+      filename: `StarClaw-Setup-${v}-darwin-arm64.dmg`,
+      note: '下载后打开 DMG，双击 Install StarClaw',
+    },
+    {
+      platform: 'macOS (Intel)',
+      icon: Apple,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}-darwin-amd64.dmg`,
+      fallbackUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}-darwin-amd64.dmg`,
+      size: '~27 MB',
+      arch: 'Intel x86_64',
+      filename: `StarClaw-Setup-${v}-darwin-amd64.dmg`,
+      note: '下载后打开 DMG，双击 Install StarClaw',
+    },
+  ];
+}
 
 export default function DownloadPage() {
-  const [version, setVersion] = useState<string>('');
+  const [version, setVersion] = useState<string>(V_FALLBACK);
 
   useEffect(() => {
     fetch('https://nydus.starclaw.net/releases/latest')
       .then(r => r.json())
       .then(d => {
         const v = d.tag_name || '';
-        setVersion(v.startsWith('v') ? v : 'v' + v);
+        if (v) setVersion(v.startsWith('v') ? v : 'v' + v);
       })
       .catch(() => {});
   }, []);
+
+  const packages = getPackages(version);
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
@@ -103,7 +107,7 @@ export default function DownloadPage() {
         </div>
 
         <div className="grid gap-4">
-          {PACKAGES.map((pkg) => {
+          {packages.map((pkg) => {
             const Icon = pkg.icon;
             return (
               <div key={pkg.platform} className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-amber-500/30 transition-colors">

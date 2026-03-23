@@ -7,46 +7,48 @@ import { useI18n } from '../i18n'
 
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases'
 const STARAI_BASE = 'https://star-ai.net/downloads'
-const V = 'v2026.0323.1809' // deploy-trigger: 20260324
+const V_FALLBACK = 'v2026.0323.1809'
 
-const PACKAGES = [
-  {
-    id: 'win',
-    icon: Monitor,
-    setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}.exe`,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}.exe`,
-    setupSize: '26 MB',
-    setupLabel: 'StarClaw-Setup.exe',
-    scriptCmd: 'irm https://nydus.starclaw.net/spore/install.ps1 | iex',
-  },
-  {
-    id: 'linux',
-    icon: Terminal,
-    setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-linux-amd64.tar.gz`,
-    setupSize: '19 MB',
-    setupLabel: 'StarClaw-Setup.tar.gz',
-    scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-  },
-  {
-    id: 'mac.arm',
-    icon: Apple,
-    setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-arm64.dmg`,
-    setupSize: '26 MB',
-    setupLabel: 'StarClaw-Setup.dmg',
-    scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-  },
-  {
-    id: 'mac.intel',
-    icon: Apple,
-    setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
-    mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${V}-darwin-amd64.dmg`,
-    setupSize: '27 MB',
-    setupLabel: 'StarClaw-Setup.dmg',
-    scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
-  },
-]
+function getPackages(v: string) {
+  return [
+    {
+      id: 'win',
+      icon: Monitor,
+      setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}.exe`,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}.exe`,
+      setupSize: '26 MB',
+      setupLabel: 'StarClaw-Setup.exe',
+      scriptCmd: 'irm https://nydus.starclaw.net/spore/install.ps1 | iex',
+    },
+    {
+      id: 'linux',
+      icon: Terminal,
+      setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}-linux-amd64.tar.gz`,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}-linux-amd64.tar.gz`,
+      setupSize: '19 MB',
+      setupLabel: 'StarClaw-Setup.tar.gz',
+      scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
+    },
+    {
+      id: 'mac.arm',
+      icon: Apple,
+      setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}-darwin-arm64.dmg`,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}-darwin-arm64.dmg`,
+      setupSize: '26 MB',
+      setupLabel: 'StarClaw-Setup.dmg',
+      scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
+    },
+    {
+      id: 'mac.intel',
+      icon: Apple,
+      setupUrl: `${NYDUS_BASE}/StarClaw-Setup-${v}-darwin-amd64.dmg`,
+      mirrorUrl: `${STARAI_BASE}/StarClaw-Setup-${v}-darwin-amd64.dmg`,
+      setupSize: '27 MB',
+      setupLabel: 'StarClaw-Setup.dmg',
+      scriptCmd: 'curl -fsSL https://nydus.starclaw.net/spore/install.sh | sh',
+    },
+  ]
+}
 
 const DOCKER_CMD = `git clone https://github.com/yinhe/starclaw.git
 cd starclaw && cp .env.example .env
@@ -71,17 +73,19 @@ function CopyButton({ text }: { text: string }) {
 
 export function DownloadPage() {
   const { t } = useI18n()
-  const [version, setVersion] = useState('')
+  const [version, setVersion] = useState(V_FALLBACK)
 
   useEffect(() => {
     fetch('https://nydus.starclaw.net/releases/latest')
       .then(r => r.json())
       .then(d => {
         const v = d.tag_name || ''
-        setVersion(v.startsWith('v') ? v : 'v' + v)
+        if (v) setVersion(v.startsWith('v') ? v : 'v' + v)
       })
       .catch(() => {})
   }, [])
+
+  const packages = getPackages(version)
 
   return (
     <Layout>
@@ -112,7 +116,7 @@ export function DownloadPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {PACKAGES.map((pkg) => {
+              {packages.map((pkg) => {
                 const Icon = pkg.icon
                 return (
                   <div
