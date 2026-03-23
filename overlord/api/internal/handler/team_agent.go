@@ -364,6 +364,47 @@ func (h *TeamAgentHandler) PublishInstance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "instance updated"})
 }
 
+// PUT /brood/team-agent/instances/:id/roles — update per-instance role overrides
+func (h *TeamAgentHandler) UpdateInstanceRoles(c *gin.Context) {
+	instID := c.Param("id")
+	var inst model.TeamInstance
+	if err := h.db.First(&inst, "id = ?", instID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "instance not found"})
+		return
+	}
+
+	// Accept a map of role_code → {model, system_prompt, tools}
+	var req struct {
+		RoleOverrides map[string]struct {
+			Model        string   `json:"model"`
+			SystemPrompt string   `json:"system_prompt"`
+			Tools        []string `json:"tools"`
+		} `json:"role_overrides" binding:"required"`
+		DefaultModel string `json:"default_model"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Merge into existing config
+	configMap := map[string]interface{}{}
+	if inst.Config != "" {
+		json.Unmarshal([]byte(inst.Config), &configMap)
+	}
+	configMap["role_overrides"] = req.RoleOverrides
+	configJSON, _ := json.Marshal(configMap)
+
+	updates := map[string]interface{}{"config": string(configJSON)}
+	if req.DefaultModel != "" {
+		updates["default_model"] = req.DefaultModel
+	}
+
+	h.db.Model(&inst).Updates(updates)
+	audit(h.db, c, "update_instance_roles", instID, "role configurations updated")
+	c.JSON(http.StatusOK, gin.H{"message": "roles updated", "config": string(configJSON)})
+}
+
 // GET /brood/team-agent/instances/:id
 func (h *TeamAgentHandler) GetInstance(c *gin.Context) {
 	var inst model.TeamInstance

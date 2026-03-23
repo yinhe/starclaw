@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server, HeartPulse } from 'lucide-react'
-import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, EmployeeUsage, ProvisionResult } from '../api/brood'
+import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, ClawModel, EmployeeUsage, ProvisionResult } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
 const statusColors: Record<string, string> = {
@@ -77,6 +77,14 @@ export default function TeamAgentPage() {
   const [showMission, setShowMission] = useState(false)
   const [missionGoal, setMissionGoal] = useState('')
   const [creatingMission, setCreatingMission] = useState(false)
+
+  // Role edit modal
+  const [editingRole, setEditingRole] = useState<string | null>(null) // role code
+  const [roleModels, setRoleModels] = useState<ClawModel[]>([])
+  const [roleOverrides, setRoleOverrides] = useState<Record<string, { model: string; system_prompt: string; tools: string[] }>>({})
+  const [roleModelLoading, setRoleModelLoading] = useState(false)
+  const [savingRoles, setSavingRoles] = useState(false)
+  const [instanceDefaultModel, setInstanceDefaultModel] = useState('')
 
   // Real-time WS updates — refresh missions when status changes
   const onMissionUpdate = useCallback((data: { mission_id?: string; instance_id?: string; status?: string }) => {
@@ -205,9 +213,56 @@ export default function TeamAgentPage() {
     dispatcher: '📡', guardian: '🛡️', scout: '🔭',
   }
 
+  async function openRoleEdit(inst: TeamInstance, roleCode: string) {
+    setEditingRole(roleCode)
+    setInstanceDefaultModel(inst.default_model || '')
+    // Parse existing overrides from config
+    try {
+      const cfg = inst.config ? JSON.parse(inst.config) : {}
+      setRoleOverrides(cfg.role_overrides || {})
+    } catch { setRoleOverrides({}) }
+    // Fetch models from the Claw node
+    if (inst.claw_node_id) {
+      setRoleModelLoading(true)
+      try {
+        const res = await broodAPI.nodeModels(inst.claw_node_id)
+        setRoleModels(res.models || [])
+      } catch { setRoleModels([]) }
+      setRoleModelLoading(false)
+    }
+  }
+
+  function updateRoleOverride(code: string, field: string, value: string | string[]) {
+    setRoleOverrides(prev => ({
+      ...prev,
+      [code]: { ...(prev[code] || { model: '', system_prompt: '', tools: [] }), [field]: value },
+    }))
+  }
+
+  async function saveRoleOverrides() {
+    if (!selectedInstance) return
+    setSavingRoles(true)
+    try {
+      const res = await broodAPI.updateInstanceRoles(selectedInstance.id, {
+        role_overrides: roleOverrides,
+        default_model: instanceDefaultModel || undefined,
+      })
+      // Update local instance config
+      setSelectedInstance({ ...selectedInstance, config: res.config, default_model: instanceDefaultModel })
+      setEditingRole(null)
+    } catch { /* ignore */ }
+    setSavingRoles(false)
+  }
+
   async function selectInstance(inst: TeamInstance) {
     setSelectedInstance(inst)
     setView('detail')
+    // Load existing role overrides
+    try {
+      const cfg = inst.config ? JSON.parse(inst.config) : {}
+      setRoleOverrides(cfg.role_overrides || {})
+    } catch { setRoleOverrides({}) }
+    setInstanceDefaultModel(inst.default_model || '')
     try {
       const res = await broodAPI.listTeamMissions(inst.id)
       setMissions(res.missions || [])
@@ -330,18 +385,140 @@ export default function TeamAgentPage() {
         {/* Roles */}
         {roles.length > 0 && (
           <div>
-            <h3 className="text-sm font-semibold text-gray-300 mb-3">团队角色</h3>
-            <div className="flex flex-wrap gap-2">
-              {roles.map(r => (
-                <div key={r.code} className="flex items-center gap-2 bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2">
-                  <Users className="w-3.5 h-3.5 text-overlord-400" />
-                  <span className="text-sm text-white">{r.name}</span>
-                  {r.max_instances > 1 && <span className="text-xs text-gray-500">×{r.max_instances}</span>}
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-300">团队角色</h3>
+              <span className="text-[10px] text-gray-600">点击角色配置模型和技能</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {roles.map(r => {
+                const ov = roleOverrides[r.code]
+                const effectiveModel = ov?.model || r.model || ''
+                return (
+                  <div
+                    key={r.code}
+                    onClick={() => openRoleEdit(inst, r.code)}
+                    className={`bg-gray-800/50 border rounded-xl p-3 cursor-pointer transition hover:border-overlord-600/50 hover:shadow-lg hover:shadow-overlord-600/5 ${
+                      ov?.model ? 'border-overlord-600/30' : 'border-gray-700/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">{roleIcons[r.code] || '🤖'}</span>
+                      <span className="text-sm font-bold text-white">{r.name}</span>
+                      {r.max_instances > 1 && <span className="text-[10px] text-gray-500">×{r.max_instances}</span>}
+                    </div>
+                    {effectiveModel ? (
+                      <div className="flex items-center gap-1 mb-1">
+                        <Cpu className="w-3 h-3 text-overlord-400" />
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${modelColors[effectiveModel] || 'text-gray-400 bg-gray-700/50'}`}>{effectiveModel}</span>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-gray-600 mb-1">未配置模型</div>
+                    )}
+                    {(ov?.tools?.length || r.tools?.length) ? (
+                      <div className="flex items-center gap-1">
+                        <Wrench className="w-2.5 h-2.5 text-gray-500" />
+                        <span className="text-[10px] text-gray-500">{(ov?.tools || r.tools || []).length} 个工具</span>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
+
+        {/* Role Edit Modal */}
+        {editingRole && (() => {
+          const role = roles.find(r => r.code === editingRole)
+          if (!role) return null
+          const ov = roleOverrides[editingRole] || { model: role.model || '', system_prompt: role.system_prompt || '', tools: role.tools || [] }
+          return (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setEditingRole(null)}>
+              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3">
+                  <span className="text-xl">{roleIcons[role.code] || '🤖'}</span>
+                  <div>
+                    <h3 className="text-base font-bold text-white">{role.name}</h3>
+                    <p className="text-[11px] text-gray-500">配置此角色的模型、提示词和技能</p>
+                  </div>
+                </div>
+                <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                  {/* Model */}
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1.5 block">AI 模型</label>
+                    {roleModelLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-gray-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /> 加载节点模型...</div>
+                    ) : (
+                      <select
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-overlord-500 focus:outline-none"
+                        value={ov.model}
+                        onChange={e => updateRoleOverride(editingRole, 'model', e.target.value)}
+                      >
+                        <option value="">使用默认模型</option>
+                        {roleModels.map(m => (
+                          <option key={m.id} value={m.model_name}>
+                            {m.model_name} ({m.provider}{m.display_name && m.display_name !== m.model_name ? ` · ${m.display_name}` : ''})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  {/* System Prompt */}
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1.5 block">系统提示词</label>
+                    <textarea
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none font-mono"
+                      rows={5}
+                      placeholder="自定义此角色的行为指令..."
+                      value={ov.system_prompt}
+                      onChange={e => updateRoleOverride(editingRole, 'system_prompt', e.target.value)}
+                    />
+                  </div>
+                  {/* Tools */}
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1.5 block">技能 / 工具 <span className="text-gray-600">(逗号分隔)</span></label>
+                    <input
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-overlord-500 focus:outline-none"
+                      placeholder="web_search, code_exec, file_read"
+                      value={(ov.tools || []).join(', ')}
+                      onChange={e => updateRoleOverride(editingRole, 'tools', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                    />
+                    {ov.tools?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {ov.tools.map((t: string) => (
+                          <span key={t} className="text-[10px] bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Wrench className="w-2.5 h-2.5" />{t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* Instance Default Model */}
+                  <div className="pt-2 border-t border-gray-700/50">
+                    <label className="text-xs text-gray-400 mb-1.5 block">实例默认聊天模型</label>
+                    <select
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-overlord-500 focus:outline-none"
+                      value={instanceDefaultModel}
+                      onChange={e => setInstanceDefaultModel(e.target.value)}
+                    >
+                      <option value="">跟随模板默认</option>
+                      {roleModels.map(m => (
+                        <option key={m.id} value={m.model_name}>{m.model_name} ({m.provider})</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-gray-600 mt-1">员工发起聊天时使用的默认模型</p>
+                  </div>
+                </div>
+                <div className="px-5 py-3 border-t border-gray-700 flex justify-end gap-3">
+                  <button onClick={() => setEditingRole(null)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition">取消</button>
+                  <button onClick={saveRoleOverrides} disabled={savingRoles} className="px-4 py-2 bg-overlord-600 hover:bg-overlord-500 text-white rounded-lg text-sm transition disabled:opacity-50">
+                    {savingRoles ? '保存中...' : '保存配置'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Missions */}
         <div>

@@ -341,6 +341,7 @@ func main() {
 			taWrite.POST("/instances", teamAgentH.CreateInstance)
 			taWrite.POST("/instances/:id/disband", teamAgentH.DisbandInstance)
 			taWrite.PUT("/instances/:id/publish", teamAgentH.PublishInstance)
+			taWrite.PUT("/instances/:id/roles", teamAgentH.UpdateInstanceRoles)
 			taWrite.POST("/instances/:id/access", teamAgentH.GrantInstanceAccess)
 			taWrite.DELETE("/instances/:id/access/:uid", teamAgentH.RevokeInstanceAccess)
 			taWrite.POST("/provision-node", provisionH.ProvisionNode)

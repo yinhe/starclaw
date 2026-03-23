@@ -504,7 +504,7 @@ export const broodAPI = {
     return request<{ instances: TeamInstance[]; total: number }>(`/team-agent/instances${qs ? '?' + qs : ''}`)
   },
   getTeamInstance: (id: string) => request<{ instance: TeamInstance }>(`/team-agent/instances/${id}`),
-  createTeamInstance: (data: { template_id: string; claw_node_id: string; name: string; goal?: string; energy_budget?: number }) =>
+  createTeamInstance: (data: { template_id: string; claw_node_id: string; name: string; goal?: string; energy_budget?: number; default_model?: string }) =>
     request<{ instance: TeamInstance }>('/team-agent/instances', { method: 'POST', body: JSON.stringify(data) }),
   disbandTeamInstance: (id: string) =>
     request('/team-agent/instances/' + id + '/disband', { method: 'POST' }),
@@ -513,6 +513,10 @@ export const broodAPI = {
     request<{ missions: TeamMission[]; total: number }>(`/team-agent/instances/${instanceId}/missions`),
   createTeamMission: (instanceId: string, data: { goal: string; auto_confirm?: boolean }) =>
     request<{ mission: TeamMission }>(`/team-agent/instances/${instanceId}/missions`, { method: 'POST', body: JSON.stringify(data) }),
+  updateInstanceRoles: (id: string, data: { role_overrides: Record<string, { model: string; system_prompt: string; tools: string[] }>; default_model?: string }) =>
+    request<{ message: string; config: string }>(`/team-agent/instances/${id}/roles`, { method: 'PUT', body: JSON.stringify(data) }),
+  nodeModels: (nodeId: string) =>
+    request<{ models: ClawModel[]; total: number; node_name: string }>(`/team-agent/node-models/${nodeId}`),
   teamAgentUsageByUser: () =>
     request<{ users: EmployeeUsage[]; total: number }>('/team-agent/usage/by-user'),
   teamAgentChatHistory: (instanceId: string) =>
@@ -658,6 +662,9 @@ export interface TeamInstance {
   name: string
   goal: string
   status: string
+  published: boolean
+  welcome_msg: string
+  default_model: string
   role_map: string
   config: string
   energy_budget: number
@@ -667,6 +674,16 @@ export interface TeamInstance {
   created_at: string
   updated_at: string
   disbanded_at: string | null
+}
+
+export interface ClawModel {
+  id: string
+  provider: string
+  model_name: string
+  display_name: string
+  max_tokens: number
+  temperature: number
+  is_platform: boolean
 }
 
 export interface TeamMission {
