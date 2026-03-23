@@ -66,7 +66,7 @@ case "$TARGET" in
     docker compose -f docker-compose.prod.yml up -d web
     ;;
   all)
-    docker compose -f docker-compose.prod.yml build api web
+    docker compose -f docker-compose.prod.yml build --no-cache api web
     docker compose -f docker-compose.prod.yml up -d api web
     ;;
   *)
