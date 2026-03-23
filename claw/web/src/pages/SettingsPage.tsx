@@ -142,7 +142,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const el = logContainerRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    // Only auto-scroll if user is already near the bottom (within 60px)
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+    if (isNearBottom) el.scrollTop = el.scrollHeight
   }, [updateLogs])
 
   const updateSteps = [
