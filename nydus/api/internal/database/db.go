@@ -30,6 +30,8 @@ func Init(dbPath string) {
 
 	if err := DB.AutoMigrate(
 		&model.NydusNode{},
+		&model.NydusRepo{},
+		&model.RepoAccess{},
 	); err != nil {
 		log.Fatalf("[nydus] auto-migrate failed: %v", err)
 	}

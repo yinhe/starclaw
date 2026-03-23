@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/nydus/internal/config"
+	"github.com/yinhe/starclaw/nydus/internal/database"
+	"github.com/yinhe/starclaw/nydus/internal/model"
 )
 
 // isPublicOnly returns true if the request is on a public (unauthenticated) route.
@@ -19,8 +22,19 @@ func isPublicOnly(c *gin.Context) bool {
 }
 
 // repoAccessible checks if a repo can be accessed in the current context.
-// On public routes, only repos with public:true are accessible.
+// Checks both DB and YAML config. On public routes, only public repos are accessible.
 func repoAccessible(c *gin.Context, name string) bool {
+	// Check DB first
+	if database.DB != nil {
+		var repo model.NydusRepo
+		if err := database.DB.Where("name = ? AND status = ?", name, "active").First(&repo).Error; err == nil {
+			if isPublicOnly(c) && !repo.Public {
+				return false
+			}
+			return true
+		}
+	}
+	// Fallback to YAML config
 	rc, ok := config.C.Repos[name]
 	if !ok {
 		return false
@@ -86,59 +100,107 @@ func GetHead(name string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// ListRepos returns all configured repos with stats.
+// ListRepos returns all repos from DB with git stats.
 func ListRepos(c *gin.Context) {
 	pubOnly := isPublicOnly(c)
+
+	var dbRepos []model.NydusRepo
+	query := database.DB.Where("status = ?", "active")
+	if pubOnly {
+		query = query.Where("public = ?", true)
+	}
+	if teamID := c.Query("team_id"); teamID != "" {
+		query = query.Where("team_id = ?", teamID)
+	}
+	query.Order("name ASC").Find(&dbRepos)
+
 	repos := []gin.H{}
-	for name, rc := range config.C.Repos {
-		if pubOnly && !rc.Public {
-			continue
-		}
-		path := RepoPath(name)
+	for _, r := range dbRepos {
+		path := RepoPath(r.Name)
 		exists := false
 		if _, err := os.Stat(filepath.Join(path, "HEAD")); err == nil {
 			exists = true
 		}
+		// Count deploy targets from YAML config (if any)
+		targetCount := 0
+		if rc, ok := config.C.Repos[r.Name]; ok {
+			targetCount = len(rc.Targets)
+		}
 		entry := gin.H{
-			"name":        name,
-			"description": rc.Description,
-			"targets":     len(rc.Targets),
+			"id":          r.ID,
+			"name":        r.Name,
+			"description": r.Description,
+			"owner":       r.OwnerNodeID,
+			"team_id":     r.TeamID,
+			"public":      r.Public,
+			"source":      r.Source,
+			"forked_from": r.ForkedFrom,
+			"targets":     targetCount,
 			"initialized": exists,
-			"ssh_url":     fmt.Sprintf("%s@nydus.starclaw.net:%s.git", config.C.Server.SSHUser, name),
-			"https_url":   fmt.Sprintf("https://nydus.starclaw.net/%s.git", name),
+			"ssh_url":     fmt.Sprintf("%s@nydus.starclaw.net:%s.git", config.C.Server.SSHUser, r.Name),
+			"https_url":   fmt.Sprintf("https://nydus.starclaw.net/%s.git", r.Name),
+			"created_at":  r.CreatedAt,
 		}
 		if exists {
-			entry["head"] = GetHead(name)
-			entry["branches"] = countGitItems(name, "refs/heads")
-			entry["tags"] = countGitItems(name, "refs/tags")
-			entry["commit_count"] = countCommits(name)
-			entry["last_commit"] = getLastCommitInfo(name)
+			entry["head"] = GetHead(r.Name)
+			entry["branches"] = countGitItems(r.Name, "refs/heads")
+			entry["tags"] = countGitItems(r.Name, "refs/tags")
+			entry["commit_count"] = countCommits(r.Name)
+			entry["last_commit"] = getLastCommitInfo(r.Name)
 		}
 		repos = append(repos, entry)
 	}
-	c.JSON(200, gin.H{"repos": repos})
+	c.JSON(200, gin.H{"repos": repos, "total": len(repos)})
 }
 
-// CreateRepo creates a new bare repo.
+// CreateRepo creates a new bare repo and persists to DB.
 func CreateRepo(c *gin.Context) {
 	var req struct {
 		Name        string `json:"name" binding:"required"`
 		Description string `json:"description"`
+		Public      bool   `json:"public"`
+		TeamID      string `json:"team_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if _, exists := config.C.Repos[req.Name]; exists {
-		c.JSON(409, gin.H{"error": "repo already exists in config"})
+
+	// Check for duplicates in DB
+	var existing model.NydusRepo
+	if err := database.DB.Where("name = ?", req.Name).First(&existing).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "repo already exists"})
 		return
 	}
+
+	// Determine owner from auth context
+	ownerNodeID, _ := c.Get("node_id")
+	ownerStr := ""
+	if ownerNodeID != nil {
+		ownerStr = ownerNodeID.(string)
+	}
+
+	repo := model.NydusRepo{
+		Name:        req.Name,
+		Description: req.Description,
+		Public:      req.Public,
+		OwnerNodeID: ownerStr,
+		TeamID:      req.TeamID,
+		Source:      "dynamic",
+		Status:      "active",
+	}
+	if err := database.DB.Create(&repo).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create repo: " + err.Error()})
+		return
+	}
+
 	InitBareRepo(req.Name)
-	c.JSON(201, gin.H{
-		"name":      req.Name,
+
+	c.JSON(http.StatusCreated, gin.H{
+		"repo":      repo,
 		"ssh_url":   fmt.Sprintf("%s@nydus.starclaw.net:%s.git", config.C.Server.SSHUser, req.Name),
 		"https_url": fmt.Sprintf("https://nydus.starclaw.net/%s.git", req.Name),
-		"message":   "repo created (add targets to nydus.yaml for auto-deploy)",
+		"message":   "repo created",
 	})
 }
 

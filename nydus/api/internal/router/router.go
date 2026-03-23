@@ -109,11 +109,17 @@ func Setup() *gin.Engine {
 	api.PUT("/nodes/:node_id/role", handler.UpdateNodeRole)
 	api.DELETE("/nodes/:node_id", handler.DeleteNode)
 
+	// ── Repo access management (admin) ──
+	api.POST("/repos/:name/access", handler.GrantAccess)
+	api.GET("/repos/:name/access", handler.ListAccess)
+	api.DELETE("/repos/:name/access/:node_id", handler.RevokeAccess)
+
 	// ── Authenticated node endpoints (Ed25519 or Bearer token) ──
 	node := r.Group("/node")
 	node.Use(middleware.ClawAuth())
 	{
 		node.GET("/me", handler.MyNode)
+		node.GET("/repos/:name/access", handler.CheckAccess)
 	}
 
 	// Hook endpoint (called by post-receive, uses same secret)

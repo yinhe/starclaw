@@ -21,6 +21,9 @@ func main() {
 	// Init SQLite database
 	database.Init(config.C.Server.DBPath)
 
+	// Sync YAML repos → DB (idempotent)
+	database.SyncYAMLRepos()
+
 	// Ensure repos dir exists
 	os.MkdirAll(config.C.Server.ReposDir, 0755)
 
