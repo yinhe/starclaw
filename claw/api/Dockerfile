@@ -59,6 +59,7 @@ RUN apk --no-cache add \
     chromium nss freetype harfbuzz font-noto-cjk ffmpeg libass \
     python3 py3-pip py3-setuptools \
     nodejs npm \
+    docker-cli docker-cli-compose \
     && python3 -m pip install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com flask fastapi uvicorn requests beautifulsoup4 aiohttp dashscope \
     && npm config set registry https://registry.npmmirror.com && npm install -g yarn pnpm typescript ts-node
 

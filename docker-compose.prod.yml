@@ -37,6 +37,7 @@ services:
       - starclaw-net
 
   api:
+    image: ghcr.io/yinhe/starclaw-api:${STARCLAW_VERSION:-latest}
     build:
       context: ./claw/api
       dockerfile: Dockerfile
@@ -54,6 +55,8 @@ services:
       STARCLAW_REDIS_PASSWORD: ${REDIS_PASSWORD:-starclaw_redis_2026}
       STARCLAW_JWT_SECRET: ${JWT_SECRET}
       STARCLAW_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      STARCLAW_HOST_DIR: ${STARCLAW_HOST_DIR:-}
+      STARCLAW_COMPOSE_FILE: ${STARCLAW_COMPOSE_FILE:-docker-compose.prod.yml}
     volumes:
       - sandbox_data:/tmp/starclaw-sandbox
       - ./claw/data/merged_videos:/app/merged_videos
@@ -61,6 +64,7 @@ services:
       - ./claw/data/music:/app/music
       - ./claw/data/images:/app/images
       - ./claw/data/workspaces:/app/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -72,6 +76,7 @@ services:
       - starclaw-net
 
   web:
+    image: ghcr.io/yinhe/starclaw-web:${STARCLAW_VERSION:-latest}
     build:
       context: ./claw/web
       dockerfile: Dockerfile

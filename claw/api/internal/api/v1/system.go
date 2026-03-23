@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -343,7 +346,10 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 	})
 }
 
-// TriggerUpdate pulls latest Docker image and restarts the container
+// TriggerUpdate detects runtime mode and dispatches to the appropriate update path:
+//   - docker: Docker socket pull+up (fast) → MCP Bridge build (fallback)
+//   - spore:  download binary → replace → exit → Spore auto-restarts
+//   - standalone: download binary → replace → exit
 func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 	vi := molt.GetVersionInfo()
 	if !vi.UpdateAvail {
@@ -351,29 +357,60 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 		return
 	}
 
-	// Pre-check: MCP Bridge must be available (container can't rebuild itself)
-	bridgeURL := mcp.DetectBridgeURL()
-	if !mcp.ProbeBridge(bridgeURL) {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":   "MCP Bridge 未运行，无法执行一键更新",
-			"message": "请先启动 MCP Bridge，或在服务器手动执行更新命令",
-		})
-		return
-	}
-
 	log.Printf("[molt] user triggered update: %s → %s", vi.Current, vi.Latest)
 
-	// Run update in background
-	go func() {
-		if err := performDockerUpdate(); err != nil {
-			log.Printf("[molt] update failed: %v", err)
+	// Detect runtime mode
+	runtimeMode := detectRuntimeMode()
+
+	switch runtimeMode {
+	case "docker":
+		// Try Docker socket first (fast pull), fall back to MCP Bridge (source build)
+		if hasDockerSocket() {
+			log.Println("[molt] Docker socket available, using pull-based update")
+			go func() {
+				if err := performDockerSocketUpdate(vi.Latest); err != nil {
+					log.Printf("[molt] Docker socket update failed: %v, trying MCP Bridge...", err)
+					if err2 := performDockerUpdate(); err2 != nil {
+						log.Printf("[molt] MCP Bridge update also failed: %v", err2)
+					}
+				}
+			}()
+		} else {
+			bridgeURL := mcp.DetectBridgeURL()
+			if !mcp.ProbeBridge(bridgeURL) {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"error":   "Docker socket 和 MCP Bridge 均不可用",
+					"message": "请确保 docker-compose.yml 已挂载 /var/run/docker.sock，或启动 MCP Bridge",
+				})
+				return
+			}
+			go func() {
+				if err := performDockerUpdate(); err != nil {
+					log.Printf("[molt] update failed: %v", err)
+				}
+			}()
 		}
-	}()
+
+	case "spore":
+		go func() {
+			if err := performSporeUpdate(vi.Latest); err != nil {
+				log.Printf("[molt] Spore update failed: %v", err)
+			}
+		}()
+
+	default: // standalone
+		go func() {
+			if err := performStandaloneUpdate(vi.Latest); err != nil {
+				log.Printf("[molt] standalone update failed: %v", err)
+			}
+		}()
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": fmt.Sprintf("正在更新到 v%s，服务将在数秒后重启...", vi.Latest),
 		"from":    vi.Current,
 		"to":      vi.Latest,
+		"method":  runtimeMode,
 	})
 }
 
@@ -558,6 +595,217 @@ func execOnHostTimeout(client *mcp.Client, command string, timeoutSec int) (stri
 	args, _ := json.Marshal(map[string]interface{}{"command": command, "timeout_seconds": timeoutSec})
 	return client.CallTool(context.Background(), "shell_exec", string(args))
 }
+
+// ── Helpers: runtime detection ──
+
+func detectRuntimeMode() string {
+	if os.Getenv("SPORE_DATA_DIR") != "" {
+		return "spore"
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return "docker"
+	}
+	return "standalone"
+}
+
+func hasDockerSocket() bool {
+	_, err := os.Stat("/var/run/docker.sock")
+	return err == nil
+}
+
+// ── Docker Socket update (pull pre-built images, no MCP Bridge needed) ──
+
+func performDockerSocketUpdate(targetVersion string) error {
+	hostDir := os.Getenv("STARCLAW_HOST_DIR")
+	composeFile := os.Getenv("STARCLAW_COMPOSE_FILE")
+	if composeFile == "" {
+		composeFile = "docker-compose.prod.yml"
+	}
+
+	// If STARCLAW_HOST_DIR is set, use docker compose from the host project dir
+	// (mounted at same path for correct volume resolution)
+	if hostDir != "" {
+		composePath := filepath.Join(hostDir, composeFile)
+		log.Printf("[molt] Docker socket update via compose: %s", composePath)
+
+		// Pull latest images
+		pullCmd := exec.Command("docker", "compose", "-f", composePath, "pull", "api", "web")
+		pullCmd.Env = append(os.Environ(), "STARCLAW_VERSION="+targetVersion)
+		if out, err := pullCmd.CombinedOutput(); err != nil {
+			log.Printf("[molt] compose pull output: %s", string(out))
+			return fmt.Errorf("docker compose pull failed: %w", err)
+		}
+
+		// Recreate containers with new images
+		upCmd := exec.Command("docker", "compose", "-f", composePath, "up", "-d", "--no-deps", "api", "web")
+		upCmd.Env = append(os.Environ(), "STARCLAW_VERSION="+targetVersion)
+		if out, err := upCmd.CombinedOutput(); err != nil {
+			log.Printf("[molt] compose up output: %s", string(out))
+			return fmt.Errorf("docker compose up failed: %w", err)
+		}
+		log.Printf("[molt] ✅ Docker socket update to v%s complete", targetVersion)
+		return nil
+	}
+
+	// Fallback: pull images directly by name (no compose file needed)
+	log.Println("[molt] STARCLAW_HOST_DIR not set, pulling images directly...")
+	imageTag := targetVersion
+	if imageTag == "" {
+		imageTag = "latest"
+	}
+	apiImage := fmt.Sprintf("ghcr.io/yinhe/starclaw-api:%s", imageTag)
+	webImage := fmt.Sprintf("ghcr.io/yinhe/starclaw-web:%s", imageTag)
+
+	for _, img := range []string{apiImage, webImage} {
+		log.Printf("[molt] pulling %s...", img)
+		if out, err := exec.Command("docker", "pull", img).CombinedOutput(); err != nil {
+			log.Printf("[molt] pull %s failed: %s", img, string(out))
+			return fmt.Errorf("docker pull %s failed: %w", img, err)
+		}
+	}
+
+	// Tag as :latest so existing compose references work
+	exec.Command("docker", "tag", apiImage, "ghcr.io/yinhe/starclaw-api:latest").Run()
+	exec.Command("docker", "tag", webImage, "ghcr.io/yinhe/starclaw-web:latest").Run()
+
+	// Restart containers using their existing names
+	for _, name := range []string{"starclaw-api", "starclaw-web"} {
+		exec.Command("docker", "stop", "-t", "10", name).Run()
+		exec.Command("docker", "rm", name).Run()
+	}
+
+	// Without compose file we can't recreate with full config — try compose in common paths
+	for _, dir := range []string{"/opt/starclaw/claw", "/opt/starclaw", "/opt/claw"} {
+		for _, cf := range []string{"docker-compose.prod.yml", "docker-compose.yml"} {
+			cp := filepath.Join(dir, cf)
+			if _, err := os.Stat(cp); err == nil {
+				log.Printf("[molt] found compose at %s, using it for up", cp)
+				upCmd := exec.Command("docker", "compose", "-f", cp, "up", "-d", "--no-deps", "api", "web")
+				upCmd.Env = append(os.Environ(), "STARCLAW_VERSION="+imageTag)
+				if out, err := upCmd.CombinedOutput(); err != nil {
+					log.Printf("[molt] compose up output: %s", string(out))
+					continue
+				}
+				log.Printf("[molt] ✅ Docker socket update to v%s complete", targetVersion)
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("images pulled but no compose file found to recreate containers; set STARCLAW_HOST_DIR")
+}
+
+// ── Spore update (download binary, replace in-place, exit for auto-restart) ──
+
+func performSporeUpdate(targetVersion string) error {
+	log.Printf("[molt] Spore update: downloading v%s binary...", targetVersion)
+
+	// Determine download URL based on platform
+	binaryURL := sporeDownloadURL(targetVersion)
+	if binaryURL == "" {
+		return fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+
+	// Download to temp file
+	tmpFile, err := os.CreateTemp("", "starclaw-update-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(binaryURL)
+	if err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("download returned HTTP %d", resp.StatusCode)
+	}
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write binary: %w", err)
+	}
+	tmpFile.Close()
+	os.Chmod(tmpPath, 0755)
+
+	log.Printf("[molt] downloaded %s to %s", binaryURL, tmpPath)
+
+	// Find current binary path
+	currentBin, err := os.Executable()
+	if err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("find executable: %w", err)
+	}
+	currentBin, _ = filepath.EvalSymlinks(currentBin)
+
+	// Replace: on Linux/macOS rename over the running binary (inode-based, safe)
+	// On Windows: rename old → .old, move new → current
+	if runtime.GOOS == "windows" {
+		oldPath := currentBin + ".old"
+		os.Remove(oldPath)
+		if err := os.Rename(currentBin, oldPath); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("rename old binary: %w", err)
+		}
+		if err := os.Rename(tmpPath, currentBin); err != nil {
+			os.Rename(oldPath, currentBin) // rollback
+			return fmt.Errorf("move new binary: %w", err)
+		}
+	} else {
+		if err := os.Rename(tmpPath, currentBin); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("replace binary: %w", err)
+		}
+	}
+
+	log.Printf("[molt] ✅ binary replaced at %s, exiting for restart...", currentBin)
+
+	// Give the HTTP response time to flush, then exit.
+	// Spore runtime's restart loop (or systemd/launchd) will restart with new binary.
+	time.Sleep(1 * time.Second)
+	os.Exit(0)
+	return nil // unreachable
+}
+
+// performStandaloneUpdate downloads and replaces the binary for non-Docker, non-Spore installs.
+func performStandaloneUpdate(targetVersion string) error {
+	return performSporeUpdate(targetVersion) // same logic: download + replace + exit
+}
+
+func sporeDownloadURL(version string) string {
+	os_ := runtime.GOOS
+	arch := runtime.GOARCH
+
+	// GitHub release binary name pattern: starclaw-{os}-{arch}[.exe]
+	name := fmt.Sprintf("starclaw-%s-%s", os_, arch)
+	if os_ == "windows" {
+		name += ".exe"
+	}
+
+	// Try Nydus mirror first (faster in China), then GitHub
+	nydusURL := fmt.Sprintf("https://nydus.starclaw.net/releases/binary/v%s/%s", version, name)
+	ghURL := fmt.Sprintf("https://github.com/yinhe/starclaw/releases/download/v%s/%s", version, name)
+
+	// Quick probe: try Nydus HEAD
+	client := &http.Client{Timeout: 5 * time.Second}
+	if resp, err := client.Head(nydusURL); err == nil {
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			return nydusURL
+		}
+	}
+	return ghURL
+}
+
+// ── MCP Bridge update (source build, legacy fallback) ──
 
 // PerformDockerUpdate executes a full Docker-based self-update via MCP Bridge.
 // Exported so it can be called from the swarm client's auto-update flow.

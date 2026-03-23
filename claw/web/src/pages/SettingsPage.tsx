@@ -140,8 +140,8 @@ export default function SettingsPage() {
 
   const updateSteps = [
     '',
-    '拉取最新代码...',
-    '构建容器镜像...',
+    '拉取最新版本...',
+    '安装更新...',
     '重启服务...',
     '等待 API 就绪...',
     '更新完成！',
@@ -156,18 +156,20 @@ export default function SettingsPage() {
       const targetVersion = res.data.to
 
       if (targetVersion) {
-        // Simulate progress steps based on timing (build can take 3-5 min)
-        setTimeout(() => setUpdateStep(2), 10000)   // ~10s: building
-        setTimeout(() => setUpdateStep(3), 180000)  // ~3min: restarting
-        setTimeout(() => setUpdateStep(4), 210000)  // ~3.5min: verifying
+        // Progress simulation — Docker socket pull is fast (~30s), MCP Bridge build is slow (~3-5min)
+        const method = res.data.method
+        const isFast = method === 'spore' || method === 'standalone' // binary download ~10s
+        setTimeout(() => setUpdateStep(2), isFast ? 3000 : 8000)
+        setTimeout(() => setUpdateStep(3), isFast ? 8000 : 60000)
+        setTimeout(() => setUpdateStep(4), isFast ? 12000 : 90000)
 
         let attempts = 0
         let apiWasDown = false
         const poll = setInterval(async () => {
           attempts++
-          if (attempts > 180) { // 15 min timeout (build + restart can take a while)
+          if (attempts > 120) { // 10 min timeout
             clearInterval(poll)
-            setUpdateMsg('更新超时，请手动检查服务器状态。构建可能仍在进行中，请稍后刷新页面。')
+            setUpdateMsg('更新超时，请手动检查服务器状态。请稍后刷新页面。')
             setUpdateStep(0)
             setUpdating(false)
             return
