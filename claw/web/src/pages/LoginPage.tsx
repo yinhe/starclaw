@@ -66,6 +66,28 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
 
+  // Auto-login via ?token= param (from Spore setup completion link)
+  useEffect(() => {
+    const tokenParam = searchParams.get('token')
+    if (tokenParam) {
+      setLoading(true)
+      authAPI.tokenLogin({ token: tokenParam, device_id: getDeviceID(), device_name: getDeviceName() })
+        .then(res => {
+          if (res.data?.token) {
+            setAuth(res.data.owner_token || res.data.token, res.data.user)
+            navigate('/', { replace: true })
+          }
+        })
+        .catch(() => {
+          // Token might be owner_token format — store directly and try
+          setAuth(tokenParam, { id: 0, username: 'Owner', role: 'owner' } as any)
+          navigate('/', { replace: true })
+        })
+        .finally(() => setLoading(false))
+      return
+    }
+  }, [searchParams, setAuth, navigate])
+
   // Read invite code from URL ?code= param
   useEffect(() => {
     const code = searchParams.get('code')
@@ -339,7 +361,7 @@ export default function LoginPage() {
                       <p className="text-xs text-blue-800">
                         Token 丢失？用初始化时设置的密码找回。
                         <br />
-                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">claw reset-token</code>
+                        未设密码请通过 CLI 查看：<code className="bg-blue-100 px-1 rounded">spore token</code>
                       </p>
                     </div>
                   </>

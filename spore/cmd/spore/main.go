@@ -52,6 +52,8 @@ func main() {
 		cmdUninstall(mgr)
 	case "info":
 		cmdInfo(mgr)
+	case "token":
+		cmdToken(mgr)
 	case "update":
 		cmdUpdate()
 	case "version":
@@ -334,6 +336,49 @@ func cmdAutostart(mgr *runtime.Manager) {
 		}
 	default:
 		fatal("unknown autostart action: %s (use enable/disable/status)", action)
+	}
+}
+
+func cmdToken(mgr *runtime.Manager) {
+	name := "claw"
+	if len(os.Args) >= 3 {
+		name = os.Args[2]
+	}
+
+	inst, err := mgr.Get(name)
+	if err != nil {
+		fatal("%v", err)
+	}
+
+	// Read port from .env or config.yaml
+	port := "8080"
+	if envData, err := os.ReadFile(filepath.Join(inst.InstallDir, ".env")); err == nil {
+		for _, line := range strings.Split(string(envData), "\n") {
+			if strings.HasPrefix(line, "CLAW_PORT=") {
+				port = strings.TrimPrefix(line, "CLAW_PORT=")
+				port = strings.TrimSpace(port)
+				break
+			}
+		}
+	}
+
+	apiBase := fmt.Sprintf("http://127.0.0.1:%s/api/v1", port)
+	resp, err := http.Get(apiBase + "/setup/token")
+	if err != nil {
+		fatal("cannot connect to %s: %v (is it running?)", name, err)
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fatal("parse response: %v", err)
+	}
+
+	if token, ok := result["owner_token"].(string); ok && token != "" {
+		fmt.Printf("Owner Token: %s\n", token)
+		fmt.Printf("Login URL:   http://localhost:%s/login?token=%s\n", port, token)
+	} else {
+		fmt.Println("No owner token found. Run setup first by opening the web UI.")
 	}
 }
 

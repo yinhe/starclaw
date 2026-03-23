@@ -147,6 +147,12 @@ h2{font-size:18px;font-weight:600;margin-bottom:8px}
       <div class="icon">✅</div>
       <h2>安装完成！</h2>
       <p class="desc" id="done-msg">StarClaw 已成功安装并启动。</p>
+      <div id="token-box" class="hidden" style="margin:12px 0;text-align:left">
+        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Auth Token（自动登录凭证）</div>
+        <div style="background:#0a0a0f;border:1px solid #f59e0b33;border-radius:8px;padding:10px 14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;color:#f59e0b;word-break:break-all;cursor:pointer;position:relative" onclick="copyToken()" id="token-value"></div>
+        <div style="font-size:10px;color:#555;margin-top:4px">点击复制 · 已自动保存到浏览器，丢失可用 <code style='color:#888'>spore token</code> 查看</div>
+        <div id="token-copied" style="display:none;font-size:11px;color:#22c55e;margin-top:4px">✓ 已复制到剪贴板</div>
+      </div>
       <a class="url" id="open-url" href="#" target="_blank">🌐 打开 StarClaw</a>
       <div class="cmds" id="done-cmds"></div>
     </div>
@@ -279,6 +285,7 @@ async function startInstall() {
   }
 }
 
+let savedToken = '';
 function showComplete(ev) {
   show('step-done');
   const url = ev.url || 'http://localhost';
@@ -286,10 +293,25 @@ function showComplete(ev) {
   document.getElementById('open-url').textContent = '🌐 打开 ' + url;
   document.getElementById('done-msg').textContent =
     '安装耗时 ' + (ev.elapsed || '?') + '，StarClaw 已启动。';
+  if (ev.owner_token) {
+    savedToken = ev.owner_token;
+    document.getElementById('token-value').textContent = ev.owner_token;
+    document.getElementById('token-box').classList.remove('hidden');
+    // Auto-open with token so user doesn't need to manually paste
+    document.getElementById('open-url').href = url + '/login?token=' + encodeURIComponent(ev.owner_token);
+  }
   document.getElementById('done-cmds').innerHTML =
     '<div class="cmd-row"><span class="cmd-code">spore status</span><span class="cmd-desc">— 查看状态</span></div>' +
     '<div class="cmd-row"><span class="cmd-code">spore stop ' + (ev.name||'claw') + '</span><span class="cmd-desc">— 停止服务</span></div>' +
-    '<div class="cmd-row"><span class="cmd-code">spore start ' + (ev.name||'claw') + '</span><span class="cmd-desc">— 启动服务</span></div>';
+    '<div class="cmd-row"><span class="cmd-code">spore start ' + (ev.name||'claw') + '</span><span class="cmd-desc">— 启动服务</span></div>' +
+    '<div class="cmd-row"><span class="cmd-code">spore token</span><span class="cmd-desc">— 查看 Token</span></div>';
+}
+function copyToken() {
+  if (!savedToken) return;
+  navigator.clipboard.writeText(savedToken).then(() => {
+    document.getElementById('token-copied').style.display = 'block';
+    setTimeout(() => { document.getElementById('token-copied').style.display = 'none'; }, 2000);
+  });
 }
 
 async function showUninstall() {

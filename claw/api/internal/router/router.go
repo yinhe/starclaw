@@ -263,6 +263,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		setupHandler := v1.NewSetupHandler(db, cfg, identity)
 		apiV1.GET("/setup/status", setupHandler.Status)
 		apiV1.POST("/setup", setupHandler.Setup)
+		apiV1.GET("/setup/token", setupHandler.GetToken)
+		apiV1.POST("/setup/reset-token", setupHandler.ResetToken)
 		apiV1.POST("/auth/owner-login", setupHandler.PasswordLogin)
 
 		// OAuth routes (public)

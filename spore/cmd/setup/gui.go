@@ -268,18 +268,52 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	if startErr != nil {
 		sse.log(fmt.Sprintf("Warning: start failed: %v (can start manually later)", startErr), 90)
 	} else {
-		sse.logOK("[4/4] Claw started ✓", 95)
+		sse.logOK("[4/4] Claw started ✓", 90)
+	}
+
+	// Step 5: Get or initialize owner token from running Claw
+	ownerToken := ""
+	if startErr == nil {
+		sse.log("Retrieving auth token...", 93)
+		time.Sleep(2 * time.Second) // wait for Claw to fully start
+		apiBase := fmt.Sprintf("http://127.0.0.1:%s/api/v1", port)
+		// Try to get existing token first
+		if resp, err := http.Get(apiBase + "/setup/token"); err == nil {
+			defer resp.Body.Close()
+			var result map[string]interface{}
+			if json.NewDecoder(resp.Body).Decode(&result) == nil {
+				if t, ok := result["owner_token"].(string); ok && t != "" {
+					ownerToken = t
+				}
+			}
+		}
+		// If no token (fresh install), run setup to create one
+		if ownerToken == "" {
+			if resp, err := http.Post(apiBase+"/setup", "application/json", strings.NewReader("{}")); err == nil {
+				defer resp.Body.Close()
+				var result map[string]interface{}
+				if json.NewDecoder(resp.Body).Decode(&result) == nil {
+					if t, ok := result["owner_token"].(string); ok {
+						ownerToken = t
+					}
+				}
+			}
+		}
+		if ownerToken != "" {
+			sse.logOK("Auth token retrieved ✓", 97)
+		}
 	}
 
 	elapsed := time.Since(start).Round(time.Millisecond).String()
 	sse.send(map[string]interface{}{
-		"done":     true,
-		"url":      url,
-		"name":     instName,
-		"elapsed":  elapsed,
-		"progress": 100,
-		"log":      fmt.Sprintf("✅ Installation complete! (%s)", elapsed),
-		"level":    "ok",
+		"done":        true,
+		"url":         url,
+		"name":        instName,
+		"owner_token": ownerToken,
+		"elapsed":     elapsed,
+		"progress":    100,
+		"log":         fmt.Sprintf("✅ Installation complete! (%s)", elapsed),
+		"level":       "ok",
 	})
 }
 
