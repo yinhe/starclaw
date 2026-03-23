@@ -1121,12 +1121,38 @@ export default function SettingsPage() {
               </button>
             </div>
           ) : (
-            <button
-              onClick={handleLeaveSwarm}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
-            >
-              <WifiOff className="w-4 h-4" /> 退出虫群
-            </button>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  value={swarmForm.invite_code}
+                  onChange={(e) => setSwarmForm({ ...swarmForm, invite_code: e.target.value.toUpperCase() })}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 font-mono"
+                  placeholder="补录邀请码 (如 SC-A3F8-K9M2)"
+                />
+                <button
+                  onClick={async () => {
+                    if (!swarmForm.invite_code) return
+                    try {
+                      await queenAPI.autoRegister({ invite_code: swarmForm.invite_code })
+                      setSwarmMsg('邀请码已提交')
+                      setSwarmForm(prev => ({ ...prev, invite_code: '' }))
+                    } catch (e: any) {
+                      setSwarmMsg(e?.response?.data?.error || '邀请码提交失败')
+                    }
+                  }}
+                  disabled={!swarmForm.invite_code}
+                  className="px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 whitespace-nowrap"
+                >
+                  提交
+                </button>
+              </div>
+              <button
+                onClick={handleLeaveSwarm}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+              >
+                <WifiOff className="w-4 h-4" /> 退出虫群
+              </button>
+            </div>
           )}
           {swarmMsg && <p className="text-sm text-green-600 mt-2">{swarmMsg}</p>}
         </section>
