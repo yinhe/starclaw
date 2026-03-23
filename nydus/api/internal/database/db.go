@@ -32,6 +32,11 @@ func Init(dbPath string) {
 		&model.NydusNode{},
 		&model.NydusRepo{},
 		&model.RepoAccess{},
+		&model.BranchProtection{},
+		&model.PullRequest{},
+		&model.PRReview{},
+		&model.Webhook{},
+		&model.WebhookDelivery{},
 	); err != nil {
 		log.Fatalf("[nydus] auto-migrate failed: %v", err)
 	}

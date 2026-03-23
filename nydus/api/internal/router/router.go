@@ -114,6 +114,31 @@ func Setup() *gin.Engine {
 	api.GET("/repos/:name/access", handler.ListAccess)
 	api.DELETE("/repos/:name/access/:node_id", handler.RevokeAccess)
 
+	// ── Fork ──
+	api.POST("/repos/:name/fork", handler.ForkRepo)
+	api.GET("/repos/:name/forks", handler.ListForks)
+
+	// ── Branch protection (admin) ──
+	api.POST("/repos/:name/branches/protect", handler.SetBranchProtection)
+	api.GET("/repos/:name/branches/protect", handler.ListBranchProtections)
+	api.DELETE("/repos/:name/branches/protect/:branch", handler.DeleteBranchProtection)
+
+	// ── Webhooks ──
+	api.POST("/repos/:name/webhooks", handler.CreateWebhook)
+	api.GET("/repos/:name/webhooks", handler.ListWebhooks)
+	api.DELETE("/repos/:name/webhooks/:id", handler.DeleteWebhook)
+	api.GET("/repos/:name/webhooks/:id/deliveries", handler.ListDeliveries)
+
+	// ── Pull Requests ──
+	api.POST("/repos/:name/pulls", handler.CreatePR)
+	api.GET("/repos/:name/pulls", handler.ListPRs)
+	api.GET("/repos/:name/pulls/:number", handler.GetPR)
+	api.PUT("/repos/:name/pulls/:number", handler.UpdatePR)
+	api.POST("/repos/:name/pulls/:number/close", handler.ClosePR)
+	api.GET("/repos/:name/pulls/:number/diff", handler.GetPRDiff)
+	api.POST("/repos/:name/pulls/:number/reviews", handler.AddReview)
+	api.POST("/repos/:name/pulls/:number/merge", handler.MergePR)
+
 	// ── Authenticated node endpoints (Ed25519 or Bearer token) ──
 	node := r.Group("/node")
 	node.Use(middleware.ClawAuth())
