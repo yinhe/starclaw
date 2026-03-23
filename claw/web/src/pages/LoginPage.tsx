@@ -18,7 +18,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
     <path d="M13 19.5l0.5 2.5" />
   </svg>
 )
-import { authAPI, setupAPI } from '../lib/api'
+import { authAPI, setupAPI, queenAPI } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 
 interface OAuthProvider {
@@ -57,6 +57,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
   const [pendingApproval, setPendingApproval] = useState(false)
   const [pendingMessage, setPendingMessage] = useState('')
@@ -64,6 +65,19 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
+
+  // Read invite code from URL ?code= param
+  useEffect(() => {
+    const code = searchParams.get('code')
+    if (code) {
+      setInviteCode(code)
+      setIsRegister(true)
+      localStorage.setItem('starclaw_invite_code', code)
+    } else {
+      const saved = localStorage.getItem('starclaw_invite_code')
+      if (saved) setInviteCode(saved)
+    }
+  }, [searchParams])
 
   // Detect deploy mode and set appropriate login mode
   useEffect(() => {
@@ -177,6 +191,18 @@ export default function LoginPage() {
       }
 
       setAuth(res.data.token, res.data.user)
+
+      // After registration, auto-register with Queen using invite code
+      if (isRegister && inviteCode) {
+        try {
+          await queenAPI.autoRegister({ invite_code: inviteCode })
+          localStorage.removeItem('starclaw_invite_code')
+        } catch {
+          // Non-blocking: Queen auto-register can happen later
+          console.warn('Queen auto-register deferred')
+        }
+      }
+
       navigate('/chat')
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
@@ -409,6 +435,20 @@ export default function LoginPage() {
                 )}
 
                 {isRegister && (
+                  <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      邀请码（可选）
+                    </label>
+                    <input
+                      type="text"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                      placeholder="SC-XXXX-XXXX"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">有邀请码？填入后注册即可获得 100⚡ 星能奖励</p>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       用户名（可选）
@@ -421,6 +461,7 @@ export default function LoginPage() {
                       placeholder="留空自动生成 Claw#xxxx"
                     />
                   </div>
+                  </>
                 )}
 
                 <div>

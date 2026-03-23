@@ -12,20 +12,33 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/middleware"
 	"starclaw.net/queen/api/internal/model"
-	"gorm.io/gorm"
 )
 
 type InviteHandler struct{}
 
-// generateInviteCode produces a code like "SC-A3F8-K9M2"
+// generateInviteCode produces a unique code like "SC-A3F8-K9M2".
+// Retries up to 5 times on collision (DB has uniqueIndex on code).
 func generateInviteCode() string {
-	b := make([]byte, 4)
+	for i := 0; i < 5; i++ {
+		b := make([]byte, 4)
+		rand.Read(b)
+		h := strings.ToUpper(hex.EncodeToString(b))
+		code := fmt.Sprintf("SC-%s-%s", h[:4], h[4:])
+		var count int64
+		database.DB.Model(&model.PartnerInvite{}).Where("code = ?", code).Count(&count)
+		if count == 0 {
+			return code
+		}
+	}
+	// Fallback: 6-byte code for extra entropy
+	b := make([]byte, 6)
 	rand.Read(b)
 	h := strings.ToUpper(hex.EncodeToString(b))
-	return fmt.Sprintf("SC-%s-%s", h[:4], h[4:])
+	return fmt.Sprintf("SC-%s-%s-%s", h[:4], h[4:8], h[8:])
 }
 
 // siteBaseURL returns the public website base URL for join links.

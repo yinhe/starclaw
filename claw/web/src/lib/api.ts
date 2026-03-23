@@ -190,6 +190,7 @@ export const queenAPI = {
   getStatus: () => api.get('/queen/status'),
   link: (data: { email?: string; phone?: string; password: string }) => api.post('/queen/link', data),
   linkWithClaw: () => api.post('/queen/link-claw'),
+  autoRegister: (data?: { ref_code?: string; invite_code?: string; nickname?: string }) => api.post('/queen/auto-register', data || {}),
   unlink: () => api.post('/queen/unlink'),
 }
 
