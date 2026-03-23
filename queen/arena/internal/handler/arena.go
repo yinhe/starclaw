@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-queen/arena/internal/model"
+	"starclaw.net/queen/arena/internal/model"
 	"gorm.io/gorm"
 )
 

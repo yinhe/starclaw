@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/nydus/internal/handler"
-	"github.com/yinhe/starclaw/nydus/internal/middleware"
+	"starclaw.net/nydus/api/internal/handler"
+	"starclaw.net/nydus/api/internal/middleware"
 )
 
 // Setup creates the Gin engine with all routes.

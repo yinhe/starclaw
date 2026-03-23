@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw-queen/forum
+module starclaw.net/queen/forum
 
 go 1.24
 

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/billing"
-	"github.com/yinhe/starclaw-router/internal/model"
-	"github.com/yinhe/starclaw-router/internal/provider"
+	"starclaw.net/synapse/api/internal/billing"
+	"starclaw.net/synapse/api/internal/model"
+	"starclaw.net/synapse/api/internal/provider"
 	"gorm.io/gorm"
 )
 

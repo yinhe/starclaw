@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/yinhe/starclaw-router/internal/config"
-	"github.com/yinhe/starclaw-router/internal/database"
-	"github.com/yinhe/starclaw-router/internal/model"
+	"starclaw.net/synapse/api/internal/config"
+	"starclaw.net/synapse/api/internal/database"
+	"starclaw.net/synapse/api/internal/model"
 )
 
 // set-admin promotes a user to super_admin by email or phone.

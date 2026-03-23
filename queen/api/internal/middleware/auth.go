@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/yinhe/starclaw-queen/api/internal/config"
+	"starclaw.net/queen/api/internal/config"
 )
 
 type Claims struct {

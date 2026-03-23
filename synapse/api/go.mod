@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw-router
+module starclaw.net/synapse/api
 
 go 1.24.1
 

@@ -7,13 +7,13 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/billing"
-	"github.com/yinhe/starclaw-router/internal/config"
-	"github.com/yinhe/starclaw-router/internal/database"
-	"github.com/yinhe/starclaw-router/internal/handler"
-	"github.com/yinhe/starclaw-router/internal/middleware"
-	"github.com/yinhe/starclaw-router/internal/provider"
-	"github.com/yinhe/starclaw-router/internal/proxy"
+	"starclaw.net/synapse/api/internal/billing"
+	"starclaw.net/synapse/api/internal/config"
+	"starclaw.net/synapse/api/internal/database"
+	"starclaw.net/synapse/api/internal/handler"
+	"starclaw.net/synapse/api/internal/middleware"
+	"starclaw.net/synapse/api/internal/provider"
+	"starclaw.net/synapse/api/internal/proxy"
 )
 
 func main() {

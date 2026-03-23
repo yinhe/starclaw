@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw/carapace
+module starclaw.net/carapace
 
 go 1.25.0
 

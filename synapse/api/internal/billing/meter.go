@@ -6,8 +6,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/yinhe/starclaw-router/internal/model"
-	"github.com/yinhe/starclaw-router/internal/provider"
+	"starclaw.net/synapse/api/internal/model"
+	"starclaw.net/synapse/api/internal/provider"
 	"gorm.io/gorm"
 )
 

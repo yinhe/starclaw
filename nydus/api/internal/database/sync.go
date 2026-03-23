@@ -3,8 +3,8 @@ package database
 import (
 	"log"
 
-	"github.com/yinhe/starclaw/nydus/internal/config"
-	"github.com/yinhe/starclaw/nydus/internal/model"
+	"starclaw.net/nydus/api/internal/config"
+	"starclaw.net/nydus/api/internal/model"
 )
 
 // SyncYAMLRepos ensures every repo defined in nydus.yaml exists in the DB.

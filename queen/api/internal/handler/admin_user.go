@@ -5,9 +5,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-queen/api/internal/database"
-	"github.com/yinhe/starclaw-queen/api/internal/middleware"
-	"github.com/yinhe/starclaw-queen/api/internal/model"
+	"starclaw.net/queen/api/internal/database"
+	"starclaw.net/queen/api/internal/middleware"
+	"starclaw.net/queen/api/internal/model"
 )
 
 type AdminUserHandler struct{}

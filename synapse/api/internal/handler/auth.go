@@ -8,9 +8,9 @@ import (
 	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/billing"
-	"github.com/yinhe/starclaw-router/internal/middleware"
-	"github.com/yinhe/starclaw-router/internal/model"
+	"starclaw.net/synapse/api/internal/billing"
+	"starclaw.net/synapse/api/internal/middleware"
+	"starclaw.net/synapse/api/internal/model"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )

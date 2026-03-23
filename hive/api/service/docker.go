@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yinhe/starclaw/hive/api/config"
-	"github.com/yinhe/starclaw/hive/api/model"
+	"starclaw.net/hive/api/config"
+	"starclaw.net/hive/api/model"
 )
 
 // DockerService manages Claw containers via Docker CLI

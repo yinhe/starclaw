@@ -9,7 +9,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/yinhe/starclaw/hive/api/config"
+	"starclaw.net/hive/api/config"
 )
 
 // NginxService manages per-instance nginx configurations

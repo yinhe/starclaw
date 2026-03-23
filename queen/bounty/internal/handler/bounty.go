@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-queen/bounty/internal/billing"
-	"github.com/yinhe/starclaw-queen/bounty/internal/model"
+	"starclaw.net/queen/bounty/internal/billing"
+	"starclaw.net/queen/bounty/internal/model"
 	"gorm.io/gorm"
 )
 

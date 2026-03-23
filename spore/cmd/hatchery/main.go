@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yinhe/starclaw-spore/pkg/archive"
-	"github.com/yinhe/starclaw-spore/pkg/manifest"
+	"starclaw.net/spore/pkg/archive"
+	"starclaw.net/spore/pkg/manifest"
 )
 
 const version = "0.1.0"

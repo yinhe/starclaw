@@ -6,12 +6,12 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/carapace"
-	"github.com/yinhe/starclaw/carapace/backend"
-	"github.com/yinhe/starclaw/hive/api/config"
-	"github.com/yinhe/starclaw/hive/api/handler"
-	"github.com/yinhe/starclaw/hive/api/model"
-	"github.com/yinhe/starclaw/hive/api/service"
+	"starclaw.net/carapace"
+	"starclaw.net/carapace/backend"
+	"starclaw.net/hive/api/config"
+	"starclaw.net/hive/api/handler"
+	"starclaw.net/hive/api/model"
+	"starclaw.net/hive/api/service"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )

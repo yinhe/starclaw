@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/nydus/internal/config"
+	"starclaw.net/nydus/api/internal/config"
 )
 
 // SecretAuth validates the X-Nydus-Secret header or ?secret query param.

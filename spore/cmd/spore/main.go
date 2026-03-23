@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yinhe/starclaw-spore/pkg/archive"
-	"github.com/yinhe/starclaw-spore/pkg/platform"
-	"github.com/yinhe/starclaw-spore/pkg/runtime"
+	"starclaw.net/spore/pkg/archive"
+	"starclaw.net/spore/pkg/platform"
+	"starclaw.net/spore/pkg/runtime"
 )
 
 const version = "2026.0322.2048"

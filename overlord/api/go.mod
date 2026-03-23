@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw-overlord/api
+module starclaw.net/overlord/api
 
 go 1.24
 

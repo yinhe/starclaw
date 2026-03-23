@@ -6,11 +6,11 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	"github.com/yinhe/starclaw-queen/api/internal/config"
-	"github.com/yinhe/starclaw-queen/api/internal/database"
-	"github.com/yinhe/starclaw-queen/api/internal/handler"
-	"github.com/yinhe/starclaw-queen/api/internal/model"
-	"github.com/yinhe/starclaw-queen/api/internal/router"
+	"starclaw.net/queen/api/internal/config"
+	"starclaw.net/queen/api/internal/database"
+	"starclaw.net/queen/api/internal/handler"
+	"starclaw.net/queen/api/internal/model"
+	"starclaw.net/queen/api/internal/router"
 	"golang.org/x/crypto/bcrypt"
 )
 

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/yinhe/starclaw-spore/pkg/archive"
+	"starclaw.net/spore/pkg/archive"
 )
 
 type Manifest struct {

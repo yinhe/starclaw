@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/yinhe/starclaw-queen/api/internal/database"
-	"github.com/yinhe/starclaw-queen/api/internal/model"
+	"starclaw.net/queen/api/internal/database"
+	"starclaw.net/queen/api/internal/model"
 )
 
 // AgentConfig is the JSON blob stored in MarketplaceItem.Config for type=agent

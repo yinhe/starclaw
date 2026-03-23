@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/yinhe/starclaw-router/internal/provider"
+	"starclaw.net/synapse/api/internal/provider"
 )
 
 func setupRegistry(t *testing.T) *provider.Registry {

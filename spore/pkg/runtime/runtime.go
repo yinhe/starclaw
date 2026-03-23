@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yinhe/starclaw-spore/pkg/manifest"
-	"github.com/yinhe/starclaw-spore/pkg/platform"
+	"starclaw.net/spore/pkg/manifest"
+	"starclaw.net/spore/pkg/platform"
 )
 
 // SporeInstance represents an installed spore with runtime state.

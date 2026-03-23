@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/billing"
-	"github.com/yinhe/starclaw-router/internal/model"
+	"starclaw.net/synapse/api/internal/billing"
+	"starclaw.net/synapse/api/internal/model"
 	"gorm.io/gorm"
 )
 

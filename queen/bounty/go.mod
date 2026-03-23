@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw-queen/bounty
+module starclaw.net/queen/bounty
 
 go 1.24
 

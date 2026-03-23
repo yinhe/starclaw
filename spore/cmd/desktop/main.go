@@ -7,10 +7,10 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/yinhe/starclaw-spore/desktop"
-	"github.com/yinhe/starclaw-spore/desktop/api"
-	"github.com/yinhe/starclaw-spore/pkg/platform"
-	sporeRuntime "github.com/yinhe/starclaw-spore/pkg/runtime"
+	"starclaw.net/spore/desktop"
+	"starclaw.net/spore/desktop/api"
+	"starclaw.net/spore/pkg/platform"
+	sporeRuntime "starclaw.net/spore/pkg/runtime"
 )
 
 const version = "2026.0322.2048"

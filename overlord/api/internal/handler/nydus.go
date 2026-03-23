@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-overlord/api/internal/middleware"
-	"github.com/yinhe/starclaw-overlord/api/internal/model"
+	"starclaw.net/overlord/api/internal/middleware"
+	"starclaw.net/overlord/api/internal/model"
 	"gorm.io/gorm"
 )
 

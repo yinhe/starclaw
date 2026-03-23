@@ -9,8 +9,8 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/yinhe/starclaw-queen/swarm/internal/handler"
-	"github.com/yinhe/starclaw-queen/swarm/internal/model"
+	"starclaw.net/queen/swarm/internal/handler"
+	"starclaw.net/queen/swarm/internal/model"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )

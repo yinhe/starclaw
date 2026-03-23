@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-overlord/api/internal/claw"
-	"github.com/yinhe/starclaw-overlord/api/internal/middleware"
-	"github.com/yinhe/starclaw-overlord/api/internal/model"
-	"github.com/yinhe/starclaw-overlord/api/internal/ws"
+	"starclaw.net/overlord/api/internal/claw"
+	"starclaw.net/overlord/api/internal/middleware"
+	"starclaw.net/overlord/api/internal/model"
+	"starclaw.net/overlord/api/internal/ws"
 	"gorm.io/gorm"
 )
 

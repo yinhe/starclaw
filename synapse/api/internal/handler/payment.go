@@ -16,8 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/smartwalle/alipay/v3"
-	"github.com/yinhe/starclaw-router/internal/config"
-	"github.com/yinhe/starclaw-router/internal/model"
+	"starclaw.net/synapse/api/internal/config"
+	"starclaw.net/synapse/api/internal/model"
 	"gorm.io/gorm"
 )
 

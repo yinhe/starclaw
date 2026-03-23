@@ -1,3 +1,3 @@
-module github.com/yinhe/starclaw-spore
+module starclaw.net/spore
 
 go 1.24.5

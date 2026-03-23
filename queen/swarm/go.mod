@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw-queen/swarm
+module starclaw.net/queen/swarm
 
 go 1.24
 

@@ -1,3 +1,3 @@
-module github.com/yinhe/starclaw-overlord/sdk/go
+module starclaw.net/overlord/sdk/go
 
 go 1.22

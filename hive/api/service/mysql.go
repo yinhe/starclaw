@@ -8,7 +8,7 @@ import (
 	"log"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/yinhe/starclaw/hive/api/config"
+	"starclaw.net/hive/api/config"
 )
 
 // MySQLService manages per-instance databases on the shared MySQL server

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/nydus/internal/config"
-	"github.com/yinhe/starclaw/nydus/internal/middleware"
+	"starclaw.net/nydus/api/internal/config"
+	"starclaw.net/nydus/api/internal/middleware"
 )
 
 func main() {

@@ -20,7 +20,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/yinhe/starclaw-router/internal/config"
+	"starclaw.net/synapse/api/internal/config"
 )
 
 // WechatPayClient handles WeChat Pay V3 API calls.

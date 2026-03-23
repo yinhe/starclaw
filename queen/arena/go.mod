@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw-queen/arena
+module starclaw.net/queen/arena
 
 go 1.24
 

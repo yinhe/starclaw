@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/nydus/internal/config"
+	"starclaw.net/nydus/api/internal/config"
 )
 
 // DeployRecord holds the result of a single deployment.

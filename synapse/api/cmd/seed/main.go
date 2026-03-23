@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/yinhe/starclaw-router/internal/config"
-	"github.com/yinhe/starclaw-router/internal/database"
-	"github.com/yinhe/starclaw-router/internal/model"
+	"starclaw.net/synapse/api/internal/config"
+	"starclaw.net/synapse/api/internal/database"
+	"starclaw.net/synapse/api/internal/model"
 )
 
 // seed creates a test user and API key for development/testing

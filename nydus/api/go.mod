@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw/nydus
+module starclaw.net/nydus/api
 
 go 1.24
 

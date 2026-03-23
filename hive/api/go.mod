@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw/hive/api
+module starclaw.net/hive/api
 
 go 1.25.0
 
@@ -7,12 +7,12 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-sql-driver/mysql v1.9.0
 	github.com/google/uuid v1.6.0
-	github.com/yinhe/starclaw/carapace v0.0.0
+	starclaw.net/carapace v0.0.0
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12
 )
 
-replace github.com/yinhe/starclaw/carapace => ../../carapace
+replace starclaw.net/carapace => ../../carapace
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect

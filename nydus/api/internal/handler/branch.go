@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/nydus/internal/database"
-	"github.com/yinhe/starclaw/nydus/internal/model"
+	"starclaw.net/nydus/api/internal/database"
+	"starclaw.net/nydus/api/internal/model"
 )
 
 // SetBranchProtection creates or updates branch protection rules.

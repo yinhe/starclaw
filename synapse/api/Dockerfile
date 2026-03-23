@@ -5,6 +5,9 @@ WORKDIR /app
 
 ARG GOPROXY=
 ENV GOPROXY=${GOPROXY}
+ENV GOPRIVATE=starclaw.net
+ENV GONOSUMCHECK=starclaw.net
+ENV GONOSUMDB=starclaw.net
 
 COPY go.mod go.sum ./
 RUN go mod download

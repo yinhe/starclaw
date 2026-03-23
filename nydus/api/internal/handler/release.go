@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/nydus/internal/config"
+	"starclaw.net/nydus/api/internal/config"
 )
 
 const clawRepoName = "claw"

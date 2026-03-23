@@ -3,7 +3,7 @@ package database
 import (
 	"fmt"
 
-	"github.com/yinhe/starclaw-router/internal/config"
+	"starclaw.net/synapse/api/internal/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yinhe/starclaw-spore/pkg/manifest"
-	"github.com/yinhe/starclaw-spore/pkg/platform"
-	rtPkg "github.com/yinhe/starclaw-spore/pkg/runtime"
+	"starclaw.net/spore/pkg/manifest"
+	"starclaw.net/spore/pkg/platform"
+	rtPkg "starclaw.net/spore/pkg/runtime"
 )
 
 // DeviceReport is sent from Creep Agent to Queen periodically.

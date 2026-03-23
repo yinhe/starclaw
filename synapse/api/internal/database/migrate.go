@@ -3,7 +3,7 @@ package database
 import (
 	"log"
 
-	"github.com/yinhe/starclaw-router/internal/model"
+	"starclaw.net/synapse/api/internal/model"
 	"gorm.io/gorm"
 )
 

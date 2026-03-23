@@ -1,4 +1,4 @@
-module github.com/yinhe/starclaw-queen/api
+module starclaw.net/queen/api
 
 go 1.24.1
 

@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/yinhe/starclaw-queen/swarm/internal/model"
+	"starclaw.net/queen/swarm/internal/model"
 	"gorm.io/gorm"
 )
 

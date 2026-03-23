@@ -2,6 +2,9 @@ ARG REGISTRY=docker.m.daocloud.io
 FROM ${REGISTRY}/library/golang:1.24-alpine AS builder
 ARG GOPROXY=https://goproxy.cn,direct
 ENV GOPROXY=${GOPROXY}
+ENV GOPRIVATE=starclaw.net
+ENV GONOSUMCHECK=starclaw.net
+ENV GONOSUMDB=starclaw.net
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download

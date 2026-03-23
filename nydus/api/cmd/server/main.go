@@ -5,10 +5,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/yinhe/starclaw/nydus/internal/config"
-	"github.com/yinhe/starclaw/nydus/internal/database"
-	"github.com/yinhe/starclaw/nydus/internal/handler"
-	"github.com/yinhe/starclaw/nydus/internal/router"
+	"starclaw.net/nydus/api/internal/config"
+	"starclaw.net/nydus/api/internal/database"
+	"starclaw.net/nydus/api/internal/handler"
+	"starclaw.net/nydus/api/internal/router"
 )
 
 func main() {

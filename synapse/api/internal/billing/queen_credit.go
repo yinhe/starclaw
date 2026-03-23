@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yinhe/starclaw-router/internal/config"
+	"starclaw.net/synapse/api/internal/config"
 )
 
 // QueenCreditClient calls Queen's internal credit API for star energy billing.

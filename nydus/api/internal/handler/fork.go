@@ -7,9 +7,9 @@ import (
 	"os/exec"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw/nydus/internal/config"
-	"github.com/yinhe/starclaw/nydus/internal/database"
-	"github.com/yinhe/starclaw/nydus/internal/model"
+	"starclaw.net/nydus/api/internal/config"
+	"starclaw.net/nydus/api/internal/database"
+	"starclaw.net/nydus/api/internal/model"
 )
 
 // ForkRepo creates a server-side fork of an existing repository.

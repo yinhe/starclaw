@@ -3,7 +3,7 @@ package database
 import (
 	"log"
 
-	"github.com/yinhe/starclaw-queen/api/internal/config"
+	"starclaw.net/queen/api/internal/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

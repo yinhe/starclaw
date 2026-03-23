@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/provider"
+	"starclaw.net/synapse/api/internal/provider"
 )
 
 type ModelsHandler struct {

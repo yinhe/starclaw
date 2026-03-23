@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/billing"
-	"github.com/yinhe/starclaw-router/internal/middleware"
-	"github.com/yinhe/starclaw-router/internal/model"
-	"github.com/yinhe/starclaw-router/internal/provider"
-	"github.com/yinhe/starclaw-router/internal/proxy"
+	"starclaw.net/synapse/api/internal/billing"
+	"starclaw.net/synapse/api/internal/middleware"
+	"starclaw.net/synapse/api/internal/model"
+	"starclaw.net/synapse/api/internal/provider"
+	"starclaw.net/synapse/api/internal/proxy"
 	"gorm.io/gorm"
 )
 

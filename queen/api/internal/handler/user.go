@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-queen/api/internal/database"
-	"github.com/yinhe/starclaw-queen/api/internal/model"
+	"starclaw.net/queen/api/internal/database"
+	"starclaw.net/queen/api/internal/model"
 	"golang.org/x/crypto/bcrypt"
 )
 

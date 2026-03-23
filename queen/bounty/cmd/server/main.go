@@ -10,9 +10,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/yinhe/starclaw-queen/bounty/internal/billing"
-	"github.com/yinhe/starclaw-queen/bounty/internal/handler"
-	"github.com/yinhe/starclaw-queen/bounty/internal/model"
+	"starclaw.net/queen/bounty/internal/billing"
+	"starclaw.net/queen/bounty/internal/handler"
+	"starclaw.net/queen/bounty/internal/model"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )

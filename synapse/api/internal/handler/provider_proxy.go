@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/provider"
+	"starclaw.net/synapse/api/internal/provider"
 )
 
 // ProviderProxyHandler forwards requests to sub-providers with injected API keys.

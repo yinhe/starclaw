@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-queen/api/internal/config"
-	"github.com/yinhe/starclaw-queen/api/internal/handler"
-	"github.com/yinhe/starclaw-queen/api/internal/middleware"
+	"starclaw.net/queen/api/internal/config"
+	"starclaw.net/queen/api/internal/handler"
+	"starclaw.net/queen/api/internal/middleware"
 )
 
 func Setup() *gin.Engine {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yinhe/starclaw-router/internal/proxy"
+	"starclaw.net/synapse/api/internal/proxy"
 )
 
 // ProxyHandler forwards requests to the Node.js overseas relay proxy as-is

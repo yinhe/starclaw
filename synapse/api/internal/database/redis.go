@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/yinhe/starclaw-router/internal/config"
+	"starclaw.net/synapse/api/internal/config"
 )
 
 func InitRedis(cfg *config.Config) (*redis.Client, error) {

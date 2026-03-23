@@ -14,9 +14,9 @@ import (
 	"github.com/go-pay/gopay/alipay"
 	wechat "github.com/go-pay/gopay/wechat/v3"
 	"github.com/google/uuid"
-	"github.com/yinhe/starclaw-queen/api/internal/config"
-	"github.com/yinhe/starclaw-queen/api/internal/database"
-	"github.com/yinhe/starclaw-queen/api/internal/model"
+	"starclaw.net/queen/api/internal/config"
+	"starclaw.net/queen/api/internal/database"
+	"starclaw.net/queen/api/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
