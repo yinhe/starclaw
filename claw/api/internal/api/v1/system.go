@@ -684,10 +684,6 @@ func hasDockerSocket() bool {
 
 func performDockerSocketUpdate(targetVersion string) error {
 	hostDir := os.Getenv("STARCLAW_HOST_DIR")
-	composeFile := os.Getenv("STARCLAW_COMPOSE_FILE")
-	if composeFile == "" {
-		composeFile = "docker-compose.prod.yml"
-	}
 
 	// Auto-detect host project dir from Docker Compose container labels
 	if hostDir == "" {
@@ -708,7 +704,7 @@ func performDockerSocketUpdate(targetVersion string) error {
 		for _, dir := range []string{"/opt/starclaw/claw", "/opt/starclaw", "/opt/claw"} {
 			if err := exec.Command("docker", "run", "--rm",
 				"-v", dir+":"+dir+":ro",
-				"alpine:latest", "test", "-f", filepath.Join(dir, composeFile)).Run(); err == nil {
+				"alpine:latest", "test", "-d", filepath.Join(dir, "api")).Run(); err == nil {
 				hostDir = dir
 				ulogInfo("找到项目目录: %s", hostDir)
 				break
@@ -720,47 +716,69 @@ func performDockerSocketUpdate(targetVersion string) error {
 		return fmt.Errorf("无法检测宿主机项目目录，请设置 STARCLAW_HOST_DIR 环境变量")
 	}
 
-	composePath := filepath.Join(hostDir, composeFile)
-	ulogInfo("compose: %s", composePath)
-
 	// Build the update script that runs inside a helper container on the host.
-	// It tries pull first (fast if registry images exist), falls back to source build.
-	// The helper has the host dir + Docker socket mounted so compose paths resolve correctly.
+	// The script auto-detects project layout (monorepo vs standalone),
+	// tries pull first (fast if registry images exist), falls back to source build.
+	// Uses temp dir for tar extraction to avoid overwrite conflicts.
 	nydusURL := molt.NydusSourceURL
 	script := fmt.Sprintf(`#!/bin/sh
 set -e
+
 # Setup mirrors for China network
-sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories
+sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories 2>/dev/null || true
 apk add --no-cache curl docker-cli docker-cli-compose > /dev/null 2>&1
 echo "@@TOOLS_READY"
 
-cd "%s"
+HOSTDIR="%s"
+VER="%s"
+NYDUS="%s"
+cd "$HOSTDIR"
+
+# Detect project layout: monorepo (has claw/ subdir) vs standalone
+if [ -f "claw/docker-compose.prod.yml" ]; then
+  COMPOSE="$HOSTDIR/claw/docker-compose.prod.yml"
+  SRCDIR="$HOSTDIR/claw"
+  echo "@@LAYOUT:monorepo (compose=claw/docker-compose.prod.yml)"
+elif [ -f "docker-compose.prod.yml" ]; then
+  COMPOSE="$HOSTDIR/docker-compose.prod.yml"
+  SRCDIR="$HOSTDIR"
+  echo "@@LAYOUT:standalone (compose=docker-compose.prod.yml)"
+else
+  COMPOSE="$HOSTDIR/docker-compose.yml"
+  SRCDIR="$HOSTDIR"
+  echo "@@LAYOUT:dev (compose=docker-compose.yml)"
+fi
+
+echo "@@COMPOSE:$COMPOSE"
+echo "@@SRCDIR:$SRCDIR"
 
 # Try pulling pre-built images first (fast path)
 echo "@@PULL_START"
-if STARCLAW_VERSION="%s" docker compose -f "%s" pull api web 2>&1; then
+if STARCLAW_VERSION="$VER" docker compose -f "$COMPOSE" pull api web 2>&1; then
   echo "@@PULL_OK"
 else
   echo "@@PULL_FAILED"
-  # Update source code from Nydus
+
+  # Update source code from Nydus (use temp dir to avoid tar overwrite issues)
   echo "@@SOURCE_START"
-  curl -sfL --connect-timeout 10 --max-time 120 "%s" | tar xz --strip-components=1 2>&1
-  echo -n "%s" > api/.version
+  TMP=$(mktemp -d)
+  curl -sfL --connect-timeout 10 --max-time 120 "$NYDUS" | tar xz -C "$TMP" --strip-components=1
+  cp -rf "$TMP"/. "$SRCDIR"/
+  rm -rf "$TMP"
+  echo -n "$VER" > "$SRCDIR/api/.version"
   echo "@@SOURCE_OK"
+
   # Build images from source
   echo "@@BUILD_START"
-  STARCLAW_VERSION="%s" docker compose -f "%s" build api web 2>&1
+  STARCLAW_VERSION="$VER" docker compose -f "$COMPOSE" build api web 2>&1
   echo "@@BUILD_OK"
 fi
 
 # Recreate containers with new images
 echo "@@UP_START"
-STARCLAW_VERSION="%s" docker compose -f "%s" up -d --no-deps api web 2>&1
+STARCLAW_VERSION="$VER" docker compose -f "$COMPOSE" up -d --no-deps api web 2>&1
 echo "@@UPDATE_COMPLETE"
-`, hostDir, targetVersion, composePath,
-		nydusURL, targetVersion,
-		targetVersion, composePath,
-		targetVersion, composePath)
+`, hostDir, targetVersion, nydusURL)
 
 	ulogInfo("启动宿主机构建容器...")
 	cmd := exec.Command("docker", "run", "--rm",
@@ -797,6 +815,12 @@ echo "@@UPDATE_COMPLETE"
 		switch {
 		case line == "@@TOOLS_READY":
 			ulogInfo("构建工具就绪")
+		case strings.HasPrefix(line, "@@LAYOUT:"):
+			ulogInfo("布局: %s", strings.TrimPrefix(line, "@@LAYOUT:"))
+		case strings.HasPrefix(line, "@@COMPOSE:"):
+			ulogInfo("compose: %s", strings.TrimPrefix(line, "@@COMPOSE:"))
+		case strings.HasPrefix(line, "@@SRCDIR:"):
+			ulogInfo("源码目录: %s", strings.TrimPrefix(line, "@@SRCDIR:"))
 		case line == "@@PULL_START":
 			ulogInfo("尝试拉取预构建镜像...")
 		case line == "@@PULL_OK":
@@ -806,7 +830,7 @@ echo "@@UPDATE_COMPLETE"
 		case line == "@@SOURCE_START":
 			ulogInfo("正在从 Nydus 下载源码...")
 		case line == "@@SOURCE_OK":
-			ulogInfo("源码已更新，版本 %s 已写入", targetVersion)
+			ulogInfo("源码已更新，版本写入完成")
 		case line == "@@BUILD_START":
 			ulogInfo("正在构建镜像 (可能需要几分钟)...")
 		case line == "@@BUILD_OK":
