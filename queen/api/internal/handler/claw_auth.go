@@ -437,6 +437,21 @@ func (h *ClawAuthHandler) findOrCreateClawUser(clawID, publicKey string) *model.
 	// Check if there's a user with this claw_id as oauth_id (from previous claw login)
 	var user model.User
 	if err := db.Where("o_auth_provider = ? AND o_auth_id = ?", "claw", clawID).First(&user).Error; err == nil {
+		// Ensure NodeBinding exists (may be missing for users created before binding was added)
+		var existingBinding model.NodeBinding
+		if err := db.Where("node_id = ?", clawID).First(&existingBinding).Error; err != nil {
+			newBinding := model.NodeBinding{
+				ID:          uuid.New().String(),
+				NodeID:      clawID,
+				QueenUserID: user.ID,
+				Status:      "active",
+			}
+			if err := db.Create(&newBinding).Error; err != nil {
+				log.Printf("[claw-auth] Failed to backfill NodeBinding for %s: %v", clawID, err)
+			} else {
+				log.Printf("[claw-auth] Backfilled NodeBinding for existing OAuth user %s → %s", clawID, user.ID)
+			}
+		}
 		return &user
 	}
 
@@ -468,7 +483,9 @@ func (h *ClawAuthHandler) findOrCreateClawUser(clawID, publicKey string) *model.
 		QueenUserID: user.ID,
 		Status:      "active",
 	}
-	db.Create(&binding)
+	if err := db.Create(&binding).Error; err != nil {
+		log.Printf("[claw-auth] Failed to create NodeBinding for %s: %v", clawID, err)
+	}
 
 	log.Printf("[claw-auth] Created new user %s for claw %s", user.ID, clawID)
 	return &user
