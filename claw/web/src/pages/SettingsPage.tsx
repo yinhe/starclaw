@@ -19,7 +19,7 @@ export default function SettingsPage() {
   const [updating, setUpdating] = useState(false)
   const [checking, setChecking] = useState(false)
   const [joiningSwarm, setJoiningSwarm] = useState(false)
-  const [swarmForm, setSwarmForm] = useState({ queen_url: 'claw://swarm.starclaw.net', node_name: '', region: '' })
+  const [swarmForm, setSwarmForm] = useState({ queen_url: 'claw://swarm.starclaw.net', node_name: '', region: '', invite_code: '' })
   const [swarmMsg, setSwarmMsg] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
   const [bridgeStatus, setBridgeStatus] = useState<any>(null)
@@ -245,6 +245,13 @@ export default function SettingsPage() {
       const res = await systemAPI.joinSwarm(swarmForm)
       setSwarmMsg(res.data.message || '已加入')
       loadSystemInfo()
+
+      // Auto-register with Queen (pass invite_code if provided)
+      try {
+        await queenAPI.autoRegister({ invite_code: swarmForm.invite_code || undefined })
+        loadQueenStatus()
+      } catch { /* auto-register is best-effort */ }
+
       setTimeout(() => setSwarmMsg(''), 3000)
     } catch (e: any) {
       setSwarmMsg(e.response?.data?.error || '加入失败')
@@ -1015,6 +1022,15 @@ export default function SettingsPage() {
                   onChange={(e) => setSwarmForm({ ...swarmForm, queen_url: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="claw://swarm.starclaw.net"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">邀请码 (可选)</label>
+                <input
+                  value={swarmForm.invite_code}
+                  onChange={(e) => setSwarmForm({ ...swarmForm, invite_code: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 font-mono"
+                  placeholder="如 SC-A3F8-K9M2，留空跳过"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
