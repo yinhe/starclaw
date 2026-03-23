@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 
 	"starclaw.net/spore/pkg/archive"
@@ -47,6 +51,8 @@ func main() {
 		cmdUninstall(mgr)
 	case "info":
 		cmdInfo(mgr)
+	case "update":
+		cmdUpdate()
 	case "version":
 		fmt.Printf("spore v%s (%s/%s)\n", version, info.OS, info.Arch)
 	case "platform":
@@ -314,6 +320,101 @@ func cmdAutostart(mgr *runtime.Manager) {
 	}
 }
 
+func cmdUpdate() {
+	fmt.Println("🔍 Checking for updates...")
+
+	// 1. Fetch latest version
+	resp, err := http.Get("https://nydus.starclaw.net/releases/latest")
+	if err != nil {
+		fatal("check update: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		fatal("parse release: %v", err)
+	}
+
+	latestVer := strings.TrimPrefix(release.TagName, "v")
+	fmt.Printf("   Current: v%s\n", version)
+	fmt.Printf("   Latest:  v%s\n", latestVer)
+
+	if latestVer <= version {
+		fmt.Println("✅ Already up to date.")
+		return
+	}
+
+	// 2. Determine download URL
+	ext := ""
+	if goruntime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	binName := fmt.Sprintf("spore-%s-%s%s", goruntime.GOOS, goruntime.GOARCH, ext)
+	downloadURL := "https://nydus.starclaw.net/spore/releases/" + binName
+
+	fmt.Printf("⬇️  Downloading %s...\n", binName)
+
+	dlResp, err := http.Get(downloadURL)
+	if err != nil {
+		fatal("download: %v", err)
+	}
+	defer dlResp.Body.Close()
+
+	if dlResp.StatusCode != http.StatusOK {
+		fatal("download failed: HTTP %d", dlResp.StatusCode)
+	}
+
+	// 3. Write to temp file
+	exePath, err := os.Executable()
+	if err != nil {
+		fatal("locate self: %v", err)
+	}
+	exePath, _ = filepath.EvalSymlinks(exePath)
+
+	tmpPath := exePath + ".new"
+	tmpFile, err := os.Create(tmpPath)
+	if err != nil {
+		fatal("create temp: %v", err)
+	}
+
+	written, err := io.Copy(tmpFile, dlResp.Body)
+	tmpFile.Close()
+	if err != nil {
+		os.Remove(tmpPath)
+		fatal("write: %v", err)
+	}
+	fmt.Printf("   Downloaded %.1f MB\n", float64(written)/1024/1024)
+
+	// 4. Make executable (unix)
+	os.Chmod(tmpPath, 0755)
+
+	// 5. Replace binary (Windows: rename old first)
+	oldPath := exePath + ".old"
+	os.Remove(oldPath) // clean up previous .old
+
+	if goruntime.GOOS == "windows" {
+		// Windows can't overwrite running exe, rename first
+		if err := os.Rename(exePath, oldPath); err != nil {
+			os.Remove(tmpPath)
+			fatal("rename old: %v", err)
+		}
+		if err := os.Rename(tmpPath, exePath); err != nil {
+			os.Rename(oldPath, exePath) // rollback
+			fatal("replace: %v", err)
+		}
+	} else {
+		if err := os.Rename(tmpPath, exePath); err != nil {
+			os.Remove(tmpPath)
+			fatal("replace: %v", err)
+		}
+	}
+
+	fmt.Printf("✅ Updated spore: v%s → v%s\n", version, latestVer)
+	fmt.Println("   Run 'spore update-spores' to also update installed spores.")
+}
+
 func printUsage() {
 	fmt.Printf(`Spore v%s — StarClaw Ultra-Lightweight Deployment Runtime
 
@@ -330,6 +431,7 @@ Commands:
   info <name>       Show detailed info about a spore
   logs <name>       View spore logs
   autostart <enable|disable|status> [name]  Manage boot autostart
+  update            Check and apply spore runtime updates
   uninstall <name>  Remove an installed spore
   version           Show spore version
   platform          Show detected platform info
