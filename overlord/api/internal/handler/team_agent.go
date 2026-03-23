@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -74,6 +75,39 @@ func NewTeamAgentHandler(db *gorm.DB) *TeamAgentHandler {
 		clawClient:    claw.NewClient(),
 		overlordToken: token,
 	}
+}
+
+// checkInstanceAccess verifies that a viewer (employee) can access the given instance.
+// Admins/operators always pass. For viewers: instance must be published, and either
+// open to all (no InstanceAccess rows) or the user has an explicit InstanceAccess row.
+func (h *TeamAgentHandler) checkInstanceAccess(c *gin.Context, instID string) bool {
+	role, _ := c.Get("admin_role")
+	roleStr, _ := role.(string)
+	if roleStr != "viewer" {
+		return true // admin/operator always has access
+	}
+	// Check instance is published
+	var inst model.TeamInstance
+	if err := h.db.First(&inst, "id = ?", instID).Error; err != nil {
+		return false
+	}
+	if !inst.Published {
+		return false
+	}
+	// Check if instance has any access rows (restricted mode) or is open to all
+	var totalAccess int64
+	h.db.Model(&model.InstanceAccess{}).Where("instance_id = ?", instID).Count(&totalAccess)
+	if totalAccess == 0 {
+		return true // no restrictions, open to all employees
+	}
+	// Check if this user has access
+	adminUser, _ := c.Get("admin_user")
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		var count int64
+		h.db.Model(&model.InstanceAccess{}).Where("instance_id = ? AND user_id = ?", instID, u.ID).Count(&count)
+		return count > 0
+	}
+	return false
 }
 
 // SeedOfficialTemplates upserts built-in templates and removes stale ones.
@@ -150,6 +184,8 @@ func (h *TeamAgentHandler) CreateInstance(c *gin.Context) {
 		Name         string `json:"name" binding:"required"`
 		Goal         string `json:"goal"`
 		EnergyBudget int    `json:"energy_budget"`
+		DefaultModel string `json:"default_model"`
+		WelcomeMsg   string `json:"welcome_msg"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -182,6 +218,16 @@ func (h *TeamAgentHandler) CreateInstance(c *gin.Context) {
 		}
 	}
 
+	// Determine default model: explicit > template primary role > fallback
+	defaultModel := req.DefaultModel
+	if defaultModel == "" {
+		var roles []TeamRole
+		json.Unmarshal([]byte(tmpl.Roles), &roles)
+		if len(roles) > 0 && roles[0].Model != "" {
+			defaultModel = roles[0].Model
+		}
+	}
+
 	instance := model.TeamInstance{
 		TemplateID:   tmpl.ID,
 		TemplateName: tmpl.Name,
@@ -192,6 +238,8 @@ func (h *TeamAgentHandler) CreateInstance(c *gin.Context) {
 		Goal:         req.Goal,
 		Status:       "forming",
 		EnergyBudget: req.EnergyBudget,
+		DefaultModel: defaultModel,
+		WelcomeMsg:   req.WelcomeMsg,
 	}
 	if err := h.db.Create(&instance).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create instance"})
@@ -244,8 +292,76 @@ func (h *TeamAgentHandler) ListInstances(c *gin.Context) {
 	if tmplID := c.Query("template_id"); tmplID != "" {
 		q = q.Where("template_id = ?", tmplID)
 	}
+
+	// Viewer (employee) only sees published instances they have access to
+	role, _ := c.Get("admin_role")
+	roleStr, _ := role.(string)
+	if roleStr == "viewer" {
+		q = q.Where("published = ?", true)
+		adminUser, _ := c.Get("admin_user")
+		if u, ok := adminUser.(*model.AdminUser); ok {
+			// Use InstanceAccess table for proper binding:
+			// If an instance has NO access rows → open to all employees
+			// If it has access rows → only listed employees can see it
+			subQuery := h.db.Table("instance_accesses").Select("instance_id").Where("user_id = ?", u.ID)
+			q = q.Where(
+				"id NOT IN (SELECT DISTINCT instance_id FROM instance_accesses) OR id IN (?)",
+				subQuery,
+			)
+		}
+	}
+
 	q.Find(&instances)
 	c.JSON(http.StatusOK, gin.H{"instances": instances, "total": len(instances)})
+}
+
+// PUT /brood/team-agent/instances/:id/publish
+func (h *TeamAgentHandler) PublishInstance(c *gin.Context) {
+	instID := c.Param("id")
+	var req struct {
+		Published    *bool   `json:"published"`
+		VisibleTo    *string `json:"visible_to"`
+		WelcomeMsg   *string `json:"welcome_msg"`
+		DefaultModel *string `json:"default_model"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if req.Published != nil {
+		updates["published"] = *req.Published
+	}
+	if req.VisibleTo != nil {
+		updates["visible_to"] = *req.VisibleTo
+	}
+	if req.WelcomeMsg != nil {
+		updates["welcome_msg"] = *req.WelcomeMsg
+	}
+	if req.DefaultModel != nil {
+		updates["default_model"] = *req.DefaultModel
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+		return
+	}
+
+	result := h.db.Model(&model.TeamInstance{}).Where("id = ?", instID).Updates(updates)
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "instance not found"})
+		return
+	}
+
+	action := "update_instance_settings"
+	if req.Published != nil && *req.Published {
+		action = "publish_instance"
+	} else if req.Published != nil && !*req.Published {
+		action = "unpublish_instance"
+	}
+	audit(h.db, c, action, instID, "instance settings updated")
+	c.JSON(http.StatusOK, gin.H{"message": "instance updated"})
 }
 
 // GET /brood/team-agent/instances/:id
@@ -393,6 +509,10 @@ func (h *TeamAgentHandler) DisbandInstance(c *gin.Context) {
 // POST /brood/team-agent/instances/:id/missions
 func (h *TeamAgentHandler) CreateMission(c *gin.Context) {
 	instID := c.Param("id")
+	if !h.checkInstanceAccess(c, instID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "no access to this instance"})
+		return
+	}
 	var inst model.TeamInstance
 	if err := h.db.First(&inst, "id = ?", instID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "instance not found"})
@@ -481,11 +601,50 @@ func (h *TeamAgentHandler) GetMission(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"mission": m})
 }
 
+// DELETE /brood/team-agent/instances/:id/missions/:mid
+func (h *TeamAgentHandler) DeleteMission(c *gin.Context) {
+	instID := c.Param("id")
+	mid := c.Param("mid")
+	var m model.TeamMission
+	if err := h.db.First(&m, "id = ? AND instance_id = ?", mid, instID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "mission not found"})
+		return
+	}
+	// Only allow deletion of non-executing missions
+	if m.Status == "executing" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot delete executing mission, cancel it first"})
+		return
+	}
+	h.db.Delete(&m)
+	audit(h.db, c, "delete_mission", mid, "mission deleted")
+	c.JSON(http.StatusOK, gin.H{"message": "mission deleted"})
+}
+
+// POST /brood/team-agent/instances/:id/missions/:mid/cancel
+func (h *TeamAgentHandler) CancelMission(c *gin.Context) {
+	instID := c.Param("id")
+	mid := c.Param("mid")
+	var m model.TeamMission
+	if err := h.db.First(&m, "id = ? AND instance_id = ?", mid, instID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "mission not found"})
+		return
+	}
+	if m.Status == "completed" || m.Status == "failed" || m.Status == "cancelled" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mission already finished"})
+		return
+	}
+	now := time.Now()
+	h.db.Model(&m).Updates(map[string]interface{}{"status": "cancelled", "completed_at": &now})
+	audit(h.db, c, "cancel_mission", mid, "mission cancelled")
+	c.JSON(http.StatusOK, gin.H{"message": "mission cancelled"})
+}
+
 // ── Direct Chat (no instance/template required) ──
 
 const directInstanceID = "direct"
 
 // POST /brood/chat — direct chat without team instance
+// Supports SSE streaming via Accept: text/event-stream header.
 func (h *TeamAgentHandler) SendDirectChat(c *gin.Context) {
 	var req struct {
 		Message string `json:"message" binding:"required"`
@@ -527,13 +686,10 @@ func (h *TeamAgentHandler) SendDirectChat(c *gin.Context) {
 	// Pick any online Claw node
 	var node model.ClawNode
 	if err := h.db.Where("status = ?", "online").Order("tasks_running ASC").First(&node).Error; err != nil {
-		// No online node — try feral
 		if err2 := h.db.Where("status = ?", "feral").First(&node).Error; err2 != nil {
 			assistantMsg := model.ChatMessage{
-				InstanceID: directInstanceID,
-				UserID:     adminUserID,
-				Role:       "assistant",
-				Content:    "⚠️ 暂无可用的 AI 节点，请联系管理员添加 Claw 节点。",
+				InstanceID: directInstanceID, UserID: adminUserID, Role: "assistant",
+				Content: "⚠️ 暂无可用的 AI 节点，请联系管理员添加 Claw 节点。",
 			}
 			h.db.Create(&assistantMsg)
 			c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
@@ -541,66 +697,23 @@ func (h *TeamAgentHandler) SendDirectChat(c *gin.Context) {
 		}
 	}
 
-	start := time.Now()
-	chatResp, err := h.clawClient.ChatCompletion(node.Address, h.overlordToken, claw.ChatCompletionReq{
-		Model:    "deepseek-chat",
-		Messages: clawMessages,
-		Stream:   false,
-	})
-	durationMs := int(time.Since(start).Milliseconds())
+	// Build a pseudo-instance for trackUsage
+	teamID := ""
+	if tid, ok := c.Get("admin_team"); ok {
+		if s, ok := tid.(string); ok {
+			teamID = s
+		}
+	}
+	pseudoInst := &model.TeamInstance{ID: directInstanceID, TeamID: teamID, ClawNodeID: node.ID}
 
-	var assistantContent string
-	var tokensIn, tokensOut int
-	var respModel string
+	modelName := "deepseek-chat"
+	wantStream := c.GetHeader("Accept") == "text/event-stream"
 
-	if err != nil {
-		log.Printf("[direct-chat] completion failed: %v", err)
-		assistantContent = "⚠️ AI 响应失败，请稍后重试。错误: " + err.Error()
-	} else if len(chatResp.Choices) > 0 {
-		assistantContent = chatResp.Choices[0].Message.Content
-		tokensIn = chatResp.Usage.PromptTokens
-		tokensOut = chatResp.Usage.CompletionTokens
-		respModel = chatResp.Model
+	if wantStream {
+		h.sendChatStream(c, pseudoInst, &node, adminUserID, modelName, clawMessages)
 	} else {
-		assistantContent = "⚠️ AI 返回了空响应。"
+		h.sendChatSync(c, pseudoInst, &node, adminUserID, modelName, clawMessages)
 	}
-
-	assistantMsg := model.ChatMessage{
-		InstanceID: directInstanceID,
-		UserID:     adminUserID,
-		Role:       "assistant",
-		Content:    assistantContent,
-		Model:      respModel,
-		TokensIn:   tokensIn,
-		TokensOut:  tokensOut,
-		DurationMs: durationMs,
-	}
-	h.db.Create(&assistantMsg)
-
-	// Track usage
-	if tokensIn > 0 || tokensOut > 0 {
-		teamID := ""
-		if tid, ok := c.Get("admin_team"); ok {
-			if s, ok := tid.(string); ok {
-				teamID = s
-			}
-		}
-		usage := model.UsageRecord{
-			TeamID:       teamID,
-			UserID:       adminUserID,
-			ClawID:       node.ID,
-			ModelName:    respModel,
-			InputTokens:  int64(tokensIn),
-			OutputTokens: int64(tokensOut),
-			TotalTokens:  int64(tokensIn + tokensOut),
-			RequestType:  "chat",
-			DurationMs:   durationMs,
-			Date:         time.Now().Format("2006-01-02"),
-		}
-		h.db.Create(&usage)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
 }
 
 // GET /brood/chat/history — direct chat history
@@ -621,8 +734,13 @@ func (h *TeamAgentHandler) GetDirectChatHistory(c *gin.Context) {
 // ── Chat endpoints ──
 
 // POST /brood/team-agent/instances/:id/chat
+// Supports SSE streaming via Accept: text/event-stream header.
 func (h *TeamAgentHandler) SendChat(c *gin.Context) {
 	instID := c.Param("id")
+	if !h.checkInstanceAccess(c, instID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "no access to this instance"})
+		return
+	}
 	var inst model.TeamInstance
 	if err := h.db.First(&inst, "id = ?", instID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "instance not found"})
@@ -641,8 +759,6 @@ func (h *TeamAgentHandler) SendChat(c *gin.Context) {
 		return
 	}
 
-	// Get current user
-	userID := middleware.GetAdminActor(c)
 	adminUser, _ := c.Get("admin_user")
 	var adminUserID string
 	if u, ok := adminUser.(*model.AdminUser); ok {
@@ -662,13 +778,11 @@ func (h *TeamAgentHandler) SendChat(c *gin.Context) {
 	var history []model.ChatMessage
 	h.db.Where("instance_id = ? AND user_id = ?", instID, adminUserID).
 		Order("created_at DESC").Limit(20).Find(&history)
-	// Reverse to chronological order
 	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
 		history[i], history[j] = history[j], history[i]
 	}
 
-	// Build messages array for Claw chat API
-	// Load template for system prompt
+	// Build system prompt from template
 	var tmpl model.TeamAgentTemplate
 	h.db.First(&tmpl, "id = ?", inst.TemplateID)
 	var roles []TeamRole
@@ -689,32 +803,42 @@ func (h *TeamAgentHandler) SendChat(c *gin.Context) {
 		clawMessages = append(clawMessages, claw.ChatMessage{Role: m.Role, Content: m.Content})
 	}
 
-	// Determine model from template's primary role
+	// Determine model: instance override > template primary role > default
 	modelName := "deepseek-chat"
-	if len(roles) > 0 && roles[0].Model != "" {
+	if inst.DefaultModel != "" {
+		modelName = inst.DefaultModel
+	} else if len(roles) > 0 && roles[0].Model != "" {
 		modelName = roles[0].Model
 	}
 
-	// Proxy to Claw node
+	// Resolve Claw node
 	var node model.ClawNode
 	if err := h.db.First(&node, "id = ?", inst.ClawNodeID).Error; err != nil {
-		// Fallback: return a stub response if Claw node is unavailable
 		assistantMsg := model.ChatMessage{
-			InstanceID: instID,
-			UserID:     adminUserID,
-			Role:       "assistant",
-			Content:    "⚠️ AI 节点暂时不可用，请稍后重试。",
+			InstanceID: instID, UserID: adminUserID, Role: "assistant",
+			Content: "⚠️ AI 节点暂时不可用，请稍后重试。",
 		}
 		h.db.Create(&assistantMsg)
 		c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
 		return
 	}
 
+	wantStream := c.GetHeader("Accept") == "text/event-stream"
+
+	if wantStream {
+		h.sendChatStream(c, &inst, &node, adminUserID, modelName, clawMessages)
+	} else {
+		h.sendChatSync(c, &inst, &node, adminUserID, modelName, clawMessages)
+	}
+}
+
+// sendChatSync is the original synchronous chat path.
+func (h *TeamAgentHandler) sendChatSync(c *gin.Context, inst *model.TeamInstance, node *model.ClawNode,
+	adminUserID, modelName string, clawMessages []claw.ChatMessage) {
+
 	start := time.Now()
 	chatResp, err := h.clawClient.ChatCompletion(node.Address, h.overlordToken, claw.ChatCompletionReq{
-		Model:    modelName,
-		Messages: clawMessages,
-		Stream:   false,
+		Model: modelName, Messages: clawMessages, Stream: false,
 	})
 	durationMs := int(time.Since(start).Milliseconds())
 
@@ -723,7 +847,7 @@ func (h *TeamAgentHandler) SendChat(c *gin.Context) {
 	var respModel string
 
 	if err != nil {
-		log.Printf("[team-agent] chat completion failed for instance %s: %v", instID, err)
+		log.Printf("[team-agent] chat completion failed for instance %s: %v", inst.ID, err)
 		assistantContent = "⚠️ AI 响应失败，请稍后重试。错误: " + err.Error()
 	} else if len(chatResp.Choices) > 0 {
 		assistantContent = chatResp.Choices[0].Message.Content
@@ -734,45 +858,112 @@ func (h *TeamAgentHandler) SendChat(c *gin.Context) {
 		assistantContent = "⚠️ AI 返回了空响应。"
 	}
 
-	// Save assistant response
 	assistantMsg := model.ChatMessage{
-		InstanceID: instID,
-		UserID:     adminUserID,
-		Role:       "assistant",
-		Content:    assistantContent,
-		Model:      respModel,
-		TokensIn:   tokensIn,
-		TokensOut:  tokensOut,
-		DurationMs: durationMs,
+		InstanceID: inst.ID, UserID: adminUserID, Role: "assistant",
+		Content: assistantContent, Model: respModel,
+		TokensIn: tokensIn, TokensOut: tokensOut, DurationMs: durationMs,
+	}
+	h.db.Create(&assistantMsg)
+	h.trackUsage(inst, adminUserID, respModel, tokensIn, tokensOut, durationMs)
+	c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
+}
+
+// sendChatStream proxies SSE from Claw to client and persists the result.
+func (h *TeamAgentHandler) sendChatStream(c *gin.Context, inst *model.TeamInstance, node *model.ClawNode,
+	adminUserID, modelName string, clawMessages []claw.ChatMessage) {
+
+	start := time.Now()
+	stream, err := h.clawClient.ChatCompletionStream(node.Address, h.overlordToken, claw.ChatCompletionReq{
+		Model: modelName, Messages: clawMessages,
+	})
+	if err != nil {
+		log.Printf("[team-agent] stream failed for instance %s: %v", inst.ID, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "stream failed: " + err.Error()})
+		return
+	}
+	defer stream.Close()
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+
+	var fullContent string
+	var respModel string
+	scanner := bufio.NewScanner(stream)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Forward raw SSE lines to client
+		fmt.Fprintf(c.Writer, "%s\n", line)
+		c.Writer.Flush()
+
+		// Parse content delta for persistence
+		if len(line) > 6 && line[:6] == "data: " {
+			data := line[6:]
+			if data == "[DONE]" {
+				continue
+			}
+			var chunk struct {
+				Model   string `json:"model"`
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if json.Unmarshal([]byte(data), &chunk) == nil {
+				if chunk.Model != "" {
+					respModel = chunk.Model
+				}
+				if len(chunk.Choices) > 0 {
+					fullContent += chunk.Choices[0].Delta.Content
+				}
+			}
+		}
+	}
+	// Final newline for SSE
+	fmt.Fprintf(c.Writer, "\n")
+	c.Writer.Flush()
+
+	durationMs := int(time.Since(start).Milliseconds())
+
+	// Persist assistant message
+	if fullContent == "" {
+		fullContent = "⚠️ AI 返回了空响应。"
+	}
+	assistantMsg := model.ChatMessage{
+		InstanceID: inst.ID, UserID: adminUserID, Role: "assistant",
+		Content: fullContent, Model: respModel, DurationMs: durationMs,
 	}
 	h.db.Create(&assistantMsg)
 
-	// Track usage in UsageRecord
-	if tokensIn > 0 || tokensOut > 0 {
-		usage := model.UsageRecord{
-			TeamID:       inst.TeamID,
-			UserID:       adminUserID,
-			ClawID:       inst.ClawNodeID,
-			ModelName:    respModel,
-			InputTokens:  int64(tokensIn),
-			OutputTokens: int64(tokensOut),
-			TotalTokens:  int64(tokensIn + tokensOut),
-			RequestType:  "chat",
-			DurationMs:   durationMs,
-			Date:         time.Now().Format("2006-01-02"),
-		}
-		h.db.Create(&usage)
-
-		// Update instance energy used (rough: 1 energy per 1000 tokens)
-		energyDelta := (tokensIn + tokensOut) / 1000
-		if energyDelta < 1 {
-			energyDelta = 1
-		}
-		h.db.Model(&inst).Update("energy_used", gorm.Expr("energy_used + ?", energyDelta))
+	// Rough token estimation for streaming (no usage obj from SSE)
+	estimatedTokens := len([]rune(fullContent)) / 2
+	if estimatedTokens < 1 {
+		estimatedTokens = 1
 	}
+	h.trackUsage(inst, adminUserID, respModel, 0, estimatedTokens, durationMs)
+}
 
-	_ = userID // for audit
-	c.JSON(http.StatusOK, gin.H{"message": assistantMsg})
+// trackUsage records token usage for billing/analytics.
+func (h *TeamAgentHandler) trackUsage(inst *model.TeamInstance, userID, modelName string, tokensIn, tokensOut, durationMs int) {
+	totalTokens := tokensIn + tokensOut
+	if totalTokens <= 0 {
+		return
+	}
+	usage := model.UsageRecord{
+		TeamID: inst.TeamID, UserID: userID, ClawID: inst.ClawNodeID,
+		ModelName: modelName, InputTokens: int64(tokensIn), OutputTokens: int64(tokensOut),
+		TotalTokens: int64(totalTokens), RequestType: "chat",
+		DurationMs: durationMs, Date: time.Now().Format("2006-01-02"),
+	}
+	h.db.Create(&usage)
+	energyDelta := totalTokens / 1000
+	if energyDelta < 1 {
+		energyDelta = 1
+	}
+	h.db.Model(inst).Update("energy_used", gorm.Expr("energy_used + ?", energyDelta))
 }
 
 // GET /brood/team-agent/instances/:id/chat
@@ -823,6 +1014,249 @@ func (h *TeamAgentHandler) UsageByUser(c *gin.Context) {
 	`).Scan(&results)
 
 	c.JSON(http.StatusOK, gin.H{"users": results, "total": len(results)})
+}
+
+// ── Conversation management ──
+
+// GET /brood/team-agent/instances/:id/conversations
+func (h *TeamAgentHandler) ListConversations(c *gin.Context) {
+	instID := c.Param("id")
+	adminUser, _ := c.Get("admin_user")
+	var uid string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		uid = u.ID
+	}
+	var convs []model.Conversation
+	h.db.Where("instance_id = ? AND user_id = ?", instID, uid).
+		Order("updated_at DESC").Limit(50).Find(&convs)
+	c.JSON(http.StatusOK, gin.H{"conversations": convs, "total": len(convs)})
+}
+
+// POST /brood/team-agent/instances/:id/conversations
+func (h *TeamAgentHandler) CreateConversation(c *gin.Context) {
+	instID := c.Param("id")
+	var req struct {
+		Title string `json:"title"`
+		Model string `json:"model"`
+	}
+	c.ShouldBindJSON(&req)
+	adminUser, _ := c.Get("admin_user")
+	var uid string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		uid = u.ID
+	}
+	if req.Title == "" {
+		req.Title = "新对话"
+	}
+	conv := model.Conversation{
+		InstanceID: instID, UserID: uid, Title: req.Title, Model: req.Model,
+	}
+	h.db.Create(&conv)
+	c.JSON(http.StatusCreated, gin.H{"conversation": conv})
+}
+
+// DELETE /brood/team-agent/instances/:id/conversations/:cid
+func (h *TeamAgentHandler) DeleteConversation(c *gin.Context) {
+	cid := c.Param("cid")
+	adminUser, _ := c.Get("admin_user")
+	var uid string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		uid = u.ID
+	}
+	h.db.Where("conversation_id = ? AND user_id = ?", cid, uid).Delete(&model.ChatMessage{})
+	result := h.db.Where("id = ? AND user_id = ?", cid, uid).Delete(&model.Conversation{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "conversation not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "conversation deleted"})
+}
+
+// ── Employee Invite ──
+
+// POST /brood/admins/invite — generate invite link
+func (h *TeamAgentHandler) CreateInvite(c *gin.Context) {
+	var req struct {
+		TeamID  string `json:"team_id"`
+		Role    string `json:"role"`
+		MaxUses int    `json:"max_uses"`
+	}
+	c.ShouldBindJSON(&req)
+	if req.Role == "" {
+		req.Role = "viewer"
+	}
+	code := generateToken(16) // 32 hex chars
+	adminUser, _ := c.Get("admin_user")
+	var creatorID string
+	if u, ok := adminUser.(*model.AdminUser); ok {
+		creatorID = u.ID
+	}
+	invite := model.EmployeeInvite{
+		Code: code, TeamID: req.TeamID, Role: req.Role,
+		MaxUses: req.MaxUses, CreatedBy: creatorID,
+	}
+	h.db.Create(&invite)
+	c.JSON(http.StatusCreated, gin.H{"invite": invite, "invite_url": "/join?code=" + code})
+}
+
+// POST /brood/auth/register — self-service registration via invite code
+func (h *TeamAgentHandler) RegisterWithInvite(c *gin.Context) {
+	var req struct {
+		Code     string `json:"code" binding:"required"`
+		Username string `json:"username" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var invite model.EmployeeInvite
+	if err := h.db.Where("code = ?", req.Code).First(&invite).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid invite code"})
+		return
+	}
+	if invite.MaxUses > 0 && invite.UsedCount >= invite.MaxUses {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invite code exhausted"})
+		return
+	}
+	if invite.ExpiresAt != nil && invite.ExpiresAt.Before(time.Now()) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invite code expired"})
+		return
+	}
+	user := model.AdminUser{
+		Username:     req.Username,
+		PasswordHash: middleware.HashTokenExported(req.Password),
+		Role:         invite.Role,
+		TeamID:       invite.TeamID,
+	}
+	if err := h.db.Create(&user).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
+		return
+	}
+	h.db.Model(&invite).Update("used_count", gorm.Expr("used_count + 1"))
+	token := generateToken(32)
+	h.db.Model(&user).Update("token_hash", middleware.HashTokenExported(token))
+	c.JSON(http.StatusCreated, gin.H{"token": token, "user": user, "message": "registration successful"})
+}
+
+// ── Instance Access Management (employee binding) ──
+
+// GET /brood/team-agent/instances/:id/access — list employees with access
+func (h *TeamAgentHandler) ListInstanceAccess(c *gin.Context) {
+	instID := c.Param("id")
+	var accesses []model.InstanceAccess
+	h.db.Where("instance_id = ?", instID).Order("created_at DESC").Find(&accesses)
+	// Enrich with user info
+	type accessItem struct {
+		model.InstanceAccess
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+	var items []accessItem
+	for _, a := range accesses {
+		var u model.AdminUser
+		item := accessItem{InstanceAccess: a}
+		if h.db.First(&u, "id = ?", a.UserID).Error == nil {
+			item.Username = u.Username
+			item.Email = u.Email
+		}
+		items = append(items, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"access": items, "total": len(items)})
+}
+
+// POST /brood/team-agent/instances/:id/access — grant employee access
+func (h *TeamAgentHandler) GrantInstanceAccess(c *gin.Context) {
+	instID := c.Param("id")
+	var req struct {
+		UserID string `json:"user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Verify user exists and is a viewer
+	var user model.AdminUser
+	if err := h.db.First(&user, "id = ?", req.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	access := model.InstanceAccess{InstanceID: instID, UserID: req.UserID}
+	if err := h.db.Create(&access).Error; err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "access already granted"})
+		return
+	}
+	audit(h.db, c, "grant_instance_access", instID, "granted access to user "+user.Username)
+	c.JSON(http.StatusCreated, gin.H{"access": access, "message": "access granted"})
+}
+
+// DELETE /brood/team-agent/instances/:id/access/:uid — revoke employee access
+func (h *TeamAgentHandler) RevokeInstanceAccess(c *gin.Context) {
+	instID := c.Param("id")
+	uid := c.Param("uid")
+	result := h.db.Where("instance_id = ? AND user_id = ?", instID, uid).Delete(&model.InstanceAccess{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "access not found"})
+		return
+	}
+	audit(h.db, c, "revoke_instance_access", instID, "revoked access for user "+uid)
+	c.JSON(http.StatusOK, gin.H{"message": "access revoked"})
+}
+
+// GET /brood/admins/employees — list all viewer-role users (for access assignment UI)
+func (h *TeamAgentHandler) ListEmployees(c *gin.Context) {
+	var users []model.AdminUser
+	q := middleware.TeamScope(c, h.db).Where("role = ?", "viewer").Order("created_at DESC")
+	q.Find(&users)
+	c.JSON(http.StatusOK, gin.H{"employees": users, "total": len(users)})
+}
+
+// ── Model Management ──
+
+// GET /brood/team-agent/node-models/:nodeId — get models for a specific Claw node
+func (h *TeamAgentHandler) NodeModels(c *gin.Context) {
+	nodeID := c.Param("nodeId")
+	var node model.ClawNode
+	if err := h.db.First(&node, "id = ?", nodeID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "node not found"})
+		return
+	}
+	resp, err := h.clawClient.ListModels(node.Address, h.overlordToken)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch models: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"models": resp.Models, "total": resp.Total, "node_name": node.Name})
+}
+
+// GET /brood/models — list available models from all online Claw nodes
+func (h *TeamAgentHandler) ListModels(c *gin.Context) {
+	var nodes []model.ClawNode
+	h.db.Where("status IN ?", []string{"online", "feral"}).Find(&nodes)
+
+	type nodeModels struct {
+		NodeID   string           `json:"node_id"`
+		NodeName string           `json:"node_name"`
+		Address  string           `json:"address"`
+		Models   []claw.ClawModel `json:"models"`
+		Error    string           `json:"error,omitempty"`
+	}
+	var results []nodeModels
+	for _, n := range nodes {
+		resp, err := h.clawClient.ListModels(n.Address, h.overlordToken)
+		if err != nil {
+			results = append(results, nodeModels{
+				NodeID: n.ID, NodeName: n.Name, Address: n.Address,
+				Error: err.Error(),
+			})
+			continue
+		}
+		results = append(results, nodeModels{
+			NodeID: n.ID, NodeName: n.Name, Address: n.Address,
+			Models: resp.Models,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"nodes": results})
 }
 
 // ── Stats ──
@@ -1388,4 +1822,79 @@ func buildOpsClaw() model.TeamAgentTemplate {
 		IsOfficial:  true,
 		Version:     "v1",
 	}
+}
+
+// ── Node Login (Claw → Overlord auth bridge) ──
+
+// POST /brood/auth/node-login
+// Allows a Claw node user to log into Overlord using their Claw JWT.
+func (h *TeamAgentHandler) NodeLogin(c *gin.Context) {
+	var req struct {
+		NodeAddress string `json:"node_address" binding:"required"`
+		ClawToken   string `json:"claw_token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find the Claw node by address
+	var node model.ClawNode
+	if err := h.db.Where("address = ? AND status != ?", req.NodeAddress, "offline").First(&node).Error; err != nil {
+		// Try partial match (user might omit scheme)
+		if err2 := h.db.Where("address LIKE ? AND status != ?", "%"+req.NodeAddress+"%", "offline").First(&node).Error; err2 != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "node not found or offline"})
+			return
+		}
+	}
+
+	// Verify the Claw JWT via the node's internal API
+	verifyResp, err := h.clawClient.AuthVerify(node.Address, h.overlordToken, claw.AuthVerifyReq{
+		Token: req.ClawToken,
+	})
+	if err != nil {
+		log.Printf("[node-login] auth verify failed for node %s: %v", node.Address, err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "node authentication failed"})
+		return
+	}
+	if !verifyResp.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid claw token"})
+		return
+	}
+
+	// Find or create an AdminUser mapped to this Claw user
+	clawUserKey := "claw:" + node.ClawID + ":" + verifyResp.UserID
+	var user model.AdminUser
+	if err := h.db.Where("username = ?", clawUserKey).First(&user).Error; err != nil {
+		// Create new viewer account for this Claw user
+		user = model.AdminUser{
+			Username:     clawUserKey,
+			PasswordHash: middleware.HashTokenExported(clawUserKey + time.Now().String()), // unusable for password login
+			Role:         "viewer",
+			TeamID:       node.Team,
+			Email:        verifyResp.Username + "@claw.node",
+		}
+		if err := h.db.Create(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
+			return
+		}
+		log.Printf("[node-login] created overlord user %s for claw user %s on node %s",
+			user.ID, verifyResp.Username, node.Name)
+	}
+
+	// Generate Overlord API token
+	token := generateToken(32)
+	now := time.Now()
+	h.db.Model(&user).Updates(map[string]interface{}{
+		"token_hash":    middleware.HashTokenExported(token),
+		"last_login_at": &now,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":     token,
+		"user":      user,
+		"claw_node": node.Name,
+		"claw_user": verifyResp.Username,
+		"message":   "node login successful",
+	})
 }

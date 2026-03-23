@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { MessageSquare, User, LogOut, Settings } from 'lucide-react'
+import { MessageSquare, User, LogOut, Settings, Cpu } from 'lucide-react'
 import { getToken, getUser, clearAuth, isAdmin, api } from './api/client'
 import { getBrand } from './lib/brand'
 import LoginPage from './pages/LoginPage'
@@ -8,6 +8,7 @@ import ProfilePage from './pages/ProfilePage'
 import DirectChatPage from './pages/DirectChatPage'
 import HomePage from './pages/HomePage'
 import ChatPage from './pages/ChatPage'
+import ModelsPage from './pages/ModelsPage'
 
 function ChatRoute() {
   const { id } = useParams<{ id: string }>()
@@ -22,10 +23,14 @@ function ChatRoute() {
 }
 
 function getNavItems() {
-  return [
+  const items = [
     { to: '/', icon: MessageSquare, label: 'AI 助手' },
-    { to: '/profile', icon: User, label: '我的' },
   ]
+  if (isAdmin()) {
+    items.push({ to: '/models', icon: Cpu, label: '模型' })
+  }
+  items.push({ to: '/profile', icon: User, label: '我的' })
+  return items
 }
 
 export default function App() {
@@ -124,6 +129,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/chat/direct" element={<DirectChatPage />} />
           <Route path="/chat/:id" element={<ChatRoute />} />
+          <Route path="/models" element={<ModelsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </main>

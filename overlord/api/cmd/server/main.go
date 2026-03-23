@@ -38,7 +38,9 @@ func main() {
 		&model.BrandConfig{}, &model.FeatureToggle{}, &model.LicenseKey{},
 		&model.ComplianceLog{}, &model.SensitiveWordRule{}, &model.DataFlowRecord{},
 		// Team Agent
-		&model.TeamAgentTemplate{}, &model.TeamInstance{}, &model.TeamMission{}, &model.ChatMessage{},
+		&model.TeamAgentTemplate{}, &model.TeamInstance{}, &model.TeamMission{},
+		&model.Conversation{}, &model.ChatMessage{},
+		&model.EmployeeInvite{}, &model.InstanceAccess{},
 	)
 
 	// Seed default superadmin if none exists
@@ -91,8 +93,10 @@ func main() {
 		brood.POST("/register", regH.Register)
 		brood.POST("/heartbeat", regH.Heartbeat)
 
-		// --- Auth: login ---
+		// --- Auth: login + registration ---
 		brood.POST("/auth/login", teamH.Login)
+		brood.POST("/auth/node-login", teamAgentH.NodeLogin)
+		brood.POST("/auth/register", teamAgentH.RegisterWithInvite)
 
 		// --- Read endpoints (viewer+) ---
 		read := brood.Group("")
@@ -103,6 +107,7 @@ func main() {
 			read.GET("/stats", regH.Stats)
 			read.GET("/audit", regH.AuditLogs)
 			read.GET("/resolve", regH.Resolve)
+			read.GET("/models", teamAgentH.ListModels)
 		}
 
 		// --- Write endpoints (operator+) ---
@@ -294,10 +299,10 @@ func main() {
 		{
 			chatRead.GET("/history", teamAgentH.GetDirectChatHistory)
 		}
-		chatWrite := brood.Group("/chat")
-		chatWrite.Use(middleware.RequirePermission("team_agent.write"))
+		chatSubmit := brood.Group("/chat")
+		chatSubmit.Use(middleware.RequirePermission("team_agent.submit"))
 		{
-			chatWrite.POST("", teamAgentH.SendDirectChat)
+			chatSubmit.POST("", teamAgentH.SendDirectChat)
 		}
 
 		// --- Team Agent ---
@@ -313,17 +318,40 @@ func main() {
 			taRead.GET("/instances/:id/missions/:mid", teamAgentH.GetMission)
 			taRead.GET("/stats", teamAgentH.Stats)
 			taRead.GET("/instances/:id/chat", teamAgentH.GetChatHistory)
+			taRead.GET("/instances/:id/conversations", teamAgentH.ListConversations)
+			taRead.GET("/instances/:id/access", teamAgentH.ListInstanceAccess)
+			taRead.GET("/node-models/:nodeId", teamAgentH.NodeModels)
 			taRead.GET("/usage/by-user", teamAgentH.UsageByUser)
 		}
+		// --- Team Agent submit (viewer+) — chat + mission creation ---
+		taSubmit := brood.Group("/team-agent")
+		taSubmit.Use(middleware.RequirePermission("team_agent.submit"))
+		{
+			taSubmit.POST("/instances/:id/missions", teamAgentH.CreateMission)
+			taSubmit.POST("/instances/:id/missions/:mid/cancel", teamAgentH.CancelMission)
+			taSubmit.DELETE("/instances/:id/missions/:mid", teamAgentH.DeleteMission)
+			taSubmit.POST("/instances/:id/chat", teamAgentH.SendChat)
+			taSubmit.POST("/instances/:id/conversations", teamAgentH.CreateConversation)
+			taSubmit.DELETE("/instances/:id/conversations/:cid", teamAgentH.DeleteConversation)
+		}
+		// --- Team Agent write (operator+) — instance lifecycle + provisioning ---
 		taWrite := brood.Group("/team-agent")
 		taWrite.Use(middleware.RequirePermission("team_agent.write"))
 		{
 			taWrite.POST("/instances", teamAgentH.CreateInstance)
 			taWrite.POST("/instances/:id/disband", teamAgentH.DisbandInstance)
-			taWrite.POST("/instances/:id/missions", teamAgentH.CreateMission)
-			taWrite.POST("/instances/:id/chat", teamAgentH.SendChat)
+			taWrite.PUT("/instances/:id/publish", teamAgentH.PublishInstance)
+			taWrite.POST("/instances/:id/access", teamAgentH.GrantInstanceAccess)
+			taWrite.DELETE("/instances/:id/access/:uid", teamAgentH.RevokeInstanceAccess)
 			taWrite.POST("/provision-node", provisionH.ProvisionNode)
 			taWrite.GET("/provision-status", provisionH.ProvisionStatus)
+		}
+		// --- Employee invite (admin only) ---
+		inviteWrite := brood.Group("/admins")
+		inviteWrite.Use(middleware.RequirePermission("teams.write"))
+		{
+			inviteWrite.POST("/invite", teamAgentH.CreateInvite)
+			inviteWrite.GET("/employees", teamAgentH.ListEmployees)
 		}
 
 		// --- Compliance ---

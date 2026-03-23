@@ -379,7 +379,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		squadPeerHandler.StartCallbackWatcher()
 
 		// Overlord internal endpoints (token-authenticated, for Team Agent orchestration)
-		overlordH := v1.NewOverlordInternalHandler(db, identity)
+		overlordH := v1.NewOverlordInternalHandler(db, identity, cfg)
+		overlordH.SetProviderRegistry(providerRegistry)
 		internal := apiV1.Group("/internal")
 		internal.Use(overlordH.AuthMiddleware())
 		{
@@ -389,6 +390,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			internal.POST("/mission/create", overlordH.CreateMission)
 			internal.POST("/mission/start", overlordH.StartMission)
 			internal.GET("/mission/:id", overlordH.GetMission)
+			// Auth exchange (Overlord ↔ Claw token bridge)
+			internal.POST("/auth/exchange", overlordH.AuthExchange)
+			internal.POST("/auth/verify", overlordH.AuthVerify)
+			// Chat proxy (OpenAI-compatible, for Overlord)
+			internal.POST("/chat/completions", overlordH.ChatCompletions)
+			internal.GET("/models", overlordH.ListModels)
 		}
 
 		// Inference Router (public status + signed contributor endpoints)

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, Loader2, Bot, User } from 'lucide-react'
-import { api } from '../api/client'
+import ReactMarkdown from 'react-markdown'
+import { api, streamChat } from '../api/client'
 
 interface ChatMsg {
   id: string; role: string; content: string; model?: string
@@ -35,27 +36,24 @@ export default function DirectChatPage() {
     setInput('')
     setSending(true)
 
-    const tempUser: ChatMsg = {
-      id: 'temp-user', role: 'user', content: msg, created_at: new Date().toISOString()
+    const userMsg: ChatMsg = {
+      id: 'user-' + Date.now(), role: 'user', content: msg, created_at: new Date().toISOString()
     }
-    setMessages(prev => [...prev, tempUser])
+    const streamId = 'stream-' + Date.now()
+    setMessages(prev => [...prev, userMsg, { id: streamId, role: 'assistant', content: '', created_at: new Date().toISOString() }])
 
-    try {
-      const res = await api.directChat(msg)
-      setMessages(prev => {
-        const without = prev.filter(m => m.id !== 'temp-user')
-        return [...without, { ...tempUser, id: 'sent-' + Date.now() }, res.message]
-      })
-    } catch (err: any) {
-      setMessages(prev => {
-        const without = prev.filter(m => m.id !== 'temp-user')
-        return [...without, { ...tempUser, id: 'sent-' + Date.now() }, {
-          id: 'err-' + Date.now(), role: 'assistant', content: '⚠️ ' + (err.message || '发送失败'),
-          created_at: new Date().toISOString()
-        }]
-      })
-    }
-    setSending(false)
+    await streamChat(
+      '/chat',
+      msg,
+      (chunk) => {
+        setMessages(prev => prev.map(m => m.id === streamId ? { ...m, content: m.content + chunk } : m))
+      },
+      () => setSending(false),
+      (err) => {
+        setMessages(prev => prev.map(m => m.id === streamId ? { ...m, content: '\u26A0\uFE0F ' + err } : m))
+        setSending(false)
+      },
+    )
     inputRef.current?.focus()
   }
 
@@ -108,7 +106,13 @@ export default function DirectChatPage() {
                   ? 'bg-brand-600 text-white rounded-br-md'
                   : 'bg-gray-800 text-gray-200 rounded-bl-md'
               }`}>
-                <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                {m.role === 'assistant' ? (
+                  <div className="prose prose-invert prose-sm max-w-none break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                )}
                 {m.role === 'assistant' && (m.tokens_in || 0) + (m.tokens_out || 0) > 0 && (
                   <div className="text-[10px] text-gray-500 mt-1.5 tabular-nums">
                     {m.model} {' · '} {((m.tokens_in || 0) + (m.tokens_out || 0)).toLocaleString()} tokens {' · '} {m.duration_ms}ms

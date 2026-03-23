@@ -170,8 +170,111 @@ type ChatCompletionResp struct {
 // ChatCompletion sends a chat completion request to the Claw node's API.
 func (c *Client) ChatCompletion(nodeAddr, overlordToken string, req ChatCompletionReq) (*ChatCompletionResp, error) {
 	var resp ChatCompletionResp
-	if err := c.post(nodeAddr, "/api/chat/completions", overlordToken, req, &resp); err != nil {
+	if err := c.post(nodeAddr, "/v1/internal/chat/completions", overlordToken, req, &resp); err != nil {
 		return nil, fmt.Errorf("chat completion: %w", err)
+	}
+	return &resp, nil
+}
+
+// ChatCompletionStream sends a streaming chat completion request.
+// Returns the raw HTTP response body (SSE stream). Caller must close it.
+func (c *Client) ChatCompletionStream(nodeAddr, overlordToken string, req ChatCompletionReq) (io.ReadCloser, error) {
+	req.Stream = true
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	url := normalizeAddr(nodeAddr) + "/v1/internal/chat/completions"
+	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Overlord-Token", overlordToken)
+
+	// Use a longer timeout for streaming
+	streamClient := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := streamClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("http error: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("claw returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return resp.Body, nil
+}
+
+// ── Auth Exchange (Overlord ↔ Claw token bridge) ──
+
+type AuthExchangeReq struct {
+	OverlordUserID string `json:"overlord_user_id"`
+	Username       string `json:"username"`
+	Role           string `json:"role"`
+}
+
+type AuthExchangeResp struct {
+	Token     string `json:"token"`
+	UserID    string `json:"user_id"`
+	Username  string `json:"username"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// AuthExchange sends Overlord user info to Claw and gets back a Claw JWT.
+func (c *Client) AuthExchange(nodeAddr, overlordToken string, req AuthExchangeReq) (*AuthExchangeResp, error) {
+	var resp AuthExchangeResp
+	if err := c.post(nodeAddr, "/v1/internal/auth/exchange", overlordToken, req, &resp); err != nil {
+		return nil, fmt.Errorf("auth exchange: %w", err)
+	}
+	return &resp, nil
+}
+
+type AuthVerifyReq struct {
+	Token string `json:"token"`
+}
+
+type AuthVerifyResp struct {
+	Valid    bool   `json:"valid"`
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
+// AuthVerify asks a Claw node to verify a JWT and return user info.
+func (c *Client) AuthVerify(nodeAddr, overlordToken string, req AuthVerifyReq) (*AuthVerifyResp, error) {
+	var resp AuthVerifyResp
+	if err := c.post(nodeAddr, "/v1/internal/auth/verify", overlordToken, req, &resp); err != nil {
+		return nil, fmt.Errorf("auth verify: %w", err)
+	}
+	return &resp, nil
+}
+
+// ── Models ──
+
+type ClawModel struct {
+	ID          string  `json:"id"`
+	Provider    string  `json:"provider"`
+	ModelName   string  `json:"model_name"`
+	DisplayName string  `json:"display_name"`
+	MaxTokens   int     `json:"max_tokens"`
+	Temperature float64 `json:"temperature"`
+	IsPlatform  bool    `json:"is_platform"`
+}
+
+type ListModelsResp struct {
+	Models []ClawModel `json:"models"`
+	Total  int         `json:"total"`
+}
+
+// ListModels fetches available models from a Claw node.
+func (c *Client) ListModels(nodeAddr, overlordToken string) (*ListModelsResp, error) {
+	var resp ListModelsResp
+	if err := c.get(nodeAddr, "/v1/internal/models", overlordToken, &resp); err != nil {
+		return nil, fmt.Errorf("list models: %w", err)
 	}
 	return &resp, nil
 }

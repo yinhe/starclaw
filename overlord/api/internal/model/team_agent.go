@@ -55,6 +55,10 @@ type TeamInstance struct {
 	Name         string `json:"name" gorm:"type:varchar(200);not null"`               // "DevClaw-宠物电商"
 	Goal         string `json:"goal" gorm:"type:text"`                                // user's requirement
 	Status       string `json:"status" gorm:"type:varchar(20);default:forming;index"` // forming → ready → running → paused → maintenance → completed → disbanded
+	Published    bool   `json:"published" gorm:"default:false"`                       // visible to employees (viewer role)
+	VisibleTo    string `json:"visible_to" gorm:"type:text"`                          // JSON user IDs: ["id1","id2"], empty = all employees
+	WelcomeMsg   string `json:"welcome_msg" gorm:"type:text"`                         // greeting shown on first chat
+	DefaultModel string `json:"default_model" gorm:"type:varchar(100)"`               // override template default model
 	RoleMap      string `json:"role_map" gorm:"type:json"`                            // {role_code → agent_id}
 	Config       string `json:"config" gorm:"type:json"`                              // runtime config overrides
 
@@ -114,18 +118,37 @@ func (m *TeamMission) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// Conversation groups chat messages into separate threads per user per instance.
+type Conversation struct {
+	ID         string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	InstanceID string    `json:"instance_id" gorm:"type:varchar(36);index;not null"` // TeamInstance ID or "direct"
+	UserID     string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	Title      string    `json:"title" gorm:"type:varchar(300)"` // auto-generated from first message
+	Model      string    `json:"model" gorm:"type:varchar(100)"` // model override for this conversation
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (cv *Conversation) BeforeCreate(tx *gorm.DB) error {
+	if cv.ID == "" {
+		cv.ID = uuid.New().String()
+	}
+	return nil
+}
+
 // ChatMessage stores conversation history between an employee and a team agent instance.
 type ChatMessage struct {
-	ID         string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	InstanceID string    `json:"instance_id" gorm:"type:varchar(36);index;not null"`
-	UserID     string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
-	Role       string    `json:"role" gorm:"type:varchar(20);not null"` // user, assistant, system
-	Content    string    `json:"content" gorm:"type:text;not null"`
-	Model      string    `json:"model" gorm:"type:varchar(100)"`
-	TokensIn   int       `json:"tokens_in" gorm:"default:0"`
-	TokensOut  int       `json:"tokens_out" gorm:"default:0"`
-	DurationMs int       `json:"duration_ms" gorm:"default:0"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID             string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	InstanceID     string    `json:"instance_id" gorm:"type:varchar(36);index;not null"`
+	ConversationID string    `json:"conversation_id" gorm:"type:varchar(36);index"` // links to Conversation; empty = legacy
+	UserID         string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	Role           string    `json:"role" gorm:"type:varchar(20);not null"` // user, assistant, system
+	Content        string    `json:"content" gorm:"type:text;not null"`
+	Model          string    `json:"model" gorm:"type:varchar(100)"`
+	TokensIn       int       `json:"tokens_in" gorm:"default:0"`
+	TokensOut      int       `json:"tokens_out" gorm:"default:0"`
+	DurationMs     int       `json:"duration_ms" gorm:"default:0"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 func (cm *ChatMessage) BeforeCreate(tx *gorm.DB) error {
@@ -133,4 +156,32 @@ func (cm *ChatMessage) BeforeCreate(tx *gorm.DB) error {
 		cm.ID = uuid.New().String()
 	}
 	return nil
+}
+
+// EmployeeInvite stores invite codes for self-service employee registration.
+type EmployeeInvite struct {
+	ID        string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	Code      string     `json:"code" gorm:"type:varchar(64);uniqueIndex;not null"`
+	TeamID    string     `json:"team_id" gorm:"type:varchar(36);index"`
+	Role      string     `json:"role" gorm:"type:varchar(20);default:viewer"`
+	MaxUses   int        `json:"max_uses" gorm:"default:0"` // 0 = unlimited
+	UsedCount int        `json:"used_count" gorm:"default:0"`
+	CreatedBy string     `json:"created_by" gorm:"type:varchar(36)"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+func (ei *EmployeeInvite) BeforeCreate(tx *gorm.DB) error {
+	if ei.ID == "" {
+		ei.ID = uuid.New().String()
+	}
+	return nil
+}
+
+// InstanceAccess controls which employees can access which instances.
+type InstanceAccess struct {
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	InstanceID string    `json:"instance_id" gorm:"type:varchar(36);uniqueIndex:idx_inst_user;not null"`
+	UserID     string    `json:"user_id" gorm:"type:varchar(36);uniqueIndex:idx_inst_user;not null"`
+	CreatedAt  time.Time `json:"created_at"`
 }
