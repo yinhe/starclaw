@@ -138,10 +138,11 @@ export default function SettingsPage() {
 
   const [updateStep, setUpdateStep] = useState(0) // 0=idle, 1=pulling, 2=building, 3=restarting, 4=verifying, 5=done
   const [updateLogs, setUpdateLogs] = useState<{time: string, message: string, level: string}[]>([])
-  const logEndRef = useRef<HTMLDivElement>(null)
+  const logContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = logContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [updateLogs])
 
   const updateSteps = [
@@ -501,7 +502,7 @@ export default function SettingsPage() {
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-[11px] text-gray-400 font-mono">更新日志</span>
               </div>
-              <div className="p-3 max-h-48 overflow-y-auto font-mono text-xs leading-relaxed">
+              <div ref={logContainerRef} className="p-3 max-h-48 overflow-y-auto font-mono text-xs leading-relaxed">
                 {updateLogs.map((l, i) => (
                   <div key={i} className={`flex gap-2 ${
                     l.level === 'error' ? 'text-red-400' :
@@ -511,7 +512,6 @@ export default function SettingsPage() {
                     <span>{l.message}</span>
                   </div>
                 ))}
-                <div ref={logEndRef} />
               </div>
             </div>
           )}
