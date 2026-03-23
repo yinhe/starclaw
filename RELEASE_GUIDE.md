@@ -323,13 +323,16 @@ When pushing to `nydus master`, the post-receive hook auto-detects changed direc
 | `queen/api/` | Server C (本地) | `docker compose build queen-api` |
 | `queen/swarm/` | Server C (本地) | `docker compose build swarm` |
 | `queen/site/` | **Server A** (starclaw.me) | SSH → Docker 构建 → 静态文件到 `/var/www/starclaw/website/` |
+| `claw/` | **Server A** (starclaw.me) | SSH → `server-deploy-update.sh` → 重建 `starclaw-api:latest` → **自动调用 Hive 升级 API** |
+| `hive/` | **Server A** (starclaw.me) | SSH → `docker compose build controller` → 重建 Hive 控制器 |
 | `synapse/api/` | Server B (star-ai.net) | SSH → `docker compose build api` |
 | `synapse/web/` | Server B (star-ai.net) | SSH → `docker compose build web` |
 
 Hook 位置: `/data/nydus/repos/starclaw.git/hooks/post-receive`
 
-> **注意：** `queen/site/` 部署到 Server A（官网），不是 Server C 的 `queen-web` 容器。
-> Server A 无 npm，使用 Docker 多阶段构建。
+> **重要：** Claw 部署后会自动触发 `POST /hive/admin/upgrade-instances`，滚动升级所有 Hive 托管的 Claw 实例到最新镜像。
+> Hive 控制器本身在 `hive/` 目录变更时自动重建（需要 `carapace/` 依赖）。
+> `queen/site/` 部署到 Server A（官网），不是 Server C 的 `queen-web` 容器。
 
 ---
 
@@ -418,6 +421,8 @@ git push origin main --tags   # 触发 release.yml 自动创建 GitHub Release
 - [ ] StarAI 镜像下载链接全部 200
 - [ ] GitHub Release 页面正常，包含所有 assets
 - [ ] macOS DMG 双击测试 (Install StarClaw.command)
+- [ ] **Hive 实例已升级**: `curl http://starclaw.me:9090/hive/admin/stats` 确认 running 数量正常
+- [ ] 抽检 1-2 个 Hive 实例: `curl https://<slug>.starclaw.me/health` 确认版本号为最新
 
 ---
 
@@ -430,4 +435,5 @@ git push origin main --tags   # 触发 release.yml 自动创建 GitHub Release
 - [ ] `git push nydus master --tags`
 - [ ] OSS sync: `robocopy` → `git push origin main --tags`
 - [ ] Verify: Nydus `/releases/latest`, starclaw.me/download, all download links
+- [ ] **Hive**: 确认所有托管实例已自动升级到最新 `starclaw-api:latest`
 - [ ] **Audit**: no Queen/Overlord mentions in release notes or assets

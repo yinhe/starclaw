@@ -202,6 +202,12 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "curl -s http://localhost:8096/hea
 ```
 
 // turbo
+14b. Verify Hive instances upgraded (all running instances should use latest starclaw-api image):
+```
+ssh -i ~/.ssh/claw_deploy root@starclaw.me "curl -s http://localhost:9090/hive/admin/stats -H 'Authorization: Bearer \$HIVE_ADMIN_TOKEN'"
+```
+
+// turbo
 15. Verify download file links return 200 for all 4 platforms:
 ```
 ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "for f in StarClaw-Setup-VERSION.exe StarClaw-Setup-VERSION-linux-amd64.tar.gz StarClaw-Setup-VERSION-darwin-arm64.dmg StarClaw-Setup-VERSION-darwin-amd64.dmg; do echo -n \"$f: \"; curl -sI https://nydus.starclaw.net/spore/releases/$f | head -1; done"

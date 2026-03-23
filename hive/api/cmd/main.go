@@ -6,14 +6,14 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 	"starclaw.net/carapace"
 	"starclaw.net/carapace/backend"
 	"starclaw.net/hive/api/config"
 	"starclaw.net/hive/api/handler"
 	"starclaw.net/hive/api/model"
 	"starclaw.net/hive/api/service"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 )
 
 func main() {
@@ -132,6 +132,7 @@ func main() {
 	{
 		admin.GET("/stats", h.GetStats)
 		admin.POST("/cleanup", h.CleanupExpired)
+		admin.POST("/upgrade-instances", h.UpgradeInstances)
 		admin.GET("/blacklist", h.ListBlacklist)
 		admin.POST("/blacklist", h.AddBlacklist)
 	}

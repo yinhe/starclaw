@@ -14,11 +14,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"starclaw.net/carapace"
 	"starclaw.net/hive/api/config"
 	"starclaw.net/hive/api/model"
 	"starclaw.net/hive/api/service"
-	"gorm.io/gorm"
 )
 
 var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{1,28}[a-z0-9]$`)
@@ -715,6 +715,71 @@ func (h *HiveHandler) AddBlacklist(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, entry)
+}
+
+// ──── Admin: Upgrade all instances to latest starclaw-api image ────
+
+func (h *HiveHandler) UpgradeInstances(c *gin.Context) {
+	var instances []model.ClawInstance
+	h.db.Where("status = 'running' AND deploy_mode IN ('hive','lite')").Find(&instances)
+
+	if len(instances) == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "没有需要升级的实例", "upgraded": 0})
+		return
+	}
+
+	type result struct {
+		Slug   string `json:"slug"`
+		Status string `json:"status"`
+		Error  string `json:"error,omitempty"`
+	}
+	results := make([]result, 0, len(instances))
+
+	for _, inst := range instances {
+		log.Printf("[hive] upgrading instance %s (mode=%s, container=%s)", inst.Slug, inst.DeployMode, inst.ContainerID)
+
+		// Stop and remove old container
+		if inst.ContainerID != "" {
+			h.docker.StopContainer(inst.ContainerID)
+			h.docker.RemoveContainer(inst.ContainerID)
+		}
+
+		// Recreate with latest image
+		decrypted := h.decryptInstance(&inst)
+		var containerID string
+		var err error
+		if inst.DeployMode == "lite" {
+			containerID, err = h.docker.CreateLiteContainer(decrypted)
+		} else {
+			containerID, err = h.docker.CreateContainer(decrypted)
+		}
+
+		if err != nil {
+			log.Printf("[hive] upgrade failed for %s: %v", inst.Slug, err)
+			h.db.Model(&inst).Update("status", "error")
+			results = append(results, result{Slug: inst.Slug, Status: "error", Error: err.Error()})
+			continue
+		}
+
+		h.db.Model(&inst).Update("container_id", containerID)
+
+		// Wait for health
+		healthErr := h.docker.WaitHealthy(inst.Port, 60*time.Second)
+		if healthErr != nil {
+			log.Printf("[hive] health check failed after upgrade for %s: %v", inst.Slug, healthErr)
+			results = append(results, result{Slug: inst.Slug, Status: "warning", Error: "容器已创建但健康检查超时"})
+		} else {
+			results = append(results, result{Slug: inst.Slug, Status: "ok"})
+		}
+
+		log.Printf("[hive] ✅ instance %s upgraded (new container: %s)", inst.Slug, containerID[:12])
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  fmt.Sprintf("已升级 %d 个实例", len(instances)),
+		"upgraded": len(instances),
+		"results":  results,
+	})
 }
 
 // ──── Health ────

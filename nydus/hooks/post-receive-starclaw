@@ -65,7 +65,21 @@ while read oldrev newrev refname; do
     (
       git --git-dir="$REPO" archive HEAD:claw | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
-      echo "  -> claw deployed to starclaw.me" | tee -a "$LOG"
+      echo "  -> claw deployed to starclaw.me (starclaw-api:latest rebuilt)" | tee -a "$LOG"
+      # Upgrade all Hive instances to use the new starclaw-api:latest image
+      ssh $SSH_OPTS "$SERVER_A" 'curl -sf -X POST http://localhost:9090/hive/admin/upgrade-instances -H "Authorization: Bearer $HIVE_ADMIN_TOKEN"' >> "$LOG" 2>&1 || true
+      echo "  -> hive instances upgrade triggered" | tee -a "$LOG"
+    ) >> "$LOG" 2>&1 &
+  fi
+
+  # --- Hive controller (Server A) ---
+  if echo "$CHANGED" | grep -q "^hive/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Hive changed — rebuilding on starclaw.me..." | tee -a "$LOG"
+    (
+      git --git-dir="$REPO" archive HEAD:hive | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw-hive && tar xf -"
+      git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/starclaw-hive/carapace && cd /opt/starclaw-hive/carapace && tar xf -"
+      ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw-hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
+      echo "  -> hive-controller rebuilt on Server A" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
   fi
 
