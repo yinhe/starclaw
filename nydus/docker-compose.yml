@@ -9,6 +9,7 @@ services:
       NYDUS_CONFIG: /app/configs/nydus.yaml
     volumes:
       - /data/nydus/repos:/data/nydus/repos
+      - /data/nydus/nydus.db:/data/nydus/nydus.db
       - ./api/configs/nydus.yaml:/app/configs/nydus.yaml:ro
       - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
       - /root/.ssh/known_hosts:/root/.ssh/known_hosts
