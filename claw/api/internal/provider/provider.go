@@ -62,14 +62,15 @@ type ChatRequest struct {
 
 // ChatChunk represents a streamed response chunk
 type ChatChunk struct {
-	ID      string            `json:"id"`
-	Content string            `json:"content"`
-	Role    string            `json:"role,omitempty"`
-	Tool    *ToolCall         `json:"tool_call,omitempty"`
-	Done    bool              `json:"done"`
-	Usage   *TokenUsage       `json:"usage,omitempty"`
-	Error   string            `json:"error,omitempty"`
-	Meta    map[string]string `json:"meta,omitempty"` // upstream metadata (e.g. X-StarAI-* headers)
+	ID        string            `json:"id"`
+	Content   string            `json:"content"`
+	Reasoning string            `json:"reasoning,omitempty"` // thinking/reasoning_content from reasoning models (DeepSeek-R1, QwQ, o-series)
+	Role      string            `json:"role,omitempty"`
+	Tool      *ToolCall         `json:"tool_call,omitempty"`
+	Done      bool              `json:"done"`
+	Usage     *TokenUsage       `json:"usage,omitempty"`
+	Error     string            `json:"error,omitempty"`
+	Meta      map[string]string `json:"meta,omitempty"` // upstream metadata (e.g. X-StarAI-* headers)
 }
 
 // TokenUsage represents token usage information

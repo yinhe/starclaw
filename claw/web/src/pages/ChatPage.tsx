@@ -83,6 +83,8 @@ export default function ChatPage() {
   const [editingText, setEditingText] = useState('')
   const [agentStep, setAgentStep] = useState<{ step: string; detail: string; index: number } | null>(null)
   const [costMeta, setCostMeta] = useState<{ model?: string; costEnergy?: string; balanceEnergy?: string } | null>(null)
+  const [streamingReasoning, setStreamingReasoning] = useState('')
+  const [thinkingExpanded, setThinkingExpanded] = useState(false)
   const [runningFileId, setRunningFileId] = useState<string | null>(null)
   const [fileRunResults, setFileRunResults] = useState<Record<string, { stdout: string; stderr: string; exit_code: number; duration: string } | null>>({})
 
@@ -126,7 +128,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
+  }, [messages, streamingContent, streamingReasoning])
 
   const loadConversations = async () => {
     try {
@@ -755,6 +757,8 @@ export default function ChatPage() {
     setAgentStep(null)
     setLoading(true)
     setStreamingContent('')
+    setStreamingReasoning('')
+    setThinkingExpanded(false)
 
     addMessage({
       id: Date.now().toString(),
@@ -875,9 +879,14 @@ export default function ChatPage() {
                   }
                   return updated
                 })
-              } else if (data.content) {
-                fullContent += data.content
-                appendStreamingContent(data.content)
+              } else if (data.content || data.reasoning) {
+                if (data.reasoning) {
+                  setStreamingReasoning(prev => prev + data.reasoning)
+                }
+                if (data.content) {
+                  fullContent += data.content
+                  appendStreamingContent(data.content)
+                }
               }
             } catch { /* skip malformed lines */ }
           }
@@ -953,6 +962,8 @@ export default function ChatPage() {
     setShowMentionPopup(false)
     setLoading(true)
     setStreamingContent('')
+    setStreamingReasoning('')
+    setThinkingExpanded(false)
 
     // Build display content for user message
     let displayContent = userMessage
@@ -1106,9 +1117,14 @@ export default function ChatPage() {
                 if (data.screenshot_url) {
                   setBrowserScreenshots((prev) => [...prev, data.screenshot_url])
                 }
-              } else if (data.content) {
-                fullContent += data.content
-                appendStreamingContent(data.content)
+              } else if (data.content || data.reasoning) {
+                if (data.reasoning) {
+                  setStreamingReasoning(prev => prev + data.reasoning)
+                }
+                if (data.content) {
+                  fullContent += data.content
+                  appendStreamingContent(data.content)
+                }
               }
               // Capture upstream cost metadata (X-StarAI-* headers)
               if (data.meta) {
@@ -1640,15 +1656,43 @@ export default function ChatPage() {
             )
           })}
 
-          {streamingContent && (
+          {(streamingContent || streamingReasoning) && (
             <div className="flex items-start gap-2.5 justify-start">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-red-400 to-orange-500 flex items-center justify-center shadow-sm mt-0.5">
                 <CrawfishIcon className="w-5 h-5 text-white" />
               </div>
-              <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
-                </div>
+              <div className="max-w-[70%] space-y-2">
+                {streamingReasoning && (
+                  <div className="px-3 py-2 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-800/50">
+                    <button
+                      onClick={() => setThinkingExpanded(!thinkingExpanded)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 w-full"
+                    >
+                      <Lightbulb className="w-3.5 h-3.5" />
+                      <span>思考中...</span>
+                      <span className="text-violet-400 dark:text-violet-500 ml-auto">
+                        {thinkingExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </span>
+                    </button>
+                    {thinkingExpanded && (
+                      <div className="mt-1.5 text-xs text-violet-700/80 dark:text-violet-300/70 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto scrollbar-thin">
+                        {streamingReasoning}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {streamingContent && (
+                  <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
+                    <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+                {streamingReasoning && !streamingContent && (
+                  <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 italic flex items-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" /> 正在组织回复...
+                  </div>
+                )}
               </div>
             </div>
           )}

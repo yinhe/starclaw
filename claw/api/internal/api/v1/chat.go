@@ -536,6 +536,9 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 
 			fullContent += chunk.Content
 			sseFields := gin.H{"content": chunk.Content, "conversation_id": convID}
+			if chunk.Reasoning != "" {
+				sseFields["reasoning"] = chunk.Reasoning
+			}
 			if chunk.Meta != nil {
 				sseFields["meta"] = chunk.Meta
 			}
