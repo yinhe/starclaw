@@ -143,18 +143,17 @@ This triggers the Nydus post-receive hook which:
 
 ## Step 8b: Deploy Download Pages
 
-queen/site deploys to Server A (starclaw.me), synapse/web deploys to Server B (star-ai.net).
+queen/site deploys via docker-compose on Server C (:8097), synapse/web deploys to Server B (star-ai.net).
 Nydus hook should handle both, but if it misses them, manually deploy:
 
-12. Deploy queen/site to Server A (starclaw.me/download):
+12. Deploy queen/site on Server C (starclaw.net landing page):
 ```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/site/ | ssh root@starclaw.me 'mkdir -p /tmp/site-build && cd /tmp/site-build && tar xf -'"
-ssh -i ~/.ssh/claw_deploy root@starclaw.me "cd /tmp/site-build && docker build -t starclaw-site . && docker run --rm -v /var/www/starclaw/website:/out starclaw-site sh -c 'cp -r /app/dist/* /out/'"
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/starclaw-queen && docker compose -f docker-compose.prod.yml build --no-cache queen-site && docker compose -f docker-compose.prod.yml up -d queen-site"
 ```
 
 13. Deploy synapse/web to Server B (star-ai.net/download):
 ```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:synapse/web/ | ssh root@47.103.51.32 'cd /opt/starclaw/synapse/web && tar xf -'"
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:synapse/ | ssh root@47.103.51.32 'cd /opt/starclaw/synapse && tar xf -'"
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "cd /opt/starclaw/synapse && docker compose build --no-cache web 2>&1 | tail -3 && docker compose up -d web 2>&1"
 ```
 
@@ -202,13 +201,26 @@ ssh -i ~/.ssh/claw_deploy root@starclaw.me "curl -s http://localhost:8080/health
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "curl -s http://localhost:8096/health | head -1"
 ```
 
-15. Manual verification checklist:
-- [ ] `starclaw.me/download` shows new version number
-- [ ] `star-ai.net/download` shows new version number
+// turbo
+15. Verify download file links return 200 for all 4 platforms:
+```
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "for f in StarClaw-Setup-VERSION.exe StarClaw-Setup-VERSION-linux-amd64.tar.gz StarClaw-Setup-VERSION-darwin-arm64.dmg StarClaw-Setup-VERSION-darwin-amd64.dmg; do echo -n \"$f: \"; curl -sI https://nydus.starclaw.net/spore/releases/$f | head -1; done"
+```
+
+// turbo
+16. Verify StarAI mirror download links:
+```
+ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "for f in StarClaw-Setup-VERSION.exe StarClaw-Setup-VERSION-linux-amd64.tar.gz StarClaw-Setup-VERSION-darwin-arm64.dmg StarClaw-Setup-VERSION-darwin-amd64.dmg; do echo -n \"$f: \"; curl -sI https://star-ai.net/downloads/$f | head -1; done"
+```
+
+17. Manual verification checklist:
+- [ ] `starclaw.net/download` shows new version number (queen-site :8097)
+- [ ] `star-ai.net/download` shows new version number (synapse-web)
 - [ ] Nydus download links all return 200 (.exe / .tar.gz / .dmg × 2)
 - [ ] StarAI mirror download links all return 200 (.exe / .tar.gz / .dmg × 2)
 - [ ] `/releases/latest` returns correct `tag_name`
 - [ ] `/releases/spore/latest` returns correct `tag_name`
+- [ ] DownloadPage `const V` matches new tag in BOTH files (queen/site + synapse/web)
 - [ ] GitHub Release page has all 18 assets
 - [ ] Release notes are English-only, Claw-scope only (NO Queen/Overlord mentions)
 - [ ] CHANGELOG.md updated (English, grouped by Added/Changed/Fixed/Removed)
