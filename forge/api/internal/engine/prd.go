@@ -313,8 +313,9 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 		return "", fmt.Errorf("LLM API %d: %s", resp.StatusCode, string(body[:min(len(body), 500)]))
 	}
 
-	var fullContent strings.Builder
-	var inThinkTag bool // track <think>...</think> blocks in content
+	var rawAll strings.Builder // all raw content for final extraction
+	var inThinkTag bool        // real-time display state
+	var tagBuf strings.Builder // buffer to handle partial tags across chunks
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 64*1024), 64*1024)
 
@@ -350,39 +351,73 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 			onChunk(StreamChunk{Type: "thinking", Text: delta.ReasoningContent})
 		}
 
-		// Method 2: detect <think>...</think> tags in content (qwen3 via Ollama)
+		// Method 2: detect <think>...</think> in content (qwen3 via Ollama)
 		if delta.Content != "" {
-			text := delta.Content
-			for len(text) > 0 {
+			rawAll.WriteString(delta.Content)
+
+			// Buffer to handle partial tags across chunks
+			tagBuf.WriteString(delta.Content)
+			buf := tagBuf.String()
+
+			// Process complete segments from buffer
+			for {
 				if inThinkTag {
-					if idx := strings.Index(text, "</think>"); idx >= 0 {
-						onChunk(StreamChunk{Type: "thinking", Text: text[:idx]})
-						text = text[idx+8:]
+					idx := strings.Index(buf, "</think>")
+					if idx >= 0 {
+						if idx > 0 {
+							onChunk(StreamChunk{Type: "thinking", Text: buf[:idx]})
+						}
+						buf = buf[idx+8:]
 						inThinkTag = false
 					} else {
-						onChunk(StreamChunk{Type: "thinking", Text: text})
-						text = ""
+						// Keep last 8 chars as potential partial </think>
+						safe := len(buf) - 8
+						if safe > 0 {
+							onChunk(StreamChunk{Type: "thinking", Text: buf[:safe]})
+							buf = buf[safe:]
+						}
+						break
 					}
 				} else {
-					if idx := strings.Index(text, "<think>"); idx >= 0 {
+					idx := strings.Index(buf, "<think>")
+					if idx >= 0 {
 						if idx > 0 {
-							fullContent.WriteString(text[:idx])
-							onChunk(StreamChunk{Type: "content", Text: text[:idx]})
+							onChunk(StreamChunk{Type: "content", Text: buf[:idx]})
 						}
-						text = text[idx+7:]
+						buf = buf[idx+7:]
 						inThinkTag = true
 					} else {
-						fullContent.WriteString(text)
-						onChunk(StreamChunk{Type: "content", Text: text})
-						text = ""
+						// Keep last 7 chars as potential partial <think>
+						safe := len(buf) - 7
+						if safe > 0 {
+							onChunk(StreamChunk{Type: "content", Text: buf[:safe]})
+							buf = buf[safe:]
+						}
+						break
 					}
 				}
 			}
+			tagBuf.Reset()
+			tagBuf.WriteString(buf)
+		}
+	}
+
+	// Flush remaining buffer
+	remaining := tagBuf.String()
+	if remaining != "" {
+		if inThinkTag {
+			onChunk(StreamChunk{Type: "thinking", Text: remaining})
+		} else {
+			onChunk(StreamChunk{Type: "content", Text: remaining})
 		}
 	}
 
 	onChunk(StreamChunk{Type: "done", Text: ""})
-	return fullContent.String(), nil
+
+	// Final: strip all <think>...</think> blocks from raw to get clean content
+	raw := rawAll.String()
+	clean := stripThinkTags(raw)
+	return strings.TrimSpace(clean), nil
 }
 
 // GetGenerateSystemPrompt returns the system prompt for PRD generation.
@@ -577,6 +612,28 @@ func (e *PRDEngine) SavePlanResult(prd *model.ForgePRD, rawContent string) ([]mo
 
 	e.DB.Model(prd).Update("status", "planned")
 	return sprints, allIssues, nil
+}
+
+// stripThinkTags removes all <think>...</think> blocks from text, returning only the non-thinking content.
+func stripThinkTags(s string) string {
+	var result strings.Builder
+	for {
+		idx := strings.Index(s, "<think>")
+		if idx < 0 {
+			result.WriteString(s)
+			break
+		}
+		result.WriteString(s[:idx])
+		s = s[idx+7:]
+		end := strings.Index(s, "</think>")
+		if end >= 0 {
+			s = s[end+8:]
+		} else {
+			// unclosed <think> — discard rest
+			break
+		}
+	}
+	return result.String()
 }
 
 // extractJSON finds the first JSON object in a string (handles markdown code blocks).
