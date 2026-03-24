@@ -127,6 +127,9 @@ func main() {
 		hive.POST("/claws/:slug/restart", h.RestartInstance)
 	}
 
+	// Molt → Hive upgrade notification (from Claw containers on localhost)
+	hive.POST("/upgrade-notify", h.UpgradeNotify)
+
 	// Admin API (requires admin token)
 	admin := r.Group("/hive/admin", adminAuth(cfg.AdminToken))
 	{

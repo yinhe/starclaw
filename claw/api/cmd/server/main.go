@@ -114,6 +114,9 @@ func main() {
 
 	// Start Molt version checker
 	molt.StartChecker()
+	if cfg.Hive.URL != "" {
+		molt.SetHiveURL(cfg.Hive.URL)
+	}
 	log.Printf("StarClaw v%s starting...", molt.Version)
 
 	// Load crypto identity for claw: address

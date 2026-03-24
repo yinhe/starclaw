@@ -27,6 +27,7 @@ type ClawInstance struct {
 
 	// Status
 	Status      string `gorm:"size:20;default:creating" json:"status"` // creating, running, stopped, error, destroying
+	Version     string `gorm:"size:30" json:"version"`                 // Claw version, e.g. 2026.0324.1000
 	DBName      string `gorm:"size:60" json:"db_name"`                 // claw_{slug}
 	DBUser      string `gorm:"size:60" json:"-"`
 	DBPassword  string `gorm:"size:100" json:"-"`

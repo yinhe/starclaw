@@ -63,6 +63,7 @@ func (d *DockerService) CreateContainer(inst *model.ClawInstance) (string, error
 		"-e", fmt.Sprintf("STARCLAW_OVERLORD_NODE_NAME=claw-%s", inst.Slug),
 		"-e", "STARCLAW_OVERLORD_REGION=cn-east",
 		"-e", "NODE_KEY_PATH=/app/data/identity/.node_key",
+		"-e", fmt.Sprintf("STARCLAW_HIVE_URL=http://127.0.0.1:%d", d.cfg.HivePort),
 		// Image
 		d.cfg.ClawImage,
 	}
@@ -107,6 +108,7 @@ func (d *DockerService) CreateLiteContainer(inst *model.ClawInstance) (string, e
 		"-e", fmt.Sprintf("STARCLAW_OVERLORD_NODE_NAME=claw-%s", inst.Slug),
 		"-e", "STARCLAW_OVERLORD_REGION=cn-east",
 		"-e", "NODE_KEY_PATH=/app/data/identity/.node_key",
+		"-e", fmt.Sprintf("STARCLAW_HIVE_URL=http://127.0.0.1:%d", d.cfg.HivePort),
 		"-e", "GIN_MODE=release",
 		// Image (lite)
 		d.cfg.ClawLiteImage,

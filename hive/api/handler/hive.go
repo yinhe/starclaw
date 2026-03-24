@@ -7,9 +7,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -715,6 +717,135 @@ func (h *HiveHandler) AddBlacklist(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, entry)
+}
+
+// ──── Molt → Hive: Upgrade Notification ────
+
+// upgradeState tracks debouncing for Molt-triggered upgrades
+var (
+	upgradeMu       sync.Mutex
+	upgradeRunning  bool
+	lastUpgradeVer  string
+	lastUpgradeTime time.Time
+)
+
+// UpgradeNotify receives a version update notification from a Claw container's Molt checker.
+// Debounces: ignores duplicate notifications for the same version within 10 minutes.
+// Triggers async rolling upgrade of all running hive/lite instances.
+func (h *HiveHandler) UpgradeNotify(c *gin.Context) {
+	var req struct {
+		CurrentVersion string `json:"current_version"`
+		LatestVersion  string `json:"latest_version"`
+		Source         string `json:"source"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.LatestVersion == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "latest_version required"})
+		return
+	}
+
+	upgradeMu.Lock()
+	// Debounce: same version within 10 minutes → skip
+	if req.LatestVersion == lastUpgradeVer && time.Since(lastUpgradeTime) < 10*time.Minute {
+		upgradeMu.Unlock()
+		c.JSON(http.StatusOK, gin.H{"message": "already scheduled", "version": req.LatestVersion})
+		return
+	}
+	if upgradeRunning {
+		upgradeMu.Unlock()
+		c.JSON(http.StatusAccepted, gin.H{"message": "upgrade in progress"})
+		return
+	}
+	upgradeRunning = true
+	lastUpgradeVer = req.LatestVersion
+	lastUpgradeTime = time.Now()
+	upgradeMu.Unlock()
+
+	log.Printf("[hive] 🔄 upgrade notification: %s → %s (source: %s)", req.CurrentVersion, req.LatestVersion, req.Source)
+
+	// Pull latest image first, then rolling upgrade in background
+	go h.rollingUpgrade(req.LatestVersion)
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "upgrade started",
+		"version": req.LatestVersion,
+	})
+}
+
+// rollingUpgrade pulls the latest Docker image and upgrades instances one by one.
+func (h *HiveHandler) rollingUpgrade(version string) {
+	defer func() {
+		upgradeMu.Lock()
+		upgradeRunning = false
+		upgradeMu.Unlock()
+	}()
+
+	// Step 1: Pull latest images
+	log.Printf("[hive] pulling latest images...")
+	for _, img := range []string{h.cfg.ClawImage, h.cfg.ClawLiteImage} {
+		out, err := exec.Command("docker", "pull", img).CombinedOutput()
+		if err != nil {
+			log.Printf("[hive] docker pull %s failed: %s", img, strings.TrimSpace(string(out)))
+			// Continue anyway — image might already be local
+		} else {
+			log.Printf("[hive] pulled %s", img)
+		}
+	}
+
+	// Step 2: Find running instances
+	var instances []model.ClawInstance
+	h.db.Where("status = 'running' AND deploy_mode IN ('hive','lite')").Find(&instances)
+	if len(instances) == 0 {
+		log.Printf("[hive] no running instances to upgrade")
+		return
+	}
+
+	log.Printf("[hive] rolling upgrade: %d instances → v%s", len(instances), version)
+
+	upgraded, failed := 0, 0
+	for _, inst := range instances {
+		log.Printf("[hive] upgrading %s (mode=%s)...", inst.Slug, inst.DeployMode)
+
+		// Stop and remove old container
+		if inst.ContainerID != "" {
+			h.docker.StopContainer(inst.ContainerID)
+			h.docker.RemoveContainer(inst.ContainerID)
+		}
+
+		// Recreate with latest image
+		decrypted := h.decryptInstance(&inst)
+		var containerID string
+		var err error
+		if inst.DeployMode == "lite" {
+			containerID, err = h.docker.CreateLiteContainer(decrypted)
+		} else {
+			containerID, err = h.docker.CreateContainer(decrypted)
+		}
+
+		if err != nil {
+			log.Printf("[hive] ❌ upgrade failed for %s: %v", inst.Slug, err)
+			h.db.Model(&inst).Update("status", "error")
+			failed++
+			continue
+		}
+
+		h.db.Model(&inst).Updates(map[string]interface{}{
+			"container_id": containerID,
+			"version":      version,
+		})
+
+		// Wait for health before moving to next
+		if err := h.docker.WaitHealthy(inst.Port, 60*time.Second); err != nil {
+			log.Printf("[hive] ⚠️ health check failed for %s after upgrade: %v", inst.Slug, err)
+		}
+
+		upgraded++
+		log.Printf("[hive] ✅ %s upgraded (%d/%d)", inst.Slug, upgraded, len(instances))
+
+		// Small delay between instances to avoid thundering herd
+		time.Sleep(2 * time.Second)
+	}
+
+	log.Printf("[hive] 🏁 rolling upgrade complete: %d upgraded, %d failed", upgraded, failed)
 }
 
 // ──── Admin: Upgrade all instances to latest starclaw-api image ────
