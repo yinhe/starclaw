@@ -12,7 +12,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -22,7 +21,6 @@ type Identity struct {
 	PrivateKey ed25519.PrivateKey `json:"-"`
 	PublicKey  ed25519.PublicKey  `json:"public_key"`
 	NodeID     string             `json:"node_id"`
-	mu         sync.RWMutex
 }
 
 // getKeyFile returns the path to the node key file.

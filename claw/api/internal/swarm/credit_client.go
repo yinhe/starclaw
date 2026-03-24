@@ -180,7 +180,7 @@ func (cc *CreditClient) Transfer(req TransferRequest) (*TransferResult, error) {
 
 	// Get current nonce
 	cb := cc.CachedBalance()
-	nonce := int64(1)
+	var nonce int64
 	if cb != nil {
 		nonce = cb.Nonce + 1
 	} else {

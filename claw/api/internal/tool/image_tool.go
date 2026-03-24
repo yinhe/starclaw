@@ -118,11 +118,6 @@ func (t *ImageTool) Execute(ctx context.Context, argsJSON string) (string, error
 	}
 }
 
-// getFalAPIKey retrieves the fal.ai API key from user's model config
-func (t *ImageTool) getFalAPIKey(userID string) string {
-	return GetFalAPIKey(t.db, userID)
-}
-
 // getFalAPIKeyCtx checks StarAI provider first, then falls back to user config
 func (t *ImageTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
 	return GetFalAPIKeyCtx(ctx, t.db, userID)
@@ -522,36 +517,7 @@ func extractFalImageURL(result map[string]interface{}) string {
 }
 
 // pollAndDownload polls fal.ai queue status and downloads the result image (used by batch_generate)
-func (t *ImageTool) pollAndDownload(apiKey, endpoint, requestID, recordID string) {
-	result, err := PollFalStatus(apiKey, endpoint, requestID, 5*time.Minute)
-	if err != nil {
-		log.Printf("[ImageTool] Poll failed for %s: %v", requestID, err)
-		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
-		return
-	}
-
-	imageURL := extractFalImageURL(result)
-	if imageURL == "" {
-		log.Printf("[ImageTool] No image URL in result for %s", requestID)
-		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
-		return
-	}
-
-	localURL := t.downloadImage(imageURL, recordID)
-	if localURL == "" {
-		log.Printf("[ImageTool] Local sync failed for %s", requestID)
-		t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{"status": "failed"})
-		return
-	}
-	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL}
-	if localURL != "" {
-		updates["local_url"] = localURL
-	}
-	t.db.Model(&model.ImageRecord{}).Where("id = ?", recordID).Updates(updates)
-	log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
-}
-
-// pollAndDownloadWithLog wraps pollAndDownload with GenerationLog status updates
+// pollAndDownloadWithLog wraps polling with GenerationLog status updates
 func (t *ImageTool) pollAndDownloadWithLog(apiKey, endpoint, requestID, recordID, genLogID string) {
 	result, err := PollFalStatus(apiKey, endpoint, requestID, 5*time.Minute)
 	if err != nil {

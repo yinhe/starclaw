@@ -16,26 +16,26 @@ import (
 
 // LoRAAdapter represents a fine-tuned LoRA adapter.
 type LoRAAdapter struct {
-	ID            string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	UserID        string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
-	Name          string    `json:"name" gorm:"type:varchar(200);not null"`
-	Description   string    `json:"description" gorm:"type:text"`
-	BaseModel     string    `json:"base_model" gorm:"type:varchar(100);not null"` // e.g. llama-3-8b, mistral-7b
-	Rank          int       `json:"rank" gorm:"default:16"`                       // LoRA rank (r)
-	Alpha         int       `json:"alpha" gorm:"default:32"`                      // LoRA alpha
-	TargetModules string    `json:"target_modules" gorm:"type:json"`              // ["q_proj","v_proj","k_proj","o_proj"]
-	Status        string    `json:"status" gorm:"type:varchar(20);default:pending;index"` // pending, training, ready, failed, archived
-	TrainingSamples int64   `json:"training_samples" gorm:"default:0"`
-	TrainingEpochs  int     `json:"training_epochs" gorm:"default:3"`
-	LearningRate  float64   `json:"learning_rate" gorm:"default:0.0002"`
-	BatchSize     int       `json:"batch_size" gorm:"default:4"`
-	LossHistory   string    `json:"loss_history" gorm:"type:json"`      // [{epoch, train_loss, eval_loss}]
-	FinalLoss     float64   `json:"final_loss" gorm:"default:0"`
-	AdapterPath   string    `json:"adapter_path" gorm:"type:varchar(500)"` // path to saved adapter weights
-	AdapterSizeMB float64   `json:"adapter_size_mb" gorm:"default:0"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	FinishedAt    *time.Time `json:"finished_at"`
+	ID              string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	UserID          string     `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	Name            string     `json:"name" gorm:"type:varchar(200);not null"`
+	Description     string     `json:"description" gorm:"type:text"`
+	BaseModel       string     `json:"base_model" gorm:"type:varchar(100);not null"`         // e.g. llama-3-8b, mistral-7b
+	Rank            int        `json:"rank" gorm:"default:16"`                               // LoRA rank (r)
+	Alpha           int        `json:"alpha" gorm:"default:32"`                              // LoRA alpha
+	TargetModules   string     `json:"target_modules" gorm:"type:json"`                      // ["q_proj","v_proj","k_proj","o_proj"]
+	Status          string     `json:"status" gorm:"type:varchar(20);default:pending;index"` // pending, training, ready, failed, archived
+	TrainingSamples int64      `json:"training_samples" gorm:"default:0"`
+	TrainingEpochs  int        `json:"training_epochs" gorm:"default:3"`
+	LearningRate    float64    `json:"learning_rate" gorm:"default:0.0002"`
+	BatchSize       int        `json:"batch_size" gorm:"default:4"`
+	LossHistory     string     `json:"loss_history" gorm:"type:json"` // [{epoch, train_loss, eval_loss}]
+	FinalLoss       float64    `json:"final_loss" gorm:"default:0"`
+	AdapterPath     string     `json:"adapter_path" gorm:"type:varchar(500)"` // path to saved adapter weights
+	AdapterSizeMB   float64    `json:"adapter_size_mb" gorm:"default:0"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	FinishedAt      *time.Time `json:"finished_at"`
 }
 
 func (a *LoRAAdapter) BeforeCreate(tx *gorm.DB) error {
@@ -47,15 +47,15 @@ func (a *LoRAAdapter) BeforeCreate(tx *gorm.DB) error {
 
 // TrainingSample represents a single training example for fine-tuning.
 type TrainingSample struct {
-	ID         string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	AdapterID  string    `json:"adapter_id" gorm:"type:varchar(36);index;not null"`
-	UserID     string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
-	Input      string    `json:"input" gorm:"type:text;not null"`       // user message or prompt
-	Output     string    `json:"output" gorm:"type:text;not null"`      // desired assistant response
-	System     string    `json:"system" gorm:"type:text"`               // optional system prompt
-	Source     string    `json:"source" gorm:"type:varchar(50)"`        // manual, conversation, distillation
-	Quality    float64   `json:"quality" gorm:"default:1.0"`            // 0.0-1.0 quality score
-	CreatedAt  time.Time `json:"created_at"`
+	ID        string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	AdapterID string    `json:"adapter_id" gorm:"type:varchar(36);index;not null"`
+	UserID    string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	Input     string    `json:"input" gorm:"type:text;not null"`  // user message or prompt
+	Output    string    `json:"output" gorm:"type:text;not null"` // desired assistant response
+	System    string    `json:"system" gorm:"type:text"`          // optional system prompt
+	Source    string    `json:"source" gorm:"type:varchar(50)"`   // manual, conversation, distillation
+	Quality   float64   `json:"quality" gorm:"default:1.0"`       // 0.0-1.0 quality score
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (s *TrainingSample) BeforeCreate(tx *gorm.DB) error {
@@ -71,22 +71,22 @@ func (s *TrainingSample) BeforeCreate(tx *gorm.DB) error {
 
 // DistillationJob represents a knowledge distillation pipeline run.
 type DistillationJob struct {
-	ID             string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	UserID         string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
-	Name           string    `json:"name" gorm:"type:varchar(200);not null"`
-	TeacherModel   string    `json:"teacher_model" gorm:"type:varchar(100);not null"` // e.g. gpt-4o, claude-3-opus
-	StudentModel   string    `json:"student_model" gorm:"type:varchar(100);not null"` // e.g. llama-3-8b, mistral-7b
-	AdapterID      string    `json:"adapter_id" gorm:"type:varchar(36);index"`        // resulting LoRA adapter
-	Status         string    `json:"status" gorm:"type:varchar(20);default:pending;index"` // pending, generating, training, completed, failed
-	SeedPrompts    string    `json:"seed_prompts" gorm:"type:json"`                   // initial prompts to generate training data
-	GeneratedCount int64     `json:"generated_count" gorm:"default:0"`                // number of teacher outputs generated
-	TargetCount    int64     `json:"target_count" gorm:"default:1000"`
-	Temperature    float64   `json:"temperature" gorm:"default:0.7"`
-	Config         string    `json:"config" gorm:"type:json"`
-	Progress       float64   `json:"progress" gorm:"default:0"`
-	Error          string    `json:"error" gorm:"type:text"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	UserID         string     `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	Name           string     `json:"name" gorm:"type:varchar(200);not null"`
+	TeacherModel   string     `json:"teacher_model" gorm:"type:varchar(100);not null"`      // e.g. gpt-4o, claude-3-opus
+	StudentModel   string     `json:"student_model" gorm:"type:varchar(100);not null"`      // e.g. llama-3-8b, mistral-7b
+	AdapterID      string     `json:"adapter_id" gorm:"type:varchar(36);index"`             // resulting LoRA adapter
+	Status         string     `json:"status" gorm:"type:varchar(20);default:pending;index"` // pending, generating, training, completed, failed
+	SeedPrompts    string     `json:"seed_prompts" gorm:"type:json"`                        // initial prompts to generate training data
+	GeneratedCount int64      `json:"generated_count" gorm:"default:0"`                     // number of teacher outputs generated
+	TargetCount    int64      `json:"target_count" gorm:"default:1000"`
+	Temperature    float64    `json:"temperature" gorm:"default:0.7"`
+	Config         string     `json:"config" gorm:"type:json"`
+	Progress       float64    `json:"progress" gorm:"default:0"`
+	Error          string     `json:"error" gorm:"type:text"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 	CompletedAt    *time.Time `json:"completed_at"`
 }
 
@@ -104,7 +104,6 @@ func (j *DistillationJob) BeforeCreate(tx *gorm.DB) error {
 // FineTuneEngine manages LoRA adapters and distillation pipelines.
 type FineTuneEngine struct {
 	db     *gorm.DB
-	mu     sync.RWMutex
 	stopCh chan struct{}
 	wg     sync.WaitGroup
 }

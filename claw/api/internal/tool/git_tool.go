@@ -312,9 +312,9 @@ func (t *GitTool) gitCheckout(wsPath string, a gitArgs) (string, error) {
 	}
 
 	// Try checkout existing, if fails create new branch
-	out, err := t.runGit(wsPath, "checkout", a.Branch)
+	_, err := t.runGit(wsPath, "checkout", a.Branch)
 	if err != nil {
-		out, err = t.runGit(wsPath, "checkout", "-b", a.Branch)
+		out, err := t.runGit(wsPath, "checkout", "-b", a.Branch)
 		if err != nil {
 			return toJSON(map[string]interface{}{"action": "checkout", "error": err.Error(), "output": out}), nil
 		}
