@@ -115,6 +115,10 @@ func main() {
 	dash.GET("/balance", dashUsage.Balance)
 	dash.GET("/tool-usage", dashUsage.ToolUsage)
 
+	// Models (JWT auth — web dashboard can list without API key)
+	dashModels := handler.NewModelsHandler(reg)
+	dash.GET("/models", dashModels.ListModels)
+
 	// Payment (JWT auth for creating orders, public for callbacks)
 	payHandler := handler.NewPaymentHandler(db, cfg.Alipay, cfg.Wechat, cfg.Queen)
 	dash.GET("/pay/packages", payHandler.Packages)

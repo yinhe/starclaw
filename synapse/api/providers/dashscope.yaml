@@ -22,16 +22,16 @@ models:
     description: "万象 2.6 Turbo 文生视频 (快速)"
   - name: "dashscope/wan2.6-i2v"
     type: "video"
-    price_per_call_cny: 0.40
-    description: "万象 2.6 图生视频 (场景衔接)"
+    price_per_call_cny: 3.00
+    description: "万象 2.6 图生视频 720P (0.6元/秒×5秒)"
   - name: "dashscope/wan2.6-i2v-turbo"
     type: "video"
-    price_per_call_cny: 0.10
-    description: "万象 2.6 Turbo 图生视频 (快速)"
+    price_per_call_cny: 0.50
+    description: "万象 2.6 Turbo 图生视频 (0.1元/秒×5秒)"
   - name: "dashscope/wan2.6-i2v-plus"
     type: "video"
-    price_per_call_cny: 0.60
-    description: "万象 2.6 Plus 图生视频 (高画质)"
+    price_per_call_cny: 3.00
+    description: "万象 2.6 Plus 图生视频 (0.6元/秒×5秒)"
   # ── 万象图像 (Wanxiang Image) ──
   - name: "dashscope/wanx-v1"
     type: "image"

@@ -81,7 +81,7 @@ export interface ModelInfo {
 }
 
 export const models = {
-  list: () => request<{ object: string; data: ModelInfo[] }>('GET', '/v1/models'),
+  list: () => request<{ object: string; data: ModelInfo[] }>('GET', '/dash/models'),
 };
 
 // Generation type

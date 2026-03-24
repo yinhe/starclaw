@@ -25,7 +25,7 @@ interface Order {
 export default function BillingPage() {
   const [packages, setPackages] = useState<Package[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [balance, setBalance] = useState({ balance_cents: 0, free_quota: 0 });
+  const [balance, setBalance] = useState<{ balance_cents: number; free_quota: number; star_energy_display?: number; star_status?: string }>({ balance_cents: 0, free_quota: 0 });
   const [loading, setLoading] = useState('');
   const [wxLoading, setWxLoading] = useState('');
   const [error, setError] = useState('');
@@ -119,9 +119,17 @@ export default function BillingPage() {
       {/* Current balance */}
       <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-xl p-6 flex items-center justify-between">
         <div>
-          <div className="text-sm text-amber-400 mb-1">当前余额</div>
-          <div className="text-3xl font-bold text-white">{fmt(balance.balance_cents)}</div>
-          <div className="text-xs text-gray-400 mt-1">免费额度: {fmt(balance.free_quota)}</div>
+          <div className="text-sm text-amber-400 mb-1">{balance.star_energy_display != null ? '星能余额' : '当前余额'}</div>
+          <div className="text-3xl font-bold text-white">
+            {balance.star_energy_display != null
+              ? `${balance.star_energy_display.toFixed(1)} ⚡`
+              : fmt(balance.balance_cents)}
+          </div>
+          <div className="text-xs text-gray-400 mt-1">
+            {balance.star_energy_display != null
+              ? `本地余额: ${fmt(balance.balance_cents)}`
+              : `免费额度: ${fmt(balance.free_quota)}`}
+          </div>
         </div>
         <button
           onClick={syncPending}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type OpenAIProvider struct {
@@ -92,7 +93,7 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 			// ── Codex ──
 			"codex-mini-latest",
 		},
-		client: &http.Client{},
+		client: &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 

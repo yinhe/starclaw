@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"starclaw.net/synapse/api/internal/billing"
 	"starclaw.net/synapse/api/internal/model"
-	"gorm.io/gorm"
 )
 
 type UsageHandler struct {
@@ -161,8 +161,19 @@ func (h *UsageHandler) Balance(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	result := gin.H{
 		"balance_cents": user.Balance,
 		"free_quota":    user.FreeQuota,
-	})
+	}
+
+	// For Claw-linked users, also return Queen star energy (single source of truth)
+	if user.ClawID != "" && h.queenCredit != nil && h.queenCredit.Enabled() {
+		if bal, err := h.queenCredit.GetBalance(user.ClawID); err == nil {
+			result["star_energy"] = bal.Balance                            // internal units
+			result["star_energy_display"] = float64(bal.Balance) / 10000.0 // display ⚡
+			result["star_status"] = bal.Status
+		}
+	}
+
+	c.JSON(http.StatusOK, result)
 }
