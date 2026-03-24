@@ -16,10 +16,53 @@ while read oldrev newrev refname; do
     refs/tags/v*)
       tag=$(echo "$refname" | sed 's|refs/tags/||')
       if [ -d "$CLAW_REPO" ]; then
-        git --git-dir="$CLAW_REPO" tag "$tag" HEAD 2>/dev/null && \
+        git --git-dir="$CLAW_REPO" tag "$tag" "$newrev" 2>/dev/null && \
           echo "[nydus] synced tag $tag to claw.git" || \
           echo "[nydus] tag $tag already exists in claw.git"
       fi
+
+      # Auto cross-compile binaries for Spore update & download page
+      # Uses Docker golang image (Go/Node not installed on host)
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Building binaries for $tag..." | tee -a "$LOG"
+      (
+        BUILD_DIR=$(mktemp -d)
+        RELEASE_DIR="/opt/releases/binary/$tag"
+        mkdir -p "$RELEASE_DIR"
+
+        # Extract claw source
+        git --git-dir="$REPO" archive "$newrev":claw/ | tar xf - -C "$BUILD_DIR"
+
+        # Create minimal web placeholder for go:embed (full web is in Docker image)
+        mkdir -p "$BUILD_DIR/api/internal/web/dist"
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>StarClaw</title></head><body></body></html>' \
+          > "$BUILD_DIR/api/internal/web/dist/index.html"
+
+        # Cross-compile all platforms using Docker golang image
+        VER="${tag#v}"
+        docker run --rm \
+          -v "$BUILD_DIR/api:/src" \
+          -v "$RELEASE_DIR:/out" \
+          -w /src \
+          golang:1.24-alpine sh -c "
+            LDFLAGS='-X github.com/yinhe/starclaw/internal/molt.Version=$VER'
+            for pair in linux:amd64 linux:arm64 darwin:amd64 darwin:arm64 windows:amd64; do
+              os_name=\${pair%%:*}
+              arch_name=\${pair##*:}
+              outname=starclaw-\${os_name}-\${arch_name}
+              [ \"\$os_name\" = windows ] && outname=\"\${outname}.exe\"
+              echo \"  Building \$outname (v$VER)...\"
+              GOOS=\$os_name GOARCH=\$arch_name CGO_ENABLED=0 \
+                go build -ldflags \"\$LDFLAGS\" -o /out/\$outname ./cmd/server 2>&1 || \
+                echo \"  WARN: failed to build \$outname\"
+            done
+            ls -lh /out/
+          "
+
+        rm -rf "$BUILD_DIR"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Binaries for $tag ready in $RELEASE_DIR" | tee -a "$LOG"
+        ls -lh "$RELEASE_DIR/" 2>/dev/null || true
+      ) >> "$LOG" 2>&1 &
+
       continue
       ;;
   esac
