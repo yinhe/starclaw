@@ -1,6 +1,7 @@
 # StarClaw 并行开发体系
 
-> **三层 AI 军团：DevClaw 集群（产品层）+ 多 Windsurf（代码层）+ 主 Windsurf（指挥层）**
+> **三层 AI 军团：DevClaw 集群（产品层）+ 多编辑器（代码层）+ 主编辑器（指挥层）**
+> 支持 Windsurf / Cursor / VS Code / JetBrains / Claude Desktop 等所有 MCP 兼容编辑器
 
 ---
 
@@ -16,11 +17,11 @@
                  ┌─────────────────┼─────────────────┐
                  │                 │                 │
       ┌──────────▼──────────┐     │     ┌───────────▼──────────┐
-      │   代码层 (Windsurf)   │     │     │   产品层 (DevClaw)    │
+      │   代码层 (任意编辑器)  │     │     │   产品层 (DevClaw)    │
       │                      │     │     │                      │
-      │  WS-1: feat/memory   │     │     │  DC-1: 药理虫 Agent   │
-      │  WS-2: feat/arena    │     │     │  DC-2: 股票技能       │
-      │  WS-3: fix/hive-url  │     │     │  DC-3: 法务团队模板   │
+      │  Windsurf: memory-v2 │     │     │  DC-1: 药理虫 Agent   │
+      │  Cursor:   arena     │     │     │  DC-2: 股票技能       │
+      │  VS Code:  hive-fix  │     │     │  DC-3: 法务团队模板   │
       │                      │     │     │  DC-4: 竞品分析工作流  │
       └──────────────────────┘     │     └──────────────────────┘
                                    │
@@ -36,8 +37,8 @@
 
 | 层 | 工具 | 产出 | 冲突风险 |
 |----|------|------|----------|
-| **指挥层** | 主 Windsurf | 架构决策、代码审查、merge、部署、协调 | — |
-| **代码层** | N 个 Windsurf 会话 | Go/React 代码、基础设施、配置 | 同文件修改 |
+| **指挥层** | 主编辑器 (任意 MCP 编辑器) | 架构决策、代码审查、merge、部署、协调 | — |
+| **代码层** | N 个编辑器会话 (Windsurf/Cursor/VS Code/...) | Go/React 代码、基础设施、配置 | 同文件修改 |
 | **产品层** | N 个 DevClaw 实例 | Agent、Skill、Workflow、Team Template | 零（各实例独立） |
 
 ---
@@ -295,35 +296,159 @@ git push nydus feat/{service}/{feature}
 
 ---
 
-## 六、扩展能力
+## 六、Dev Bridge MCP 工具
 
-### 6.1 当前规模
+Dev Bridge 是 DevClaw ↔ 编辑器桥接的核心。标准 MCP JSON-RPC 2.0 over HTTP，**任何 MCP 兼容编辑器都能直接接入**。
 
-| 并行通道 | 数量 | 限制因素 |
-|---------|------|----------|
-| Windsurf 会话 | 3-5 个 | IDE 窗口 + 人类审查带宽 |
-| DevClaw 实例 | 不限 | Overlord 节点算力 |
-| Git 分支 | 不限 | 12 个独立服务 = 12 个并行通道 |
+### 6.1 架构
 
-### 6.2 未来增强
+```
+  Dev Bridge (:9102)              MCP Bridge (:9101)
+  开发流程控制                      宿主机控制
+  git/task/build/agent             shell/file/GUI
+       │                                │
+       └────── Claw 自动发现两个 Bridge ──┘
+                      │
+     ┌────────────────┼────────────────┐
+     │                │                │
+  Windsurf       Cursor          VS Code
+  (主编辑器)     (开发者 B)      (开发者 C)
+```
 
-| 增强 | 说明 | 优先级 |
-|------|------|--------|
-| 自动 PR 审查 | DevClaw 审查虫复审 Windsurf 代码 | 高 |
-| 分支部署预览 | 非 master 分支 → 临时预览环境 | 中 |
-| DevClaw → Windsurf 自动桥接 | DevClaw 需要代码时自动创建 Issue | 中 |
-| Windsurf 状态看板 | 主 Windsurf 实时看各分支进度 | 低 |
+### 6.2 15 个工具
+
+| 分类 | 工具 | 用途 |
+|------|------|------|
+| **Git** | `git_status` | 当前分支 + 工作区状态 |
+| | `git_branches` | 列出所有功能分支 |
+| | `git_create_branch` | 创建新功能分支 (强制命名规范) |
+| | `git_diff` | 分支与 master 的差异 |
+| | `git_merge` | 合并分支到 master (auto fetch+rebase) |
+| | `git_log` | 查看提交记录 |
+| **Task** | `task_create` | DevClaw→编辑器 或反向创建任务 |
+| | `task_list` | 查看任务列表 (按状态/目标筛选) |
+| | `task_update` | 更新任务状态/添加备注 |
+| **Service** | `service_list` | 列出 13 个服务 + 最后修改时间 |
+| | `service_build` | 构建指定服务验证编译 |
+| | `deploy_push` | git push nydus master 触发部署 |
+| **Agent** | `agent_test` | 沙箱测试 Agent 配置 (via Claw API) |
+| | `agent_publish` | 发布 Agent 到市场 |
+
+### 6.3 启动 Dev Bridge
+
+```bash
+# 在 starclaw 仓库根目录
+go run claw/api/cmd/dev-bridge/main.go -port 9102 -repo . -claw http://localhost:8080
+
+# 或编译后运行
+cd claw/api && go build -o dev-bridge ./cmd/dev-bridge/
+./dev-bridge -port 9102 -repo /path/to/starclaw
+```
+
+Claw 启动时自动探测 `localhost:9102`，发现即注册所有工具。
 
 ---
 
-## 七、规则总结
+## 七、多编辑器支持
+
+Dev Bridge 是标准 MCP 服务器，不绑定任何 IDE。以下编辑器均可直接接入：
+
+| 编辑器 | MCP 支持 | 配置方式 |
+|--------|---------|----------|
+| **Windsurf** | ✅ 原生 | Claw Settings → MCP 工具 → 添加 URL |
+| **Cursor** | ✅ 原生 | `~/.cursor/mcp.json` |
+| **VS Code** | ✅ Copilot Chat | `.vscode/settings.json` |
+| **Claude Desktop** | ✅ 原生 | `claude_desktop_config.json` |
+| **JetBrains** | ✅ AI Assistant 插件 | MCP Servers 设置 |
+| **Cline (VS Code)** | ✅ 原生 | MCP 配置面板 |
+
+### Cursor 配置
+
+```json
+// ~/.cursor/mcp.json
+{
+  "mcpServers": {
+    "starclaw-dev": {
+      "url": "http://localhost:9102"
+    },
+    "starclaw-host": {
+      "url": "http://localhost:9101"
+    }
+  }
+}
+```
+
+### VS Code (Copilot) 配置
+
+```json
+// .vscode/settings.json
+{
+  "github.copilot.chat.mcpServers": {
+    "starclaw-dev": {
+      "url": "http://localhost:9102"
+    }
+  }
+}
+```
+
+### Claude Desktop 配置
+
+```json
+// claude_desktop_config.json
+{
+  "mcpServers": {
+    "starclaw-dev": {
+      "command": "path/to/dev-bridge",
+      "args": ["-port", "9102", "-repo", "/path/to/starclaw"]
+    }
+  }
+}
+```
+
+### 混合编辑器并行开发
+
+```
+开发者 A (Windsurf):  feat/claw/memory-v2   ─┐
+开发者 B (Cursor):    feat/queen/arena-rank  ├─ 共享 Dev Bridge (:9102)
+开发者 C (VS Code):   feat/spore/sandbox     ─┘  共享 Git 仓库
+                                                  共享任务列表
+DevClaw-1 (Claw Agent): 开发药理虫 Agent     ─── 通过 task_create 请求代码支持
+DevClaw-2 (Claw Agent): 开发翻译虫 Agent     ─── 独立工作，自动上架
+```
+
+---
+
+## 八、扩展能力
+
+### 8.1 当前规模
+
+| 并行通道 | 数量 | 限制因素 |
+|---------|------|----------|
+| 编辑器会话 | 不限 | Windsurf/Cursor/VS Code 任意组合 |
+| DevClaw 实例 | 不限 | Overlord 节点算力 |
+| Git 分支 | 不限 | 12 个独立服务 = 12 个并行通道 |
+| MCP Bridge | 2 个 | host (:9101) + dev (:9102) |
+
+### 8.2 未来增强
+
+| 增强 | 说明 | 优先级 |
+|------|------|--------|
+| 自动 PR 审查 | DevClaw 审查虫复审代码 | 高 |
+| 分支部署预览 | 非 master 分支 → 临时预览环境 | 中 |
+| DevClaw → 编辑器自动桥接 | DevClaw 需要代码时自动创建 Task | ✅ 已实现 |
+| 任务看板 Web UI | Dev Bridge 内置任务看板页面 | 低 |
+| SSE 实时通知 | Dev Bridge 推送任务变更到编辑器 | 低 |
+
+---
+
+## 九、规则总结
 
 ```
 Rule 1: master 是生产分支，不直接 push
-Rule 2: 每个 Windsurf 会话一个分支，只改自己的服务目录
-Rule 3: DevClaw 做产品层（Agent/Skill/Workflow），Windsurf 做代码层
-Rule 4: 主 Windsurf 负责审查、合并、部署、协调
-Rule 5: 合并后通知其他 Windsurf rebase
-Rule 6: 冲突高危文件（router.go 等）由主 Windsurf 统一改
+Rule 2: 每个编辑器会话一个分支，只改自己的服务目录
+Rule 3: DevClaw 做产品层（Agent/Skill/Workflow），编辑器做代码层
+Rule 4: 主编辑器负责审查、合并、部署、协调
+Rule 5: 合并后通知其他编辑器 rebase
+Rule 6: 冲突高危文件（router.go 等）由主编辑器统一改
 Rule 7: 紧急 hotfix 可以跳过分支直接合 master
 ```

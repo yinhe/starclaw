@@ -128,6 +128,25 @@ PR/push 后 GitHub Actions 自动运行 `.github/workflows/ci.yml`:
 - 只构建受影响的服务
 - Go: vet + build / Frontend: npm ci + vite build
 
+## 多编辑器支持
+
+Dev Bridge (:9102) 是标准 MCP 服务器，不绑定任何 IDE。以下编辑器均可直接接入：
+
+| 编辑器 | 配置 |
+|--------|------|
+| **Windsurf** | Claw Settings → MCP 工具 → `http://localhost:9102` |
+| **Cursor** | `~/.cursor/mcp.json` → `{"mcpServers":{"starclaw-dev":{"url":"http://localhost:9102"}}}` |
+| **VS Code** | `.vscode/settings.json` → `{"github.copilot.chat.mcpServers":{"starclaw-dev":{"url":"http://localhost:9102"}}}` |
+| **Claude Desktop** | `claude_desktop_config.json` → command: `dev-bridge -port 9102 -repo /path/to/starclaw` |
+| **JetBrains** | AI Assistant → MCP Servers → 添加 URL |
+
+启动 Dev Bridge:
+```
+go run claw/api/cmd/dev-bridge/main.go -port 9102 -repo . -claw http://localhost:8080
+```
+
+完整文档: `PARALLEL_DEV.md` 第六、七章
+
 ## 紧急 Hotfix
 
 不需要走分支流程:
