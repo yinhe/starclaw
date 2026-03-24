@@ -94,6 +94,8 @@ export default function ModelsPage() {
     api_key: '',
     base_url: QWEN_REGIONS[0].value,
   })
+  const [error, setError] = useState('')
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     loadModels()
@@ -115,6 +117,8 @@ export default function ModelsPage() {
   }
 
   const handleCreate = async () => {
+    setError('')
+    setCreating(true)
     try {
       await modelAPI.create({
         provider: form.provider,
@@ -124,7 +128,11 @@ export default function ModelsPage() {
       setShowModal(false)
       setForm({ provider: 'qwen', api_key: '', base_url: QWEN_REGIONS[0].value })
       loadModels()
-    } catch { /* ignore */ }
+    } catch (e: any) {
+      setError(e?.message?.includes('Network Error') ? '无法连接到后端服务，请确认 Claw API 正在运行' : (e?.response?.data?.error || e?.message || '添加失败'))
+    } finally {
+      setCreating(false)
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -459,21 +467,27 @@ export default function ModelsPage() {
               <div className="bg-blue-50 rounded-lg px-4 py-3 text-xs text-blue-700">
                 添加后，该提供商的所有模型都会自动可用。创建 Agent 时可选择任意模型。
               </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700">
+                  {error}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => { setShowModal(false); setError('') }}
                 className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 取消
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!isStarAI && !isOllama && !isCustom && !form.api_key}
+                disabled={creating || (!isStarAI && !isOllama && !isCustom && !form.api_key)}
                 className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
-                添加提供商
+                {creating ? '添加中...' : '添加提供商'}
               </button>
             </div>
           </div>
