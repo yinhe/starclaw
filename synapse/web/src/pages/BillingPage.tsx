@@ -127,7 +127,7 @@ export default function BillingPage() {
           </div>
           <div className="text-xs text-gray-400 mt-1">
             {balance.star_energy_display != null
-              ? `本地余额: ${fmt(balance.balance_cents)}`
+              ? `≈ ¥${(balance.star_energy_display / 100).toFixed(2)}`
               : `免费额度: ${fmt(balance.free_quota)}`}
           </div>
         </div>

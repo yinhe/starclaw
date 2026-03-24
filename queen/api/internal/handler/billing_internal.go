@@ -9,10 +9,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"starclaw.net/queen/api/internal/database"
-	"starclaw.net/queen/api/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"starclaw.net/queen/api/internal/database"
+	"starclaw.net/queen/api/internal/model"
 )
 
 // ============================================================
@@ -114,6 +114,25 @@ func (h *BillingHandler) InternalConsume(c *gin.Context) {
 		amountFen = calculateCost(req.ResourceType, req.Quantity)
 	}
 	if amountFen <= 0 {
+		// If remark is present, create a zero-cost tracking record (used by billing gateway
+		// to record tool usage when balance was insufficient for actual deduction)
+		if req.Remark != "" && req.ClawID != "" {
+			clawID := req.ClawID
+			if clawID == "" {
+				clawID = userToClawID(req.UserID)
+			}
+			if clawID != "" {
+				database.DB.Create(&model.CreditTransaction{
+					ID:       uuid.New().String(),
+					FromClaw: clawID,
+					ToClaw:   "system",
+					Amount:   0,
+					Type:     "consume",
+					Remark:   req.Remark,
+					Status:   "confirmed",
+				})
+			}
+		}
 		c.JSON(http.StatusOK, gin.H{"deducted": 0, "balance": int64(0)})
 		return
 	}
