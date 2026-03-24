@@ -16,6 +16,7 @@ import (
 
 	"starclaw.net/spore/pkg/manifest"
 	"starclaw.net/spore/pkg/platform"
+	"starclaw.net/spore/pkg/sandbox"
 )
 
 // SporeInstance represents an installed spore with runtime state.
@@ -205,6 +206,7 @@ func (m *Manager) Start(name string) error {
 
 // StartWithEnv launches a spore process with additional environment variable overrides.
 // envOverrides format: ["KEY=VALUE", ...]
+// Special env: "SPORE_SANDBOX=1" enables sandbox mode at runtime.
 func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	inst, err := m.Get(name)
 	if err != nil {
@@ -218,6 +220,14 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	binPath := filepath.Join(inst.InstallDir, inst.Manifest.Binary)
 	if _, err := os.Stat(binPath); err != nil {
 		return fmt.Errorf("binary not found: %s", binPath)
+	}
+
+	// Check if sandbox is requested (manifest or env override)
+	sandboxEnabled := inst.Manifest.Sandbox.Enabled
+	for _, e := range envOverrides {
+		if e == "SPORE_SANDBOX=1" || e == "SPORE_SANDBOX=true" {
+			sandboxEnabled = true
+		}
 	}
 
 	// Build command
@@ -236,6 +246,23 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	env = append(env, envOverrides...)
 	cmd.Env = env
 
+	// Apply sandbox wrapper if requested
+	if sandboxEnabled {
+		runner := sandbox.New()
+		if runner == nil {
+			return fmt.Errorf("sandbox requested but no backend available: %s", sandbox.EnsureAvailable())
+		}
+		cfg := inst.Manifest.Sandbox
+		// Default: allow network
+		if !cfg.AllowNet && cfg.MaxMemoryMB == 0 && cfg.MaxCPU == 0 && len(cfg.AllowPaths) == 0 {
+			cfg.AllowNet = true // default to allow network if no explicit config
+		}
+		if err := runner.Wrap(cmd, binPath, inst.DataDir, inst.LogDir, cfg); err != nil {
+			return fmt.Errorf("sandbox wrap: %w", err)
+		}
+		log.Printf("[spore] sandbox enabled: %s (backend: %s)", name, runner.Name())
+	}
+
 	// Redirect output to log file
 	logFile, err := os.OpenFile(
 		filepath.Join(inst.LogDir, name+".log"),
@@ -246,8 +273,10 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
-	// Detach process
-	cmd.SysProcAttr = detachAttr()
+	// Detach process (skip if sandbox already set SysProcAttr)
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = detachAttr()
+	}
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
@@ -257,7 +286,11 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	// Write PID file
 	os.WriteFile(inst.PidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 
-	log.Printf("[spore] started %s (PID %d)", name, cmd.Process.Pid)
+	mode := ""
+	if sandboxEnabled {
+		mode = " [sandbox]"
+	}
+	log.Printf("[spore] started %s (PID %d)%s", name, cmd.Process.Pid, mode)
 
 	// Release the process so it runs independently
 	cmd.Process.Release()

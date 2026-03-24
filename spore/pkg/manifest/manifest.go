@@ -20,6 +20,7 @@ type Manifest struct {
 	Network     Network           `json:"network,omitempty"`
 	Health      Health            `json:"health,omitempty"`
 	Update      Update            `json:"update,omitempty"`
+	Sandbox     Sandbox           `json:"sandbox,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 	Checksum    string            `json:"checksum,omitempty"`
 	BuiltAt     string            `json:"built_at,omitempty"`
@@ -64,6 +65,19 @@ type Update struct {
 	Channel    string `json:"channel,omitempty"` // stable, beta, nightly
 	AutoUpdate bool   `json:"auto_update,omitempty"`
 	Delta      bool   `json:"delta_enabled,omitempty"`
+}
+
+// Sandbox describes optional lightweight sandboxing configuration.
+// When enabled, the spore process runs with filesystem isolation and resource limits.
+// This is a middle ground between bare process (zero isolation) and Docker (full container).
+type Sandbox struct {
+	Enabled     bool     `json:"enabled,omitempty"`       // enable sandbox mode
+	MaxMemoryMB int      `json:"max_memory_mb,omitempty"` // memory limit in MB (0 = unlimited)
+	MaxCPU      float64  `json:"max_cpu,omitempty"`       // CPU limit (0 = unlimited, 1.0 = 1 core)
+	ReadOnly    bool     `json:"read_only,omitempty"`     // mount root filesystem read-only
+	AllowPaths  []string `json:"allow_paths,omitempty"`   // additional writable paths (beyond data/log dirs)
+	AllowNet    bool     `json:"allow_net,omitempty"`     // allow network access (default true if omitted)
+	IsolatePID  bool     `json:"isolate_pid,omitempty"`   // PID namespace isolation (Linux only)
 }
 
 // Load reads a manifest from a JSON file.

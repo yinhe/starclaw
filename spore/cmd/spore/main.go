@@ -173,24 +173,34 @@ func cmdRunInline() {
 
 func cmdStart(mgr *runtime.Manager) {
 	if len(os.Args) < 3 {
-		fatal("usage: spore start <name> [--env KEY=VALUE ...]")
+		fatal("usage: spore start <name> [--sandbox] [--env KEY=VALUE ...]")
 	}
 	name := os.Args[2]
 
-	// Parse --env flags for runtime env overrides
+	// Parse --env and --sandbox flags
 	var envOverrides []string
+	sandboxFlag := false
 	for i := 3; i < len(os.Args); i++ {
 		if os.Args[i] == "--env" && i+1 < len(os.Args) {
 			envOverrides = append(envOverrides, os.Args[i+1])
 			i++
+		} else if os.Args[i] == "--sandbox" {
+			sandboxFlag = true
 		}
 	}
+	if sandboxFlag {
+		envOverrides = append(envOverrides, "SPORE_SANDBOX=1")
+	}
 
-	fmt.Printf("🚀 Starting %s...\n", name)
+	mode := ""
+	if sandboxFlag {
+		mode = " (sandbox mode)"
+	}
+	fmt.Printf("Starting %s%s...\n", name, mode)
 	if err := mgr.StartWithEnv(name, envOverrides); err != nil {
 		fatal("start: %v", err)
 	}
-	fmt.Printf("✅ %s started\n", name)
+	fmt.Printf("%s started%s\n", name, mode)
 }
 
 func cmdStop(mgr *runtime.Manager) {
