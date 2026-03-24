@@ -17,8 +17,25 @@ import (
 
 // PRDEngine generates and manages PRDs using LLM.
 type PRDEngine struct {
-	DB  *gorm.DB
-	Cfg *config.Config
+	DB     *gorm.DB
+	Cfg    *config.Config
+	client *http.Client // shared, keep-alive enabled
+}
+
+// NewPRDEngine creates a PRDEngine with a persistent HTTP client.
+func NewPRDEngine(db *gorm.DB, cfg *config.Config) *PRDEngine {
+	return &PRDEngine{
+		DB:  db,
+		Cfg: cfg,
+		client: &http.Client{
+			Timeout: 300 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        5,
+				MaxIdleConnsPerHost: 5,
+				IdleConnTimeout:     600 * time.Second,
+			},
+		},
+	}
 }
 
 // GeneratePRD calls LLM to produce a structured PRD from a natural language prompt.
@@ -239,6 +256,7 @@ func (e *PRDEngine) callLLM(systemPrompt, userMessage string) (string, error) {
 		},
 		"temperature": 0.3,
 		"max_tokens":  4096,
+		"keep_alive":  "30m",
 	}
 	bodyJSON, _ := json.Marshal(reqBody)
 
@@ -246,8 +264,7 @@ func (e *PRDEngine) callLLM(systemPrompt, userMessage string) (string, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.Cfg.LLMAPIKey)
 
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := e.client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -294,6 +311,7 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 		"temperature": 0.3,
 		"max_tokens":  8192,
 		"stream":      true,
+		"keep_alive":  "30m",
 	}
 	bodyJSON, _ := json.Marshal(reqBody)
 
@@ -301,8 +319,7 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.Cfg.LLMAPIKey)
 
-	client := &http.Client{Timeout: 300 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := e.client.Do(req)
 	if err != nil {
 		return "", err
 	}

@@ -32,7 +32,7 @@ func main() {
 	db.AutoMigrate(model.AllModels()...)
 
 	// Engines
-	prdEngine := &engine.PRDEngine{DB: db, Cfg: cfg}
+	prdEngine := engine.NewPRDEngine(db, cfg)
 	orchestrator := &engine.Orchestrator{DB: db, Cfg: cfg}
 
 	// Handlers
