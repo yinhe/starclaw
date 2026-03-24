@@ -131,6 +131,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewImageTool(db))
 	toolRegistry.Register(tool.NewDocumentTool(db))
 	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))
+	toolRegistry.Register(tool.NewArenaTool(cfg.Swarm))
 	toolRegistry.Register(tool.NewDeployWebTool())
 	toolRegistry.Register(tool.NewBindDomainTool())
 	toolRegistry.Register(tool.NewVerifyOnlineTool())
