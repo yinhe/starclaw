@@ -112,6 +112,31 @@ while read oldrev newrev refname; do
     ) >> "$LOG" 2>&1 &
   fi
 
+  # --- Forge (Server C — local) ---
+  if echo "$CHANGED" | grep -q "^forge/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — rebuilding on server C..." | tee -a "$LOG"
+    (
+      mkdir -p /opt/starclaw-forge
+      cd /opt/starclaw-forge
+      git --git-dir="$REPO" archive HEAD:forge | tar xf - 2>/dev/null || true
+
+      if echo "$CHANGED" | grep -q "^forge/api/"; then
+        docker compose build --no-cache forge-api
+        docker compose up -d forge-api
+        echo "  -> forge-api rebuilt (Server C :8099)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^forge/web/"; then
+        docker compose build --no-cache forge-web
+        docker compose up -d forge-web
+        echo "  -> forge-web rebuilt (Server C :3099)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^forge/docker-compose"; then
+        docker compose up -d
+        echo "  -> forge compose refreshed" | tee -a "$LOG"
+      fi
+    ) >> "$LOG" 2>&1 &
+  fi
+
   # --- Nydus config (reload if changed) ---
   if echo "$CHANGED" | grep -q "^nydus/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Nydus config changed — syncing..." | tee -a "$LOG"
