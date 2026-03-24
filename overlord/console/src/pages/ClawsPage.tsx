@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Server, Wifi, WifiOff, AlertTriangle, Trash2, Plus } from 'lucide-react'
+import { Server, Wifi, WifiOff, AlertTriangle, Trash2, Plus, ExternalLink } from 'lucide-react'
 import { broodAPI, type ClawNode } from '../api/brood'
 
 const statusIcon = { online: Wifi, feral: AlertTriangle, offline: WifiOff }
@@ -168,6 +168,32 @@ export default function ClawsPage() {
                     <div>任务</div>
                   </div>
                 </div>
+                {claw.address && (() => {
+                  // Derive browser-accessible Web UI URL from API address
+                  // API: http://host.docker.internal:8080 → Web: http://localhost (port 80)
+                  // API: https://claw.example.com:8080 → Web: https://claw.example.com
+                  let webUrl = claw.address
+                  try {
+                    const u = new URL(claw.address)
+                    // Replace docker-internal hostname with localhost for browser access
+                    if (u.hostname === 'host.docker.internal') u.hostname = 'localhost'
+                    // API port 8080 → Web port 80 (default)
+                    if (u.port === '8080') u.port = ''
+                    webUrl = u.toString().replace(/\/$/, '')
+                  } catch { /* keep original */ }
+                  return (
+                    <a
+                      href={webUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-2 text-gray-500 hover:text-overlord-400 transition"
+                      title={`打开节点管理界面 (${webUrl})`}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )
+                })()}
                 <button
                   onClick={(e) => { e.preventDefault(); handleRemove(claw.id, claw.name) }}
                   className="opacity-0 group-hover:opacity-100 p-2 text-gray-500 hover:text-red-400 transition"
