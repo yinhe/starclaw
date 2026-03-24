@@ -1,16 +1,32 @@
 import { useEffect, useState } from 'react'
-import { FileText, Sparkles, Check, ListTree, Loader2 } from 'lucide-react'
+import { FileText, Sparkles, Check, ListTree, Loader2, Upload, Brain } from 'lucide-react'
 import { api } from '../api'
+
+const IMPORT_TEMPLATE = `{
+  "title": "需求标题",
+  "objective": "一句话目标",
+  "features": [
+    {"id": "F1", "title": "功能名", "desc": "描述", "service": "claw/api"}
+  ],
+  "non_functional": ["非功能需求"],
+  "acceptance_criteria": ["验收标准"],
+  "services": ["claw/api", "claw/web"],
+  "estimated_sprints": 2
+}`
+
+type TabMode = 'generate' | 'import'
 
 export default function PRDPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [selectedProject, setSelectedProject] = useState('')
   const [prompt, setPrompt] = useState('')
+  const [importJSON, setImportJSON] = useState('')
   const [prd, setPrd] = useState<any>(null)
   const [plan, setPlan] = useState<any>(null)
   const [generating, setGenerating] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState<TabMode>('generate')
 
   useEffect(() => {
     api.listProjects().then((r) => {
@@ -31,6 +47,27 @@ export default function PRDPage() {
       setPrd(r.prd)
     } catch (e: any) {
       setError(e.message || '生成失败')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleImport = async () => {
+    if (!importJSON.trim() || !selectedProject) return
+    setGenerating(true)
+    setError('')
+    setPrd(null)
+    setPlan(null)
+    try {
+      const parsed = JSON.parse(importJSON)
+      const r = await api.importPRD({ ...parsed, project_id: selectedProject })
+      setPrd(r.prd)
+    } catch (e: any) {
+      if (e instanceof SyntaxError) {
+        setError('JSON 格式错误，请检查')
+      } else {
+        setError(e.message || '导入失败')
+      }
     } finally {
       setGenerating(false)
     }
@@ -67,6 +104,28 @@ export default function PRDPage() {
 
       {/* Input */}
       <div className="glass rounded-xl p-5 space-y-4">
+        {/* Tab switcher */}
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            onClick={() => { setTab('generate'); setError('') }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              tab === 'generate' ? 'bg-forge-500/20 text-forge-400' : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50'
+            }`}
+          >
+            <Brain className="w-4 h-4" />
+            AI 生成
+          </button>
+          <button
+            onClick={() => { setTab('import'); setError('') }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              tab === 'import' ? 'bg-forge-500/20 text-forge-400' : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50'
+            }`}
+          >
+            <Upload className="w-4 h-4" />
+            导入 PRD
+          </button>
+        </div>
+
         <div className="flex items-center gap-3">
           <select
             value={selectedProject}
@@ -79,23 +138,54 @@ export default function PRDPage() {
           </select>
           <span className="text-sm text-stone-500">目标项目</span>
         </div>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="描述你想要实现的功能...&#10;例如: 实现记忆系统向量化，支持语义搜索，对接 Carapace 加密存储"
-          rows={4}
-          className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-3 text-sm text-stone-200 placeholder:text-stone-600 focus:outline-none focus:border-forge-500 resize-none"
-        />
-        <div className="flex justify-end">
-          <button
-            onClick={handleGenerate}
-            disabled={generating || !prompt.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-forge-600 hover:bg-forge-500 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg text-sm transition-colors"
-          >
-            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {generating ? 'AI 生成中...' : '生成 PRD'}
-          </button>
-        </div>
+
+        {tab === 'generate' ? (
+          <>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="描述你想要实现的功能...&#10;例如: 实现记忆系统向量化，支持语义搜索，对接 Carapace 加密存储"
+              rows={4}
+              className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-3 text-sm text-stone-200 placeholder:text-stone-600 focus:outline-none focus:border-forge-500 resize-none"
+            />
+            <div className="flex justify-end">
+              <button
+                onClick={handleGenerate}
+                disabled={generating || !prompt.trim()}
+                className="flex items-center gap-2 px-5 py-2.5 bg-forge-600 hover:bg-forge-500 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg text-sm transition-colors"
+              >
+                {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {generating ? 'AI 生成中...' : '生成 PRD'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <textarea
+              value={importJSON}
+              onChange={(e) => setImportJSON(e.target.value)}
+              placeholder={IMPORT_TEMPLATE}
+              rows={12}
+              className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-3 text-xs text-stone-200 placeholder:text-stone-600 focus:outline-none focus:border-forge-500 resize-none font-mono"
+            />
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setImportJSON(IMPORT_TEMPLATE)}
+                className="text-xs text-stone-500 hover:text-stone-300 transition-colors"
+              >
+                填入模板
+              </button>
+              <button
+                onClick={handleImport}
+                disabled={generating || !importJSON.trim()}
+                className="flex items-center gap-2 px-5 py-2.5 bg-forge-600 hover:bg-forge-500 disabled:bg-stone-700 disabled:text-stone-500 text-white rounded-lg text-sm transition-colors"
+              >
+                {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {generating ? '导入中...' : '导入 PRD'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {error && (
