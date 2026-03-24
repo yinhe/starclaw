@@ -4,19 +4,29 @@ description: Parallel development workflow — branching strategy for multiple d
 
 # Parallel Development Workflow
 
-StarClaw monorepo 并行开发指南。适用于多人/多AI会话同时开发不同功能。
+StarClaw monorepo 并行开发指南。三层 AI 军团：DevClaw 集群（产品层）+ 多 Windsurf（代码层）+ 主 Windsurf（指挥层）。
+
+完整文档: `PARALLEL_DEV.md`
+
+## 快速参考
+
+```
+代码层 (Windsurf):  feat/{service}/{name} 分支 → 开发 → push → 主 Windsurf 审查合并
+产品层 (DevClaw):   Overlord 新建 DevClaw 实例 → 对话开发 Agent/Skill → 自动上架
+指挥层 (主 Windsurf): 分配任务 → 审查代码 → 合并分支 → 部署 → 协调冲突
+```
 
 ## 分支命名规范
 
 ```
-master              ← 生产分支，只通过 PR 合并，push 后 nydus 自动部署
-feat/{service}/{name}  ← 新功能       例: feat/claw/memory-v2
-fix/{service}/{name}   ← 修复         例: fix/hive/hive-url
-refactor/{name}        ← 重构         例: refactor/carapace-api
-hotfix/{name}          ← 紧急修复     例: hotfix/auth-crash (可直接合 master)
+master                     ← 生产分支，只通过合并进入
+feat/{service}/{name}      ← 新功能       例: feat/claw/memory-v2
+fix/{service}/{name}       ← 修复         例: fix/hive/hive-url
+refactor/{name}            ← 重构         例: refactor/carapace-api
+hotfix/{name}              ← 紧急修复     例: hotfix/auth-crash (可直接合 master)
 ```
 
-## 开始新功能开发
+## 代码层: 开始新功能 (Windsurf)
 
 // turbo
 1. 确保 master 是最新的:
@@ -36,7 +46,7 @@ git checkout -b feat/{service}/{feature-name}
 git push nydus feat/{service}/{feature-name}
 ```
 
-## 合并到 master
+## 代码层: 合并到 master (主 Windsurf)
 
 5. 合并前先 rebase master:
 ```
@@ -53,59 +63,58 @@ git push nydus master
 
 7. nydus post-receive hook 自动检测变更目录并部署对应服务。
 
-## 并行开发场景
-
-### 场景 A: 两个 AI 会话同时开发
-
+8. 通知其他 Windsurf 会话 rebase:
 ```
-AI Session 1: feat/claw/memory-v2    (改 claw/api/internal/memory/)
-AI Session 2: feat/queen/arena-rank  (改 queen/arena/)
-
-互不影响 — 不同服务目录，无冲突。
-谁先完成谁先合 master。
+"master 已更新 (合并了 feat/xxx)，请 git fetch nydus && git rebase nydus/master"
 ```
 
-### 场景 B: 同一服务的不同功能
+## 产品层: DevClaw 并行开发
 
+DevClaw 负责 Agent / Skill / Workflow / Team Template 开发，不需要 IDE：
+
+9. 登录 Overlord (overlord.starclaw.me) → 团队智能体 → 新建 DevClaw 实例
+
+10. 对话描述需求，DevClaw 五虫协作：设计 → 编码 → 测试 → 审查 → 上架
+
+11. 如果 DevClaw 产出需要新的 Go Tool，转发给 Windsurf 会话:
 ```
-AI Session 1: feat/claw/memory-v2    (改 memory/, model/)
-AI Session 2: feat/claw/mcp-tools    (改 mcp/, tool/)
-
-可能有冲突 — 如果改了相同文件（如 router.go 加路由）。
-解决: 第二个合并时 rebase + 手动解决冲突。
-```
-
-### 场景 C: 你开发 + AI 开发
-
-```
-你:    直接在 master 上改小东西（快速 fix）
-AI:    feat/spore/sandbox-test（独立功能）
-
-你先 push master → AI rebase → AI 合并
+DevClaw: "这个 Agent 需要 medical_catalog 技能"
+  → 主 Windsurf 分配: "Windsurf-N，接 feat/claw/medical-tool"
+  → Windsurf-N 实现 → 主 Windsurf 合并 → DevClaw 继续
 ```
 
-## 服务独立性参考
+## 职责边界
 
-以下服务完全独立，可完全并行:
+| 任务 | 谁做 |
+|------|------|
+| 新 Agent (Prompt + 配置) | DevClaw |
+| JSON Plugin (包装 API) | DevClaw |
+| Workflow 编排 | DevClaw |
+| Team Template | DevClaw |
+| Go Built-in Tool | Windsurf |
+| API / Web 功能 | Windsurf |
+| 基础设施 / CI / 部署 | 主 Windsurf |
+| 架构决策 | 你 + 主 Windsurf |
 
-| 服务 | 目录 | go.mod | 独立部署 |
-|------|------|--------|----------|
-| Claw API | claw/api/ | ✅ | Server A |
-| Claw Web | claw/web/ | N/A (npm) | Server A |
-| Hive | hive/api/ | ✅ | Server A |
-| Queen API | queen/api/ | ✅ | Server C |
-| Queen Swarm | queen/swarm/ | ✅ | Server C |
-| Queen Arena | queen/arena/ | ✅ | Server C |
-| Synapse API | synapse/api/ | ✅ | Server B |
-| Synapse Core | synapse/core/ | N/A (npm) | Server B |
-| Overlord | overlord/api/ | ✅ | Server C |
-| Nydus | nydus/api/ | ✅ | Server C |
-| Spore | spore/ | ✅ | 客户端 |
-| Carapace | carapace/ | ✅ | 库 |
+## 服务独立性 (12 个并行通道)
 
-## 冲突高危文件
+| 服务 | 目录 | 独立部署 |
+|------|------|----------|
+| Claw API | claw/api/ | Server A |
+| Claw Web | claw/web/ | Server A |
+| Hive | hive/api/ | Server A |
+| Queen API | queen/api/ | Server C |
+| Queen Swarm | queen/swarm/ | Server C |
+| Queen Arena | queen/arena/ | Server C |
+| Synapse API | synapse/api/ | Server B |
+| Synapse Core | synapse/core/ | Server B |
+| Overlord | overlord/api/ | Server C |
+| Nydus | nydus/api/ | Server C |
+| Spore | spore/ | 客户端 |
+| Carapace | carapace/ | 库 |
 
-这些文件跨功能常被修改，合并时注意:
+## 冲突高危文件 (主 Windsurf 统一改)
+
 - `claw/api/internal/router/router.go` — 路由注册
 - `claw/web/src/App.tsx` — 前端路由
 - `queen/api/internal/router/router.go` — Queen 路由
@@ -114,15 +123,14 @@ AI:    feat/spore/sandbox-test（独立功能）
 
 ## CI 检查
 
-PR 创建后 GitHub Actions 自动运行 `.github/workflows/ci.yml`:
-- 只检查变更涉及的服务 (paths-filter)
-- Go: vet + build
-- Frontend: npm ci + vite build
-- 全部通过后可合并
+PR/push 后 GitHub Actions 自动运行 `.github/workflows/ci.yml`:
+- `dorny/paths-filter` 检测变更目录
+- 只构建受影响的服务
+- Go: vet + build / Frontend: npm ci + vite build
 
 ## 紧急 Hotfix
 
-不需要走 PR 流程:
+不需要走分支流程:
 ```
 git checkout master
 # 做最小修复
