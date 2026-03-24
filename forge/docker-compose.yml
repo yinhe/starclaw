@@ -1,6 +1,9 @@
 services:
   forge-api:
-    build: ./api
+    build:
+      context: ./api
+      args:
+        REGISTRY: ${REGISTRY:-docker.io}
     container_name: forge-api
     ports:
       - "8099:8099"
@@ -20,7 +23,10 @@ services:
     restart: unless-stopped
 
   forge-web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        REGISTRY: ${REGISTRY:-docker.io}
     container_name: forge-web
     ports:
       - "3099:3099"
