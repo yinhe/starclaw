@@ -174,8 +174,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Load JSON tool plugins from plugins/ directory
 	_ = tool.LoadPluginsFromDir(toolRegistry, "plugins")
 
-	// Auto-detect and register MCP Bridge (host control)
+	// Auto-detect and register MCP Bridge (host control) + Dev Bridge (development tools)
 	mcp.AutoRegisterBridge(toolRegistry)
+	mcp.AutoRegisterDevBridge(toolRegistry)
 
 	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
 	// Prefer dedicated swarm.node_token for Queen internal API; fall back to jwt.secret

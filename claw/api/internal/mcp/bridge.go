@@ -15,12 +15,14 @@ import (
 )
 
 const (
-	BridgePort         = 9101
-	BridgeServerName   = "host"
-	bridgeProbeTimeout = 3 * time.Second
-	owner              = "yinhe"
-	repoName           = "starclaw"
-	BridgeVersion      = "0.5.6"
+	BridgePort          = 9101
+	DevBridgePort       = 9102
+	BridgeServerName    = "host"
+	DevBridgeServerName = "dev"
+	bridgeProbeTimeout  = 3 * time.Second
+	owner               = "yinhe"
+	repoName            = "starclaw"
+	BridgeVersion       = "0.5.6"
 )
 
 // DetectBridgeURL determines the MCP Bridge URL based on runtime environment.
@@ -90,6 +92,45 @@ func AutoRegisterBridge(registry *tool.Registry) {
 		}
 
 		log.Printf("[MCP Bridge] Not found after retries. To enable host control, run: mcp-bridge -port %d", BridgePort)
+	}()
+}
+
+// DetectDevBridgeURL returns the dev-bridge URL (same logic as host bridge).
+func DetectDevBridgeURL() string {
+	port := DevBridgePort
+	if v := os.Getenv("STARCLAW_DEV_BRIDGE_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			port = p
+		}
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return fmt.Sprintf("http://host.docker.internal:%d", port)
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", port)
+}
+
+// AutoRegisterDevBridge detects and registers the Dev Bridge (development MCP tools).
+func AutoRegisterDevBridge(registry *tool.Registry) {
+	go func() {
+		devURL := DetectDevBridgeURL()
+		// Try once on startup, don't retry aggressively (dev-bridge is optional)
+		time.Sleep(2 * time.Second) // wait for host bridge first
+		if !ProbeBridge(devURL) {
+			log.Printf("[Dev Bridge] Not detected at %s (optional — run dev-bridge to enable)", devURL)
+			return
+		}
+		cfg := ServerConfig{
+			BaseURL: devURL,
+			Name:    DevBridgeServerName,
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := RegisterMCPTools(ctx, registry, cfg)
+		cancel()
+		if err != nil {
+			log.Printf("[Dev Bridge] Connected but failed to register: %v", err)
+			return
+		}
+		log.Printf("[Dev Bridge] ✓ Auto-registered from %s", devURL)
 	}()
 }
 
