@@ -14,7 +14,7 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	ownerID := getOwnerOrSystemID(db)
 
 	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
-	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","audio_analysis","feishu"]`
+	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","audio_analysis","feishu","desktop"]`
 
 	// Temporarily disable FK checks for seeding (model_id is NULL for system agents)
 	db.Exec("SET FOREIGN_KEY_CHECKS = 0")
@@ -175,8 +175,8 @@ var builtinAgents = []builtinAgentDef{
 	},
 	{
 		Name:        "抖音爆款导演",
-		Description: "抖音/短视频爆款内容全流程制作：热点调研→爆款选题→钩子脚本→竖屏视频→配音字幕→BGM→封面标题。精通抖音算法逻辑和爆款内容公式，从0到1产出可直接发布的竖屏短视频。",
-		Tools:       `["web_search","browser","video_generation","image_generation","dubbing","music_generation","mv_production","code"]`,
+		Description: "抖音/短视频爆款内容全流程制作：热点调研→爆款选题→钩子脚本→竖屏视频→配音字幕→BGM→封面标题。精通抖音算法逻辑和爆款内容公式，从0到1产出可直接发布的竖屏短视频。支持操控剪映等桌面软件。",
+		Tools:       `["web_search","browser","video_generation","image_generation","dubbing","music_generation","mv_production","code","desktop"]`,
 		Prompt:      douyinViralAgentPrompt,
 	},
 }
