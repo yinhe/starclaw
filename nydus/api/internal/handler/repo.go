@@ -506,6 +506,81 @@ func GetServerStats(c *gin.Context) {
 	})
 }
 
+// GetCommitHeatmap returns daily commit counts for a repo (last N days).
+// Used by Forge dashboard to render a commit heatmap.
+func GetCommitHeatmap(c *gin.Context) {
+	name := c.DefaultQuery("repo", "starclaw")
+	if !repoAccessible(c, name) {
+		c.JSON(404, gin.H{"error": "repo not found"})
+		return
+	}
+	days := c.DefaultQuery("days", "30")
+	bareRepo := RepoPath(name)
+	if _, err := os.Stat(filepath.Join(bareRepo, "HEAD")); os.IsNotExist(err) {
+		c.JSON(404, gin.H{"error": "repo not found"})
+		return
+	}
+
+	// git log with ISO date, one line per commit
+	cmd := exec.Command("git", "--git-dir", bareRepo, "log", "--all",
+		"--since="+days+" days ago", "--format=%aI|%an")
+	out, err := cmd.Output()
+	if err != nil {
+		c.JSON(200, gin.H{"heatmap": []gin.H{}, "days": days})
+		return
+	}
+
+	// Count commits per day and per author
+	dayCounts := map[string]int{}
+	authorCounts := map[string]int{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 2)
+		if len(parts) < 1 {
+			continue
+		}
+		// Extract YYYY-MM-DD from ISO date
+		date := parts[0]
+		if len(date) >= 10 {
+			date = date[:10]
+		}
+		dayCounts[date]++
+		if len(parts) == 2 && parts[1] != "" {
+			authorCounts[parts[1]]++
+		}
+	}
+
+	// Build sorted heatmap array
+	heatmap := make([]gin.H, 0, len(dayCounts))
+	for date, count := range dayCounts {
+		heatmap = append(heatmap, gin.H{"date": date, "count": count})
+	}
+	// Sort by date descending (simple bubble for small N)
+	for i := 0; i < len(heatmap); i++ {
+		for j := i + 1; j < len(heatmap); j++ {
+			if heatmap[i]["date"].(string) < heatmap[j]["date"].(string) {
+				heatmap[i], heatmap[j] = heatmap[j], heatmap[i]
+			}
+		}
+	}
+
+	total := 0
+	for _, v := range dayCounts {
+		total += v
+	}
+
+	c.JSON(200, gin.H{
+		"heatmap":       heatmap,
+		"total_commits": total,
+		"active_days":   len(dayCounts),
+		"authors":       authorCounts,
+		"days":          days,
+		"repo":          name,
+	})
+}
+
 // GetRecentCommits returns the last N commits for a repo (for web UI).
 func GetRecentCommits(c *gin.Context) {
 	name := c.DefaultQuery("repo", "claw")

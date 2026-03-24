@@ -20,6 +20,7 @@ type Config struct {
 	Nydus       NydusConfig       `mapstructure:"nydus"`
 	Storage     StorageConfig     `mapstructure:"storage"`
 	Hive        HiveConfig        `mapstructure:"hive"`
+	Forge       ForgeConfig       `mapstructure:"forge"`
 }
 
 type StorageConfig struct {
@@ -59,6 +60,10 @@ type ContributorConfig struct {
 
 type HiveConfig struct {
 	URL string `mapstructure:"url"` // Hive Controller URL, e.g. http://hive:9090 (set by Hive when creating containers)
+}
+
+type ForgeConfig struct {
+	URL string `mapstructure:"url"` // Forge API URL, e.g. http://forge-api:8099 (when set, proxy /v1/forge/* to this)
 }
 
 type NydusConfig struct {
@@ -165,6 +170,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("contributor.external_addr", "")
 	viper.SetDefault("storage.data_dir", "/app")
 	viper.SetDefault("hive.url", "")
+	viper.SetDefault("forge.url", "")
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

@@ -5,17 +5,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"starclaw.net/forge/internal/aggregator"
 	"starclaw.net/forge/internal/config"
 	"starclaw.net/forge/internal/model"
 )
 
 type DashboardHandler struct {
-	DB  *gorm.DB
-	Cfg *config.Config
+	DB     *gorm.DB
+	Cfg    *config.Config
+	Nydus  *aggregator.NydusClient
+	Bridge *aggregator.DevBridgeClient
 }
 
 // Overview returns the main dashboard data.
@@ -242,3 +246,52 @@ func (r *bytesReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 func readerFromBytes(data []byte) io.Reader { return &bytesReader{data: data} }
+
+// Heatmap returns commit heatmap data from Nydus.
+func (h *DashboardHandler) Heatmap(c *gin.Context) {
+	repo := c.DefaultQuery("repo", "starclaw")
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+	if days <= 0 {
+		days = 30
+	}
+	if h.Nydus == nil {
+		c.JSON(http.StatusOK, gin.H{"heatmap": []interface{}{}, "error": "nydus client not configured"})
+		return
+	}
+	result, err := h.Nydus.GetCommitHeatmap(repo, days)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"heatmap": []interface{}{}, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// Deploys returns recent deploy records from Nydus.
+func (h *DashboardHandler) Deploys(c *gin.Context) {
+	if h.Nydus == nil {
+		c.JSON(http.StatusOK, gin.H{"deploys": []interface{}{}, "error": "nydus client not configured"})
+		return
+	}
+	deploys, err := h.Nydus.GetRecentDeploys(20)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"deploys": []interface{}{}, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deploys": deploys})
+}
+
+// Commits returns recent commits from Nydus.
+func (h *DashboardHandler) Commits(c *gin.Context) {
+	repo := c.DefaultQuery("repo", "starclaw")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if h.Nydus == nil {
+		c.JSON(http.StatusOK, gin.H{"commits": []interface{}{}, "error": "nydus client not configured"})
+		return
+	}
+	commits, err := h.Nydus.GetRecentCommits(repo, limit)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"commits": []interface{}{}, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"commits": commits})
+}

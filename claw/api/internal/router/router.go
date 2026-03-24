@@ -1027,20 +1027,27 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/missions/:id/reviews", squadHandler.ListStepReviews)
 
 			// Forge (AI-Native Project Management)
-			forgeHandler := v1.NewForgeHandler(db)
-			protected.POST("/forge/projects", forgeHandler.CreateProject)
-			protected.GET("/forge/projects", forgeHandler.ListProjects)
-			protected.GET("/forge/projects/:id", forgeHandler.GetProject)
-			protected.PUT("/forge/projects/:id", forgeHandler.UpdateProject)
-			protected.POST("/forge/projects/:id/issues", forgeHandler.CreateIssue)
-			protected.GET("/forge/projects/:id/issues", forgeHandler.ListIssues)
-			protected.GET("/forge/projects/:id/issues/:number", forgeHandler.GetIssue)
-			protected.PUT("/forge/projects/:id/issues/:number", forgeHandler.UpdateIssue)
-			protected.POST("/forge/projects/:id/issues/:number/comments", forgeHandler.AddIssueComment)
-			protected.POST("/forge/projects/:id/milestones", forgeHandler.CreateMilestone)
-			protected.GET("/forge/projects/:id/milestones", forgeHandler.ListMilestones)
-			protected.POST("/forge/milestones/:ms_id/close", forgeHandler.CloseMilestone)
-			protected.GET("/forge/projects/:id/board", forgeHandler.GetBoard)
+			// When STARCLAW_FORGE_URL is set, proxy all /v1/forge/* to standalone forge-api.
+			// Otherwise, use local Claw DB handlers (backward compat).
+			if cfg.Forge.URL != "" {
+				log.Printf("[router] forge proxy mode → %s", cfg.Forge.URL)
+				protected.Any("/forge/*path", forgeProxy(cfg.Forge.URL))
+			} else {
+				forgeHandler := v1.NewForgeHandler(db)
+				protected.POST("/forge/projects", forgeHandler.CreateProject)
+				protected.GET("/forge/projects", forgeHandler.ListProjects)
+				protected.GET("/forge/projects/:id", forgeHandler.GetProject)
+				protected.PUT("/forge/projects/:id", forgeHandler.UpdateProject)
+				protected.POST("/forge/projects/:id/issues", forgeHandler.CreateIssue)
+				protected.GET("/forge/projects/:id/issues", forgeHandler.ListIssues)
+				protected.GET("/forge/projects/:id/issues/:number", forgeHandler.GetIssue)
+				protected.PUT("/forge/projects/:id/issues/:number", forgeHandler.UpdateIssue)
+				protected.POST("/forge/projects/:id/issues/:number/comments", forgeHandler.AddIssueComment)
+				protected.POST("/forge/projects/:id/milestones", forgeHandler.CreateMilestone)
+				protected.GET("/forge/projects/:id/milestones", forgeHandler.ListMilestones)
+				protected.POST("/forge/milestones/:ms_id/close", forgeHandler.CloseMilestone)
+				protected.GET("/forge/projects/:id/board", forgeHandler.GetBoard)
+			}
 
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
@@ -1948,4 +1955,24 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	web.RegisterRoutes(r)
 
 	return r
+}
+
+// forgeProxy returns a Gin handler that reverse-proxies /v1/forge/* to the standalone forge-api.
+// Path mapping: /v1/forge/projects → forge-api /api/projects
+func forgeProxy(forgeURL string) gin.HandlerFunc {
+	target, err := url.Parse(forgeURL)
+	if err != nil {
+		log.Printf("[forge-proxy] invalid forge URL %q: %v", forgeURL, err)
+		return func(c *gin.Context) {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "forge proxy misconfigured"})
+		}
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	return func(c *gin.Context) {
+		// /v1/forge/projects → /api/projects
+		subPath := c.Param("path")
+		c.Request.URL.Path = "/api" + subPath
+		c.Request.Host = target.Host
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
 }

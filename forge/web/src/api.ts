@@ -126,6 +126,9 @@ export const api = {
   activity: (params?: string) => get<any>(`/dashboard/activity${params ? `?${params}` : ''}`),
   stats: () => get<any>('/dashboard/stats'),
   devclaws: () => get<any>('/dashboard/devclaws'),
+  heatmap: (repo?: string, days?: number) => get<any>(`/dashboard/heatmap?repo=${repo || 'starclaw'}&days=${days || 30}`),
+  commits: (repo?: string, limit?: number) => get<any>(`/dashboard/commits?repo=${repo || 'starclaw'}&limit=${limit || 30}`),
+  deploys: () => get<any>('/dashboard/deploys'),
 
   // Projects
   listProjects: () => get<any>('/projects'),

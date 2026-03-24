@@ -7,12 +7,14 @@ import {
   Activity,
   LogOut,
   Flame,
+  CalendarDays,
 } from 'lucide-react'
 import DashboardPage from './pages/DashboardPage'
 import BoardPage from './pages/BoardPage'
 import PRDPage from './pages/PRDPage'
 import SprintPage from './pages/SprintPage'
 import OrchestratorPage from './pages/OrchestratorPage'
+import TimelinePage from './pages/TimelinePage'
 import LoginPage from './pages/LoginPage'
 import { isLoggedIn, clearToken, getNodeId } from './api'
 
@@ -22,6 +24,7 @@ const nav = [
   { to: '/prd', icon: FileText, label: 'PRD' },
   { to: '/sprints', icon: Zap, label: 'Sprint' },
   { to: '/orchestrator', icon: Activity, label: '调度' },
+  { to: '/timeline', icon: CalendarDays, label: '时间线' },
 ]
 
 export default function App() {
@@ -91,6 +94,7 @@ export default function App() {
           <Route path="/prd" element={<PRDPage />} />
           <Route path="/sprints" element={<SprintPage />} />
           <Route path="/orchestrator" element={<OrchestratorPage />} />
+          <Route path="/timeline" element={<TimelinePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

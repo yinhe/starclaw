@@ -13,6 +13,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"starclaw.net/forge/internal/aggregator"
 	"starclaw.net/forge/internal/config"
 	"starclaw.net/forge/internal/engine"
 	"starclaw.net/forge/internal/handler"
@@ -35,11 +36,15 @@ func main() {
 	prdEngine := engine.NewPRDEngine(db, cfg)
 	orchestrator := &engine.Orchestrator{DB: db, Cfg: cfg}
 
+	// Aggregators
+	nydusAgg := aggregator.NewNydusClient(cfg.NydusURL, cfg.NydusSecret)
+	bridgeAgg := aggregator.NewDevBridgeClient(cfg.DevBridgeURL)
+
 	// Handlers
 	projectH := &handler.ProjectHandler{DB: db}
 	issueH := &handler.IssueHandler{DB: db}
 	sprintH := &handler.SprintHandler{DB: db}
-	dashboardH := &handler.DashboardHandler{DB: db, Cfg: cfg}
+	dashboardH := &handler.DashboardHandler{DB: db, Cfg: cfg, Nydus: nydusAgg, Bridge: bridgeAgg}
 
 	// Router
 	r := gin.Default()
@@ -98,6 +103,9 @@ func main() {
 		api.GET("/dashboard/branches", dashboardH.Branches)
 		api.GET("/dashboard/devclaws", dashboardH.DevClaws)
 		api.GET("/dashboard/stats", dashboardH.Stats)
+		api.GET("/dashboard/heatmap", dashboardH.Heatmap)
+		api.GET("/dashboard/deploys", dashboardH.Deploys)
+		api.GET("/dashboard/commits", dashboardH.Commits)
 
 		// PRD (non-streaming, kept for backwards compat)
 		api.POST("/prd/generate", func(c *gin.Context) {
