@@ -330,9 +330,8 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 		return "", fmt.Errorf("LLM API %d: %s", resp.StatusCode, string(body[:min(len(body), 500)]))
 	}
 
-	var rawAll strings.Builder // all raw content for final extraction
-	var inThinkTag bool        // real-time display state
-	var tagBuf strings.Builder // buffer to handle partial tags across chunks
+	var rawAll strings.Builder // accumulate ALL raw content
+	var inThinkTag bool
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 64*1024), 64*1024)
 
@@ -368,72 +367,47 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 			onChunk(StreamChunk{Type: "thinking", Text: delta.ReasoningContent})
 		}
 
-		// Method 2: detect <think>...</think> in content (qwen3 via Ollama)
+		// Method 2: detect <think>...</think> tags in content (qwen3 via Ollama)
+		// Simple approach: no cross-chunk buffering, just track state and emit directly
 		if delta.Content != "" {
 			rawAll.WriteString(delta.Content)
+			text := delta.Content
 
-			// Buffer to handle partial tags across chunks
-			tagBuf.WriteString(delta.Content)
-			buf := tagBuf.String()
-
-			// Process complete segments from buffer
-			for {
+			// Handle tag transitions within this single chunk
+			for len(text) > 0 {
 				if inThinkTag {
-					idx := strings.Index(buf, "</think>")
-					if idx >= 0 {
+					if idx := strings.Index(text, "</think>"); idx >= 0 {
 						if idx > 0 {
-							onChunk(StreamChunk{Type: "thinking", Text: buf[:idx]})
+							onChunk(StreamChunk{Type: "thinking", Text: text[:idx]})
 						}
-						buf = buf[idx+8:]
+						text = text[idx+8:]
 						inThinkTag = false
 					} else {
-						// Keep last 8 chars as potential partial </think>
-						safe := len(buf) - 8
-						if safe > 0 {
-							onChunk(StreamChunk{Type: "thinking", Text: buf[:safe]})
-							buf = buf[safe:]
-						}
-						break
+						// Entire chunk is thinking content — emit as-is (no byte slicing)
+						onChunk(StreamChunk{Type: "thinking", Text: text})
+						text = ""
 					}
 				} else {
-					idx := strings.Index(buf, "<think>")
-					if idx >= 0 {
+					if idx := strings.Index(text, "<think>"); idx >= 0 {
 						if idx > 0 {
-							onChunk(StreamChunk{Type: "content", Text: buf[:idx]})
+							onChunk(StreamChunk{Type: "content", Text: text[:idx]})
 						}
-						buf = buf[idx+7:]
+						text = text[idx+7:]
 						inThinkTag = true
 					} else {
-						// Keep last 7 chars as potential partial <think>
-						safe := len(buf) - 7
-						if safe > 0 {
-							onChunk(StreamChunk{Type: "content", Text: buf[:safe]})
-							buf = buf[safe:]
-						}
-						break
+						// Entire chunk is regular content — emit as-is (no byte slicing)
+						onChunk(StreamChunk{Type: "content", Text: text})
+						text = ""
 					}
 				}
 			}
-			tagBuf.Reset()
-			tagBuf.WriteString(buf)
-		}
-	}
-
-	// Flush remaining buffer
-	remaining := tagBuf.String()
-	if remaining != "" {
-		if inThinkTag {
-			onChunk(StreamChunk{Type: "thinking", Text: remaining})
-		} else {
-			onChunk(StreamChunk{Type: "content", Text: remaining})
 		}
 	}
 
 	onChunk(StreamChunk{Type: "done", Text: ""})
 
-	// Final: strip all <think>...</think> blocks from raw to get clean content
-	raw := rawAll.String()
-	clean := stripThinkTags(raw)
+	// Final extraction: strip <think> blocks from complete raw text
+	clean := stripThinkTags(rawAll.String())
 	return strings.TrimSpace(clean), nil
 }
 
