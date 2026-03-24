@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const version = "2026.0323.1809"
+const version = "2026.0324.1304"
 
 //go:embed embed/spore_bin
 var sporeBin []byte
