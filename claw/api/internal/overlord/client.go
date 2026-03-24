@@ -14,16 +14,23 @@ import (
 	"github.com/yinhe/starclaw/internal/molt"
 )
 
+// TaskStats holds current task counters for heartbeat reporting.
+type TaskStats struct {
+	Running int
+	Queued  int
+}
+
 // Client handles registration and heartbeat with an Overlord node
 type Client struct {
-	cfg     config.OverlordConfig
-	nodeID  string
-	token   string
-	clawID  string
-	address string // public address of this Claw, e.g. https://starclaw.me
-	mu      sync.RWMutex
-	stopCh  chan struct{}
-	httpC   *http.Client
+	cfg           config.OverlordConfig
+	nodeID        string
+	token         string
+	clawID        string
+	address       string // public address of this Claw, e.g. https://starclaw.me
+	mu            sync.RWMutex
+	stopCh        chan struct{}
+	httpC         *http.Client
+	TaskCountFunc func() TaskStats // injected by router to report real task counts
 }
 
 // NewClient creates an overlord client from config
@@ -207,6 +214,11 @@ func (c *Client) heartbeat() error {
 	cpu := cpuPercent()
 	mem := memPercent()
 
+	var ts TaskStats
+	if c.TaskCountFunc != nil {
+		ts = c.TaskCountFunc()
+	}
+
 	c.mu.RLock()
 	cid := c.clawID
 	c.mu.RUnlock()
@@ -219,8 +231,8 @@ func (c *Client) heartbeat() error {
 		"address":       c.getAddress(),
 		"cpu_percent":   cpu,
 		"mem_percent":   mem,
-		"tasks_running": 0,
-		"tasks_queued":  0,
+		"tasks_running": ts.Running,
+		"tasks_queued":  ts.Queued,
 	}
 
 	_, err := c.post("/brood/heartbeat", body)

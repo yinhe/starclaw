@@ -10,12 +10,12 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 	"starclaw.net/overlord/api/internal/handler"
 	"starclaw.net/overlord/api/internal/middleware"
 	"starclaw.net/overlord/api/internal/model"
 	"starclaw.net/overlord/api/internal/ws"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 )
 
 func main() {
@@ -338,6 +338,7 @@ func main() {
 			taRead.GET("/node-skills/:nodeId", teamAgentH.NodeSkills)
 			taRead.GET("/node-agents/:nodeId", teamAgentH.NodeAgents)
 			taRead.GET("/usage/by-user", teamAgentH.UsageByUser)
+			taRead.GET("/instances/:id/agents", teamAgentH.ListInstanceAgents)
 		}
 		// --- Team Agent submit (viewer+) — chat + mission creation ---
 		taSubmit := brood.Group("/team-agent")

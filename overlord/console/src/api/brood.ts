@@ -527,6 +527,8 @@ export const broodAPI = {
     request<AgentPublishResp>(`/team-agent/instances/${instanceId}/agent-publish`, { method: 'POST', body: JSON.stringify(data) }),
   teamAgentUsageByUser: () =>
     request<{ users: EmployeeUsage[]; total: number }>('/team-agent/usage/by-user'),
+  listInstanceAgents: (instanceId: string) =>
+    request<{ agents: InstanceAgent[]; total: number }>(`/team-agent/instances/${instanceId}/agents`),
   teamAgentChatHistory: (instanceId: string) =>
     request<{ messages: ChatMessageRecord[]; total: number }>(`/team-agent/instances/${instanceId}/chat`),
 
@@ -764,6 +766,24 @@ export interface AgentPublishResp {
   name: string
   category: string
   status: string
+}
+
+export interface InstanceAgentSkill {
+  id: string
+  skill_name: string
+  version: string
+}
+
+export interface InstanceAgent {
+  id: string
+  name: string
+  role_code: string
+  team_instance_id: string
+  system_prompt: string
+  model_name: string
+  tools: string
+  skills: InstanceAgentSkill[]
+  created_at: string
 }
 
 export interface ClawModel {

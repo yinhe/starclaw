@@ -474,14 +474,27 @@ func (c *Client) InstallSkill(nodeAddr, overlordToken, agentID string, req Insta
 	return &resp, nil
 }
 
+type AgentSkillInfo struct {
+	ID        string `json:"id"`
+	SkillName string `json:"skill_name"`
+	Version   string `json:"version"`
+}
+
+type AgentInfo struct {
+	ID             string           `json:"id"`
+	Name           string           `json:"name"`
+	RoleCode       string           `json:"role_code"`
+	TeamInstanceID string           `json:"team_instance_id"`
+	SystemPrompt   string           `json:"system_prompt"`
+	ModelName      string           `json:"model_name"`
+	Tools          string           `json:"tools"`
+	Skills         []AgentSkillInfo `json:"skills"`
+	CreatedAt      string           `json:"created_at"`
+}
+
 type ListTeamAgentsResp struct {
-	Agents []struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		RoleCode string `json:"role_code"`
-		Tools    string `json:"tools"`
-	} `json:"agents"`
-	Total int `json:"total"`
+	Agents []AgentInfo `json:"agents"`
+	Total  int         `json:"total"`
 }
 
 // ListTeamAgents lists agents for a team instance on a Claw node.

@@ -1468,6 +1468,35 @@ func (h *TeamAgentHandler) provisionAgents(instanceID, nodeAddr string, roles []
 	log.Printf("[team-agent] provisioning complete for instance %s", instanceID)
 }
 
+// ── Instance Agents API ──
+
+// GET /brood/team-agent/instances/:id/agents
+// Proxies to the Claw node to fetch provisioned agents for an instance.
+func (h *TeamAgentHandler) ListInstanceAgents(c *gin.Context) {
+	instanceID := c.Param("id")
+
+	var inst model.TeamInstance
+	if err := h.db.Where("id = ?", instanceID).First(&inst).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "instance not found"})
+		return
+	}
+
+	var node model.ClawNode
+	if err := h.db.Where("id = ?", inst.ClawNodeID).First(&node).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "claw node not found"})
+		return
+	}
+
+	resp, err := h.clawClient.ListTeamAgents(node.Address, h.overlordToken, instanceID)
+	if err != nil {
+		log.Printf("[team-agent] failed to list agents for instance %s: %v", instanceID, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch agents from claw node"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // ── Status Syncer (background goroutine) ──
 
 // StartStatusSyncer polls Claw nodes every 30s to sync mission status.

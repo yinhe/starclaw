@@ -93,17 +93,25 @@ func (h *OverlordInternalHandler) CreateSquad(c *gin.Context) {
 		tagsJSON = toJSON(req.Tags)
 	}
 
+	captainNode := ""
+	if h.identity != nil {
+		captainNode = h.identity.NodeID
+	}
+
+	sysUserID := h.ensureSystemUser("overlord-team-agent")
+
 	squad := model.Squad{
 		Name:        req.Name,
 		Description: req.Description,
-		CaptainNode: h.identity.NodeID,
-		UserID:      "overlord:" + req.OverlordRef, // mark as overlord-managed
+		CaptainNode: captainNode,
+		UserID:      sysUserID,
 		Status:      "active",
 		MaxMembers:  req.MaxMembers,
 		Tags:        tagsJSON,
 	}
 
 	if err := h.db.Create(&squad).Error; err != nil {
+		log.Printf("[overlord-internal] failed to create squad: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create squad"})
 		return
 	}
@@ -111,7 +119,7 @@ func (h *OverlordInternalHandler) CreateSquad(c *gin.Context) {
 	// Auto-add self as captain
 	member := model.SquadMember{
 		SquadID:  squad.ID,
-		NodeID:   h.identity.NodeID,
+		NodeID:   captainNode,
 		Role:     "captain",
 		Status:   "online",
 		JoinedAt: time.Now(),

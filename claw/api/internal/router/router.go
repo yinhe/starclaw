@@ -1094,6 +1094,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				if cfg.Node.Address != "" {
 					oc.SetAddress(cfg.Node.Address)
 				}
+				oc.TaskCountFunc = func() overlord.TaskStats {
+					var running, queued int64
+					db.Model(&model.Mission{}).Where("status IN ?", []string{"executing", "reviewing"}).Count(&running)
+					db.Model(&model.Mission{}).Where("status = ?", "planning").Count(&queued)
+					return overlord.TaskStats{Running: int(running), Queued: int(queued)}
+				}
 				oc.Start()
 				log.Printf("[router] overlord client started: url=%s", cfg.Overlord.OverlordURL)
 			}

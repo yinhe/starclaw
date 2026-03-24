@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bot, Plus, Zap, Target, XCircle, ChevronRight, Code, Megaphone, Headphones, BarChart3, Loader2, Users, TrendingUp, ShoppingCart, Film, Crosshair, Shield, Cpu, Wrench, ArrowRight, Server, HeartPulse } from 'lucide-react'
-import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, ClawModel, ClawSkill, ClawAgentTemplate, AgentSandboxResp, EmployeeUsage, ProvisionResult } from '../api/brood'
+import { broodAPI, TeamAgentTemplate, TeamInstance, TeamMission, TeamAgentStats, ClawNode, ClawModel, ClawSkill, ClawAgentTemplate, AgentSandboxResp, EmployeeUsage, ProvisionResult, InstanceAgent } from '../api/brood'
 import { useTeamAgentWS } from '../hooks/useTeamAgentWS'
 
 const statusColors: Record<string, string> = {
@@ -57,6 +57,8 @@ export default function TeamAgentPage() {
   const [missions, setMissions] = useState<TeamMission[]>([])
   const [loading, setLoading] = useState(true)
   const [employeeUsage, setEmployeeUsage] = useState<EmployeeUsage[]>([])
+  const [instanceAgents, setInstanceAgents] = useState<InstanceAgent[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
 
   // Create modal (lobby)
   const [showCreate, setShowCreate] = useState(false)
@@ -343,6 +345,7 @@ export default function TeamAgentPage() {
   async function selectInstance(inst: TeamInstance) {
     setSelectedInstance(inst)
     setView('detail')
+    setInstanceAgents([])
     // Load existing role overrides
     try {
       const cfg = inst.config ? JSON.parse(inst.config) : {}
@@ -353,6 +356,13 @@ export default function TeamAgentPage() {
       const res = await broodAPI.listTeamMissions(inst.id)
       setMissions(res.missions || [])
     } catch { /* ignore */ }
+    // Fetch provisioned agents from Claw
+    setAgentsLoading(true)
+    try {
+      const agentsRes = await broodAPI.listInstanceAgents(inst.id)
+      setInstanceAgents(agentsRes.agents || [])
+    } catch { setInstanceAgents([]) }
+    setAgentsLoading(false)
   }
 
   async function handleDisband(id: string) {
@@ -510,6 +520,48 @@ export default function TeamAgentPage() {
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* Provisioned Agents from Claw */}
+        {(instanceAgents.length > 0 || agentsLoading) && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-300">已部署 Agent</h3>
+              <span className="text-[10px] text-gray-600">从 Claw 节点实时获取</span>
+            </div>
+            {agentsLoading ? (
+              <div className="flex items-center gap-2 text-xs text-gray-500 py-4 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> 加载中...</div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {instanceAgents.map(agent => (
+                  <div key={agent.id} className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 hover:border-overlord-600/30 transition">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">{roleIcons[agent.role_code] || '🤖'}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-bold text-white">{agent.name}</span>
+                        <span className="ml-2 text-[10px] text-gray-500 bg-gray-700/50 px-1.5 py-0.5 rounded">{agent.role_code}</span>
+                      </div>
+                      {agent.model_name && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${modelColors[agent.model_name] || 'text-gray-400 bg-gray-700/50'}`}>
+                          {agent.model_name}
+                        </span>
+                      )}
+                    </div>
+                    {agent.skills && agent.skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {agent.skills.map(s => (
+                          <span key={s.id} className="text-[10px] px-2 py-0.5 rounded-full bg-overlord-600/10 text-overlord-300 border border-overlord-500/20">
+                            {s.skill_name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-[10px] text-gray-600 mt-2 truncate" title={agent.id}>ID: {agent.id.slice(0, 8)}...</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
