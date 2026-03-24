@@ -117,6 +117,56 @@ func main() {
 			c.JSON(http.StatusCreated, gin.H{"prd": prd})
 		})
 
+		// PRD import — 从对话/外部直接导入完整 PRD (不调 LLM)
+		api.POST("/prd/import", func(c *gin.Context) {
+			var req struct {
+				ProjectID          string        `json:"project_id" binding:"required"`
+				Title              string        `json:"title" binding:"required"`
+				Prompt             string        `json:"prompt"`
+				Objective          string        `json:"objective"`
+				Features           []interface{} `json:"features"`
+				NonFunctional      []string      `json:"non_functional"`
+				AcceptanceCriteria []string      `json:"acceptance_criteria"`
+				Services           []string      `json:"services"`
+				EstimatedSprints   int           `json:"estimated_sprints"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			// Verify project exists
+			var project model.ForgeProject
+			if err := db.First(&project, "id = ?", req.ProjectID).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+				return
+			}
+			prd := model.ForgePRD{
+				ProjectID:        req.ProjectID,
+				Title:            req.Title,
+				Prompt:           req.Prompt,
+				Objective:        req.Objective,
+				EstimatedSprints: req.EstimatedSprints,
+				Status:           "confirmed", // 对话导入的 PRD 直接 confirmed
+			}
+			if b, err := json.Marshal(req.Features); err == nil {
+				prd.Features = string(b)
+			}
+			if b, err := json.Marshal(req.NonFunctional); err == nil {
+				prd.NonFunctional = string(b)
+			}
+			if b, err := json.Marshal(req.AcceptanceCriteria); err == nil {
+				prd.AcceptanceCriteria = string(b)
+			}
+			if b, err := json.Marshal(req.Services); err == nil {
+				prd.Services = string(b)
+			}
+			if req.EstimatedSprints == 0 {
+				prd.EstimatedSprints = 1
+			}
+			db.Create(&prd)
+			c.JSON(http.StatusCreated, gin.H{"prd": prd})
+		})
+
 		api.GET("/prd/:id", func(c *gin.Context) {
 			var prd model.ForgePRD
 			if err := db.First(&prd, "id = ?", c.Param("id")).Error; err != nil {

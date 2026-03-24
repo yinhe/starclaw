@@ -99,6 +99,7 @@ export const api = {
 
   // PRD
   generatePRD: (projectId: string, prompt: string) => post<any>('/prd/generate', { project_id: projectId, prompt }),
+  importPRD: (data: any) => post<any>('/prd/import', data),
   getPRD: (id: string) => get<any>(`/prd/${id}`),
   confirmPRD: (id: string) => post<any>(`/prd/${id}/confirm`),
   planPRD: (id: string) => post<any>(`/prd/${id}/plan`),
