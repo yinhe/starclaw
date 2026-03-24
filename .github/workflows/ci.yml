@@ -1,0 +1,269 @@
+name: Monorepo CI
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+
+# Cancel previous runs on the same PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Detect which services changed ──
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      claw-api: ${{ steps.filter.outputs.claw-api }}
+      claw-web: ${{ steps.filter.outputs.claw-web }}
+      hive: ${{ steps.filter.outputs.hive }}
+      queen-api: ${{ steps.filter.outputs.queen-api }}
+      queen-web: ${{ steps.filter.outputs.queen-web }}
+      synapse-api: ${{ steps.filter.outputs.synapse-api }}
+      synapse-core: ${{ steps.filter.outputs.synapse-core }}
+      overlord-api: ${{ steps.filter.outputs.overlord-api }}
+      overlord-web: ${{ steps.filter.outputs.overlord-web }}
+      nydus: ${{ steps.filter.outputs.nydus }}
+      spore: ${{ steps.filter.outputs.spore }}
+      carapace: ${{ steps.filter.outputs.carapace }}
+      larva: ${{ steps.filter.outputs.larva }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            claw-api:
+              - 'claw/api/**'
+            claw-web:
+              - 'claw/web/**'
+            hive:
+              - 'hive/**'
+            queen-api:
+              - 'queen/api/**'
+              - 'queen/swarm/**'
+              - 'queen/bounty/**'
+              - 'queen/arena/**'
+              - 'queen/forum/**'
+            queen-web:
+              - 'queen/site/**'
+              - 'queen/core/**'
+              - 'queen/web/**'
+            synapse-api:
+              - 'synapse/api/**'
+            synapse-core:
+              - 'synapse/core/**'
+            overlord-api:
+              - 'overlord/api/**'
+            overlord-web:
+              - 'overlord/web/**'
+              - 'overlord/console/**'
+            nydus:
+              - 'nydus/**'
+            spore:
+              - 'spore/**'
+            carapace:
+              - 'carapace/**'
+            larva:
+              - 'larva/**'
+
+  # ── Go Services Build ──
+  claw-api:
+    name: Claw API
+    needs: changes
+    if: needs.changes.outputs.claw-api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: claw/api/go.sum
+      - run: cd claw/api && go vet ./...
+      - run: cd claw/api && CGO_ENABLED=0 go build -o /dev/null ./cmd/server
+      - run: cd claw/api && CGO_ENABLED=0 go build -o /dev/null ./cmd/mcp-bridge
+
+  hive:
+    name: Hive Controller
+    needs: changes
+    if: needs.changes.outputs.hive == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: hive/api/go.sum
+      - run: cd hive/api && go vet ./...
+      - run: cd hive/api && CGO_ENABLED=0 go build -o /dev/null ./cmd/
+
+  queen-api:
+    name: Queen Services
+    needs: changes
+    if: needs.changes.outputs.queen-api == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, swarm, bounty, arena]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: queen/${{ matrix.service }}/go.sum
+      - run: cd queen/${{ matrix.service }} && go vet ./...
+      - run: cd queen/${{ matrix.service }} && CGO_ENABLED=0 go build -o /dev/null ./cmd/...
+
+  synapse-api:
+    name: Synapse API
+    needs: changes
+    if: needs.changes.outputs.synapse-api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: synapse/api/go.sum
+      - run: cd synapse/api && go vet ./...
+      - run: cd synapse/api && CGO_ENABLED=0 go build -o /dev/null ./cmd/server
+
+  overlord-api:
+    name: Overlord API
+    needs: changes
+    if: needs.changes.outputs.overlord-api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: overlord/api/go.sum
+      - run: cd overlord/api && go vet ./...
+      - run: cd overlord/api && CGO_ENABLED=0 go build -o /dev/null ./cmd/server
+
+  nydus:
+    name: Nydus
+    needs: changes
+    if: needs.changes.outputs.nydus == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: nydus/api/go.sum
+      - run: cd nydus/api && go vet ./...
+      - run: cd nydus/api && CGO_ENABLED=0 go build -o /dev/null ./cmd/server
+
+  spore:
+    name: Spore
+    needs: changes
+    if: needs.changes.outputs.spore == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: spore/go.sum
+      - run: cd spore && go vet ./...
+      - run: cd spore && CGO_ENABLED=0 go build -o /dev/null ./cmd/spore/
+      - run: cd spore && CGO_ENABLED=0 go build -o /dev/null ./cmd/hatchery/
+
+  carapace:
+    name: Carapace
+    needs: changes
+    if: needs.changes.outputs.carapace == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: carapace/go.sum
+      - run: cd carapace && go vet ./...
+      - run: cd carapace && go test ./...
+
+  # ── Frontend Builds ──
+  claw-web:
+    name: Claw Web
+    needs: changes
+    if: needs.changes.outputs.claw-web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd claw/web && npm ci && npx vite build
+
+  synapse-core:
+    name: Synapse Core
+    needs: changes
+    if: needs.changes.outputs.synapse-core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd synapse/core && npm ci && npx vite build
+
+  overlord-web:
+    name: Overlord Web
+    needs: changes
+    if: needs.changes.outputs.overlord-web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd overlord/web && npm ci && npx vite build
+      - run: cd overlord/console && npm ci && npx vite build
+
+  queen-web:
+    name: Queen Web
+    needs: changes
+    if: needs.changes.outputs.queen-web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: |
+          for dir in queen/site queen/core queen/web; do
+            if [ -f "$dir/package.json" ]; then
+              echo "Building $dir..."
+              cd $dir && npm ci && npx vite build && cd ${{ github.workspace }}
+            fi
+          done
+
+  # ── Summary ──
+  ci-ok:
+    name: CI Check
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - claw-api
+      - claw-web
+      - hive
+      - queen-api
+      - queen-web
+      - synapse-api
+      - synapse-core
+      - overlord-api
+      - overlord-web
+      - nydus
+      - spore
+      - carapace
+    steps:
+      - name: All checks passed
+        run: |
+          echo "### CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "All affected services built successfully." >> $GITHUB_STEP_SUMMARY
