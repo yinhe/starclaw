@@ -314,6 +314,7 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 	}
 
 	var fullContent strings.Builder
+	var inThinkTag bool // track <think>...</think> blocks in content
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 64*1024), 64*1024)
 
@@ -343,12 +344,40 @@ func (e *PRDEngine) CallLLMStream(systemPrompt, userMessage string, onChunk func
 		}
 
 		delta := chunk.Choices[0].Delta
+
+		// Method 1: explicit reasoning_content field (newer Ollama / OpenAI)
 		if delta.ReasoningContent != "" {
 			onChunk(StreamChunk{Type: "thinking", Text: delta.ReasoningContent})
 		}
+
+		// Method 2: detect <think>...</think> tags in content (qwen3 via Ollama)
 		if delta.Content != "" {
-			fullContent.WriteString(delta.Content)
-			onChunk(StreamChunk{Type: "content", Text: delta.Content})
+			text := delta.Content
+			for len(text) > 0 {
+				if inThinkTag {
+					if idx := strings.Index(text, "</think>"); idx >= 0 {
+						onChunk(StreamChunk{Type: "thinking", Text: text[:idx]})
+						text = text[idx+8:]
+						inThinkTag = false
+					} else {
+						onChunk(StreamChunk{Type: "thinking", Text: text})
+						text = ""
+					}
+				} else {
+					if idx := strings.Index(text, "<think>"); idx >= 0 {
+						if idx > 0 {
+							fullContent.WriteString(text[:idx])
+							onChunk(StreamChunk{Type: "content", Text: text[:idx]})
+						}
+						text = text[idx+7:]
+						inThinkTag = true
+					} else {
+						fullContent.WriteString(text)
+						onChunk(StreamChunk{Type: "content", Text: text})
+						text = ""
+					}
+				}
+			}
 		}
 	}
 
