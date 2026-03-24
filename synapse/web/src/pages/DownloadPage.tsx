@@ -4,7 +4,7 @@ import { Monitor, Terminal, Apple, Download, ExternalLink, Zap } from 'lucide-re
 import { isLoggedIn } from '../lib/api';
 
 const STARAI_BASE = 'https://star-ai.net/downloads';
-const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases';
+const NYDUS_BASE = 'https://nydus.starclaw.net/releases/download';
 
 const V_FALLBACK = 'v2026.0324.1304';
 
@@ -57,13 +57,24 @@ export default function DownloadPage() {
   const [version, setVersion] = useState<string>(V_FALLBACK);
 
   useEffect(() => {
-    fetch('https://nydus.starclaw.net/releases/latest')
+    // Use spore-latest.json (tracks actual built Spore installers)
+    // NOT /releases/latest (git tags that may be ahead of built installers)
+    fetch('https://nydus.starclaw.net/releases/spore/latest')
       .then(r => r.json())
       .then(d => {
         const v = d.tag_name || '';
         if (v) setVersion(v.startsWith('v') ? v : 'v' + v);
       })
-      .catch(() => {});
+      .catch(() => {
+        // Fallback to git tag if spore-latest.json unavailable
+        fetch('https://nydus.starclaw.net/releases/latest')
+          .then(r => r.json())
+          .then(d => {
+            const v = d.tag_name || '';
+            if (v) setVersion(v.startsWith('v') ? v : 'v' + v);
+          })
+          .catch(() => {});
+      });
   }, []);
 
   const packages = getPackages(version);

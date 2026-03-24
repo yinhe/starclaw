@@ -73,6 +73,17 @@ foreach ($s in @("install.sh", "install.ps1", "quick-install.ps1")) {
     }
 }
 
+# Sync to star-ai.net download mirror (via Nydus SSH tunnel)
+Write-Host "`n  Syncing to star-ai.net download mirror..." -ForegroundColor Cyan
+$staraiHost = "root@47.103.51.32"
+$staraiPath = "/opt/starclaw/downloads"
+foreach ($f in $artifacts) {
+    $sz = '{0:N1}' -f ($f.Length / 1MB)
+    Write-Host "  -> star-ai: $($f.Name) ($sz MB)..."
+    & scp @sshArgs $f.FullName "$($staraiHost):$staraiPath/$($f.Name)"
+    if ($LASTEXITCODE -ne 0) { Write-Host "  !! star-ai sync failed for $($f.Name)" -ForegroundColor Yellow }
+}
+
 # ── Step 3: Update spore-latest.json on server ──
 Write-Host "`n[3/3] Updating spore-latest.json..." -ForegroundColor Cyan
 
