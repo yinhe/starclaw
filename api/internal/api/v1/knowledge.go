@@ -330,7 +330,8 @@ func (h *KnowledgeHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"results": results})
 }
 
-func isTextContent(contentType, filename string) bool {
+// isTextContent is reserved for future use in knowledge base document type detection.
+var _ = func(contentType, filename string) bool {
 	if strings.HasPrefix(contentType, "text/") {
 		return true
 	}

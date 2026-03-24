@@ -11,21 +11,21 @@ import (
 
 // PunchRequest is sent via a signaling channel (HTTP/Gossip) to coordinate hole punching.
 type PunchRequest struct {
-	FromNodeID string `json:"from_node_id"`
-	ToNodeID   string `json:"to_node_id"`
-	PublicIP   string `json:"public_ip"`
-	PublicPort int    `json:"public_port"`
-	LocalIP    string `json:"local_ip"`
-	LocalPort  int    `json:"local_port"`
+	FromNodeID string  `json:"from_node_id"`
+	ToNodeID   string  `json:"to_node_id"`
+	PublicIP   string  `json:"public_ip"`
+	PublicPort int     `json:"public_port"`
+	LocalIP    string  `json:"local_ip"`
+	LocalPort  int     `json:"local_port"`
 	NATType    NATType `json:"nat_type"`
-	Nonce      string `json:"nonce"` // shared nonce for verification
+	Nonce      string  `json:"nonce"` // shared nonce for verification
 }
 
 // PunchResult reports the outcome of a hole-punch attempt.
 type PunchResult struct {
 	Success    bool           `json:"success"`
 	RemoteAddr *net.UDPAddr   `json:"remote_addr,omitempty"`
-	Conn       net.PacketConn `json:"-"` // the punched-through UDP connection
+	Conn       net.PacketConn `json:"-"`      // the punched-through UDP connection
 	Method     string         `json:"method"` // "direct", "punch", "relay"
 	LatencyMs  int64          `json:"latency_ms"`
 }
@@ -154,9 +154,8 @@ func (hp *HolePuncher) simultaneousPunch(conn net.PacketConn, publicAddr, localA
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
+		for range ticker.C {
+			{
 				if time.Now().After(deadline) {
 					return
 				}

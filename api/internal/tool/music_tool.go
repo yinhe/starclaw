@@ -81,12 +81,6 @@ func (t *MusicTool) Execute(ctx context.Context, argsJSON string) (string, error
 	}
 }
 
-// getFalAPIKey retrieves the fal.ai API key from the user's model config
-func (t *MusicTool) getFalAPIKey(userID string) string {
-	return GetFalAPIKey(t.db, userID)
-}
-
-// getFalAPIKeyCtx checks StarAI provider first
 func (t *MusicTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
 	return GetFalAPIKeyCtx(ctx, t.db, userID)
 }

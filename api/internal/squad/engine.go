@@ -798,10 +798,3 @@ func (e *Engine) failStep(stepID, missionID, reason string) {
 		"completed_at": &now,
 	})
 }
-
-// checkMissionComplete is kept for backward compatibility with remote callbacks.
-// It routes completed steps through the sprint lifecycle (review -> CI gate -> retro).
-func (e *Engine) checkMissionComplete(missionID string) {
-	// Delegate to the sprint lifecycle's checkSprintComplete
-	e.checkSprintComplete(missionID)
-}

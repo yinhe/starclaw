@@ -75,6 +75,7 @@ func (p *OllamaProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatC
 	payload := ollamaChatRequest{
 		Model:    req.Model,
 		Messages: toOllamaMessages(req.Messages),
+		Tools:    req.Tools,
 		Stream:   false,
 		Think:    &noThink,
 		Options: ollamaOptions{
@@ -120,6 +121,20 @@ func (p *OllamaProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatC
 		Done:    true,
 	}
 
+	// Parse tool calls from response
+	if len(ollamaResp.Message.ToolCalls) > 0 {
+		tc := ollamaResp.Message.ToolCalls[0]
+		argsJSON, _ := json.Marshal(tc.Function.Arguments)
+		chunk.Tool = &ToolCall{
+			ID:   fmt.Sprintf("call_%s_%s", tc.Function.Name, "0"),
+			Type: "function",
+			Function: FunctionCall{
+				Name:      tc.Function.Name,
+				Arguments: string(argsJSON),
+			},
+		}
+	}
+
 	if ollamaResp.PromptEvalCount > 0 || ollamaResp.EvalCount > 0 {
 		chunk.Usage = &TokenUsage{
 			PromptTokens:     ollamaResp.PromptEvalCount,
@@ -135,6 +150,7 @@ func (p *OllamaProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *Ch
 	payload := ollamaChatRequest{
 		Model:    req.Model,
 		Messages: toOllamaMessages(req.Messages),
+		Tools:    req.Tools,
 		Stream:   true,
 		Options: ollamaOptions{
 			Temperature: req.Temperature,
@@ -186,6 +202,20 @@ func (p *OllamaProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *Ch
 				Content: streamResp.Message.Content,
 			}
 
+			// Parse tool calls from streaming response
+			if len(streamResp.Message.ToolCalls) > 0 {
+				tc := streamResp.Message.ToolCalls[0]
+				argsJSON, _ := json.Marshal(tc.Function.Arguments)
+				chunk.Tool = &ToolCall{
+					ID:   fmt.Sprintf("call_%s_%s", tc.Function.Name, "0"),
+					Type: "function",
+					Function: FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: string(argsJSON),
+					},
+				}
+			}
+
 			if streamResp.Done {
 				chunk.Done = true
 				if streamResp.PromptEvalCount > 0 || streamResp.EvalCount > 0 {
@@ -215,10 +245,24 @@ func (p *OllamaProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *Ch
 func toOllamaMessages(msgs []ChatMessage) []ollamaMessage {
 	out := make([]ollamaMessage, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, ollamaMessage{
+		msg := ollamaMessage{
 			Role:    m.Role,
 			Content: m.Content,
-		})
+		}
+		// Convert provider ToolCalls to Ollama format for assistant messages
+		if len(m.ToolCalls) > 0 {
+			for _, tc := range m.ToolCalls {
+				var args interface{}
+				json.Unmarshal([]byte(tc.Function.Arguments), &args)
+				msg.ToolCalls = append(msg.ToolCalls, ollamaToolCall{
+					Function: ollamaFunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: args,
+					},
+				})
+			}
+		}
+		out = append(out, msg)
 	}
 	return out
 }
@@ -226,11 +270,12 @@ func toOllamaMessages(msgs []ChatMessage) []ollamaMessage {
 // --- Ollama API types ---
 
 type ollamaChatRequest struct {
-	Model    string          `json:"model"`
-	Messages []ollamaMessage `json:"messages"`
-	Stream   bool            `json:"stream"`
-	Think    *bool           `json:"think,omitempty"`
-	Options  ollamaOptions   `json:"options,omitempty"`
+	Model    string           `json:"model"`
+	Messages []ollamaMessage  `json:"messages"`
+	Tools    []ToolDefinition `json:"tools,omitempty"`
+	Stream   bool             `json:"stream"`
+	Think    *bool            `json:"think,omitempty"`
+	Options  ollamaOptions    `json:"options,omitempty"`
 }
 
 type ollamaOptions struct {
@@ -239,9 +284,19 @@ type ollamaOptions struct {
 }
 
 type ollamaMessage struct {
-	Role     string `json:"role"`
-	Content  string `json:"content"`
-	Thinking string `json:"thinking,omitempty"`
+	Role      string           `json:"role"`
+	Content   string           `json:"content"`
+	Thinking  string           `json:"thinking,omitempty"`
+	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+}
+
+type ollamaToolCall struct {
+	Function ollamaFunctionCall `json:"function"`
+}
+
+type ollamaFunctionCall struct {
+	Name      string      `json:"name"`
+	Arguments interface{} `json:"arguments"`
 }
 
 type ollamaChatResponse struct {

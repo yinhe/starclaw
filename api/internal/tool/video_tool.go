@@ -126,6 +126,16 @@ func isFalVideoModel(m string) bool {
 	return ok
 }
 
+// videoFallbackChain defines auto-fallback when a model times out or fails.
+// Key = original model, Value = fallback model to retry with.
+var videoFallbackChain = map[string]string{
+	"veo3.1":        "kling-v3",
+	"sora2":         "kling-v3",
+	"kling-v3":      "wan2.6-t2v",
+	"luma":          "wan2.6-t2v",
+	"minimax-video": "wan2.6-t2v",
+}
+
 func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, error) {
 	if args.Prompt == "" {
 		return "", fmt.Errorf("prompt is required")
@@ -143,6 +153,9 @@ func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, 
 	case "kling-v2", "kling-v1", "kling":
 		log.Printf("[VideoTool] Model %q is deprecated/invalid, auto-redirecting to kling-v3", args.Model)
 		args.Model = "kling-v3"
+	case "veo3":
+		log.Printf("[VideoTool] Model veo3 → veo3.1 (latest)")
+		args.Model = "veo3.1"
 	case "":
 		args.Model = "wan2.6-t2v"
 	}
@@ -345,6 +358,18 @@ func (t *VideoTool) generateVideoWan(ctx context.Context, userID, convID string,
 			log.Printf("[VideoTool] Task %s failed: %v", taskID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{"status": "failed"})
 			UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
+
+			// Auto-fallback: retry with a faster model
+			if fallback, ok := videoFallbackChain[args.Model]; ok {
+				log.Printf("[VideoTool] Auto-fallback: %s → %s for prompt=%q", args.Model, fallback, args.Prompt[:min(len(args.Prompt), 60)])
+				fallbackArgs := args
+				fallbackArgs.Model = fallback
+				go func() {
+					if _, retryErr := t.generateVideo(context.Background(), fallbackArgs); retryErr != nil {
+						log.Printf("[VideoTool] Fallback %s also failed: %v", fallback, retryErr)
+					}
+				}()
+			}
 			return
 		}
 		// Save clip locally to prevent CDN URL expiration during merge
@@ -526,6 +551,18 @@ func (t *VideoTool) generateVideoFal(ctx context.Context, userID, convID string,
 			log.Printf("[VideoTool] fal.ai %s polling failed: %v", requestID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", requestID).Updates(map[string]interface{}{"status": "failed"})
 			UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
+
+			// Auto-fallback: retry with a faster model
+			if fallback, ok := videoFallbackChain[args.Model]; ok {
+				log.Printf("[VideoTool] Auto-fallback: %s → %s for prompt=%q", args.Model, fallback, args.Prompt[:min(len(args.Prompt), 60)])
+				fallbackArgs := args
+				fallbackArgs.Model = fallback
+				go func() {
+					if _, retryErr := t.generateVideo(context.Background(), fallbackArgs); retryErr != nil {
+						log.Printf("[VideoTool] Fallback %s also failed: %v", fallback, retryErr)
+					}
+				}()
+			}
 			return
 		}
 		log.Printf("[VideoTool] fal.ai %s poll completed, extracting video URL", requestID)

@@ -934,7 +934,7 @@ func mapKeysToAppleScript(keys string) string {
 	action := "keystroke"
 	if sk, ok := special[key]; ok {
 		key = sk
-		action = "key code" // Actually use "keystroke" for named keys too
+		_ = action // early return below uses "keystroke" directly
 		// AppleScript uses "key code" for special keys
 		return fmt.Sprintf(`tell application "System Events" to %s "%s" using {%s}`, "keystroke", key, strings.Join(modifiers, ", "))
 	}

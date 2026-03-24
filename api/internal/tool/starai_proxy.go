@@ -18,12 +18,11 @@ import (
 
 // StarAI proxy singleton — set once during router init, used by all tools
 var (
-	staraiMu       sync.RWMutex
-	staraiClient   *http.Client // HTTP client with SignedTransport for StarAI Router
-	staraiBaseURL  string       // e.g. "https://api.star-ai.net/v1"
-	staraiIdentity *node.Identity
-	staraiAPIKey   string   // provisioned API key (sk-star-xxx)
-	staraiDB       *gorm.DB // DB for syncing API key to model_configs
+	staraiMu      sync.RWMutex
+	staraiClient  *http.Client // HTTP client with SignedTransport for StarAI Router
+	staraiBaseURL string       // e.g. "https://api.star-ai.net/v1"
+	staraiAPIKey  string       // provisioned API key (sk-star-xxx)
+	staraiDB      *gorm.DB     // DB for syncing API key to model_configs
 )
 
 // InitStarAIProxy initializes the shared StarAI proxy client.
@@ -31,7 +30,6 @@ var (
 func InitStarAIProxy(identity *node.Identity, baseURL string, db *gorm.DB) {
 	staraiMu.Lock()
 	defer staraiMu.Unlock()
-	staraiIdentity = identity
 	staraiBaseURL = baseURL
 	staraiDB = db
 	staraiClient = &http.Client{

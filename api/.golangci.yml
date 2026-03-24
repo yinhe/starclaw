@@ -1,0 +1,24 @@
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+  disable:
+    - errcheck    # Too noisy: 180+ unchecked returns in fire-and-forget patterns (log, cleanup, goroutines)
+    - typecheck
+
+linters-settings:
+  staticcheck:
+    checks:
+      - "all"
+      - "-SA1019"  # deprecated API usage (strings.Title etc) — tracked for future cleanup
+      - "-SA4006"  # unused value assigned — often intentional in multi-return
+      - "-SA4010"  # unused append result — sometimes intentional
+
+issues:
+  exclude-dirs:
+    - vendor
+  max-issues-per-linter: 50
+  max-same-issues: 5

@@ -470,44 +470,6 @@ func recordUsage(db *gorm.DB, userID, resourceType string, quantity int64, platf
 	}
 }
 
-// checkQuota checks if tenant has positive balance.
-// Only enforced when using platform key (platformKey=true). BYOK users always pass.
-// If Queen billing client is enabled, checks Queen balance first (authoritative source).
-func checkQuota(db *gorm.DB, userID, resourceType string, platformKey bool) error {
-	if !platformKey {
-		return nil // BYOK = no quota enforcement
-	}
-
-	// Check Queen balance if available (centralized billing is authoritative)
-	if queenBilling != nil && queenBilling.IsEnabled() {
-		hasQuota, _, err := queenBilling.CheckBalance(userID)
-		if err != nil {
-			log.Printf("[billing] Queen check balance failed: %v (falling back to local)", err)
-		} else if !hasQuota {
-			return fmt.Errorf("余额不足，请充值后继续使用")
-		} else {
-			return nil // Queen says OK
-		}
-	}
-
-	// Fallback to local check
-	var user model.User
-	if err := db.First(&user, "id = ?", userID).Error; err != nil || user.TenantID == "" {
-		return nil // no tenant = no enforcement
-	}
-
-	var tenant model.Tenant
-	if err := db.First(&tenant, "id = ?", user.TenantID).Error; err != nil {
-		return nil
-	}
-
-	if tenant.Balance <= 0 {
-		return fmt.Errorf("余额不足，请充值后继续使用")
-	}
-
-	return nil
-}
-
 // ---------- Helpers ----------
 
 func (h *BillingHandler) getTenant(userID string) (*model.Tenant, error) {

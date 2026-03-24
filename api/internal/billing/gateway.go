@@ -150,7 +150,10 @@ func (g *Gateway) ExecuteHook(ctx context.Context, t tool.Tool, name, args strin
 		price := g.getPrice(name, subType)
 
 		if price.UpstreamCNY > 0 {
+			log.Printf("[billing-gateway] charging: user=%s tool=%s subType=%s upstream=¥%.3f", userID, name, subType, price.UpstreamCNY)
 			go g.settle(ctx, userID, name, subType, price, elapsed, execErr)
+		} else {
+			log.Printf("[billing-gateway] no price found: tool=%s subType=%s, skipping billing", name, subType)
 		}
 	} else if execErr != nil {
 		log.Printf("[billing-gateway] tool %s failed, not charging: %v", name, execErr)
@@ -170,6 +173,9 @@ func (g *Gateway) settle(ctx context.Context, userID, toolName, subType string, 
 	remark := fmt.Sprintf("%s(%s) upstream=¥%.3f", toolName, subType, upstream)
 	if _, err := g.queenClient.Consume(userID, price.ResourceType, 1, costFen, remark); err != nil {
 		log.Printf("[billing-gateway] consume failed: user=%s tool=%s err=%v", userID, toolName, err)
+		// Still create a zero-cost tracking record so the usage appears in consumption history
+		trackRemark := fmt.Sprintf("%s(%s) [unfunded]", toolName, subType)
+		g.queenClient.Consume(userID, price.ResourceType, 1, 0, trackRemark)
 	}
 
 	// 2. Revenue split
@@ -261,7 +267,7 @@ func isBillableAction(toolName, args string) bool {
 
 	// Non-billable actions per tool
 	freeActions := map[string]map[string]bool{
-		"video_generation": {"check_status": true, "list_models": true, "merge_videos": true, "extract_last_frame": true},
+		"video_generation": {"check_status": true, "list_models": true, "merge_videos": true, "extract_last_frame": true, "list_videos": true},
 		"music_generation": {"check_status": true, "list_voices": true},
 		"audio_analysis":   {"detect_beats": true, "get_energy_curve": true, "generate_srt": true},
 		"mv_production":    {}, // compose_mv and compose_pro are both billable

@@ -840,7 +840,7 @@ func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, er
 	singDuration := duration - vocalStart - outro
 	if singDuration < float64(len(singLines))*1.5 {
 		singDuration = duration - vocalStart - 0.5
-		outro = 0.5
+		_ = outro // recalculated singDuration already accounts for reduced outro
 	}
 
 	lineInterval := singDuration / float64(len(singLines))

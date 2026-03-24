@@ -17,27 +17,27 @@ import (
 
 // DHT constants (Kademlia parameters)
 const (
-	DHTKeyBits   = 160          // SHA-256 truncated to 160 bits (matching node ID space)
-	DHTKBucketK  = 20           // max entries per k-bucket
-	DHTAlpha     = 3            // concurrency factor for iterative lookups
-	DHTMaxStored = 10000        // max key-value pairs stored locally
+	DHTKeyBits   = 160            // SHA-256 truncated to 160 bits (matching node ID space)
+	DHTKBucketK  = 20             // max entries per k-bucket
+	DHTAlpha     = 3              // concurrency factor for iterative lookups
+	DHTMaxStored = 10000          // max key-value pairs stored locally
 	DHTTTL       = 24 * time.Hour // default TTL for stored values
 )
 
 // DHTNode represents a node in the DHT routing table.
 type DHTNode struct {
-	ID       [20]byte  `json:"id"`       // 160-bit node ID (binary)
-	NodeID   string    `json:"node_id"`  // "claw:xxxx" string ID
-	Address  string    `json:"address"`  // network address (host:port or URL)
+	ID       [20]byte  `json:"id"`      // 160-bit node ID (binary)
+	NodeID   string    `json:"node_id"` // "claw:xxxx" string ID
+	Address  string    `json:"address"` // network address (host:port or URL)
 	LastSeen time.Time `json:"last_seen"`
 }
 
 // DHTValue is a stored key-value pair in the DHT.
 type DHTValue struct {
-	Key       [20]byte  `json:"key"`
-	Value     []byte    `json:"value"`
-	Publisher string    `json:"publisher"` // node ID of original publisher
-	StoredAt  time.Time `json:"stored_at"`
+	Key       [20]byte      `json:"key"`
+	Value     []byte        `json:"value"`
+	Publisher string        `json:"publisher"` // node ID of original publisher
+	StoredAt  time.Time     `json:"stored_at"`
 	TTL       time.Duration `json:"ttl"`
 }
 
@@ -49,17 +49,17 @@ type KBucket struct {
 
 // DHT implements a Kademlia-style distributed hash table for decentralized node discovery.
 type DHT struct {
-	self       DHTNode
-	selfID     [20]byte
-	buckets    [DHTKeyBits]*KBucket
-	store      map[[20]byte]*DHTValue
-	storeMu    sync.RWMutex
-	httpC      *http.Client
-	identity   *Identity
-	gossip     *GossipEngine // existing gossip engine for fallback
-	stopCh     chan struct{}
-	started    bool
-	mu         sync.Mutex
+	self     DHTNode
+	selfID   [20]byte
+	buckets  [DHTKeyBits]*KBucket
+	store    map[[20]byte]*DHTValue
+	storeMu  sync.RWMutex
+	httpC    *http.Client
+	identity *Identity
+	gossip   *GossipEngine // existing gossip engine for fallback
+	stopCh   chan struct{}
+	started  bool
+	mu       sync.Mutex
 }
 
 // NewDHT creates a new Kademlia DHT instance.
@@ -190,9 +190,7 @@ func (d *DHT) closestNodes(target [20]byte, count int) []*DHTNode {
 	var all []*DHTNode
 	for _, bucket := range d.buckets {
 		bucket.mu.RLock()
-		for _, n := range bucket.nodes {
-			all = append(all, n)
-		}
+		all = append(all, bucket.nodes...)
 		bucket.mu.RUnlock()
 	}
 
