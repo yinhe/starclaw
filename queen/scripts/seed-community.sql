@@ -1,6 +1,8 @@
 -- Seed community content for Forum / Bounty / Arena
--- Run: docker exec -i starclaw-queen-mysql mysql -uroot -p'QueenDb!2026jVtS' starclaw_queen < /tmp/seed-community.sql
+-- Run: docker cp seed-community.sql starclaw-queen-mysql:/tmp/ && docker exec starclaw-queen-mysql bash -c 'mysql -uroot -p... starclaw_queen < /tmp/seed-community.sql'
+-- IMPORTANT: SET NAMES utf8mb4 prevents double-encoded Chinese characters
 
+SET NAMES utf8mb4;
 SET @admin_id = '463f8db5-df72-4fe2-9862-197f09e7695e';
 SET @system_id = 'system-official';
 SET @now = NOW();
