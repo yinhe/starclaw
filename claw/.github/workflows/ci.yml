@@ -20,12 +20,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.64.8
-          working-directory: api
-          args: --config .golangci.yml ./...
+        run: cd api && golangci-lint run ./...
 
   lint-web:
     name: Lint Web (TypeScript)
