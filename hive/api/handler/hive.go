@@ -35,10 +35,11 @@ type HiveHandler struct {
 	billing *service.BillingService
 	ecs     *service.ECSService
 	dns     *service.DNSService
+	ssh     *service.SSHService
 }
 
-func NewHiveHandler(db *gorm.DB, cfg *config.Config, docker *service.DockerService, mysql *service.MySQLService, nginx *service.NginxService, vault *carapace.Vault, billing *service.BillingService, ecs *service.ECSService, dns *service.DNSService) *HiveHandler {
-	return &HiveHandler{db: db, cfg: cfg, docker: docker, mysql: mysql, nginx: nginx, vault: vault, billing: billing, ecs: ecs, dns: dns}
+func NewHiveHandler(db *gorm.DB, cfg *config.Config, docker *service.DockerService, mysql *service.MySQLService, nginx *service.NginxService, vault *carapace.Vault, billing *service.BillingService, ecs *service.ECSService, dns *service.DNSService, ssh *service.SSHService) *HiveHandler {
+	return &HiveHandler{db: db, cfg: cfg, docker: docker, mysql: mysql, nginx: nginx, vault: vault, billing: billing, ecs: ecs, dns: dns, ssh: ssh}
 }
 
 // ──── Create Claw Instance ────
@@ -772,6 +773,7 @@ func (h *HiveHandler) UpgradeNotify(c *gin.Context) {
 }
 
 // rollingUpgrade pulls the latest Docker image and upgrades instances one by one.
+// Handles all deploy modes: hive/lite (local Docker) and ecs (remote SSH).
 func (h *HiveHandler) rollingUpgrade(version string) {
 	defer func() {
 		upgradeMu.Lock()
@@ -779,21 +781,20 @@ func (h *HiveHandler) rollingUpgrade(version string) {
 		upgradeMu.Unlock()
 	}()
 
-	// Step 1: Pull latest images
+	// Step 1: Pull latest images for local (hive/lite) instances
 	log.Printf("[hive] pulling latest images...")
 	for _, img := range []string{h.cfg.ClawImage, h.cfg.ClawLiteImage} {
 		out, err := exec.Command("docker", "pull", img).CombinedOutput()
 		if err != nil {
 			log.Printf("[hive] docker pull %s failed: %s", img, strings.TrimSpace(string(out)))
-			// Continue anyway — image might already be local
 		} else {
 			log.Printf("[hive] pulled %s", img)
 		}
 	}
 
-	// Step 2: Find running instances
+	// Step 2: Find ALL running instances (hive, lite, AND ecs)
 	var instances []model.ClawInstance
-	h.db.Where("status = 'running' AND deploy_mode IN ('hive','lite')").Find(&instances)
+	h.db.Where("status = 'running' AND deploy_mode IN ('hive','lite','ecs')").Find(&instances)
 	if len(instances) == 0 {
 		log.Printf("[hive] no running instances to upgrade")
 		return
@@ -805,47 +806,70 @@ func (h *HiveHandler) rollingUpgrade(version string) {
 	for _, inst := range instances {
 		log.Printf("[hive] upgrading %s (mode=%s)...", inst.Slug, inst.DeployMode)
 
-		// Stop and remove old container
-		if inst.ContainerID != "" {
-			h.docker.StopContainer(inst.ContainerID)
-			h.docker.RemoveContainer(inst.ContainerID)
-		}
-
-		// Recreate with latest image
-		decrypted := h.decryptInstance(&inst)
-		var containerID string
 		var err error
-		if inst.DeployMode == "lite" {
-			containerID, err = h.docker.CreateLiteContainer(decrypted)
-		} else {
-			containerID, err = h.docker.CreateContainer(decrypted)
+		switch inst.DeployMode {
+		case "ecs":
+			err = h.upgradeECSInstance(&inst, version)
+		default:
+			err = h.upgradeLocalInstance(&inst, version)
 		}
 
 		if err != nil {
 			log.Printf("[hive] ❌ upgrade failed for %s: %v", inst.Slug, err)
 			h.db.Model(&inst).Update("status", "error")
 			failed++
-			continue
+		} else {
+			h.db.Model(&inst).Update("version", version)
+			upgraded++
+			log.Printf("[hive] ✅ %s upgraded (%d/%d)", inst.Slug, upgraded+failed, len(instances))
 		}
-
-		h.db.Model(&inst).Updates(map[string]interface{}{
-			"container_id": containerID,
-			"version":      version,
-		})
-
-		// Wait for health before moving to next
-		if err := h.docker.WaitHealthy(inst.Port, 60*time.Second); err != nil {
-			log.Printf("[hive] ⚠️ health check failed for %s after upgrade: %v", inst.Slug, err)
-		}
-
-		upgraded++
-		log.Printf("[hive] ✅ %s upgraded (%d/%d)", inst.Slug, upgraded, len(instances))
 
 		// Small delay between instances to avoid thundering herd
 		time.Sleep(2 * time.Second)
 	}
 
 	log.Printf("[hive] 🏁 rolling upgrade complete: %d upgraded, %d failed", upgraded, failed)
+}
+
+// upgradeLocalInstance upgrades a hive/lite container on the local Docker host.
+func (h *HiveHandler) upgradeLocalInstance(inst *model.ClawInstance, version string) error {
+	// Stop and remove old container
+	if inst.ContainerID != "" {
+		h.docker.StopContainer(inst.ContainerID)
+		h.docker.RemoveContainer(inst.ContainerID)
+	}
+
+	// Recreate with latest image
+	decrypted := h.decryptInstance(inst)
+	var containerID string
+	var err error
+	if inst.DeployMode == "lite" {
+		containerID, err = h.docker.CreateLiteContainer(decrypted)
+	} else {
+		containerID, err = h.docker.CreateContainer(decrypted)
+	}
+	if err != nil {
+		return fmt.Errorf("recreate container: %w", err)
+	}
+
+	h.db.Model(inst).Update("container_id", containerID)
+
+	// Wait for health before moving to next
+	if err := h.docker.WaitHealthy(inst.Port, 60*time.Second); err != nil {
+		log.Printf("[hive] ⚠️ health check timeout for %s (container started)", inst.Slug)
+	}
+	return nil
+}
+
+// upgradeECSInstance upgrades a remote ECS Claw via SSH.
+func (h *HiveHandler) upgradeECSInstance(inst *model.ClawInstance, version string) error {
+	if h.ssh == nil {
+		return fmt.Errorf("SSH service not configured")
+	}
+	if inst.PublicIP == "" {
+		return fmt.Errorf("no public IP for ECS instance %s", inst.Slug)
+	}
+	return h.ssh.UpgradeECS(inst.PublicIP, inst.Slug)
 }
 
 // ──── Admin: Upgrade all instances to latest starclaw-api image ────

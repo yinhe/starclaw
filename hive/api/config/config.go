@@ -51,6 +51,10 @@ type Config struct {
 	// Aliyun DNS
 	AliyunDNSDomain string // same as Domain by default
 
+	// SSH for ECS remote updates
+	SSHKeyPath string // path to SSH private key for ECS access
+	SSHUser    string // SSH user on ECS instances (default: root)
+
 	// Hive server public IP (for DNS A records in hive mode)
 	HivePublicIP string
 
@@ -102,6 +106,8 @@ func Load() *Config {
 		AliyunImageID:         envStr("ALIYUN_IMAGE_ID", ""),
 
 		AliyunDNSDomain: envStr("ALIYUN_DNS_DOMAIN", envStr("HIVE_DOMAIN", "starclaw.me")),
+		SSHKeyPath:      envStr("HIVE_SSH_KEY", "/root/.ssh/id_ed25519"),
+		SSHUser:         envStr("HIVE_SSH_USER", "root"),
 		HivePublicIP:    envStr("HIVE_PUBLIC_IP", ""),
 
 		AdminToken:         envStr("HIVE_ADMIN_TOKEN", ""),

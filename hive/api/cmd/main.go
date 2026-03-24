@@ -97,7 +97,8 @@ func main() {
 		log.Printf("[hive] DNS service ready (domain: %s)", cfg.AliyunDNSDomain)
 	}
 
-	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc, vault, billingSvc, ecsSvc, dnsSvc)
+	sshSvc := service.NewSSHService(cfg)
+	h := handler.NewHiveHandler(db, cfg, dockerSvc, mysqlSvc, nginxSvc, vault, billingSvc, ecsSvc, dnsSvc, sshSvc)
 
 	// Router
 	gin.SetMode(gin.ReleaseMode)
