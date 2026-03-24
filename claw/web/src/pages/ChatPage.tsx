@@ -940,16 +940,19 @@ export default function ChatPage() {
 
     // Resolve @AgentName mention → use that agent's ID
     let agentIdToUse = selectedAgentId // default: SuperAgent (router)
+    let mentionLabel = '' // keep mention for display
     const mentionMatch = userMessage.match(/^@(.+?)\s/)
     if (mentionMatch) {
       const mentionName = mentionMatch[1]
       const found = agents.find(a => a.name === mentionName)
       if (found) {
         agentIdToUse = found.id
+        mentionLabel = `@${found.name}`
         userMessage = userMessage.slice(mentionMatch[0].length).trim()
       }
     } else if (mentionedAgent) {
       agentIdToUse = mentionedAgent.id
+      mentionLabel = `@${mentionedAgent.name}`
     }
     setInput('')
     setAttachedImages([])
@@ -965,8 +968,8 @@ export default function ChatPage() {
     setStreamingReasoning('')
     setThinkingExpanded(false)
 
-    // Build display content for user message
-    let displayContent = userMessage
+    // Build display content for user message (keep @mention visible)
+    let displayContent = mentionLabel ? `${mentionLabel} ${userMessage}` : userMessage
     if (files.length > 0) displayContent += `\n\n[${files.length} 个文件: ${files.map(f => f.filename).join(', ')}]`
 
     // Combine images and files into attachments for persistence and rendering
