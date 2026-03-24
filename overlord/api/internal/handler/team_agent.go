@@ -750,7 +750,7 @@ func (h *TeamAgentHandler) SendDirectChat(c *gin.Context) {
 	}
 	pseudoInst := &model.TeamInstance{ID: directInstanceID, TeamID: teamID, ClawNodeID: node.ID}
 
-	modelName := "deepseek-chat"
+	modelName := "qwen3-coder:30b"
 	wantStream := c.GetHeader("Accept") == "text/event-stream"
 
 	if wantStream {
@@ -848,7 +848,7 @@ func (h *TeamAgentHandler) SendChat(c *gin.Context) {
 	}
 
 	// Determine model: instance override > template primary role > default
-	modelName := "deepseek-chat"
+	modelName := "qwen3-coder:30b"
 	if inst.DefaultModel != "" {
 		modelName = inst.DefaultModel
 	} else if len(roles) > 0 && roles[0].Model != "" {
@@ -1714,7 +1714,7 @@ func buildDevClaw() model.TeamAgentTemplate {
   ]
 }
 ` + "```",
-			Model:        "gpt-4o",
+			Model:        "qwen3-coder:30b",
 			Tools:        []string{"code", "web_search", "document_read"},
 			MaxInstances: 1,
 		},
@@ -1746,7 +1746,7 @@ Agent 配置输出格式:
   "icon": "🤖"
 }
 ` + "```",
-			Model:        "deepseek-chat",
+			Model:        "qwen3-coder:30b",
 			Tools:        []string{"code", "git", "web_search"},
 			MaxInstances: 3,
 		},
@@ -1780,7 +1780,7 @@ Agent 配置输出格式:
   }
 }
 ` + "```",
-			Model:        "deepseek-chat",
+			Model:        "qwen3-coder:30b",
 			Tools:        []string{"code", "git"},
 			MaxInstances: 1,
 		},
@@ -1803,7 +1803,7 @@ Agent 配置输出格式:
 输出 JSON:
 { "verdict": "approved/changes_requested", "score": 1-10, "issues": [], "suggestions": [] }
 评分 ≥ 7 通过发布，< 7 退回修改。严格但务实。`,
-			Model:        "gpt-4o",
+			Model:        "qwen3-coder:30b",
 			Tools:        []string{"code", "git"},
 			MaxInstances: 1,
 		},
@@ -1824,7 +1824,7 @@ Agent 配置输出格式:
 5. 安装说明 (如何在 Claw 或 Overlord 中使用)
 
 文档输出后，Agent 即可上架到市场。`,
-			Model:        "deepseek-chat",
+			Model:        "qwen3-coder:30b",
 			Tools:        []string{"code", "document_write"},
 			MaxInstances: 1,
 		},
