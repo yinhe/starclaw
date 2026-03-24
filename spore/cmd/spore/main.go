@@ -52,8 +52,12 @@ func main() {
 		cmdUninstall(mgr)
 	case "info":
 		cmdInfo(mgr)
-	case "token":
+	case "token", "get-token":
 		cmdToken(mgr)
+	case "reset-token":
+		cmdResetToken(mgr)
+	case "reset-password":
+		cmdResetPassword(mgr)
 	case "update":
 		cmdUpdate()
 	case "version":
@@ -340,27 +344,11 @@ func cmdAutostart(mgr *runtime.Manager) {
 }
 
 func cmdToken(mgr *runtime.Manager) {
-	name := "claw"
+	nameArg := ""
 	if len(os.Args) >= 3 {
-		name = os.Args[2]
+		nameArg = os.Args[2]
 	}
-
-	inst, err := mgr.Get(name)
-	if err != nil {
-		fatal("%v", err)
-	}
-
-	// Read port from .env or config.yaml
-	port := "8080"
-	if envData, err := os.ReadFile(filepath.Join(inst.InstallDir, ".env")); err == nil {
-		for _, line := range strings.Split(string(envData), "\n") {
-			if strings.HasPrefix(line, "CLAW_PORT=") {
-				port = strings.TrimPrefix(line, "CLAW_PORT=")
-				port = strings.TrimSpace(port)
-				break
-			}
-		}
-	}
+	name, port := resolveClawPort(mgr, nameArg)
 
 	apiBase := fmt.Sprintf("http://127.0.0.1:%s/v1", port)
 	resp, err := http.Get(apiBase + "/setup/token")
@@ -379,6 +367,107 @@ func cmdToken(mgr *runtime.Manager) {
 		fmt.Printf("Login URL:   http://localhost:%s/login?token=%s\n", port, token)
 	} else {
 		fmt.Println("No owner token found. Run setup first by opening the web UI.")
+	}
+}
+
+// resolveClawPort reads the port for a named instance from .env or defaults to 8080.
+func resolveClawPort(mgr *runtime.Manager, nameOverride string) (string, string) {
+	name := "claw"
+	if nameOverride != "" {
+		name = nameOverride
+	}
+	inst, err := mgr.Get(name)
+	if err != nil {
+		fatal("%v", err)
+	}
+	port := "8080"
+	if envData, err := os.ReadFile(filepath.Join(inst.InstallDir, ".env")); err == nil {
+		for _, line := range strings.Split(string(envData), "\n") {
+			if strings.HasPrefix(line, "CLAW_PORT=") {
+				port = strings.TrimPrefix(line, "CLAW_PORT=")
+				port = strings.TrimSpace(port)
+				break
+			}
+		}
+	}
+	return name, port
+}
+
+func cmdResetToken(mgr *runtime.Manager) {
+	nameArg := ""
+	if len(os.Args) >= 3 {
+		nameArg = os.Args[2]
+	}
+	name, port := resolveClawPort(mgr, nameArg)
+
+	apiBase := fmt.Sprintf("http://127.0.0.1:%s/v1", port)
+	resp, err := http.Post(apiBase+"/setup/reset-token", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		fatal("cannot connect to %s: %v (is it running?)", name, err)
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fatal("parse response: %v", err)
+	}
+
+	if token, ok := result["owner_token"].(string); ok && token != "" {
+		fmt.Printf("New Owner Token: %s\n", token)
+		fmt.Printf("Login URL:       http://localhost:%s/login?token=%s\n", port, token)
+		fmt.Println("Previous token is now invalid.")
+	} else if errMsg, ok := result["error"].(string); ok {
+		fatal("%s", errMsg)
+	} else {
+		fatal("unexpected response")
+	}
+}
+
+func cmdResetPassword(mgr *runtime.Manager) {
+	password := ""
+	nameArg := ""
+	for i := 2; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--password":
+			if i+1 < len(os.Args) {
+				password = os.Args[i+1]
+				i++
+			}
+		default:
+			if nameArg == "" {
+				nameArg = os.Args[i]
+			}
+		}
+	}
+	if password == "" {
+		fmt.Println("Usage: spore reset-password [name] --password <new-password>")
+		os.Exit(1)
+	}
+	if len(password) < 6 {
+		fatal("password must be at least 6 characters")
+	}
+
+	name, port := resolveClawPort(mgr, nameArg)
+	apiBase := fmt.Sprintf("http://127.0.0.1:%s/v1", port)
+
+	body := fmt.Sprintf(`{"password":"%s"}`, password)
+	resp, err := http.Post(apiBase+"/setup/reset-password", "application/json", strings.NewReader(body))
+	if err != nil {
+		fatal("cannot connect to %s: %v (is it running?)", name, err)
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fatal("parse response: %v", err)
+	}
+
+	if msg, ok := result["message"].(string); ok {
+		fmt.Println(msg)
+	} else if errMsg, ok := result["error"].(string); ok {
+		fatal("%s", errMsg)
+	} else {
+		fmt.Println("Password reset successfully.")
 	}
 }
 
@@ -482,9 +571,8 @@ func printUsage() {
 
 Usage: spore <command> [args]
 
-Commands:
+Lifecycle:
   install <path>    Install from .spore package or directory
-  run-inline <dir>  Run in foreground (Docker/container mode)
   start <name>      Start a spore (background)
   stop <name>       Stop a running spore
   restart <name>    Restart a spore
@@ -492,10 +580,17 @@ Commands:
   list              List installed spores
   info <name>       Show detailed info about a spore
   logs <name>       View spore logs
-  autostart <enable|disable|status> [name]  Manage boot autostart
-  token [name]      Show owner token for a running instance
-  update            Check and apply spore runtime updates
   uninstall <name>  Remove an installed spore
+  autostart <enable|disable|status> [name]  Manage boot autostart
+
+Auth (same as claw-api CLI):
+  token [name]          Show owner token for a running instance
+  reset-token [name]    Regenerate owner token (invalidates old one)
+  reset-password [name] --password <pw>  Reset owner password
+
+Other:
+  update            Check and apply spore runtime updates
+  run-inline <dir>  Run in foreground (Docker/container mode)
   version           Show spore version
   platform          Show detected platform info
   help              Show this help
