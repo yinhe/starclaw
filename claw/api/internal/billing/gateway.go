@@ -150,7 +150,10 @@ func (g *Gateway) ExecuteHook(ctx context.Context, t tool.Tool, name, args strin
 		price := g.getPrice(name, subType)
 
 		if price.UpstreamCNY > 0 {
+			log.Printf("[billing-gateway] charging: user=%s tool=%s subType=%s upstream=¥%.3f", userID, name, subType, price.UpstreamCNY)
 			go g.settle(ctx, userID, name, subType, price, elapsed, execErr)
+		} else {
+			log.Printf("[billing-gateway] no price found: tool=%s subType=%s, skipping billing", name, subType)
 		}
 	} else if execErr != nil {
 		log.Printf("[billing-gateway] tool %s failed, not charging: %v", name, execErr)

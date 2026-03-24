@@ -6,9 +6,9 @@ import (
 	"math"
 	"strings"
 
+	"gorm.io/gorm"
 	"starclaw.net/synapse/api/internal/model"
 	"starclaw.net/synapse/api/internal/provider"
-	"gorm.io/gorm"
 )
 
 // USD to CNY exchange rate (approximate, can be overridden via config)
@@ -82,7 +82,30 @@ func (m *Meter) CalculateCost(modelName string, promptTokens, completionTokens i
 			}
 		}
 		if !ok {
-			return 0, 0
+			// Also try stripping provider prefix: "openai/default" → check "default"
+			if idx := strings.Index(modelName, "/"); idx > 0 {
+				bare := modelName[idx+1:]
+				for _, e := range m.registry.ListModels() {
+					if strings.HasSuffix(e.Model.Name, "/"+bare) || e.Model.Name == bare {
+						entry = e
+						ok = true
+						break
+					}
+				}
+			}
+		}
+		if !ok {
+			// Fallback pricing for completely unknown models (prevents ¥0.0000 records)
+			log.Printf("[star-ai] unknown model %q, using fallback pricing", modelName)
+			fallback := &provider.ModelEntry{
+				Model: provider.ModelConfig{
+					Name:           modelName,
+					Type:           "chat",
+					InputPriceCNY:  0.002, // ~2元/百万tokens (conservative, similar to qwen-plus)
+					OutputPriceCNY: 0.006,
+				},
+			}
+			entry = fallback
 		}
 	}
 
