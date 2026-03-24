@@ -167,6 +167,7 @@ export const setupAPI = {
   status: () => axios.get('/v1/setup/status'),
   setup: (data?: { password?: string; username?: string }) =>
     axios.post('/v1/setup', data || {}),
+  getToken: () => axios.get('/v1/setup/token'),
   ownerLogin: (data: { password: string; device_id?: string; device_name?: string }) =>
     axios.post('/v1/auth/owner-login', data),
 }

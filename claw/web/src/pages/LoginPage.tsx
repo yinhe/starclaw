@@ -103,7 +103,7 @@ export default function LoginPage() {
 
   // Detect deploy mode and set appropriate login mode
   useEffect(() => {
-    setupAPI.status().then(res => {
+    setupAPI.status().then(async (res) => {
       const mode = res.data.deploy_mode || 'opensource'
       setDeployMode(mode)
       if (mode === 'opensource') {
@@ -113,9 +113,23 @@ export default function LoginPage() {
           return
         }
         setLoginMode('owner')
+        // Auto-login from localhost: try to get token directly
+        const host = window.location.hostname
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+          try {
+            const tokenRes = await setupAPI.getToken()
+            if (tokenRes.data?.owner_token) {
+              setAuth(tokenRes.data.owner_token, { id: 0, username: tokenRes.data.username || 'Owner', role: 'owner' } as any)
+              navigate('/', { replace: true })
+              return
+            }
+          } catch {
+            // Not localhost or token not available — show normal login
+          }
+        }
       }
     }).catch(() => setDeployMode('opensource'))
-  }, [navigate])
+  }, [navigate, setAuth])
 
   // Fetch available OAuth providers (hosted mode only)
   useEffect(() => {
@@ -279,6 +293,36 @@ export default function LoginPage() {
               </div>
             ) : deployMode === 'opensource' ? (
               <>
+                {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setError('')
+                      setLoading(true)
+                      try {
+                        const res = await setupAPI.getToken()
+                        if (res.data?.owner_token) {
+                          setAuth(res.data.owner_token, { id: 0, username: res.data.username || 'Owner', role: 'owner' } as any)
+                          navigate('/', { replace: true })
+                          return
+                        }
+                        setError('未找到 Token，请先完成初始化')
+                      } catch {
+                        setError('自动登录失败，请使用密码或 Token 登录')
+                      } finally {
+                        setLoading(false)
+                      }
+                    }}
+                    disabled={loading}
+                    className="w-full mb-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-medium rounded-lg hover:from-green-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>🖥️ 本机自动登录</>
+                    )}
+                  </button>
+                )}
                 <div className="flex rounded-lg bg-gray-100 p-1 mb-2">
                   <button
                     type="button"

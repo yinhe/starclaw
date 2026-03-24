@@ -493,6 +493,7 @@ Commands:
   info <name>       Show detailed info about a spore
   logs <name>       View spore logs
   autostart <enable|disable|status> [name]  Manage boot autostart
+  token [name]      Show owner token for a running instance
   update            Check and apply spore runtime updates
   uninstall <name>  Remove an installed spore
   version           Show spore version
