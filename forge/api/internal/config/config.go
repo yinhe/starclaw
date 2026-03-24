@@ -18,6 +18,11 @@ type Config struct {
 	LLMModel     string
 	Secret       string            // JWT signing key
 	Whitelist    map[string]string // node_id → password
+	// Service health check URLs (online services use public URLs)
+	ClawURL    string
+	HiveURL    string
+	QueenURL   string
+	SynapseURL string
 }
 
 func Load() *Config {
@@ -26,8 +31,12 @@ func Load() *Config {
 		DBPath:       envOr("FORGE_DB_PATH", "forge.db"),
 		NydusURL:     envOr("NYDUS_URL", "https://nydus.starclaw.net"),
 		NydusSecret:  os.Getenv("NYDUS_SECRET"),
-		OverlordURL:  envOr("OVERLORD_URL", "http://localhost:8098"),
-		DevBridgeURL: envOr("DEVBRIDGE_URL", "http://localhost:9102"),
+		OverlordURL:  envOr("OVERLORD_URL", "https://overlord.starclaw.net"),
+		DevBridgeURL: envOr("DEVBRIDGE_URL", "http://host.docker.internal:9102"),
+		ClawURL:      envOr("CLAW_URL", "https://starclaw.me/api"),
+		HiveURL:      envOr("HIVE_URL", ""),
+		QueenURL:     envOr("QUEEN_URL", "https://api.starclaw.net"),
+		SynapseURL:   envOr("SYNAPSE_URL", ""),
 		GithubToken:  os.Getenv("GITHUB_TOKEN"),
 		LLMBaseURL:   envOr("FORGE_LLM_BASE_URL", "https://api.star-ai.net/v1"),
 		LLMAPIKey:    os.Getenv("FORGE_LLM_API_KEY"),

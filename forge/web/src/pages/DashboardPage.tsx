@@ -15,6 +15,7 @@ import { api } from '../api'
 
 interface ServiceInfo {
   name: string
+  env: string
   status: string
   latency_ms: number
 }
@@ -128,6 +129,9 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${svc.status === 'healthy' ? 'bg-green-400' : svc.status === 'unhealthy' ? 'bg-red-400' : 'bg-stone-600'}`} />
                   <span className="text-stone-300">{svc.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${svc.env === 'online' ? 'bg-blue-500/10 text-blue-400' : 'bg-stone-700 text-stone-500'}`}>
+                    {svc.env === 'online' ? '线上' : '本地'}
+                  </span>
                 </div>
                 <span className={`text-xs ${svc.status === 'healthy' ? 'text-stone-500' : 'text-red-400'}`}>
                   {svc.status === 'healthy' ? `${svc.latency_ms}ms` : svc.status}

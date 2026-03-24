@@ -49,12 +49,12 @@ func (h *DashboardHandler) Overview(c *gin.Context) {
 	h.DB.Model(&model.ForgeProject{}).Where("status = 'active'").Count(&projectCount)
 
 	result := gin.H{
-		"projects":      projectCount,
-		"total_issues":  totalIssues,
-		"open_issues":   openIssues,
-		"done_issues":   doneIssues,
-		"activities":    activities,
-		"agents":        agents,
+		"projects":     projectCount,
+		"total_issues": totalIssues,
+		"open_issues":  openIssues,
+		"done_issues":  doneIssues,
+		"activities":   activities,
+		"agents":       agents,
 	}
 	if hasActiveSprint {
 		progress := 0
@@ -75,7 +75,7 @@ func (h *DashboardHandler) Overview(c *gin.Context) {
 func (h *DashboardHandler) Services(c *gin.Context) {
 	type serviceStatus struct {
 		Name    string `json:"name"`
-		URL     string `json:"url"`
+		Env     string `json:"env"`    // online / local
 		Status  string `json:"status"` // healthy / unhealthy / unknown
 		Latency int    `json:"latency_ms"`
 	}
@@ -83,18 +83,24 @@ func (h *DashboardHandler) Services(c *gin.Context) {
 	services := []struct {
 		name string
 		url  string
+		env  string // "online" or "local"
 	}{
-		{"claw-api", "http://localhost:8080/health"},
-		{"hive", "http://localhost:9090/health"},
-		{"queen-api", "http://localhost:8085/health"},
-		{"overlord-api", fmt.Sprintf("%s/health", h.Cfg.OverlordURL)},
-		{"synapse-api", "http://localhost:8096/health"},
-		{"nydus", fmt.Sprintf("%s/health", h.Cfg.NydusURL)},
-		{"forge-api", "http://localhost:8099/health"},
-		{"dev-bridge", fmt.Sprintf("%s/health", h.Cfg.DevBridgeURL)},
+		{"claw-api", fmt.Sprintf("%s/health", h.Cfg.ClawURL), "online"},
+		{"queen-api", fmt.Sprintf("%s/health", h.Cfg.QueenURL), "online"},
+		{"overlord-api", fmt.Sprintf("%s/health", h.Cfg.OverlordURL), "local"},
+		{"nydus", fmt.Sprintf("%s/health", h.Cfg.NydusURL), "online"},
+		{"forge-api", "http://localhost:8099/health", "local"},
+		{"dev-bridge", fmt.Sprintf("%s/health", h.Cfg.DevBridgeURL), "local"},
+	}
+	// Optional services (only check if URL configured)
+	if h.Cfg.HiveURL != "" {
+		services = append(services, struct{ name, url, env string }{"hive", fmt.Sprintf("%s/health", h.Cfg.HiveURL), "online"})
+	}
+	if h.Cfg.SynapseURL != "" {
+		services = append(services, struct{ name, url, env string }{"synapse-api", fmt.Sprintf("%s/health", h.Cfg.SynapseURL), "online"})
 	}
 
-	client := &http.Client{Timeout: 3 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second}
 	var results []serviceStatus
 	for _, svc := range services {
 		start := time.Now()
@@ -115,7 +121,7 @@ func (h *DashboardHandler) Services(c *gin.Context) {
 		}
 		results = append(results, serviceStatus{
 			Name:    svc.name,
-			URL:     svc.url,
+			Env:     svc.env,
 			Status:  status,
 			Latency: latency,
 		})
@@ -222,9 +228,17 @@ func jsonReader(data []byte) io.Reader {
 	return io.NopCloser(readerFromBytes(data))
 }
 
-type bytesReader struct{ data []byte; pos int }
+type bytesReader struct {
+	data []byte
+	pos  int
+}
+
 func (r *bytesReader) Read(p []byte) (int, error) {
-	if r.pos >= len(r.data) { return 0, io.EOF }
-	n := copy(p, r.data[r.pos:]); r.pos += n; return n, nil
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
 }
 func readerFromBytes(data []byte) io.Reader { return &bytesReader{data: data} }
