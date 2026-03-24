@@ -422,19 +422,34 @@ func main() {
 }
 
 func seedSuperAdmin(db *gorm.DB) {
+	username := getEnv("OVERLORD_ADMIN_USERNAME", "admin")
+	password := getEnv("OVERLORD_ADMIN_PASSWORD", "admin123")
+
+	var user model.AdminUser
+	if err := db.Where("username = ?", username).First(&user).Error; err == nil {
+		// User exists — update password if env changed (compare hash)
+		newHash := middleware.HashTokenExported(password)
+		if user.PasswordHash != newHash {
+			db.Model(&user).Update("password_hash", newHash)
+			log.Printf("[overlord] superadmin '%s' password updated from env", username)
+		}
+		return
+	}
+
+	// No admin user with this username — check if any admin exists
 	var count int64
 	db.Model(&model.AdminUser{}).Count(&count)
 	if count > 0 {
 		return
 	}
-	password := getEnv("OVERLORD_ADMIN_PASSWORD", "admin123")
+
 	db.Create(&model.AdminUser{
-		Username:     "admin",
+		Username:     username,
 		PasswordHash: middleware.HashTokenExported(password),
 		Role:         "superadmin",
-		Email:        "admin@overlord.local",
+		Email:        username + "@overlord.local",
 	})
-	log.Printf("[overlord] Default superadmin created (username: admin)")
+	log.Printf("[overlord] Default superadmin created (username: %s)", username)
 }
 
 func offlineDetector(db *gorm.DB, dispatcher *handler.WebhookHandler) {

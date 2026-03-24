@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"starclaw.net/overlord/api/internal/middleware"
 	"starclaw.net/overlord/api/internal/model"
-	"gorm.io/gorm"
 )
 
 type TeamHandler struct {
@@ -218,13 +218,22 @@ func (h *TeamHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Generate API token — stored in token_hash (password_hash stays intact for re-login)
-	token := generateToken(32)
+	// Reuse existing token if issued within the last 7 days.
+	// This prevents other sessions from being invalidated on re-login.
 	now := time.Now()
-	h.db.Model(&user).Updates(map[string]interface{}{
-		"token_hash":    hashPassword(token),
-		"last_login_at": &now,
-	})
+	token := user.Token
+	tokenMaxAge := 7 * 24 * time.Hour
+	if token == "" || user.TokenIssuedAt == nil || now.Sub(*user.TokenIssuedAt) > tokenMaxAge {
+		token = generateToken(32)
+		h.db.Model(&user).Updates(map[string]interface{}{
+			"token":           token,
+			"token_hash":      hashPassword(token),
+			"token_issued_at": &now,
+			"last_login_at":   &now,
+		})
+	} else {
+		h.db.Model(&user).Update("last_login_at", &now)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"token":   token,

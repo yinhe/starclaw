@@ -29,16 +29,18 @@ func (t *Team) BeforeCreate(tx *gorm.DB) error {
 
 // AdminUser represents an Overlord console administrator
 type AdminUser struct {
-	ID           string     `json:"id" gorm:"type:varchar(36);primaryKey"`
-	Username     string     `json:"username" gorm:"type:varchar(100);uniqueIndex;not null"`
-	PasswordHash string     `json:"-" gorm:"type:varchar(255);not null"`
-	TokenHash    string     `json:"-" gorm:"type:varchar(255)"`                  // session token hash (separate from password)
-	Role         string     `json:"role" gorm:"type:varchar(20);default:viewer"` // superadmin, admin, operator, viewer
-	TeamID       string     `json:"team_id" gorm:"type:varchar(36);index"`       // empty = global access
-	Email        string     `json:"email" gorm:"type:varchar(255)"`
-	LastLoginAt  *time.Time `json:"last_login_at"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID            string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	Username      string     `json:"username" gorm:"type:varchar(100);uniqueIndex;not null"`
+	PasswordHash  string     `json:"-" gorm:"type:varchar(255);not null"`
+	TokenHash     string     `json:"-" gorm:"type:varchar(255)"`                  // session token hash (separate from password)
+	Token         string     `json:"-" gorm:"type:varchar(255)"`                  // current active token (for reuse across sessions)
+	TokenIssuedAt *time.Time `json:"-" gorm:"type:datetime"`                      // when the current token was issued
+	Role          string     `json:"role" gorm:"type:varchar(20);default:viewer"` // superadmin, admin, operator, viewer
+	TeamID        string     `json:"team_id" gorm:"type:varchar(36);index"`       // empty = global access
+	Email         string     `json:"email" gorm:"type:varchar(255)"`
+	LastLoginAt   *time.Time `json:"last_login_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 func (u *AdminUser) BeforeCreate(tx *gorm.DB) error {
