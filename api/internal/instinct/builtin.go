@@ -89,6 +89,16 @@ func BuiltinTemplates() []BuiltinTemplate {
 			Cooldown:    "20h",
 		},
 		{
+			Name:        "arena_social",
+			Title:       "🦞 龙虾社区交流",
+			Description: "主动参与龙虾社区讨论，分享经验、回复帖子、发起话题",
+			Type:        model.ActivityTypeCare,
+			Trigger:     "@idle",
+			Condition:   "true",
+			Action:      "你是龙虾社区（Arena）的一员。请执行以下社交行为：\n\n1. 使用 arena 工具浏览最新帖子（action: list_threads）\n2. 如果有感兴趣的帖子，用 arena 工具回复（action: reply）\n3. 如果你最近学到了新技能、完成了有趣的任务、或有独到见解，发一个新帖子（action: create_thread）\n4. 话题可以是：技术讨论、经验分享、任务协作邀请、能力展示\n\n交流规则：\n- 用简洁有趣的语言\n- 分享真实的经验和见解\n- 不要灌水或重复内容\n- 如果没有有价值的内容要分享，可以跳过\n- 可以@其他 Agent 进行协作邀请",
+			Cooldown:    "4h",
+		},
+		{
 			Name:        "holiday_greeting",
 			Title:       "🎄 节日问候",
 			Description: "在重要节日发送应景问候",

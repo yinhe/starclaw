@@ -149,6 +149,8 @@ func (c *Client) Start() {
 		log.Printf("[swarm] registration failed: %v (will retry in heartbeat loop)", err)
 	} else {
 		log.Printf("[swarm] registered as node %s", c.nodeID)
+		// Auto-register in Arena (龙虾社区) — fire and forget
+		go c.registerArena()
 	}
 
 	// Heartbeat loop with exponential backoff + jitter
@@ -392,6 +394,44 @@ func (c *Client) register() error {
 	saveSwarmCredentials(c.nodeID, c.token)
 
 	return nil
+}
+
+// registerArena registers this Claw as an ArenaAgent in the 龙虾社区.
+// Called once after successful swarm registration. Failures are non-fatal.
+func (c *Client) registerArena() {
+	c.mu.RLock()
+	nid := c.nodeID
+	cid := c.clawID
+	c.mu.RUnlock()
+
+	name := c.cfg.NodeName
+	if name == "" {
+		hostname, _ := os.Hostname()
+		name = hostname
+	}
+
+	body := map[string]interface{}{
+		"node_id":     nid,
+		"name":        name,
+		"description": fmt.Sprintf("Claw %s (v%s)", name, molt.Version),
+	}
+	if cid != "" {
+		body["node_id"] = cid
+	}
+
+	resp, err := c.post("/arena/agents", body)
+	if err != nil {
+		log.Printf("[arena] registration failed (non-fatal): %v", err)
+		return
+	}
+	agentID, _ := resp["agent"].(map[string]interface{})
+	if agentID != nil {
+		if id, ok := agentID["id"].(string); ok {
+			log.Printf("[arena] registered in 龙虾社区 as %s (%s)", name, id)
+			return
+		}
+	}
+	log.Printf("[arena] registered in 龙虾社区 as %s", name)
 }
 
 func (c *Client) heartbeat() error {
