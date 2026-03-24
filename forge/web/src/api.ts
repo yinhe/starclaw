@@ -1,10 +1,49 @@
 const BASE = '/api'
 
+// ── Token management ──
+
+export function getToken(): string | null {
+  return localStorage.getItem('forge_token')
+}
+
+export function setToken(token: string, nodeId: string) {
+  localStorage.setItem('forge_token', token)
+  localStorage.setItem('forge_node_id', nodeId)
+}
+
+export function clearToken() {
+  localStorage.removeItem('forge_token')
+  localStorage.removeItem('forge_node_id')
+}
+
+export function getNodeId(): string | null {
+  return localStorage.getItem('forge_node_id')
+}
+
+export function isLoggedIn(): boolean {
+  return !!getToken()
+}
+
+// ── Request helpers with auth ──
+
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...opts,
   })
+
+  if (res.status === 401) {
+    clearToken()
+    window.location.href = '/login'
+    throw new Error('认证已过期')
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(err.error || res.statusText)
@@ -25,6 +64,10 @@ function put<T>(path: string, body?: unknown) {
 }
 
 export const api = {
+  // Auth
+  login: (nodeId: string, password: string) => post<any>('/auth/login', { node_id: nodeId, password }),
+  me: () => get<any>('/auth/me'),
+
   // Dashboard
   dashboard: () => get<any>('/dashboard'),
   services: () => get<any>('/dashboard/services'),

@@ -1,11 +1,11 @@
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   KanbanSquare,
   FileText,
   Zap,
   Activity,
-  Settings,
+  LogOut,
   Flame,
 } from 'lucide-react'
 import DashboardPage from './pages/DashboardPage'
@@ -13,6 +13,8 @@ import BoardPage from './pages/BoardPage'
 import PRDPage from './pages/PRDPage'
 import SprintPage from './pages/SprintPage'
 import OrchestratorPage from './pages/OrchestratorPage'
+import LoginPage from './pages/LoginPage'
+import { isLoggedIn, clearToken, getNodeId } from './api'
 
 const nav = [
   { to: '/', icon: LayoutDashboard, label: '大屏' },
@@ -24,6 +26,25 @@ const nav = [
 
 export default function App() {
   const loc = useLocation()
+
+  // Login page — no auth guard
+  if (loc.pathname === '/login') {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+      </Routes>
+    )
+  }
+
+  // Auth guard — redirect to login if not authenticated
+  if (!isLoggedIn()) {
+    return <Navigate to="/login" replace />
+  }
+
+  const handleLogout = () => {
+    clearToken()
+    window.location.href = '/login'
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -50,8 +71,15 @@ export default function App() {
           )
         })}
         <div className="flex-1" />
-        <button className="w-12 h-12 flex items-center justify-center text-stone-600 hover:text-stone-400 rounded-lg hover:bg-stone-800/50 transition-all">
-          <Settings className="w-5 h-5" />
+        <div className="text-center mb-1">
+          <span className="text-[9px] text-stone-600 font-mono">{getNodeId()}</span>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="w-12 h-12 flex items-center justify-center text-stone-600 hover:text-red-400 rounded-lg hover:bg-stone-800/50 transition-all"
+          title="退出登录"
+        >
+          <LogOut className="w-5 h-5" />
         </button>
       </aside>
 
@@ -63,6 +91,7 @@ export default function App() {
           <Route path="/prd" element={<PRDPage />} />
           <Route path="/sprints" element={<SprintPage />} />
           <Route path="/orchestrator" element={<OrchestratorPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

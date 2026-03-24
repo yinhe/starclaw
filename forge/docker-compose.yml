@@ -9,6 +9,8 @@ services:
     environment:
       - FORGE_PORT=8099
       - FORGE_DB_PATH=/app/data/forge.db
+      - FORGE_SECRET=${FORGE_SECRET}
+      - FORGE_WHITELIST=${FORGE_WHITELIST}
       - NYDUS_URL=${NYDUS_URL:-https://nydus.starclaw.net}
       - OVERLORD_URL=${OVERLORD_URL:-http://overlord-api:8095}
       - DEVBRIDGE_URL=${DEVBRIDGE_URL:-http://host.docker.internal:9102}

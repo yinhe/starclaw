@@ -50,7 +50,10 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Health
+	// Auth middleware
+	r.Use(handler.AuthMiddleware(cfg))
+
+	// Health (public)
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "ok",
@@ -61,6 +64,10 @@ func main() {
 
 	api := r.Group("/api")
 	{
+		// Auth (public)
+		api.POST("/auth/login", handler.LoginHandler(cfg))
+		api.GET("/auth/me", handler.MeHandler())
+
 		// Projects
 		api.GET("/projects", projectH.List)
 		api.POST("/projects", projectH.Create)
@@ -247,6 +254,12 @@ func main() {
 	}
 
 	// Banner
+	whitelistCount := len(cfg.Whitelist)
+	authStatus := "OFF (dev mode)"
+	if whitelistCount > 0 {
+		authStatus = fmt.Sprintf("ON (%d nodes)", whitelistCount)
+	}
+
 	fmt.Printf(`
   ╔══════════════════════════════════════════════════╗
   ║   🔥 StarClaw Forge v%-10s                 ║
@@ -254,16 +267,16 @@ func main() {
   ╠══════════════════════════════════════════════════╣
   ║   Port:       :%-5s                            ║
   ║   DB:         %-36s  ║
+  ║   Auth:       %-36s  ║
   ║   OS:         %-8s  Arch: %-8s            ║
   ╠══════════════════════════════════════════════════╣
+  ║   Login:      POST /api/auth/login               ║
   ║   Dashboard:  /api/dashboard                     ║
   ║   Projects:   /api/projects                      ║
-  ║   Issues:     /api/projects/:id/issues           ║
-  ║   Board:      /api/projects/:id/board            ║
   ║   PRD:        /api/prd/generate                  ║
   ║   Sprint:     /api/sprints/:id/start             ║
   ╚══════════════════════════════════════════════════╝
-`, version, cfg.Port, cfg.DBPath, runtime.GOOS, runtime.GOARCH)
+`, version, cfg.Port, cfg.DBPath, authStatus, runtime.GOOS, runtime.GOARCH)
 
 	log.Fatal(r.Run(":" + cfg.Port))
 }
