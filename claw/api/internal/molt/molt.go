@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -67,10 +68,16 @@ var (
 	hiveNotified string // version we already notified about (debounce)
 )
 
-// StartChecker starts a background goroutine that periodically checks for new releases
+// StartChecker starts a background goroutine that periodically checks for new releases.
+// Adds random jitter (0-5 min) before first check to avoid thundering herd
+// when many Hive containers start simultaneously.
 func StartChecker() {
 	go func() {
-		// Check immediately on startup
+		// Random jitter before first check: 0-5 minutes
+		jitter := time.Duration(rand.Intn(300)) * time.Second
+		if jitter > 0 {
+			time.Sleep(jitter)
+		}
 		check()
 		ticker := time.NewTicker(checkEvery)
 		defer ticker.Stop()
