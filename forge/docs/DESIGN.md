@@ -628,7 +628,300 @@ Sprint: "2026-W13" (3/24 - 3/30)
 
 ---
 
-## 十三、技术栈
+## 十三、一键开发流程 — PRD → Sprint → 自动调度
+
+> **核心理念**: 你只需输入需求，Forge 自动生成 PRD、拆分 Sprint、调度 AI 军团开发。
+> **当前阶段**: 主 Windsurf 会话作为调度大脑（人 + AI 协作）
+> **终极形态**: 替换为最优秀的 LLM 作为自治调度引擎
+
+### 13.1 完整链路
+
+```
+你: "实现记忆系统向量化"
+  │
+  ▼ ① PRD 生成
+Forge AI → 结构化 PRD (目标/功能/非功能/验收标准)
+  │
+  ▼ ② 你确认 PRD [确认] / [修改]
+  │
+  ▼ ③ Sprint 拆分
+Forge AI → Epic → Sprint × N → Issue × M (含依赖关系/服务标注/Story Points)
+  │
+  ▼ ④ 你确认计划 [🚀 一键开始]
+  │
+  ▼ ⑤ Orchestrator 自动调度
+  │
+  ├── 代码任务 → Dev Bridge → Windsurf/Cursor (分支开发)
+  ├── Agent 任务 → Overlord → DevClaw 实例 (五虫协作)
+  └── 配置/文档 → Dev Bridge → 直接执行
+  │
+  ▼ ⑥ 各端完成 → Webhook → Forge 更新看板 → 自动解锁下游任务
+  │
+  ▼ ⑦ Sprint 完成 → CI/CD 部署 → Sprint 回顾 → 询问启动下一 Sprint
+  │
+  ▼ ⑧ 所有 Sprint 完成 → Epic 关闭 → 需求交付 ✅
+```
+
+### 13.2 PRD 生成器
+
+```
+输入: 自然语言需求描述
+输出: 结构化 PRD
+
+POST /api/prd/generate
+{
+  "prompt": "实现 Claw 记忆系统向量化，支持语义搜索，替代现有 LIKE 匹配",
+  "project_id": "sc-core"
+}
+
+返回:
+{
+  "id": "prd-001",
+  "title": "记忆系统 v2 — 向量语义搜索",
+  "objective": "将记忆召回从关键词匹配升级为向量语义搜索",
+  "features": [
+    { "id": "F1", "title": "记忆向量化", "desc": "存储时生成 embedding", "service": "claw/api" },
+    { "id": "F2", "title": "语义搜索", "desc": "对话前用 query embedding 召回 top-K", "service": "claw/api" },
+    { "id": "F3", "title": "混合召回", "desc": "向量 + 关键词加权融合", "service": "claw/api" },
+    { "id": "F4", "title": "前端展示", "desc": "MemoryPage 显示相似度分数", "service": "claw/web" }
+  ],
+  "non_functional": [
+    "延迟 < 200ms (embedding 查询)",
+    "存量记忆自动补 embedding",
+    "embedding 模型可配置"
+  ],
+  "acceptance_criteria": [
+    "\"我喜欢吃什么\" 能召回 \"用户偏好川菜\"",
+    "1000 条记忆搜索 < 100ms",
+    "旧数据无缝迁移"
+  ],
+  "estimated_sprints": 2,
+  "services": ["claw/api", "claw/web"]
+}
+```
+
+### 13.3 Sprint 拆分器
+
+```
+POST /api/prd/:id/plan
+
+PRD → AI 自动拆分为:
+
+Epic: SC-50 记忆系统 v2 — 向量语义搜索
+│
+├── Sprint 1: "向量基础" (3天)
+│   ├── SC-51 [task] 添加 embedding 字段到 Memory 模型
+│   │   service: claw/api  type: code  points: 2  depends: []
+│   ├── SC-52 [task] 实现 EmbeddingProvider 接口
+│   │   service: claw/api  type: code  points: 3  depends: []
+│   ├── SC-53 [task] 记忆存储时自动生成 embedding
+│   │   service: claw/api  type: code  points: 3  depends: [SC-51, SC-52]
+│   ├── SC-54 [task] 向量相似度搜索
+│   │   service: claw/api  type: code  points: 3  depends: [SC-53]
+│   └── SC-55 [task] 存量记忆后台补 embedding
+│       service: claw/api  type: code  points: 2  depends: [SC-53]
+│
+└── Sprint 2: "前端 + 混合召回" (3天)
+    ├── SC-56 [task] 混合召回引擎 (向量 + 关键词加权)
+    │   service: claw/api  type: code  points: 3  depends: [SC-54]
+    ├── SC-57 [task] MemoryPage 显示相似度分数
+    │   service: claw/web  type: code  points: 2  depends: [SC-56]
+    ├── SC-58 [task] 记忆搜索 API 返回 similarity score
+    │   service: claw/api  type: code  points: 2  depends: [SC-54]
+    └── SC-59 [task] 性能测试 + 验收
+        service: claw/api  type: code  points: 2  depends: [SC-56, SC-57, SC-58]
+```
+
+### 13.4 Task Router — 任务路由器
+
+每个 Issue 根据 `type` 和 `service` 自动路由到正确的执行端：
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Task Router (任务路由器)                    │
+│                                                              │
+│  type: code + service in monorepo:                           │
+│    → Dev Bridge: git_create_branch + task_create             │
+│    → 分配给空闲的 Windsurf/Cursor 会话                        │
+│                                                              │
+│  type: agent / skill / workflow:                             │
+│    → Overlord API: 创建 DevClaw Mission                      │
+│    → DevClaw 五虫协作 → 沙箱测试 → 上架                       │
+│                                                              │
+│  type: config / doc:                                         │
+│    → Dev Bridge: file_write (简单配置)                        │
+│    → 或分配给 Windsurf (复杂文档)                             │
+│                                                              │
+│  type: design / review / approve:                            │
+│    → 通知人类 → Forge 大屏待确认                               │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 13.5 Orchestrator — 调度引擎
+
+```go
+// forge/api/internal/engine/orchestrator.go
+
+Orchestrator 核心逻辑:
+
+1. 启动 Sprint
+   → 扫描所有 Issue，构建依赖 DAG (有向无环图)
+   → 找出所有 "无依赖" 的 Issue → 立即调度
+
+2. 并行调度
+   → SC-51 (无依赖) → 调度到 Windsurf-1
+   → SC-52 (无依赖) → 调度到 Windsurf-2
+   → SC-53 (依赖 SC-51+52) → 排队等待
+
+3. 完成回调
+   → Webhook: SC-51 done
+   → 检查 SC-53 的依赖: SC-51 ✅ SC-52 ❓ → 还不能启动
+   → Webhook: SC-52 done
+   → 检查 SC-53 的依赖: SC-51 ✅ SC-52 ✅ → 全部满足 → 调度 SC-53
+
+4. Sprint 完成
+   → 所有 Issue done → 生成 Sprint 回顾
+   → 触发 CI/CD → 通知人类
+   → 询问: "Sprint 1 完成，是否开始 Sprint 2？"
+```
+
+### 13.6 调度大脑演进路线
+
+```
+Phase 0 (当前):
+  大脑 = 主 Windsurf 会话 (你 + Cascade AI)
+  你看 Forge 大屏 → 手动确认 PRD → 手动点一键开始
+  Windsurf 执行代码任务 → 你审查 → 合并
+  优点: 人类全程可控
+  缺点: 需要你在线
+
+Phase 1 (近期):
+  大脑 = Forge Orchestrator (Go 代码)
+  自动调度已确认的 Sprint
+  依赖解锁 + 并行派发 + Webhook 回调
+  人类确认点: PRD / Sprint 启动 / 代码审查
+  优点: 减少人类操作
+  缺点: 调度逻辑硬编码
+
+Phase 2 (中期):
+  大脑 = Forge Orchestrator + LLM 决策
+  LLM 参与: PRD 生成 / Sprint 规划 / 任务分配 / 代码审查
+  人类确认点: 只审核关键节点
+  优点: 更智能的决策
+  缺点: LLM 成本
+
+Phase 3 (终极):
+  大脑 = 最优秀的 LLM (GPT-5 / Claude / 未来模型)
+  全自治: 需求输入 → 交付产出，人类只做最终验收
+  Forge 大屏从"操作台"变为"监控台"
+  人类: 战略决策 + 最终验收
+  AI: 所有执行 + 战术决策
+
+  ┌─────────────────────────────────┐
+  │          你 (CEO)               │
+  │    "下个月做 XX 功能"            │
+  │    "Q2 目标是 YY"               │
+  └──────────────┬──────────────────┘
+                 │ 战略指令
+                 ▼
+  ┌─────────────────────────────────┐
+  │       LLM 调度大脑               │
+  │  PRD → Sprint → 调度 → 监控     │
+  │  审查 → 部署 → 回顾 → 优化      │
+  └──────────────┬──────────────────┘
+                 │ 自动调度
+        ┌────────┼────────┐
+        ▼        ▼        ▼
+    Windsurf  DevClaw   Cursor
+    (代码)    (Agent)   (代码)
+```
+
+### 13.7 人在回路 (Human-in-the-loop)
+
+即使到终极形态，保留 3 个人工确认点确保安全：
+
+| 确认点 | 阶段 | 为什么需要人类 |
+|--------|------|---------------|
+| **PRD 确认** | 需求定义后 | 确保 AI 理解的需求和你想要的一致 |
+| **Sprint 启动** | 拆分计划后 | 确认优先级、排期、资源分配合理 |
+| **部署审批** | Sprint 完成后 | 代码审查通过 + 验收测试通过才上线 |
+
+### 13.8 新增 API
+
+```
+── PRD ──────────────────────────────────────────
+POST   /api/prd/generate              AI 生成 PRD { prompt: "..." }
+GET    /api/prd/:id                   PRD 详情
+PUT    /api/prd/:id                   修改 PRD
+POST   /api/prd/:id/confirm           确认 PRD
+
+── Sprint 规划 ──────────────────────────────────
+POST   /api/prd/:id/plan              AI 拆分为 Sprint + Issues
+PUT    /api/prd/:id/plan              调整 Sprint 计划
+POST   /api/prd/:id/plan/confirm      确认计划
+
+── Sprint 执行 ──────────────────────────────────
+POST   /api/sprints/:id/start         🚀 一键开始 Sprint
+POST   /api/sprints/:id/pause         暂停 Sprint
+POST   /api/sprints/:id/resume        恢复 Sprint
+GET    /api/sprints/:id/progress      实时进度 (SSE)
+POST   /api/sprints/:id/retro         AI 生成 Sprint 回顾
+
+── 调度状态 ──────────────────────────────────────
+GET    /api/orchestrator/status        调度器状态 (队列/执行中/完成)
+GET    /api/orchestrator/agents        可用 Windsurf/DevClaw 列表
+POST   /api/orchestrator/register      编辑器会话注册 (Windsurf/Cursor)
+```
+
+### 13.9 Windsurf 会话注册
+
+```
+多个编辑器需要向 Forge 注册，才能被调度:
+
+编辑器启动时:
+  POST /api/orchestrator/register
+  {
+    "name": "windsurf-1",
+    "type": "windsurf",            // windsurf / cursor / vscode
+    "capabilities": ["go", "react", "docker"],
+    "services": ["claw/api", "claw/web"],   // 擅长的服务
+    "status": "idle"               // idle / busy / offline
+  }
+
+Forge 维护可用列表:
+  windsurf-1  idle    [go, react]    → 分配 SC-51 (claw/api)
+  cursor-1    idle    [go]           → 分配 SC-52 (claw/api)
+  windsurf-2  busy    [react]        → 队列中，等完成后分配
+```
+
+### 13.10 大屏一键开发视图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  🔥 Sprint 1: "向量基础"  [🚀 开始] [⏸ 暂停]  进度: 2/5 (40%)  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  依赖图 (DAG)                          编辑器池                  │
+│                                                                 │
+│  SC-51 ✅ ──┐                          windsurf-1: SC-53 🔨     │
+│              ├──→ SC-53 🔨 ──→ SC-54 ⏳   cursor-1: idle ⏳      │
+│  SC-52 ✅ ──┘              └──→ SC-55 ⏳   windsurf-2: offline ❌ │
+│                                                                 │
+│  ✅ = done    🔨 = running    ⏳ = waiting    ❌ = blocked       │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  活动流                                                          │
+│  11:30 ✅ SC-52 done by cursor-1 (3 commits, 2 files)          │
+│  11:25 🔨 SC-53 started → windsurf-1 (feat/claw/memory-embed)  │
+│  11:00 ✅ SC-51 done by windsurf-1 (1 commit, 1 file)          │
+│  10:55 🚀 Sprint started — 2 tasks dispatched in parallel       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 十四、技术栈
 
 | 层 | 技术 |
 |----|------|
