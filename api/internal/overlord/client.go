@@ -14,16 +14,24 @@ import (
 	"github.com/yinhe/starclaw/internal/molt"
 )
 
+// TaskStats holds current task counters for heartbeat reporting.
+type TaskStats struct {
+	Running int
+	Queued  int
+}
+
 // Client handles registration and heartbeat with an Overlord node
 type Client struct {
-	cfg     config.OverlordConfig
-	nodeID  string
-	token   string
-	clawID  string
-	address string // public address of this Claw, e.g. https://starclaw.me
-	mu      sync.RWMutex
-	stopCh  chan struct{}
-	httpC   *http.Client
+	cfg           config.OverlordConfig
+	nodeID        string
+	token         string
+	clawID        string
+	address       string // public address of this Claw API, e.g. https://starclaw.me:8080
+	webURL        string // browser-accessible Web UI URL, e.g. https://starclaw.me
+	mu            sync.RWMutex
+	stopCh        chan struct{}
+	httpC         *http.Client
+	TaskCountFunc func() TaskStats // injected by router to report real task counts
 }
 
 // NewClient creates an overlord client from config
@@ -120,6 +128,13 @@ func (c *Client) SetAddress(addr string) {
 	c.mu.Unlock()
 }
 
+// SetWebURL sets the browser-accessible Web UI URL of this Claw node
+func (c *Client) SetWebURL(url string) {
+	c.mu.Lock()
+	c.webURL = url
+	c.mu.Unlock()
+}
+
 // OverlordURL returns the configured Overlord URL
 func (c *Client) OverlordURL() string {
 	return c.cfg.OverlordURL
@@ -207,6 +222,11 @@ func (c *Client) heartbeat() error {
 	cpu := cpuPercent()
 	mem := memPercent()
 
+	var ts TaskStats
+	if c.TaskCountFunc != nil {
+		ts = c.TaskCountFunc()
+	}
+
 	c.mu.RLock()
 	cid := c.clawID
 	c.mu.RUnlock()
@@ -217,10 +237,11 @@ func (c *Client) heartbeat() error {
 		"version":       molt.Version,
 		"claw_id":       cid,
 		"address":       c.getAddress(),
+		"web_url":       c.getWebURL(),
 		"cpu_percent":   cpu,
 		"mem_percent":   mem,
-		"tasks_running": 0,
-		"tasks_queued":  0,
+		"tasks_running": ts.Running,
+		"tasks_queued":  ts.Queued,
 	}
 
 	_, err := c.post("/brood/heartbeat", body)
@@ -267,6 +288,13 @@ func LoadCredentials() (nodeID, token string) {
 		return string(parts[0]), string(parts[1])
 	}
 	return "", ""
+}
+
+func (c *Client) getWebURL() string {
+	c.mu.RLock()
+	url := c.webURL
+	c.mu.RUnlock()
+	return url
 }
 
 func (c *Client) getAddress() string {

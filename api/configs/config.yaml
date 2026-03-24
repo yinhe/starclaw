@@ -25,6 +25,14 @@ openai:
   api_key: ""       # or set env STARCLAW_OPENAI_API_KEY
   base_url: ""      # optional: custom base URL for OpenAI-compatible API
 
+# Overlord (Team Agent orchestration)
+overlord:
+  enabled: false                    # set true to register with Overlord
+  overlord_url: ""                  # e.g. http://overlord-api:8095
+  node_name: ""                     # display name (defaults to hostname)
+  region: ""                        # e.g. cn-east
+  heartbeat_interval: 30            # seconds
+
 # Swarm (register with Queen for centralized management)
 swarm:
   enabled: false                    # set true to join the swarm

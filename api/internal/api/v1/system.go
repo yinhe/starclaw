@@ -1,14 +1,19 @@
 package v1
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -323,6 +328,14 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	// Detect runtime mode: spore (managed by Spore), docker, or standalone
+	runtimeMode := "standalone"
+	if os.Getenv("SPORE_DATA_DIR") != "" {
+		runtimeMode = "spore"
+	} else if _, err := os.Stat("/.dockerenv"); err == nil {
+		runtimeMode = "docker"
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"version":       vi,
 		"go_version":    runtime.Version(),
@@ -330,11 +343,15 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 		"arch":          runtime.GOARCH,
 		"memory_mb":     memStats.Alloc / 1024 / 1024,
 		"deploy_mode":   h.cfg.Server.DeployMode,
+		"runtime_mode":  runtimeMode,
 		"swarm_enabled": h.cfg.Swarm.Enabled,
 	})
 }
 
-// TriggerUpdate pulls latest Docker image and restarts the container
+// TriggerUpdate detects runtime mode and dispatches to the appropriate update path:
+//   - docker: Docker socket pull+up (fast) → MCP Bridge build (fallback)
+//   - spore:  download binary → replace → exit → Spore auto-restarts
+//   - standalone: download binary → replace → exit
 func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 	vi := molt.GetVersionInfo()
 	if !vi.UpdateAvail {
@@ -342,29 +359,68 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 		return
 	}
 
-	// Pre-check: MCP Bridge must be available (container can't rebuild itself)
-	bridgeURL := mcp.DetectBridgeURL()
-	if !mcp.ProbeBridge(bridgeURL) {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":   "MCP Bridge 未运行，无法执行一键更新",
-			"message": "请先启动 MCP Bridge，或在服务器手动执行更新命令",
-		})
-		return
-	}
+	resetUpdateLog()
+	ulogInfo("开始更新: %s → %s", vi.Current, vi.Latest)
 
-	log.Printf("[molt] user triggered update: %s → %s", vi.Current, vi.Latest)
+	// Detect runtime mode
+	runtimeMode := detectRuntimeMode()
+	ulogInfo("运行模式: %s", runtimeMode)
 
-	// Run update in background
-	go func() {
-		if err := performDockerUpdate(); err != nil {
-			log.Printf("[molt] update failed: %v", err)
+	switch runtimeMode {
+	case "docker":
+		// Try Docker socket first (fast pull), fall back to MCP Bridge (source build)
+		if hasDockerSocket() {
+			ulogInfo("检测到 Docker Socket，使用镜像拉取更新")
+			go func() {
+				defer finishUpdateLog()
+				if err := performDockerSocketUpdate(vi.Latest); err != nil {
+					ulogError("Docker Socket 更新失败: %v，尝试 MCP Bridge...", err)
+					if err2 := performDockerUpdate(); err2 != nil {
+						ulogError("MCP Bridge 更新也失败: %v", err2)
+					}
+				}
+			}()
+		} else {
+			bridgeURL := mcp.DetectBridgeURL()
+			if !mcp.ProbeBridge(bridgeURL) {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"error":   "Docker socket 和 MCP Bridge 均不可用",
+					"message": "请确保 docker-compose.yml 已挂载 /var/run/docker.sock，或启动 MCP Bridge",
+				})
+				return
+			}
+			go func() {
+				defer finishUpdateLog()
+				if err := performDockerUpdate(); err != nil {
+					ulogError("更新失败: %v", err)
+				}
+			}()
 		}
-	}()
+
+	case "spore":
+		ulogInfo("Spore 模式，使用二进制替换更新")
+		go func() {
+			defer finishUpdateLog()
+			if err := performSporeUpdate(vi.Latest); err != nil {
+				ulogError("Spore 更新失败: %v", err)
+			}
+		}()
+
+	default: // standalone
+		ulogInfo("独立模式，使用二进制替换更新")
+		go func() {
+			defer finishUpdateLog()
+			if err := performStandaloneUpdate(vi.Latest); err != nil {
+				ulogError("独立更新失败: %v", err)
+			}
+		}()
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": fmt.Sprintf("正在更新到 v%s，服务将在数秒后重启...", vi.Latest),
 		"from":    vi.Current,
 		"to":      vi.Latest,
+		"method":  runtimeMode,
 	})
 }
 
@@ -550,6 +606,403 @@ func execOnHostTimeout(client *mcp.Client, command string, timeoutSec int) (stri
 	return client.CallTool(context.Background(), "shell_exec", string(args))
 }
 
+// ── Update log buffer (real-time progress visible in frontend) ──
+
+var (
+	updateLogMu    sync.Mutex
+	updateLogLines []updateLogEntry
+	updateRunning  bool
+)
+
+type updateLogEntry struct {
+	Time    string `json:"time"`
+	Message string `json:"message"`
+	Level   string `json:"level"` // info, error, success
+}
+
+// ulog writes to both the standard log and the update log buffer.
+func ulog(level, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	log.Printf("[molt] %s", msg)
+	updateLogMu.Lock()
+	updateLogLines = append(updateLogLines, updateLogEntry{
+		Time:    time.Now().Format("15:04:05"),
+		Message: msg,
+		Level:   level,
+	})
+	updateLogMu.Unlock()
+}
+
+func ulogInfo(format string, args ...interface{})    { ulog("info", format, args...) }
+func ulogError(format string, args ...interface{})   { ulog("error", format, args...) }
+func ulogSuccess(format string, args ...interface{}) { ulog("success", format, args...) }
+
+func resetUpdateLog() {
+	updateLogMu.Lock()
+	updateLogLines = nil
+	updateRunning = true
+	updateLogMu.Unlock()
+}
+
+func finishUpdateLog() {
+	updateLogMu.Lock()
+	updateRunning = false
+	updateLogMu.Unlock()
+}
+
+// GetUpdateLog returns the current update log buffer for the frontend
+func (h *SystemHandler) GetUpdateLog(c *gin.Context) {
+	updateLogMu.Lock()
+	lines := make([]updateLogEntry, len(updateLogLines))
+	copy(lines, updateLogLines)
+	running := updateRunning
+	updateLogMu.Unlock()
+	c.JSON(http.StatusOK, gin.H{
+		"lines":   lines,
+		"running": running,
+	})
+}
+
+// ── Helpers: runtime detection ──
+
+func detectRuntimeMode() string {
+	if os.Getenv("SPORE_DATA_DIR") != "" {
+		return "spore"
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return "docker"
+	}
+	return "standalone"
+}
+
+func hasDockerSocket() bool {
+	_, err := os.Stat("/var/run/docker.sock")
+	return err == nil
+}
+
+// ── Docker Socket update (auto-detect host dir, pull or build, no MCP Bridge needed) ──
+
+func performDockerSocketUpdate(targetVersion string) error {
+	hostDir := os.Getenv("STARCLAW_HOST_DIR")
+
+	// Auto-detect host project dir from Docker Compose container labels
+	if hostDir == "" {
+		ulogInfo("自动检测宿主机项目目录...")
+		out, err := exec.Command("docker", "inspect", "starclaw-api",
+			"--format", `{{index .Config.Labels "com.docker.compose.project.working_dir"}}`).CombinedOutput()
+		if err == nil {
+			detected := strings.TrimSpace(string(out))
+			if detected != "" && detected != "<no value>" {
+				hostDir = detected
+				ulogInfo("检测到项目目录: %s", hostDir)
+			}
+		}
+	}
+
+	// Fallback: search common host paths via Docker
+	if hostDir == "" {
+		for _, dir := range []string{"/opt/starclaw/claw", "/opt/starclaw", "/opt/claw"} {
+			if err := exec.Command("docker", "run", "--rm",
+				"-v", dir+":"+dir+":ro",
+				"alpine:latest", "test", "-d", filepath.Join(dir, "api")).Run(); err == nil {
+				hostDir = dir
+				ulogInfo("找到项目目录: %s", hostDir)
+				break
+			}
+		}
+	}
+
+	if hostDir == "" {
+		return fmt.Errorf("无法检测宿主机项目目录，请设置 STARCLAW_HOST_DIR 环境变量")
+	}
+
+	// Build the update script that runs inside a helper container on the host.
+	// Key fixes:
+	//  1. Read original project-name from container labels → seamless container replacement
+	//  2. Use --project-directory → compose relative paths resolve correctly
+	//  3. Verify pull got real images → avoid false-positive when compose has build+image
+	//  4. Temp dir for tar → avoid overwrite conflicts
+	nydusURL := molt.NydusSourceURL
+	script := fmt.Sprintf(`#!/bin/sh
+set -e
+
+# Setup mirrors for China network
+sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories 2>/dev/null || true
+apk add --no-cache curl docker-cli docker-cli-compose > /dev/null 2>&1
+echo "@@TOOLS_READY"
+
+HOSTDIR="%s"
+VER="%s"
+NYDUS="%s"
+cd "$HOSTDIR"
+
+# ── Detect project layout ──
+if [ -f "claw/docker-compose.prod.yml" ]; then
+  COMPOSE="$HOSTDIR/claw/docker-compose.prod.yml"
+  SRCDIR="$HOSTDIR/claw"
+  echo "@@LAYOUT:monorepo"
+elif [ -f "docker-compose.prod.yml" ]; then
+  COMPOSE="$HOSTDIR/docker-compose.prod.yml"
+  SRCDIR="$HOSTDIR"
+  echo "@@LAYOUT:standalone"
+else
+  COMPOSE="$HOSTDIR/docker-compose.yml"
+  SRCDIR="$HOSTDIR"
+  echo "@@LAYOUT:dev"
+fi
+
+COMPOSEDIR=$(dirname "$COMPOSE")
+
+# ── Read original project name from running container labels ──
+# This is CRITICAL: docker compose tracks containers by project name.
+# Without matching the original, "up" tries to create NEW containers
+# instead of replacing existing ones → container name conflict.
+PROJECT=$(docker inspect starclaw-api --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)
+if [ -z "$PROJECT" ]; then
+  PROJECT=$(basename "$COMPOSEDIR")
+fi
+
+DC="docker compose --project-name $PROJECT --project-directory $COMPOSEDIR -f $COMPOSE"
+echo "@@PROJECT:$PROJECT"
+echo "@@COMPOSE:$COMPOSE"
+echo "@@SRCDIR:$SRCDIR"
+
+# ── Try pulling pre-built images (fast path) ──
+NEED_BUILD=true
+echo "@@PULL_START"
+STARCLAW_VERSION="$VER" $DC pull api web > /dev/null 2>&1 || true
+
+# Verify pull actually got the versioned image (not just exit code 0)
+API_IMG="ghcr.io/yinhe/starclaw-api:$VER"
+if docker image inspect "$API_IMG" > /dev/null 2>&1; then
+  NEED_BUILD=false
+  echo "@@PULL_OK"
+else
+  echo "@@PULL_NOIMAGE"
+fi
+
+# ── Build from source if needed ──
+if [ "$NEED_BUILD" = "true" ]; then
+  # Update source code from Nydus (temp dir avoids tar overwrite conflicts)
+  echo "@@SOURCE_START"
+  TMP=$(mktemp -d)
+  curl -sfL --connect-timeout 10 --max-time 120 "$NYDUS" | tar xz -C "$TMP" --strip-components=1
+  cp -rf "$TMP"/. "$SRCDIR"/
+  rm -rf "$TMP"
+  echo -n "$VER" > "$SRCDIR/api/.version"
+  echo "@@SOURCE_OK"
+
+  # Build images
+  echo "@@BUILD_START"
+  STARCLAW_VERSION="$VER" $DC build api web 2>&1
+  echo "@@BUILD_OK"
+fi
+
+# ── Recreate containers ──
+echo "@@UP_START"
+STARCLAW_VERSION="$VER" $DC up -d --no-deps api web 2>&1
+echo "@@UPDATE_COMPLETE"
+`, hostDir, targetVersion, nydusURL)
+
+	ulogInfo("启动宿主机构建容器...")
+	cmd := exec.Command("docker", "run", "--rm",
+		"-v", hostDir+":"+hostDir,
+		"-v", "/var/run/docker.sock:/var/run/docker.sock",
+		"--workdir", hostDir,
+		"alpine:latest",
+		"sh", "-c", script)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("create pipe: %w", err)
+	}
+	cmd.Stderr = cmd.Stdout // merge stderr into stdout
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start helper container: %w", err)
+	}
+
+	// Stream output and translate step markers into real-time log entries
+	var lastOutput strings.Builder
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		lastOutput.WriteString(line + "\n")
+		// Keep buffer bounded
+		if lastOutput.Len() > 8192 {
+			s := lastOutput.String()
+			lastOutput.Reset()
+			lastOutput.WriteString(s[len(s)-4096:])
+		}
+
+		switch {
+		case line == "@@TOOLS_READY":
+			ulogInfo("构建工具就绪")
+		case strings.HasPrefix(line, "@@LAYOUT:"):
+			ulogInfo("布局: %s", strings.TrimPrefix(line, "@@LAYOUT:"))
+		case strings.HasPrefix(line, "@@COMPOSE:"):
+			ulogInfo("compose: %s", strings.TrimPrefix(line, "@@COMPOSE:"))
+		case strings.HasPrefix(line, "@@SRCDIR:"):
+			ulogInfo("源码目录: %s", strings.TrimPrefix(line, "@@SRCDIR:"))
+		case line == "@@PULL_START":
+			ulogInfo("尝试拉取预构建镜像...")
+		case line == "@@PULL_OK":
+			ulogInfo("预构建镜像已拉取，跳过源码构建")
+		case line == "@@PULL_NOIMAGE":
+			ulogInfo("镜像不存在，切换到源码构建...")
+		case strings.HasPrefix(line, "@@PROJECT:"):
+			ulogInfo("项目名: %s", strings.TrimPrefix(line, "@@PROJECT:"))
+		case line == "@@SOURCE_START":
+			ulogInfo("正在从 Nydus 下载源码...")
+		case line == "@@SOURCE_OK":
+			ulogInfo("源码已更新，版本写入完成")
+		case line == "@@BUILD_START":
+			ulogInfo("正在构建镜像 (可能需要几分钟)...")
+		case line == "@@BUILD_OK":
+			ulogInfo("镜像构建完成")
+		case line == "@@UP_START":
+			ulogInfo("正在重建容器...")
+		case line == "@@UPDATE_COMPLETE":
+			ulogSuccess("✅ Docker 更新到 v%s 完成，服务重启中...", targetVersion)
+		case strings.HasPrefix(line, "@@"):
+			// skip unknown markers
+		default:
+			// Log notable build output (docker Step lines, errors)
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "Step ") || strings.HasPrefix(trimmed, "Successfully") ||
+				strings.Contains(trimmed, "error") || strings.Contains(trimmed, "Error") {
+				if len(trimmed) > 200 {
+					trimmed = trimmed[:200] + "..."
+				}
+				ulogInfo("> %s", trimmed)
+			}
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		out := lastOutput.String()
+		if len(out) > 500 {
+			out = out[len(out)-500:]
+		}
+		ulogError("构建容器失败: %s", out)
+		return fmt.Errorf("helper container failed: %w", err)
+	}
+	return nil
+}
+
+// ── Spore update (download binary, replace in-place, exit for auto-restart) ──
+
+func performSporeUpdate(targetVersion string) error {
+	ulogInfo("下载 v%s 二进制文件...", targetVersion)
+
+	// Determine download URL based on platform
+	binaryURL := sporeDownloadURL(targetVersion)
+	if binaryURL == "" {
+		return fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+
+	// Download to temp file
+	tmpFile, err := os.CreateTemp("", "starclaw-update-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(binaryURL)
+	if err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("download returned HTTP %d", resp.StatusCode)
+	}
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write binary: %w", err)
+	}
+	tmpFile.Close()
+	os.Chmod(tmpPath, 0755)
+
+	ulogInfo("下载完成: %s", binaryURL)
+
+	// Find current binary path
+	currentBin, err := os.Executable()
+	if err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("find executable: %w", err)
+	}
+	currentBin, _ = filepath.EvalSymlinks(currentBin)
+
+	// Replace: on Linux/macOS rename over the running binary (inode-based, safe)
+	// On Windows: rename old → .old, move new → current
+	if runtime.GOOS == "windows" {
+		oldPath := currentBin + ".old"
+		os.Remove(oldPath)
+		if err := os.Rename(currentBin, oldPath); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("rename old binary: %w", err)
+		}
+		if err := os.Rename(tmpPath, currentBin); err != nil {
+			os.Rename(oldPath, currentBin) // rollback
+			return fmt.Errorf("move new binary: %w", err)
+		}
+	} else {
+		if err := os.Rename(tmpPath, currentBin); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("replace binary: %w", err)
+		}
+	}
+
+	ulogSuccess("✅ 二进制已替换: %s，正在重启...", currentBin)
+
+	// Give the HTTP response time to flush, then exit.
+	// Spore runtime's restart loop (or systemd/launchd) will restart with new binary.
+	time.Sleep(1 * time.Second)
+	os.Exit(0)
+	return nil // unreachable
+}
+
+// performStandaloneUpdate downloads and replaces the binary for non-Docker, non-Spore installs.
+func performStandaloneUpdate(targetVersion string) error {
+	return performSporeUpdate(targetVersion) // same logic: download + replace + exit
+}
+
+func sporeDownloadURL(version string) string {
+	os_ := runtime.GOOS
+	arch := runtime.GOARCH
+
+	// GitHub release binary name pattern: starclaw-{os}-{arch}[.exe]
+	name := fmt.Sprintf("starclaw-%s-%s", os_, arch)
+	if os_ == "windows" {
+		name += ".exe"
+	}
+
+	// Try Nydus mirror first (faster in China), then GitHub
+	nydusURL := fmt.Sprintf("https://nydus.starclaw.net/releases/binary/v%s/%s", version, name)
+	ghURL := fmt.Sprintf("https://github.com/yinhe/starclaw/releases/download/v%s/%s", version, name)
+
+	// Quick probe: try Nydus HEAD
+	client := &http.Client{Timeout: 5 * time.Second}
+	if resp, err := client.Head(nydusURL); err == nil {
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			return nydusURL
+		}
+	}
+	return ghURL
+}
+
+// ── MCP Bridge update (source build, legacy fallback) ──
+
 // PerformDockerUpdate executes a full Docker-based self-update via MCP Bridge.
 // Exported so it can be called from the swarm client's auto-update flow.
 func PerformDockerUpdate() error {
@@ -560,11 +1013,11 @@ func performDockerUpdate() error {
 	// MCP Bridge is required — the container cannot rebuild itself
 	bridgeURL := mcp.DetectBridgeURL()
 	if !mcp.ProbeBridge(bridgeURL) {
-		log.Println("[molt] MCP Bridge not available, cannot update from inside container")
+		ulogError("MCP Bridge 不可用，无法从容器内更新")
 		return fmt.Errorf("MCP Bridge 未运行，无法执行一键更新。请在宿主机手动执行 update.sh")
 	}
 
-	log.Println("[molt] MCP Bridge detected, updating via host shell...")
+	ulogInfo("MCP Bridge 已连接，通过宿主机 Shell 更新...")
 	client := mcp.NewClientWithTimeout(mcp.ServerConfig{BaseURL: bridgeURL, Name: "host"}, 15*time.Minute)
 
 	// Step 1: Find project root directory
@@ -573,7 +1026,7 @@ func performDockerUpdate() error {
 	if projectDir == "" {
 		projectDir = "/opt/starclaw"
 	}
-	log.Printf("[molt] project dir: %s", projectDir)
+	ulogInfo("项目目录: %s", projectDir)
 
 	// Step 2: Detect compose file — all compose files use api/web service names
 	// Prefer claw/ subdir compose (standalone/monorepo OSS layout), then root
@@ -589,7 +1042,7 @@ func performDockerUpdate() error {
 	} else if strings.Contains(checkResult, "ROOT_PROD") {
 		composeFile = "docker-compose.prod.yml"
 	}
-	log.Printf("[molt] compose: %s/%s", projectDir, composeFile)
+	ulogInfo("compose: %s/%s", projectDir, composeFile)
 
 	// Step 3: Update source code — try GitHub first, fallback to Nydus tarball
 	// Monorepo layout: git may be in claw/ subdir (OSS repo maps claw/ → root)
@@ -597,36 +1050,36 @@ func performDockerUpdate() error {
 	pullResult, _ := execOnHost(client, fmt.Sprintf(
 		`cd "%s" && if [ -d .git ]; then git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; elif [ -d claw/.git ]; then cd claw && git fetch origin main 2>&1 && git reset --hard origin/main 2>&1; else echo "NO_GIT"; fi`,
 		projectDir))
-	log.Printf("[molt] source update: %.500s", pullResult)
+	ulogInfo("源码更新: %.200s", pullResult)
 
 	// Fallback: if git fetch failed or no git, download tarball from Nydus mirror
 	gitFailed := strings.Contains(pullResult, "NO_GIT") || strings.Contains(pullResult, "fatal:") || strings.Contains(pullResult, "error:")
 	if gitFailed {
-		log.Printf("[molt] GitHub git failed, trying Nydus source tarball fallback...")
+		ulogInfo("Git 拉取失败，尝试 Nydus 源码包...")
 		nydusResult, nydusErr := execOnHostTimeout(client, fmt.Sprintf(
 			`cd "%s" && curl -sfL --connect-timeout 10 --max-time 120 "%s" | tar xz --strip-components=1 2>&1 && echo "NYDUS_OK"`,
 			projectDir, molt.NydusSourceURL), 180)
 		if nydusErr != nil || !strings.Contains(nydusResult, "NYDUS_OK") {
-			log.Printf("[molt] Nydus fallback also failed: %v %.500s", nydusErr, nydusResult)
-			log.Println("[molt] WARNING: source code not updated. Build will use existing code.")
+			ulogError("Nydus 回退也失败: %v", nydusErr)
+			ulogError("警告: 源码未更新，将使用现有代码构建")
 		} else {
-			log.Printf("[molt] source updated via Nydus tarball")
+			ulogInfo("源码已通过 Nydus 更新")
 		}
 	}
 
 	// Step 3.5: Write version to .version file so Dockerfile picks it up during build
 	targetVersion := molt.GetVersionInfo().Latest
 	execOnHost(client, fmt.Sprintf(`echo -n "%s" > "%s/api/.version"`, targetVersion, projectDir))
-	log.Printf("[molt] wrote version %s to api/.version", targetVersion)
+	ulogInfo("写入版本 %s 到 api/.version", targetVersion)
 
 	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)
 	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,
 		projectDir, composeFile, composeFile)
 	result, err := execOnHostTimeout(client, updateCmd, 900)
 	if err != nil {
-		log.Printf("[molt] update failed: %v", err)
+		ulogError("构建/重启失败: %v", err)
 		return fmt.Errorf("更新失败: %v", err)
 	}
-	log.Printf("[molt] update result: %.500s", result)
+	ulogSuccess("✅ MCP Bridge 更新完成: %.200s", result)
 	return nil
 }

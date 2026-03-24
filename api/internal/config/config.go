@@ -19,6 +19,8 @@ type Config struct {
 	Contributor ContributorConfig `mapstructure:"contributor"`
 	Nydus       NydusConfig       `mapstructure:"nydus"`
 	Storage     StorageConfig     `mapstructure:"storage"`
+	Hive        HiveConfig        `mapstructure:"hive"`
+	Forge       ForgeConfig       `mapstructure:"forge"`
 }
 
 type StorageConfig struct {
@@ -26,7 +28,8 @@ type StorageConfig struct {
 }
 
 type NodeConfig struct {
-	Address string `mapstructure:"address"` // public address of this Claw, e.g. https://starclaw.me
+	Address string `mapstructure:"address"` // public address of this Claw API, e.g. https://starclaw.me:8080
+	WebURL  string `mapstructure:"web_url"` // browser-accessible Web UI URL, e.g. https://starclaw.me
 	Name    string `mapstructure:"name"`    // display name, default hostname
 	Region  string `mapstructure:"region"`  // e.g. cn-east, us-west
 }
@@ -53,6 +56,14 @@ type ContributorConfig struct {
 	OllamaURL    string `mapstructure:"ollama_url"`    // e.g. http://localhost:11434
 	MaxJobs      int    `mapstructure:"max_jobs"`      // max concurrent inference jobs (default 2)
 	ExternalAddr string `mapstructure:"external_addr"` // address other nodes can reach this node at
+}
+
+type HiveConfig struct {
+	URL string `mapstructure:"url"` // Hive Controller URL, e.g. http://hive:9090 (set by Hive when creating containers)
+}
+
+type ForgeConfig struct {
+	URL string `mapstructure:"url"` // Forge API URL, e.g. http://forge-api:8099 (when set, proxy /v1/forge/* to this)
 }
 
 type NydusConfig struct {
@@ -149,6 +160,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("overlord.node_name", "")
 	viper.SetDefault("overlord.region", "")
 	viper.SetDefault("node.address", "")
+	viper.SetDefault("node.web_url", "")
 	viper.SetDefault("node.name", "")
 	viper.SetDefault("node.region", "")
 	viper.SetDefault("overlord.heartbeat_interval", 30)
@@ -157,6 +169,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("contributor.max_jobs", 2)
 	viper.SetDefault("contributor.external_addr", "")
 	viper.SetDefault("storage.data_dir", "/app")
+	viper.SetDefault("hive.url", "")
+	viper.SetDefault("forge.url", "")
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -60,12 +62,22 @@ var (
 	mu          sync.RWMutex
 	latestInfo  *ReleaseInfo
 	lastChecked time.Time
+
+	// Hive integration: when set, Molt notifies Hive Controller on new version
+	hiveURL      string
+	hiveNotified string // version we already notified about (debounce)
 )
 
-// StartChecker starts a background goroutine that periodically checks for new releases
+// StartChecker starts a background goroutine that periodically checks for new releases.
+// Adds random jitter (0-5 min) before first check to avoid thundering herd
+// when many Hive containers start simultaneously.
 func StartChecker() {
 	go func() {
-		// Check immediately on startup
+		// Random jitter before first check: 0-5 minutes
+		jitter := time.Duration(rand.Intn(300)) * time.Second
+		if jitter > 0 {
+			time.Sleep(jitter)
+		}
 		check()
 		ticker := time.NewTicker(checkEvery)
 		defer ticker.Stop()
@@ -73,6 +85,17 @@ func StartChecker() {
 			check()
 		}
 	}()
+}
+
+// SetHiveURL configures Molt to notify a Hive Controller when a new version is detected.
+// Called from main.go if hive.url is configured (i.e., this Claw runs inside Hive).
+func SetHiveURL(url string) {
+	mu.Lock()
+	hiveURL = url
+	mu.Unlock()
+	if url != "" {
+		log.Printf("[molt] hive notification enabled → %s", url)
+	}
 }
 
 // ForceCheck triggers an immediate version check
@@ -95,6 +118,40 @@ func check() {
 	latest := trimV(info.TagName)
 	if latest > Version {
 		log.Printf("[molt] new version available: %s → %s (via %s)", Version, latest, info.Source)
+		notifyHive(latest, info.Source)
+	}
+}
+
+// notifyHive sends an upgrade notification to the Hive Controller (if configured).
+// Debounces: only notifies once per version.
+func notifyHive(latestVersion, source string) {
+	mu.RLock()
+	url := hiveURL
+	alreadyNotified := hiveNotified
+	mu.RUnlock()
+
+	if url == "" || latestVersion == alreadyNotified {
+		return
+	}
+
+	body := fmt.Sprintf(`{"current_version":"%s","latest_version":"%s","source":"%s"}`,
+		Version, latestVersion, source)
+
+	resp, err := http.Post(url+"/hive/upgrade-notify", "application/json",
+		strings.NewReader(body))
+	if err != nil {
+		log.Printf("[molt] hive notify failed: %v", err)
+		return
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
+		mu.Lock()
+		hiveNotified = latestVersion
+		mu.Unlock()
+		log.Printf("[molt] notified hive: upgrade %s → %s", Version, latestVersion)
+	} else {
+		log.Printf("[molt] hive notify returned %d", resp.StatusCode)
 	}
 }
 

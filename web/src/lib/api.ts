@@ -59,8 +59,9 @@ export const systemAPI = {
   getUpdate: () => api.get('/system/update'),
   triggerUpdate: () => api.post('/system/update'),
   forceCheck: () => api.post('/system/update/check'),
+  getUpdateLog: () => api.get('/system/update-log'),
   getSwarm: () => api.get('/system/swarm'),
-  joinSwarm: (data: { queen_url: string; node_name?: string; region?: string }) => api.post('/system/swarm/join', data),
+  joinSwarm: (data: { queen_url: string; node_name?: string; region?: string; invite_code?: string }) => api.post('/system/swarm/join', data),
   leaveSwarm: () => api.post('/system/swarm/leave'),
   getCredits: (params?: { refresh?: boolean }) => api.get('/system/credits', { params }),
   getCreditTransactions: (params?: { page?: number; page_size?: number; type?: string }) => api.get('/system/credits/transactions', { params }),
@@ -166,6 +167,7 @@ export const setupAPI = {
   status: () => axios.get('/v1/setup/status'),
   setup: (data?: { password?: string; username?: string }) =>
     axios.post('/v1/setup', data || {}),
+  getToken: () => axios.get('/v1/setup/token'),
   ownerLogin: (data: { password: string; device_id?: string; device_name?: string }) =>
     axios.post('/v1/auth/owner-login', data),
 }
@@ -190,6 +192,7 @@ export const queenAPI = {
   getStatus: () => api.get('/queen/status'),
   link: (data: { email?: string; phone?: string; password: string }) => api.post('/queen/link', data),
   linkWithClaw: () => api.post('/queen/link-claw'),
+  autoRegister: (data?: { ref_code?: string; invite_code?: string; nickname?: string }) => api.post('/queen/auto-register', data || {}),
   unlink: () => api.post('/queen/unlink'),
 }
 

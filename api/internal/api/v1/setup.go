@@ -230,6 +230,106 @@ func (h *SetupHandler) PasswordLogin(c *gin.Context) {
 	})
 }
 
+// ResetToken regenerates the owner token. Only allowed from localhost in opensource mode.
+// This is used by Spore setup when reinstalling (old DB exists, token lost).
+// Security: blocked in hosted mode to prevent reverse-proxy bypass (Nginx → 127.0.0.1).
+func (h *SetupHandler) ResetToken(c *gin.Context) {
+	if h.cfg.Server.DeployMode != "" && h.cfg.Server.DeployMode != "opensource" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	ip := c.ClientIP()
+	if ip != "127.0.0.1" && ip != "::1" && ip != "localhost" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "仅限本机访问"})
+		return
+	}
+
+	var user model.User
+	if err := h.db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
+		// No owner exists — run normal setup instead
+		h.Setup(c)
+		return
+	}
+
+	// Regenerate owner token
+	tokenBytes := make([]byte, 16)
+	rand.Read(tokenBytes)
+	newToken := hex.EncodeToString(tokenBytes)
+	h.db.Model(&user).Update("owner_token", newToken)
+
+	jwtToken, _ := h.generateJWT(&user)
+	c.JSON(http.StatusOK, gin.H{
+		"owner_token": newToken,
+		"token":       jwtToken,
+		"user":        user,
+		"reset":       true,
+	})
+}
+
+// GetToken returns the current owner token. Only allowed from localhost in opensource mode.
+// Non-destructive: does not regenerate, just reads the existing token.
+// Security: blocked in hosted mode to prevent reverse-proxy bypass (Nginx → 127.0.0.1).
+func (h *SetupHandler) GetToken(c *gin.Context) {
+	if h.cfg.Server.DeployMode != "" && h.cfg.Server.DeployMode != "opensource" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	ip := c.ClientIP()
+	if ip != "127.0.0.1" && ip != "::1" && ip != "localhost" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "仅限本机访问"})
+		return
+	}
+
+	var user model.User
+	if err := h.db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "未初始化", "setup_completed": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"owner_token":     *user.OwnerToken,
+		"username":        user.Username,
+		"setup_completed": true,
+	})
+}
+
+// ResetPassword resets the owner password. Only allowed from localhost in opensource mode.
+// Security: blocked in hosted mode to prevent reverse-proxy bypass (Nginx → 127.0.0.1).
+func (h *SetupHandler) ResetPassword(c *gin.Context) {
+	if h.cfg.Server.DeployMode != "" && h.cfg.Server.DeployMode != "opensource" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	ip := c.ClientIP()
+	if ip != "127.0.0.1" && ip != "::1" && ip != "localhost" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "仅限本机访问"})
+		return
+	}
+
+	var req struct {
+		Password string `json:"password" binding:"required,min=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password required (min 6 chars)"})
+		return
+	}
+
+	var user model.User
+	if err := h.db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "未初始化"})
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash failed"})
+		return
+	}
+
+	h.db.Model(&user).Update("password", string(hashed))
+	c.JSON(http.StatusOK, gin.H{"message": "密码已重置"})
+}
+
 func (h *SetupHandler) generateJWT(user *model.User) (string, error) {
 	role := user.Role
 	if role == "" {

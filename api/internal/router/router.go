@@ -24,7 +24,7 @@ import (
 	"github.com/yinhe/starclaw/internal/billing"
 	"github.com/yinhe/starclaw/internal/browser"
 	"github.com/yinhe/starclaw/internal/config"
-	"github.com/yinhe/starclaw/internal/database"
+	"github.com/yinhe/starclaw/internal/forge"
 	"github.com/yinhe/starclaw/internal/inference"
 	"github.com/yinhe/starclaw/internal/instinct"
 	"github.com/yinhe/starclaw/internal/mcp"
@@ -140,6 +140,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewSlackTool(db))
 	toolRegistry.Register(tool.NewDiscordTool(db))
 	toolRegistry.Register(tool.NewTelegramTool(db))
+	toolRegistry.Register(tool.NewDesktopTool())
 
 	// Generate thumbnails for existing videos on startup
 	go videoTool.GenerateMissingThumbnails()
@@ -174,8 +175,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Load JSON tool plugins from plugins/ directory
 	_ = tool.LoadPluginsFromDir(toolRegistry, "plugins")
 
-	// Auto-detect and register MCP Bridge (host control)
+	// Auto-detect and register MCP Bridge (host control) + Dev Bridge (development tools)
 	mcp.AutoRegisterBridge(toolRegistry)
+	mcp.AutoRegisterDevBridge(toolRegistry)
 
 	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
 	// Prefer dedicated swarm.node_token for Queen internal API; fall back to jwt.secret
@@ -200,8 +202,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// NOTE: Built-in agent templates are now in Queen marketplace (seed_marketplace.go).
 	// Local SeedBuiltinTemplates is no longer called.
 
-	// Seed star-ai models for all existing users (idempotent)
-	go database.SeedStarAIForAllUsers(db)
+	// NOTE: star-ai model seeding now only happens on user creation (setup.go).
+	// Removed SeedStarAIForAllUsers from startup — it was re-creating configs
+	// that users intentionally deleted.
 
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
@@ -262,6 +265,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		setupHandler := v1.NewSetupHandler(db, cfg, identity)
 		apiV1.GET("/setup/status", setupHandler.Status)
 		apiV1.POST("/setup", setupHandler.Setup)
+		apiV1.GET("/setup/token", setupHandler.GetToken)
+		apiV1.POST("/setup/reset-token", setupHandler.ResetToken)
+		apiV1.POST("/setup/reset-password", setupHandler.ResetPassword)
 		apiV1.POST("/auth/owner-login", setupHandler.PasswordLogin)
 
 		// OAuth routes (public)
@@ -369,6 +375,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/peer/hivemind/capability", p2pHandler.HandleHivemindCapability)
 		apiV1.POST("/peer/hivemind/execute", p2pHandler.HandleHivemindExecute)
 
+		// Forge: Nydus webhook receiver (HMAC-verified)
+		apiV1.POST("/forge/nydus/webhook", forge.HandleNydusWebhook(db))
+
 		// Squad inter-node (public, signature-verified)
 		squadPeerHandler := v1.NewSquadPeerHandler(db, identity)
 		apiV1.POST("/peer/squad/invite", squadPeerHandler.HandleInvite)
@@ -379,7 +388,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		squadPeerHandler.StartCallbackWatcher()
 
 		// Overlord internal endpoints (token-authenticated, for Team Agent orchestration)
-		overlordH := v1.NewOverlordInternalHandler(db, identity)
+		overlordH := v1.NewOverlordInternalHandler(db, identity, cfg)
+		overlordH.SetProviderRegistry(providerRegistry)
+		overlordH.SetToolRegistry(toolRegistry)
 		internal := apiV1.Group("/internal")
 		internal.Use(overlordH.AuthMiddleware())
 		{
@@ -389,6 +400,24 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			internal.POST("/mission/create", overlordH.CreateMission)
 			internal.POST("/mission/start", overlordH.StartMission)
 			internal.GET("/mission/:id", overlordH.GetMission)
+			// Auth exchange (Overlord ↔ Claw token bridge)
+			internal.POST("/auth/exchange", overlordH.AuthExchange)
+			internal.POST("/auth/verify", overlordH.AuthVerify)
+			// Chat proxy (OpenAI-compatible, for Overlord)
+			internal.POST("/chat/completions", overlordH.ChatCompletions)
+			internal.GET("/models", overlordH.ListModels)
+			// Skills & Agents (marketplace integration for Overlord)
+			internal.GET("/skills", overlordH.ListSkills)
+			internal.GET("/agents", overlordH.ListAgents)
+			// Agent Development (DevClaw sandbox + publish)
+			internal.POST("/agent-sandbox", overlordH.AgentSandbox)
+			internal.POST("/agent-publish", overlordH.AgentPublish)
+			// Team Agent Management (Phase 1: Agent 化)
+			internal.POST("/agents/register", overlordH.RegisterAgent)
+			internal.GET("/agents/team/:instanceId", overlordH.ListTeamAgents)
+			internal.DELETE("/agents/:id", overlordH.DeleteAgent)
+			internal.POST("/agents/:id/skills", overlordH.InstallSkill)
+			internal.DELETE("/agents/:id/skills/:skillName", overlordH.UninstallSkill)
 		}
 
 		// Inference Router (public status + signed contributor endpoints)
@@ -998,6 +1027,29 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/missions/:id/feedback", squadHandler.SubmitFeedback)
 			protected.GET("/missions/:id/reviews", squadHandler.ListStepReviews)
 
+			// Forge (AI-Native Project Management)
+			// When STARCLAW_FORGE_URL is set, proxy all /v1/forge/* to standalone forge-api.
+			// Otherwise, use local Claw DB handlers (backward compat).
+			if cfg.Forge.URL != "" {
+				log.Printf("[router] forge proxy mode → %s", cfg.Forge.URL)
+				protected.Any("/forge/*path", forgeProxy(cfg.Forge.URL))
+			} else {
+				forgeHandler := v1.NewForgeHandler(db)
+				protected.POST("/forge/projects", forgeHandler.CreateProject)
+				protected.GET("/forge/projects", forgeHandler.ListProjects)
+				protected.GET("/forge/projects/:id", forgeHandler.GetProject)
+				protected.PUT("/forge/projects/:id", forgeHandler.UpdateProject)
+				protected.POST("/forge/projects/:id/issues", forgeHandler.CreateIssue)
+				protected.GET("/forge/projects/:id/issues", forgeHandler.ListIssues)
+				protected.GET("/forge/projects/:id/issues/:number", forgeHandler.GetIssue)
+				protected.PUT("/forge/projects/:id/issues/:number", forgeHandler.UpdateIssue)
+				protected.POST("/forge/projects/:id/issues/:number/comments", forgeHandler.AddIssueComment)
+				protected.POST("/forge/projects/:id/milestones", forgeHandler.CreateMilestone)
+				protected.GET("/forge/projects/:id/milestones", forgeHandler.ListMilestones)
+				protected.POST("/forge/milestones/:ms_id/close", forgeHandler.CloseMilestone)
+				protected.GET("/forge/projects/:id/board", forgeHandler.GetBoard)
+			}
+
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
@@ -1050,6 +1102,15 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				if cfg.Node.Address != "" {
 					oc.SetAddress(cfg.Node.Address)
 				}
+				if cfg.Node.WebURL != "" {
+					oc.SetWebURL(cfg.Node.WebURL)
+				}
+				oc.TaskCountFunc = func() overlord.TaskStats {
+					var running, queued int64
+					db.Model(&model.Mission{}).Where("status IN ?", []string{"executing", "reviewing"}).Count(&running)
+					db.Model(&model.Mission{}).Where("status = ?", "planning").Count(&queued)
+					return overlord.TaskStats{Running: int(running), Queued: int(queued)}
+				}
 				oc.Start()
 				log.Printf("[router] overlord client started: url=%s", cfg.Overlord.OverlordURL)
 			}
@@ -1057,6 +1118,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/system/update", systemHandler.GetUpdateInfo)
 			protected.POST("/system/update", systemHandler.TriggerUpdate)
 			protected.POST("/system/update/check", systemHandler.ForceCheck)
+			protected.GET("/system/update-log", systemHandler.GetUpdateLog)
 			protected.GET("/system/bridge", systemHandler.GetBridgeStatus)
 			protected.POST("/system/bridge/stop", systemHandler.StopBridge)
 			protected.GET("/system/overlord", systemHandler.GetOverlordStatus)
@@ -1894,4 +1956,24 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	web.RegisterRoutes(r)
 
 	return r
+}
+
+// forgeProxy returns a Gin handler that reverse-proxies /v1/forge/* to the standalone forge-api.
+// Path mapping: /v1/forge/projects → forge-api /api/projects
+func forgeProxy(forgeURL string) gin.HandlerFunc {
+	target, err := url.Parse(forgeURL)
+	if err != nil {
+		log.Printf("[forge-proxy] invalid forge URL %q: %v", forgeURL, err)
+		return func(c *gin.Context) {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "forge proxy misconfigured"})
+		}
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	return func(c *gin.Context) {
+		// /v1/forge/projects → /api/projects
+		subPath := c.Param("path")
+		c.Request.URL.Path = "/api" + subPath
+		c.Request.Host = target.Host
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
 }

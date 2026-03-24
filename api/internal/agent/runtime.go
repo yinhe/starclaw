@@ -320,11 +320,11 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 						ch <- &StreamChunk{Done: true, Usage: &totalUsage}
 						return
 					}
-					sc := &StreamChunk{Content: chunk.Content}
+					sc := &StreamChunk{Content: chunk.Content, Reasoning: chunk.Reasoning}
 					if chunk.Meta != nil {
 						sc.Meta = chunk.Meta
 					}
-					if sc.Content != "" || sc.Meta != nil {
+					if sc.Content != "" || sc.Reasoning != "" || sc.Meta != nil {
 						ch <- sc
 					}
 				}

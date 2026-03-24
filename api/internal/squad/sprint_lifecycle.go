@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yinhe/starclaw/internal/forge"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/ws"
@@ -1036,6 +1037,9 @@ func (e *Engine) completeMission(mission model.Mission) {
 	}
 
 	log.Printf("[squad] mission %s completed! (%d steps)", mission.ID, totalDone)
+
+	// Forge bridge: close all related issues
+	go forge.OnMissionCompleted(e.db, mission)
 }
 
 // failSprint marks the current sprint as failed.

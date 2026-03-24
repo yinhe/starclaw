@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type OpenAIProvider struct {
@@ -92,7 +93,7 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 			// ── Codex ──
 			"codex-mini-latest",
 		},
-		client: &http.Client{},
+		client: &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 
@@ -190,9 +191,10 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *ChatRequest) (<-chan *Ch
 
 			delta := streamResp.Choices[0].Delta
 			chunk := &ChatChunk{
-				ID:      streamResp.ID,
-				Content: contentToString(delta.Content),
-				Role:    delta.Role,
+				ID:        streamResp.ID,
+				Content:   contentToString(delta.Content),
+				Reasoning: delta.ReasoningContent,
+				Role:      delta.Role,
 			}
 
 			// Attach upstream meta to first content chunk
@@ -337,10 +339,11 @@ type streamOptions struct {
 }
 
 type openAIMessage struct {
-	Role       string      `json:"role"`
-	Content    interface{} `json:"content"`
-	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
-	ToolCallID string      `json:"tool_call_id,omitempty"`
+	Role             string      `json:"role"`
+	Content          interface{} `json:"content"`
+	ReasoningContent string      `json:"reasoning_content,omitempty"` // DeepSeek-R1, QwQ, o-series thinking output
+	ToolCalls        []ToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID       string      `json:"tool_call_id,omitempty"`
 }
 
 type openAIChatResponse struct {

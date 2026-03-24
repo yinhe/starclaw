@@ -126,6 +126,27 @@ func (r *Registry) List() []string {
 	return names
 }
 
+// ScopeFor returns a scoped registry that only exposes the given tool names.
+// The scoped registry shares the same underlying tools and hook.
+func (r *Registry) ScopeFor(allowedTools []string) *Registry {
+	scoped := &Registry{
+		tools: make(map[string]Tool, len(allowedTools)),
+		hook:  r.hook,
+	}
+	for _, name := range allowedTools {
+		if t, ok := r.tools[name]; ok {
+			scoped.tools[name] = t
+		}
+	}
+	// Always include MCP tools in scope
+	for name, t := range r.tools {
+		if strings.HasPrefix(name, "mcp_") {
+			scoped.tools[name] = t
+		}
+	}
+	return scoped
+}
+
 // JSONSchema is a helper to define tool parameter schemas
 type JSONSchema struct {
 	Type       string              `json:"type"`

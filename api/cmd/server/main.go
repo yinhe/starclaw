@@ -30,7 +30,7 @@ func main() {
 	// Handle CLI subcommands before starting the full server
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "get-token":
+		case "token", "get-token":
 			cmdGetToken()
 			return
 		case "reset-token":
@@ -114,6 +114,9 @@ func main() {
 
 	// Start Molt version checker
 	molt.StartChecker()
+	if cfg.Hive.URL != "" {
+		molt.SetHiveURL(cfg.Hive.URL)
+	}
 	log.Printf("StarClaw v%s starting...", molt.Version)
 
 	// Load crypto identity for claw: address
@@ -179,23 +182,31 @@ func printUsage() {
 	fmt.Println("")
 	fmt.Println("Commands:")
 	fmt.Println("  (none)           Start the API server")
-	fmt.Println("  get-token        Show current Owner Token (read-only)")
-	fmt.Println("  reset-token      Generate a new Owner Token (prints to stdout)")
-	fmt.Println("  reset-password   Reset the Owner password (reads from --password flag)")
+	fmt.Println("")
+	fmt.Println("Auth:")
+	fmt.Println("  token            Show current Owner Token (alias: get-token)")
+	fmt.Println("  reset-token      Generate a new Owner Token")
+	fmt.Println("  reset-password   Reset the Owner password (--password <pw>)")
+	fmt.Println("")
+	fmt.Println("Devices:")
 	fmt.Println("  devices          List all authorized devices")
 	fmt.Println("  approve <id>     Approve a pending device (supports ID prefix)")
 	fmt.Println("  reject <id>      Reject/revoke a device (supports ID prefix)")
+	fmt.Println("")
+	fmt.Println("Identity & Wallet:")
 	fmt.Println("  export-key       Export 24-word mnemonic (BIP-39 backup)")
 	fmt.Println("  import-key       Restore identity from mnemonic or seed hex")
 	fmt.Println("  wallet-info      Show HD wallet addresses and derivation paths")
 	fmt.Println("  balance          Show star energy balance and HP status")
 	fmt.Println("  transfer         Transfer stars to another claw address")
 	fmt.Println("  transactions     Show recent transaction history")
+	fmt.Println("")
+	fmt.Println("Other:")
 	fmt.Println("  version          Print version and exit")
 	fmt.Println("  help             Show this help")
 	fmt.Println("")
 	fmt.Println("Examples:")
-	fmt.Println("  starclaw get-token")
+	fmt.Println("  starclaw token")
 	fmt.Println("  starclaw reset-token")
 	fmt.Println("  starclaw reset-password --password newpass123")
 	fmt.Println("  starclaw devices")

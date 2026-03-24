@@ -39,6 +39,7 @@ services:
       - starclaw
 
   api:
+    image: ghcr.io/yinhe/starclaw-api:${STARCLAW_VERSION:-latest}
     build:
       context: ./api
       dockerfile: Dockerfile
@@ -66,7 +67,14 @@ services:
       STARCLAW_SWARM_QUEEN_URL: ${SWARM_QUEEN_URL:-}
       STARCLAW_SWARM_NODE_NAME: ${SWARM_NODE_NAME:-}
       STARCLAW_SWARM_REGION: ${SWARM_REGION:-}
+      STARCLAW_OVERLORD_ENABLED: ${OVERLORD_ENABLED:-false}
+      STARCLAW_OVERLORD_OVERLORD_URL: ${OVERLORD_URL:-}
+      STARCLAW_OVERLORD_NODE_NAME: ${OVERLORD_NODE_NAME:-}
+      STARCLAW_NODE_ADDRESS: ${NODE_ADDRESS:-}
+      STARCLAW_NODE_WEB_URL: ${NODE_WEB_URL:-}
       NODE_KEY_PATH: /app/data/identity/.node_key
+      STARCLAW_HOST_DIR: ${STARCLAW_HOST_DIR:-}
+      STARCLAW_COMPOSE_FILE: ${STARCLAW_COMPOSE_FILE:-docker-compose.yml}
     volumes:
       - ./data/identity:/app/data/identity
       - ./data/sandbox:/tmp/starclaw-sandbox
@@ -77,6 +85,7 @@ services:
       - ./data/images:/app/images
       - ./data/workspaces:/app/workspaces
       - ./data/uploads:/app/uploads
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -86,6 +95,7 @@ services:
       - starclaw
 
   web:
+    image: ghcr.io/yinhe/starclaw-web:${STARCLAW_VERSION:-latest}
     build:
       context: ./web
       dockerfile: Dockerfile

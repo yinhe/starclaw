@@ -26,10 +26,11 @@ const PROVIDERS = [
   { value: 'anthropic', label: 'Anthropic', desc: 'Claude 4, Claude 3.5 Sonnet 等', icon: '🟠', base_url: 'https://api.anthropic.com' },
   { value: 'google', label: 'Google', desc: 'Gemini 2.0, Gemini Pro 等', icon: '🔵', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai' },
   { value: 'deepseek', label: 'DeepSeek', desc: 'DeepSeek V3, R1 推理模型', icon: '🐋', base_url: 'https://api.deepseek.com/v1' },
-  { value: 'ollama', label: 'Ollama (本地)', desc: '本地部署开源模型', icon: '🏠', base_url: 'http://host.docker.internal:11434' },
+  { value: 'ollama', label: 'Ollama (本地)', desc: '本地部署开源模型', icon: '🏠', base_url: ['localhost','127.0.0.1'].includes(location.hostname) ? 'http://localhost:11434' : 'http://host.docker.internal:11434' },
   { value: 'openrouter', label: 'OpenRouter', desc: '聚合多家模型的统一接口', icon: '🔀', base_url: 'https://openrouter.ai/api/v1' },
   { value: 'fal', label: 'fal.ai', desc: 'Llama, Mistral, DeepSeek 等开源模型快速推理', icon: '⚡', base_url: 'https://fal.run/fal-ai/any-llm/v1' },
   { value: 'grok', label: 'Grok (xAI)', desc: 'Grok-3, Grok-2 等 xAI 模型', icon: '𝕏', base_url: 'https://api.x.ai/v1' },
+  { value: 'volcengine', label: '字节跳动 (豆包)', desc: 'Doubao-seed 旗舰、豆包Pro/Lite、视觉、思考、DeepSeek', icon: '🔥', base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
   { value: 'minimax', label: 'MiniMax', desc: 'M2.5 旗舰、Hailuo 视频、语音合成、音乐生成', icon: '🐚', base_url: 'https://api.minimaxi.com/v1' },
   { value: 'zhipu', label: '智谱 (GLM)', desc: 'GLM-4 系列', icon: '💎', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
   { value: 'moonshot', label: 'Moonshot (Kimi)', desc: 'Kimi 长文本模型', icon: '🌙', base_url: 'https://api.moonshot.cn/v1' },
@@ -67,6 +68,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter',
   fal: 'fal.ai',
   grok: 'Grok (xAI)',
+  volcengine: '字节跳动 (豆包)',
   zhipu: '智谱 (GLM)',
   moonshot: 'Moonshot',
   custom: '自定义',
@@ -92,6 +94,8 @@ export default function ModelsPage() {
     api_key: '',
     base_url: QWEN_REGIONS[0].value,
   })
+  const [error, setError] = useState('')
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     loadModels()
@@ -113,6 +117,8 @@ export default function ModelsPage() {
   }
 
   const handleCreate = async () => {
+    setError('')
+    setCreating(true)
     try {
       await modelAPI.create({
         provider: form.provider,
@@ -122,7 +128,11 @@ export default function ModelsPage() {
       setShowModal(false)
       setForm({ provider: 'qwen', api_key: '', base_url: QWEN_REGIONS[0].value })
       loadModels()
-    } catch { /* ignore */ }
+    } catch (e: any) {
+      setError(e?.message?.includes('Network Error') ? '无法连接到后端服务，请确认 Claw API 正在运行' : (e?.response?.data?.error || e?.message || '添加失败'))
+    } finally {
+      setCreating(false)
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -154,7 +164,7 @@ export default function ModelsPage() {
     } catch { /* ignore */ }
   }
 
-  const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
+  const needsCustomUrl = !['star-ai', 'qwen', 'openai', 'anthropic', 'deepseek', 'google', 'volcengine', 'zhipu', 'moonshot', 'fal'].includes(form.provider)
   const isStarAI = form.provider === 'star-ai'
   const isOllama = form.provider === 'ollama'
   const isCustom = form.provider === 'custom'
@@ -389,7 +399,7 @@ export default function ModelsPage() {
                 </div>
               ) : isOllama ? (
                 <div className="bg-amber-50 rounded-lg px-4 py-3 text-xs text-amber-700">
-                  Ollama 本地部署无需 API Key，直接添加即可。请确保 Ollama 已在本机运行。Docker 部署请使用 <code>host.docker.internal</code> 而非 <code>localhost</code>。
+                  Ollama 本地部署无需 API Key，直接添加即可。请确保 Ollama 已在本机运行。{!['localhost','127.0.0.1'].includes(location.hostname) && <>Docker 部署请使用 <code>host.docker.internal</code> 而非 <code>localhost</code>。</>}
                 </div>
               ) : (
                 <div>
@@ -457,21 +467,27 @@ export default function ModelsPage() {
               <div className="bg-blue-50 rounded-lg px-4 py-3 text-xs text-blue-700">
                 添加后，该提供商的所有模型都会自动可用。创建 Agent 时可选择任意模型。
               </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700">
+                  {error}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => { setShowModal(false); setError('') }}
                 className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 取消
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!isStarAI && !isOllama && !isCustom && !form.api_key}
+                disabled={creating || (!isStarAI && !isOllama && !isCustom && !form.api_key)}
                 className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
-                添加提供商
+                {creating ? '添加中...' : '添加提供商'}
               </button>
             </div>
           </div>

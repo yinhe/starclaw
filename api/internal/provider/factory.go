@@ -66,6 +66,11 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
 		})
+	case "volcengine", "doubao", "bytedance":
+		return NewVolcEngineProvider(VolcEngineConfig{
+			APIKey:  cfg.APIKey,
+			BaseURL: cfg.BaseURL,
+		})
 	case "star-ai", "starai":
 		starCfg := StarAIConfig{
 			APIKey:  cfg.APIKey,

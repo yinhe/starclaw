@@ -18,7 +18,7 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
     <path d="M13 19.5l0.5 2.5" />
   </svg>
 )
-import { authAPI, setupAPI } from '../lib/api'
+import { authAPI, setupAPI, queenAPI } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 
 interface OAuthProvider {
@@ -57,6 +57,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
   const [pendingApproval, setPendingApproval] = useState(false)
   const [pendingMessage, setPendingMessage] = useState('')
@@ -65,9 +66,44 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
 
+  // Auto-login via ?token= param (from Spore setup completion link)
+  useEffect(() => {
+    const tokenParam = searchParams.get('token')
+    if (tokenParam) {
+      setLoading(true)
+      authAPI.tokenLogin({ token: tokenParam, device_id: getDeviceID(), device_name: getDeviceName() })
+        .then(res => {
+          if (res.data?.token) {
+            setAuth(res.data.owner_token || res.data.token, res.data.user)
+            navigate('/', { replace: true })
+          }
+        })
+        .catch(() => {
+          // Token might be owner_token format — store directly and try
+          setAuth(tokenParam, { id: 0, username: 'Owner', role: 'owner' } as any)
+          navigate('/', { replace: true })
+        })
+        .finally(() => setLoading(false))
+      return
+    }
+  }, [searchParams, setAuth, navigate])
+
+  // Read invite code from URL ?code= param
+  useEffect(() => {
+    const code = searchParams.get('code')
+    if (code) {
+      setInviteCode(code)
+      setIsRegister(true)
+      localStorage.setItem('starclaw_invite_code', code)
+    } else {
+      const saved = localStorage.getItem('starclaw_invite_code')
+      if (saved) setInviteCode(saved)
+    }
+  }, [searchParams])
+
   // Detect deploy mode and set appropriate login mode
   useEffect(() => {
-    setupAPI.status().then(res => {
+    setupAPI.status().then(async (res) => {
       const mode = res.data.deploy_mode || 'opensource'
       setDeployMode(mode)
       if (mode === 'opensource') {
@@ -77,9 +113,23 @@ export default function LoginPage() {
           return
         }
         setLoginMode('owner')
+        // Auto-login from localhost: try to get token directly
+        const host = window.location.hostname
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+          try {
+            const tokenRes = await setupAPI.getToken()
+            if (tokenRes.data?.owner_token) {
+              setAuth(tokenRes.data.owner_token, { id: 0, username: tokenRes.data.username || 'Owner', role: 'owner' } as any)
+              navigate('/', { replace: true })
+              return
+            }
+          } catch {
+            // Not localhost or token not available — show normal login
+          }
+        }
       }
     }).catch(() => setDeployMode('opensource'))
-  }, [navigate])
+  }, [navigate, setAuth])
 
   // Fetch available OAuth providers (hosted mode only)
   useEffect(() => {
@@ -177,6 +227,18 @@ export default function LoginPage() {
       }
 
       setAuth(res.data.token, res.data.user)
+
+      // After registration, auto-register with Queen using invite code
+      if (isRegister && inviteCode) {
+        try {
+          await queenAPI.autoRegister({ invite_code: inviteCode })
+          localStorage.removeItem('starclaw_invite_code')
+        } catch {
+          // Non-blocking: Queen auto-register can happen later
+          console.warn('Queen auto-register deferred')
+        }
+      }
+
       navigate('/chat')
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
@@ -231,6 +293,36 @@ export default function LoginPage() {
               </div>
             ) : deployMode === 'opensource' ? (
               <>
+                {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setError('')
+                      setLoading(true)
+                      try {
+                        const res = await setupAPI.getToken()
+                        if (res.data?.owner_token) {
+                          setAuth(res.data.owner_token, { id: 0, username: res.data.username || 'Owner', role: 'owner' } as any)
+                          navigate('/', { replace: true })
+                          return
+                        }
+                        setError('未找到 Token，请先完成初始化')
+                      } catch {
+                        setError('自动登录失败，请使用密码或 Token 登录')
+                      } finally {
+                        setLoading(false)
+                      }
+                    }}
+                    disabled={loading}
+                    className="w-full mb-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-medium rounded-lg hover:from-green-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>🖥️ 本机自动登录</>
+                    )}
+                  </button>
+                )}
                 <div className="flex rounded-lg bg-gray-100 p-1 mb-2">
                   <button
                     type="button"
@@ -313,7 +405,7 @@ export default function LoginPage() {
                       <p className="text-xs text-blue-800">
                         Token 丢失？用初始化时设置的密码找回。
                         <br />
-                        未设密码请通过 CLI 重置：<code className="bg-blue-100 px-1 rounded">claw reset-token</code>
+                        未设密码请通过 CLI 查看：<code className="bg-blue-100 px-1 rounded">spore token</code>
                       </p>
                     </div>
                   </>
@@ -409,6 +501,20 @@ export default function LoginPage() {
                 )}
 
                 {isRegister && (
+                  <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      邀请码（可选）
+                    </label>
+                    <input
+                      type="text"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                      placeholder="SC-XXXX-XXXX"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">有邀请码？填入后注册即可获得 100⚡ 星能奖励</p>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       用户名（可选）
@@ -421,6 +527,7 @@ export default function LoginPage() {
                       placeholder="留空自动生成 Claw#xxxx"
                     />
                   </div>
+                  </>
                 )}
 
                 <div>

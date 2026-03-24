@@ -36,7 +36,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
-      - run: cd web && npm ci --legacy-peer-deps
+      - run: cd web && npm ci
       - run: cd web && npx tsc --noEmit
 
   test-api:
@@ -98,7 +98,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
-      - run: cd web && npm ci --legacy-peer-deps
+      - run: cd web && npm ci
       - run: cd web && npm run build
       - name: Report bundle size
         run: |

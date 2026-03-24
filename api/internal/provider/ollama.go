@@ -71,10 +71,12 @@ func (p *OllamaProvider) fetchModels() ([]string, error) {
 }
 
 func (p *OllamaProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatChunk, error) {
+	noThink := false
 	payload := ollamaChatRequest{
 		Model:    req.Model,
 		Messages: toOllamaMessages(req.Messages),
 		Stream:   false,
+		Think:    &noThink,
 		Options: ollamaOptions{
 			Temperature: req.Temperature,
 			NumPredict:  req.MaxTokens,
@@ -108,8 +110,12 @@ func (p *OllamaProvider) ChatSync(ctx context.Context, req *ChatRequest) (*ChatC
 		return nil, err
 	}
 
+	content := ollamaResp.Message.Content
+	if content == "" && ollamaResp.Message.Thinking != "" {
+		content = ollamaResp.Message.Thinking
+	}
 	chunk := &ChatChunk{
-		Content: ollamaResp.Message.Content,
+		Content: content,
 		Role:    ollamaResp.Message.Role,
 		Done:    true,
 	}
@@ -223,6 +229,7 @@ type ollamaChatRequest struct {
 	Model    string          `json:"model"`
 	Messages []ollamaMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
+	Think    *bool           `json:"think,omitempty"`
 	Options  ollamaOptions   `json:"options,omitempty"`
 }
 
@@ -232,8 +239,9 @@ type ollamaOptions struct {
 }
 
 type ollamaMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role     string `json:"role"`
+	Content  string `json:"content"`
+	Thinking string `json:"thinking,omitempty"`
 }
 
 type ollamaChatResponse struct {

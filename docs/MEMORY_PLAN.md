@@ -2,27 +2,37 @@
 
 > Cerebrate Memory System: 让 Claw 真正"记住"用户
 
-## 1. 现状分析
+## 1. 实现状态 (v2026.0323)
 
 ### 1.1 已实现
 
 | 层 | 文件 | 状态 |
 |---|---|---|
-| 数据模型 | `model/memory.go` | ✅ Memory 5 类 (preference/fact/context/skill/instruct) + importance + access_count |
-| 引擎 | `memory/cerebrate.go` | ✅ Retrieve (关键词召回) + ExtractAndStore (LLM提取) + BuildPromptInjection (注入) |
+| 数据模型 | `model/memory.go` | ✅ Memory 6 类 (preference/fact/context/skill/instruct/summary) + importance + scope + tags |
+| 引擎 | `memory/cerebrate.go` | ✅ Retrieve (关键词召回) + ExtractAndStore (LLM提取) + GenerateSummary + BuildPromptInjection |
+| 生命周期 | `memory/lifecycle.go` | ✅ 每日衰减 + 过期清理 + 容量限制 (200条/agent) |
 | API | `api/v1/memory.go` | ✅ 7 端点: list/create/update/delete/clear/stats/recall |
-| 对话集成 | `api/v1/chat.go` | ✅ 每次对话前注入记忆，对话后异步提取 |
-| 前端 API | `web/src/lib/api.ts` | ✅ memoryAPI 5 方法 |
-| 前端 UI | — | ❌ **完全没有** |
+| 对话集成 | `api/v1/chat.go` | ✅ 对话前注入记忆，对话后异步提取 + 摘要 |
+| 前端 API | `web/src/lib/api.ts` | ✅ memoryAPI 完整 |
+| 前端 UI | `web/src/pages/MemoryPage.tsx` | ✅ 统计卡片 + 分类筛选 + Agent筛选 + 搜索 + CRUD + 新建记忆弹窗 |
+| 全局记忆 | `cerebrate.go` scope | ✅ fact/preference/instruct 自动标记 global，跨 Agent 共享 |
+| 来源追踪 | `model/memory.go` ConversationID | ✅ 每条记忆关联来源会话 |
 
-### 1.2 核心缺陷
+### 1.2 已修复 Bug
 
-1. **用户不可见** — 后端静默工作，用户不知道 Claw 记住了什么
-2. **无法管理** — 不能查看、编辑、删除、搜索记忆
-3. **无来源追踪** — 不知道记忆来自哪次对话
-4. **无全局记忆** — 记忆绑定 agent_id，换 Agent 就丢失
-5. **无生命周期** — 不会衰减、不会合并、无上限控制
-6. **召回精度低** — 仅 LIKE 关键词匹配，无向量语义搜索
+| Bug | 修复 | 版本 |
+|---|---|---|
+| `getExtractionProvider` 选到空 Key 的 openrouter → 提取静默 401 | 优先 star-ai，跳过空 Key | v2026.0323.1809 |
+| `SeedStarAIForAllUsers` 每次启动重建用户删除的 star-ai config | 移除启动时全量 seed | v2026.0323.1809 |
+
+### 1.3 当前缺陷 (待优化)
+
+1. **召回精度低** — 仅 LIKE 关键词匹配，无向量语义搜索
+2. **提取模型未指定** — 用用户主聊天模型做提取，浪费大模型算力
+3. **提取失败无重试** — LLM 调用失败只打 log，无重试机制
+4. **缺少"记住这个"快捷操作** — 对话中说"记住这个"不会触发即时记忆
+5. **跨节点记忆不同步** — Hive 模式下多节点记忆独立
+6. **记忆冲突** — 同 key 覆盖可能丢失旧信息
 
 ---
 
@@ -281,52 +291,107 @@ func (c *Cerebrate) GenerateSummary(userID, agentID, conversationID string, mess
 
 ## 8. 开发阶段
 
-### P1: 前端记忆页面 + 导航（优先）
+### P1: 前端记忆页面 + 导航 ✅ 已完成
 
-**后端改动**：
-- `memory.go` API: 增加 search 查询参数
-- Chat SSE: 对话结束后推送 `memory_extracted` 事件
-
-**前端新增**：
-- `MemoryPage.tsx`: 统计卡片 + 搜索筛选 + 记忆列表 + CRUD 弹窗
-- `Layout.tsx`: 导航新增「记忆」入口
+- `MemoryPage.tsx`: 统计卡片 + 6 类分类筛选 + Agent 筛选 + 搜索 + CRUD
+- `Layout.tsx`: 左侧导航「记忆」入口
 - `App.tsx`: /memories 路由
-- `api.ts`: memoryAPI 扩展 search/stats
-- `i18n.ts`: 翻译 key
-- `ChatPage.tsx`: 右侧面板增加记忆折叠区
+- `api.ts`: memoryAPI 完整 (list/create/update/delete/clear/stats)
 
-### P2: 全局记忆 + 来源追踪
+### P2: 全局记忆 + 来源追踪 ✅ 已完成
 
-**后端改动**：
-- `model/memory.go`: 新增 Scope, ConversationID, Tags 字段
-- `memory/cerebrate.go`: Retrieve 升级 (global + agent 混合召回), ExtractAndStore 写入 ConversationID
-- `api/v1/memory.go`: 端点升级支持新字段
-- AutoMigrate 新字段
+- `model/memory.go`: Scope + ConversationID + Tags 字段
+- `cerebrate.go`: fact/preference/instruct 自动 scope=global，跨 Agent 共享
+- Retrieve 升级: instruct (最高优先) → global → agent keyword-matched
 
-**前端改动**：
-- MemoryPage: 新增 scope 筛选 (全局/Agent专属)
-- 记忆卡片: 显示来源会话链接
-- 创建记忆弹窗: 新增 scope 和 tags
+### P3: 记忆生命周期 ✅ 已完成
 
-### P3: 记忆生命周期
+- `memory/lifecycle.go`: 每 24h 后台 Job
+  - context 衰减 0.01/天, skill 衰减 0.005/天, summary 衰减 0.008/天
+  - fact/preference/instruct 不衰减
+  - importance < 0.1 + 30 天未访问 → 自动删除
+  - 每 agent 上限 200 条，超限删除最低 importance
 
-**后端新增**：
-- `memory/lifecycle.go`: 衰减 Job + 上限淘汰 + 合并检测
-- 在 router.go 启动后台 lifecycle goroutine
+### P4: 向量语义召回 ❌ 未实现
 
-### P4: 向量语义召回
+当前仅 LIKE 关键词匹配，需升级为 embedding 向量检索。
 
-**后端改动**：
+**计划**：
 - `model/memory.go`: 新增 Embedding 字段 (JSON float array)
-- `memory/cerebrate.go`: 提取时生成 embedding, 召回时 cosine similarity
-- 利用现有 RAG embedding 基础设施
+- `memory/cerebrate.go`: 提取时调用 `rag.EmbeddingProvider` 生成 embedding
+- Retrieve 时 cosine similarity 混合排序 (keyword + semantic)
+- 利用现有 RAG embedding 基础设施 (`internal/rag/`)
 
-### P5: 会话摘要记忆
+### P5: 会话摘要记忆 ✅ 已完成
 
-**后端改动**：
-- `memory/cerebrate.go`: 新增 GenerateSummary()
-- `api/v1/chat.go`: 对话结束时调用 GenerateSummary
-- 新增 MemCatSummary 分类常量
+- `cerebrate.go` GenerateSummary(): 对话 ≥ 5 轮用户消息时生成
+- LLM 生成 1-2 句摘要，存为 category=summary
+- 每 agent 最多保留 20 条摘要，FIFO
+
+---
+
+## 8b. 下一步优化路线 (v3)
+
+### O1: 提取模型优化 (低成本)
+
+**问题**: 用用户主聊天模型做记忆提取，浪费大模型算力
+**方案**: `getExtractionProvider` 优先选轻量模型 (qwen-turbo / deepseek-chat)
+```go
+// 新增提取专用模型选择逻辑
+// 1. 优先 star-ai (免费)
+// 2. 其次找 qwen-turbo / deepseek-chat 等低成本模型
+// 3. 最后才用用户主模型
+```
+
+### O2: 提取失败重试
+
+**问题**: LLM 调用失败只打 log，记忆丢失
+**方案**: 失败后延迟 30s 重试一次
+```go
+func (c *Cerebrate) ExtractAndStore(...) {
+    err := c.doExtract(...)
+    if err != nil {
+        time.AfterFunc(30*time.Second, func() {
+            c.doExtract(...) // 重试一次
+        })
+    }
+}
+```
+
+### O3: "记住这个" 即时记忆
+
+**问题**: 用户说"记住这个"时，需等异步提取，且不一定提取到
+**方案**: 在 chat handler 中检测关键词，即时创建记忆
+```go
+// 检测: "记住", "remember", "以后都", "别忘了"
+// 提取当前消息上下文，立即创建 instruct 类记忆
+```
+
+### O4: 对话后 Toast 通知
+
+**问题**: 用户不知道 Claw 学到了什么
+**方案**: ExtractAndStore 返回数量 → SSE/WebSocket 推送 → 前端 toast
+```
+"🧠 已学习 3 条新记忆" [查看]
+```
+
+### O5: 跨节点记忆同步 (Hive)
+
+**问题**: Hive 模式下多个 Claw 节点记忆独立
+**方案**: 通过 Queen API 做中心化记忆存储，节点间定期同步
+
+### O6: 记忆冲突与合并
+
+**问题**: 同 key 直接覆盖，可能丢失有价值的旧信息
+**方案**:
+- 相似度 > 0.9 → 自动合并 (保留 importance 较高者，content 取较新者)
+- 相似度 0.7-0.9 → 标记候选，前端提示用户确认
+- 需要 P4 (向量召回) 作为前置依赖
+
+### O7: Agent 记忆继承
+
+**问题**: 新建 Agent 不知道用户基本信息
+**方案**: 新建 Agent 首次对话时，自动注入用户的 global 记忆 (fact/preference/instruct)
 
 ---
 

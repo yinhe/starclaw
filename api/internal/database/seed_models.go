@@ -119,6 +119,70 @@ func SeedModelsForUser(db *gorm.DB, userID string) {
 	}
 }
 
+// volcengineModels is the list of ByteDance Doubao models to seed
+var volcengineModels = []modelSeed{
+	// ── Doubao-seed 旗舰 ──
+	{"volcengine", "doubao-seed-2-0-pro-260215", "豆包Seed-Pro (旗舰)", 32768},
+	{"volcengine", "doubao-seed-2-0-lite-260215", "豆包Seed-Lite", 32768},
+	// ── Doubao 1.5 系列 ──
+	{"volcengine", "doubao-1.5-pro-256k-250115", "豆包1.5-Pro-256K", 256000},
+	{"volcengine", "doubao-1.5-pro-32k-250115", "豆包1.5-Pro-32K", 32768},
+	{"volcengine", "doubao-1.5-lite-32k-250115", "豆包1.5-Lite-32K", 32768},
+	// ── Doubao Pro/Lite ──
+	{"volcengine", "doubao-pro-256k-241115", "豆包Pro-256K", 256000},
+	{"volcengine", "doubao-pro-32k-241115", "豆包Pro-32K", 32768},
+	{"volcengine", "doubao-lite-128k-241115", "豆包Lite-128K", 128000},
+	{"volcengine", "doubao-lite-32k-241115", "豆包Lite-32K", 32768},
+	// ── 深度思考 ──
+	{"volcengine", "doubao-1.5-thinking-pro-250415", "豆包Thinking-Pro (推理)", 32768},
+	// ── 视觉 ──
+	{"volcengine", "doubao-1.5-vision-pro-250328", "豆包Vision-Pro (视觉)", 32768},
+	{"volcengine", "doubao-vision-pro-32k-241028", "豆包Vision-Pro-32K", 32768},
+	// ── 编程 ──
+	{"volcengine", "doubao-1.5-coder-pro", "豆包Coder-Pro (代码)", 32768},
+	// ── 角色扮演 ──
+	{"volcengine", "doubao-character-pro-32k", "豆包Character-Pro", 32768},
+}
+
+// SeedVolcEngineModelsForUser creates volcengine model configs for a user
+func SeedVolcEngineModelsForUser(db *gorm.DB, userID string) {
+	var existing model.ModelConfig
+	if err := db.Where("user_id = ? AND provider = ?", userID, "volcengine").First(&existing).Error; err != nil {
+		return
+	}
+	if existing.APIKey == "" {
+		return
+	}
+
+	seeded := 0
+	for _, m := range volcengineModels {
+		var count int64
+		db.Model(&model.ModelConfig{}).Where("user_id = ? AND model_name = ?", userID, m.ModelName).Count(&count)
+		if count > 0 {
+			continue
+		}
+		cfg := model.ModelConfig{
+			UserID:      userID,
+			Provider:    m.Provider,
+			ModelName:   m.ModelName,
+			DisplayName: m.DisplayName,
+			APIKey:      existing.APIKey,
+			BaseURL:     existing.BaseURL,
+			MaxTokens:   m.MaxTokens,
+			Temperature: 0.7,
+			IsEnabled:   true,
+		}
+		if err := db.Create(&cfg).Error; err != nil {
+			log.Printf("[SeedModels] Failed to create %s: %v", m.ModelName, err)
+		} else {
+			seeded++
+		}
+	}
+	if seeded > 0 {
+		log.Printf("[SeedModels] Created %d volcengine model configs for user %s", seeded, userID)
+	}
+}
+
 // SeedStarAIModels ensures exactly ONE star-ai provider config exists for a user.
 // Available models come from StarAIProvider.Models() — no need for individual model rows.
 func SeedStarAIModels(db *gorm.DB, userID string) {

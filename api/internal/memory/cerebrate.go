@@ -392,19 +392,29 @@ func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conver
 // ─── Helpers ───
 
 func (c *Cerebrate) getExtractionProvider(userID string) provider.ModelProvider {
-	// Try user's first enabled model
 	var cfg model.ModelConfig
+	// 1. Prefer star-ai (no API key needed, always works in swarm mode)
+	if err := c.db.Where("user_id = ? AND provider = ? AND is_enabled = ?",
+		userID, "star-ai", true).First(&cfg).Error; err == nil {
+		return provider.CreateFromConfig(c.providerRegistry, cfg)
+	}
+	// 2. User model with API key configured
+	if err := c.db.Where("user_id = ? AND is_enabled = ? AND api_key != ''",
+		userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
+		return provider.CreateFromConfig(c.providerRegistry, cfg)
+	}
+	// 3. Any user model (e.g. ollama, no key needed)
 	if err := c.db.Where("user_id = ? AND is_enabled = ?", userID, true).
 		Order("created_at ASC").First(&cfg).Error; err == nil {
 		return provider.CreateFromConfig(c.providerRegistry, cfg)
 	}
-	// Fallback to platform model (shared key)
+	// 4. Platform model
 	if err := c.db.Where("is_platform = ? AND is_enabled = ?", true, true).
 		Order("created_at ASC").First(&cfg).Error; err == nil {
 		log.Printf("[cerebrate] using platform model (%s) for user %s", cfg.Provider, userID)
 		return provider.CreateFromConfig(c.providerRegistry, cfg)
 	}
-	log.Printf("[cerebrate] no extraction provider found for user %s (no user or platform model config)", userID)
+	log.Printf("[cerebrate] no extraction provider found for user %s", userID)
 	return nil
 }
 

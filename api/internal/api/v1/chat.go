@@ -1,8 +1,10 @@
 package v1
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"net/http"
@@ -536,6 +538,9 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 
 			fullContent += chunk.Content
 			sseFields := gin.H{"content": chunk.Content, "conversation_id": convID}
+			if chunk.Reasoning != "" {
+				sseFields["reasoning"] = chunk.Reasoning
+			}
 			if chunk.Meta != nil {
 				sseFields["meta"] = chunk.Meta
 			}
@@ -809,7 +814,7 @@ func isTextReadable(mime, filename string) bool {
 			return true
 		}
 	}
-	textExts := []string{".md", ".csv", ".yaml", ".yml", ".toml", ".ini", ".log", ".sql", ".sh", ".py", ".js", ".ts", ".go", ".java", ".c", ".cpp", ".rs", ".rb", ".php", ".html", ".xml", ".json", ".txt", ".rtf"}
+	textExts := []string{".md", ".csv", ".yaml", ".yml", ".toml", ".ini", ".log", ".sql", ".sh", ".py", ".js", ".ts", ".go", ".java", ".c", ".cpp", ".rs", ".rb", ".php", ".html", ".xml", ".json", ".txt", ".rtf", ".docx"}
 	ext := strings.ToLower(filepath.Ext(filename))
 	for _, e := range textExts {
 		if ext == e {
@@ -820,11 +825,58 @@ func isTextReadable(mime, filename string) bool {
 }
 
 func readUploadedFileContent(path string) (string, error) {
+	// For .docx files, extract text from the XML inside the zip
+	if strings.HasSuffix(strings.ToLower(path), ".docx") {
+		return readDocxText(path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// readDocxText extracts plain text from a .docx file (which is a zip containing XML)
+func readDocxText(path string) (string, error) {
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		return "", fmt.Errorf("open docx: %w", err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		if f.Name != "word/document.xml" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return "", err
+		}
+		defer rc.Close()
+
+		decoder := xml.NewDecoder(rc)
+		var text strings.Builder
+		inParagraph := false
+		for {
+			tok, err := decoder.Token()
+			if err != nil {
+				break
+			}
+			switch t := tok.(type) {
+			case xml.StartElement:
+				if t.Name.Local == "p" {
+					if inParagraph {
+						text.WriteString("\n")
+					}
+					inParagraph = true
+				}
+			case xml.CharData:
+				text.Write(t)
+			}
+		}
+		return text.String(), nil
+	}
+	return "", fmt.Errorf("word/document.xml not found in docx")
 }
 
 func formatFileSize(size int64) string {
@@ -919,11 +971,19 @@ func (h *ChatHandler) resolveModelConfig(userID, conversationModelID, agentModel
 			return cfg, nil
 		}
 	}
-	// 3. User's first enabled model
+	// 3. User's star-ai config (preferred in hosted/swarm mode — needs no API key)
+	if err := h.db.Where("user_id = ? AND provider = ? AND is_enabled = ?", userID, "star-ai", true).First(&cfg).Error; err == nil {
+		return cfg, nil
+	}
+	// 4. User's first enabled model with a non-empty API key (skip misconfigured providers)
+	if err := h.db.Where("user_id = ? AND is_enabled = ? AND api_key != ''", userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
+		return cfg, nil
+	}
+	// 5. User's first enabled model (any, including ollama which needs no key)
 	if err := h.db.Where("user_id = ? AND is_enabled = ?", userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
 		return cfg, nil
 	}
-	// 4. Platform model
+	// 6. Platform model
 	if err := h.db.Where("user_id = 'platform' AND is_enabled = ?", true).Order("created_at ASC").First(&cfg).Error; err == nil {
 		return cfg, nil
 	}

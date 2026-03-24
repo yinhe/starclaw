@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe, Coins, RefreshCw, Wifi, WifiOff, ArrowUpCircle, ExternalLink, Monitor, Plug, PlugZap, Eye, EyeOff, Network, Trash2, Radio, Copy, Pencil, X, Link, ChevronDown, ChevronRight, Share2, AlertTriangle, Crown, LogOut } from 'lucide-react'
 import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI, queenAPI, deviceAPI } from '../lib/api'
 
@@ -19,7 +19,7 @@ export default function SettingsPage() {
   const [updating, setUpdating] = useState(false)
   const [checking, setChecking] = useState(false)
   const [joiningSwarm, setJoiningSwarm] = useState(false)
-  const [swarmForm, setSwarmForm] = useState({ queen_url: 'claw://swarm.starclaw.net', node_name: '', region: '' })
+  const [swarmForm, setSwarmForm] = useState({ queen_url: 'claw://swarm.starclaw.net', node_name: '', region: '', invite_code: '' })
   const [swarmMsg, setSwarmMsg] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
   const [bridgeStatus, setBridgeStatus] = useState<any>(null)
@@ -137,11 +137,21 @@ export default function SettingsPage() {
   }
 
   const [updateStep, setUpdateStep] = useState(0) // 0=idle, 1=pulling, 2=building, 3=restarting, 4=verifying, 5=done
+  const [updateLogs, setUpdateLogs] = useState<{time: string, message: string, level: string}[]>([])
+  const logContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = logContainerRef.current
+    if (!el) return
+    // Only auto-scroll if user is already near the bottom (within 60px)
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+    if (isNearBottom) el.scrollTop = el.scrollHeight
+  }, [updateLogs])
 
   const updateSteps = [
     '',
-    '拉取最新代码...',
-    '构建容器镜像...',
+    '拉取最新版本...',
+    '安装更新...',
     '重启服务...',
     '等待 API 就绪...',
     '更新完成！',
@@ -156,18 +166,31 @@ export default function SettingsPage() {
       const targetVersion = res.data.to
 
       if (targetVersion) {
-        // Simulate progress steps based on timing (build can take 3-5 min)
-        setTimeout(() => setUpdateStep(2), 10000)   // ~10s: building
-        setTimeout(() => setUpdateStep(3), 180000)  // ~3min: restarting
-        setTimeout(() => setUpdateStep(4), 210000)  // ~3.5min: verifying
+        // Progress simulation — Docker socket pull is fast (~30s), MCP Bridge build is slow (~3-5min)
+        const method = res.data.method
+        const isFast = method === 'spore' || method === 'standalone' // binary download ~10s
+        setTimeout(() => setUpdateStep(2), isFast ? 3000 : 8000)
+        setTimeout(() => setUpdateStep(3), isFast ? 8000 : 60000)
+        setTimeout(() => setUpdateStep(4), isFast ? 12000 : 90000)
+
+        // Poll update logs in real-time
+        const logPoll = setInterval(async () => {
+          try {
+            const logRes = await systemAPI.getUpdateLog()
+            if (logRes.data?.lines) {
+              setUpdateLogs(logRes.data.lines)
+            }
+          } catch { /* API may be restarting */ }
+        }, 1500)
 
         let attempts = 0
         let apiWasDown = false
         const poll = setInterval(async () => {
           attempts++
-          if (attempts > 180) { // 15 min timeout (build + restart can take a while)
+          if (attempts > 120) { // 10 min timeout
             clearInterval(poll)
-            setUpdateMsg('更新超时，请手动检查服务器状态。构建可能仍在进行中，请稍后刷新页面。')
+            clearInterval(logPoll)
+            setUpdateMsg('更新超时，请手动检查服务器状态。请稍后刷新页面。')
             setUpdateStep(0)
             setUpdating(false)
             return
@@ -177,10 +200,13 @@ export default function SettingsPage() {
             const current = vRes.data?.version?.current
             if (current === targetVersion) {
               clearInterval(poll)
+              clearInterval(logPoll)
+              // Fetch final logs
+              try { const lr = await systemAPI.getUpdateLog(); if (lr.data?.lines) setUpdateLogs(lr.data.lines) } catch {}
               setUpdateStep(5)
               setUpdateMsg(`✅ 已成功更新到 v${targetVersion}！`)
               setUpdateInfo(vRes.data)
-              setTimeout(() => { setUpdateStep(0); setUpdating(false) }, 5000)
+              setTimeout(() => { setUpdateStep(0); setUpdating(false); setUpdateLogs([]) }, 5000)
             } else if (apiWasDown) {
               // API came back but version didn't change yet, keep polling
               setUpdateStep(4)
@@ -245,6 +271,13 @@ export default function SettingsPage() {
       const res = await systemAPI.joinSwarm(swarmForm)
       setSwarmMsg(res.data.message || '已加入')
       loadSystemInfo()
+
+      // Auto-register with Queen (pass invite_code if provided)
+      try {
+        await queenAPI.autoRegister({ invite_code: swarmForm.invite_code || undefined })
+        loadQueenStatus()
+      } catch { /* auto-register is best-effort */ }
+
       setTimeout(() => setSwarmMsg(''), 3000)
     } catch (e: any) {
       setSwarmMsg(e.response?.data?.error || '加入失败')
@@ -411,7 +444,7 @@ export default function SettingsPage() {
                 )}
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                {updateInfo?.go_version} · {updateInfo?.os}/{updateInfo?.arch} · {updateInfo?.deploy_mode} 模式
+                {updateInfo?.go_version} · {updateInfo?.os}/{updateInfo?.arch} · {updateInfo?.runtime_mode === 'spore' ? 'Spore 本地部署' : updateInfo?.runtime_mode === 'docker' ? 'Docker 部署' : updateInfo?.deploy_mode} 模式
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -462,6 +495,25 @@ export default function SettingsPage() {
               <div className="flex gap-1 mt-2">
                 {[1,2,3,4].map(s => (
                   <div key={s} className="h-1.5 flex-1 rounded-full bg-green-500" />
+                ))}
+              </div>
+            </div>
+          )}
+          {updateLogs.length > 0 && (updateStep > 0 || updateStep === 5) && (
+            <div className="mb-4 bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
+              <div className="px-3 py-1.5 bg-gray-800 border-b border-gray-700 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[11px] text-gray-400 font-mono">更新日志</span>
+              </div>
+              <div ref={logContainerRef} className="p-3 max-h-48 overflow-y-auto font-mono text-xs leading-relaxed">
+                {updateLogs.map((l, i) => (
+                  <div key={i} className={`flex gap-2 ${
+                    l.level === 'error' ? 'text-red-400' :
+                    l.level === 'success' ? 'text-green-400' : 'text-gray-300'
+                  }`}>
+                    <span className="text-gray-500 shrink-0">{l.time}</span>
+                    <span>{l.message}</span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1017,6 +1069,15 @@ export default function SettingsPage() {
                   placeholder="claw://swarm.starclaw.net"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">邀请码 (可选)</label>
+                <input
+                  value={swarmForm.invite_code}
+                  onChange={(e) => setSwarmForm({ ...swarmForm, invite_code: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 font-mono"
+                  placeholder="如 SC-A3F8-K9M2，留空跳过"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">节点名称 (可选)</label>
@@ -1060,12 +1121,38 @@ export default function SettingsPage() {
               </button>
             </div>
           ) : (
-            <button
-              onClick={handleLeaveSwarm}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
-            >
-              <WifiOff className="w-4 h-4" /> 退出虫群
-            </button>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  value={swarmForm.invite_code}
+                  onChange={(e) => setSwarmForm({ ...swarmForm, invite_code: e.target.value.toUpperCase() })}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 font-mono"
+                  placeholder="补录邀请码 (如 SC-A3F8-K9M2)"
+                />
+                <button
+                  onClick={async () => {
+                    if (!swarmForm.invite_code) return
+                    try {
+                      await queenAPI.autoRegister({ invite_code: swarmForm.invite_code })
+                      setSwarmMsg('邀请码已提交')
+                      setSwarmForm(prev => ({ ...prev, invite_code: '' }))
+                    } catch (e: any) {
+                      setSwarmMsg(e?.response?.data?.error || '邀请码提交失败')
+                    }
+                  }}
+                  disabled={!swarmForm.invite_code}
+                  className="px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 whitespace-nowrap"
+                >
+                  提交
+                </button>
+              </div>
+              <button
+                onClick={handleLeaveSwarm}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+              >
+                <WifiOff className="w-4 h-4" /> 退出虫群
+              </button>
+            </div>
           )}
           {swarmMsg && <p className="text-sm text-green-600 mt-2">{swarmMsg}</p>}
         </section>

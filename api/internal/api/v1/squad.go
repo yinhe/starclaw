@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw/internal/forge"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/node"
 	"gorm.io/gorm"
@@ -315,6 +316,9 @@ func (h *SquadHandler) CreateMission(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create mission"})
 		return
 	}
+
+	// Forge bridge: auto-create epic issue
+	go forge.OnMissionCreated(h.db, mission)
 
 	c.JSON(http.StatusOK, gin.H{"mission": mission})
 }
