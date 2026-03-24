@@ -63,6 +63,58 @@ function put<T>(path: string, body?: unknown) {
   return request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined })
 }
 
+// SSE streaming helper — returns an async generator of chunks
+export interface StreamChunk {
+  type: 'thinking' | 'content' | 'done' | 'error' | 'result'
+  text: string
+}
+
+async function* streamSSE(path: string, body: unknown): AsyncGenerator<StreamChunk> {
+  const token = getToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (res.status === 401) {
+    clearToken()
+    window.location.href = '/login'
+    return
+  }
+
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    yield { type: 'error', text: err.error || res.statusText }
+    return
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (!data) continue
+      try {
+        yield JSON.parse(data) as StreamChunk
+      } catch { /* skip */ }
+    }
+  }
+}
+
 export const api = {
   // Auth
   login: (nodeId: string, password: string) => post<any>('/auth/login', { node_id: nodeId, password }),
@@ -103,6 +155,12 @@ export const api = {
   getPRD: (id: string) => get<any>(`/prd/${id}`),
   confirmPRD: (id: string) => post<any>(`/prd/${id}/confirm`),
   planPRD: (id: string) => post<any>(`/prd/${id}/plan`),
+
+  // Streaming endpoints
+  generatePRDStream: (projectId: string, prompt: string) =>
+    streamSSE('/prd/generate/stream', { project_id: projectId, prompt }),
+  planPRDStream: (prdId: string) =>
+    streamSSE(`/prd/${prdId}/plan/stream`, {}),
 
   // Orchestrator
   orchestratorStatus: () => get<any>('/orchestrator/status'),

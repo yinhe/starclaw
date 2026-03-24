@@ -99,7 +99,7 @@ func main() {
 		api.GET("/dashboard/devclaws", dashboardH.DevClaws)
 		api.GET("/dashboard/stats", dashboardH.Stats)
 
-		// PRD
+		// PRD (non-streaming, kept for backwards compat)
 		api.POST("/prd/generate", func(c *gin.Context) {
 			var req struct {
 				ProjectID string `json:"project_id" binding:"required"`
@@ -115,6 +115,85 @@ func main() {
 				return
 			}
 			c.JSON(http.StatusCreated, gin.H{"prd": prd})
+		})
+
+		// PRD generate — streaming (SSE)
+		api.POST("/prd/generate/stream", func(c *gin.Context) {
+			var req struct {
+				ProjectID string `json:"project_id" binding:"required"`
+				Prompt    string `json:"prompt" binding:"required"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.Writer.Header().Set("Content-Type", "text/event-stream")
+			c.Writer.Header().Set("Cache-Control", "no-cache")
+			c.Writer.Header().Set("Connection", "keep-alive")
+			c.Writer.Flush()
+
+			sendSSE := func(chunk engine.StreamChunk) {
+				data, _ := json.Marshal(chunk)
+				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+				c.Writer.Flush()
+			}
+
+			rawContent, err := prdEngine.CallLLMStream(
+				prdEngine.GetGenerateSystemPrompt(), req.Prompt, sendSSE,
+			)
+			if err != nil {
+				sendSSE(engine.StreamChunk{Type: "error", Text: err.Error()})
+				return
+			}
+
+			prd, _ := prdEngine.SaveGeneratedPRD(req.ProjectID, req.Prompt, rawContent)
+			prdJSON, _ := json.Marshal(prd)
+			sendSSE(engine.StreamChunk{Type: "result", Text: string(prdJSON)})
+		})
+
+		// PRD plan — streaming (SSE)
+		api.POST("/prd/:id/plan/stream", func(c *gin.Context) {
+			var prd model.ForgePRD
+			if err := db.First(&prd, "id = ?", c.Param("id")).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "PRD not found"})
+				return
+			}
+
+			c.Writer.Header().Set("Content-Type", "text/event-stream")
+			c.Writer.Header().Set("Cache-Control", "no-cache")
+			c.Writer.Header().Set("Connection", "keep-alive")
+			c.Writer.Flush()
+
+			sendSSE := func(chunk engine.StreamChunk) {
+				data, _ := json.Marshal(chunk)
+				fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+				c.Writer.Flush()
+			}
+
+			rawContent, err := prdEngine.CallLLMStream(
+				prdEngine.GetPlanSystemPrompt(),
+				prdEngine.GetPlanUserPrompt(&prd),
+				sendSSE,
+			)
+			if err != nil {
+				sendSSE(engine.StreamChunk{Type: "error", Text: err.Error()})
+				return
+			}
+
+			// Parse and save sprints + issues
+			sprints, issues, err := prdEngine.SavePlanResult(&prd, rawContent)
+			if err != nil {
+				sendSSE(engine.StreamChunk{Type: "error", Text: err.Error()})
+				return
+			}
+			resultJSON, _ := json.Marshal(gin.H{
+				"sprints":       sprints,
+				"issues":        issues,
+				"total_sprints": len(sprints),
+				"total_issues":  len(issues),
+			})
+			sendSSE(engine.StreamChunk{Type: "result", Text: string(resultJSON)})
 		})
 
 		// PRD import — 从对话/外部直接导入完整 PRD (不调 LLM)

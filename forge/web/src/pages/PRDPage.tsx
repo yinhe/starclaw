@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { FileText, Sparkles, Check, ListTree, Loader2, Upload, Brain } from 'lucide-react'
-import { api } from '../api'
+import { api, StreamChunk } from '../api'
 
 const IMPORT_TEMPLATE = `{
   "title": "需求标题",
@@ -27,6 +27,10 @@ export default function PRDPage() {
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<TabMode>('generate')
+  const [thinking, setThinking] = useState('')
+  const [streamContent, setStreamContent] = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const thinkingRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     api.listProjects().then((r) => {
@@ -36,6 +40,26 @@ export default function PRDPage() {
     })
   }, [])
 
+  const consumeStream = async (stream: AsyncGenerator<StreamChunk>, onResult: (data: any) => void) => {
+    setThinking('')
+    setStreamContent('')
+    setStreaming(true)
+    setError('')
+    for await (const chunk of stream) {
+      if (chunk.type === 'thinking') {
+        setThinking(prev => prev + chunk.text)
+        if (thinkingRef.current) thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
+      } else if (chunk.type === 'content') {
+        setStreamContent(prev => prev + chunk.text)
+      } else if (chunk.type === 'error') {
+        setError(chunk.text)
+      } else if (chunk.type === 'result') {
+        try { onResult(JSON.parse(chunk.text)) } catch { /* skip */ }
+      }
+    }
+    setStreaming(false)
+  }
+
   const handleGenerate = async () => {
     if (!prompt.trim() || !selectedProject) return
     setGenerating(true)
@@ -43,8 +67,8 @@ export default function PRDPage() {
     setPrd(null)
     setPlan(null)
     try {
-      const r = await api.generatePRD(selectedProject, prompt)
-      setPrd(r.prd)
+      const stream = api.generatePRDStream(selectedProject, prompt)
+      await consumeStream(stream, (data) => setPrd(data))
     } catch (e: any) {
       setError(e.message || '生成失败')
     } finally {
@@ -83,9 +107,10 @@ export default function PRDPage() {
     if (!prd) return
     setPlanning(true)
     setError('')
+    setPlan(null)
     try {
-      const r = await api.planPRD(prd.id)
-      setPlan(r)
+      const stream = api.planPRDStream(prd.id)
+      await consumeStream(stream, (data) => setPlan(data))
     } catch (e: any) {
       setError(e.message || '拆分失败')
     } finally {
@@ -191,6 +216,43 @@ export default function PRDPage() {
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
           {error}
+        </div>
+      )}
+
+      {/* Streaming: thinking + content */}
+      {(streaming || ((thinking || streamContent) && (generating || planning))) && (
+        <div className="space-y-3">
+          {thinking && (
+            <div className="glass rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain className="w-4 h-4 text-purple-400 animate-pulse" />
+                <span className="text-xs font-medium text-purple-400">思考中...</span>
+              </div>
+              <div
+                ref={thinkingRef}
+                className="max-h-60 overflow-y-auto text-xs text-stone-500 whitespace-pre-wrap font-mono leading-relaxed scrollbar-thin"
+              >
+                {thinking}
+              </div>
+            </div>
+          )}
+          {streamContent && (
+            <div className="glass rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4 text-forge-400 animate-pulse" />
+                <span className="text-xs font-medium text-forge-400">生成中...</span>
+              </div>
+              <div className="text-sm text-stone-300 whitespace-pre-wrap font-mono leading-relaxed max-h-80 overflow-y-auto scrollbar-thin">
+                {streamContent}
+              </div>
+            </div>
+          )}
+          {streaming && !thinking && !streamContent && (
+            <div className="glass rounded-xl p-4 flex items-center gap-3">
+              <Loader2 className="w-4 h-4 text-forge-400 animate-spin" />
+              <span className="text-sm text-stone-400">连接 LLM 中...</span>
+            </div>
+          )}
         </div>
       )}
 
