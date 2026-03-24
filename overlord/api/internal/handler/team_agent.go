@@ -277,7 +277,7 @@ func (h *TeamAgentHandler) CreateInstance(c *gin.Context) {
 	}
 
 	// Phase 1: Register each role as an Agent on the Claw node + install skills
-	go h.provisionAgents(instance.ID, node.Address, roles)
+	go h.provisionAgents(instance.ID, node.Address, roles, defaultModel)
 
 	audit(h.db, c, "create_team_instance", instance.ID,
 		fmt.Sprintf("team instance created: %s (template: %s, node: %s)", req.Name, tmpl.Name, node.Name))
@@ -1432,15 +1432,21 @@ func (h *TeamAgentHandler) Stats(c *gin.Context) {
 
 // provisionAgents registers each template role as an Agent on the Claw node
 // and installs the corresponding skills. Runs in a background goroutine.
-func (h *TeamAgentHandler) provisionAgents(instanceID, nodeAddr string, roles []TeamRole) {
+func (h *TeamAgentHandler) provisionAgents(instanceID, nodeAddr string, roles []TeamRole, defaultModel string) {
 	for _, role := range roles {
+		// Use instance default model if set; otherwise fall back to role template model
+		modelName := role.Model
+		if defaultModel != "" {
+			modelName = defaultModel
+		}
+
 		// Register agent on Claw
 		resp, err := h.clawClient.RegisterAgent(nodeAddr, h.overlordToken, claw.RegisterAgentReq{
 			Name:           role.Name,
 			RoleCode:       role.Code,
 			TeamInstanceID: instanceID,
 			SystemPrompt:   role.SystemPrompt,
-			ModelName:      role.Model,
+			ModelName:      modelName,
 			Tools:          role.Tools,
 		})
 		if err != nil {
@@ -1688,7 +1694,7 @@ func buildDevClaw() model.TeamAgentTemplate {
 1. 分析目标用户和使用场景
 2. 设计 Agent 架构: 角色定位、职责范围、安全边界
 3. 推荐 system_prompt 结构 (角色定义→知识领域→输出格式→安全约束)
-4. 选择合适的 model (deepseek-chat 成本优先 / gpt-4o 准确性优先)
+4. 选择合适的 model (ollama本地模型零成本 / deepseek-chat 成本优先 / gpt-4o 准确性优先)
 5. 推荐需要的 tools/skills
 6. 输出结构化 Agent 设计方案 (JSON 格式)
 
@@ -1723,7 +1729,7 @@ func buildDevClaw() model.TeamAgentTemplate {
 ## Agent 开发模式
 当收到 Agent 设计方案后:
 1. 精炼和完善 system_prompt (确保清晰、无歧义、有安全边界)
-2. 配置 model 和 temperature (事实类 0.1-0.3, 创意类 0.5-0.8)
+2. 配置 model 和 temperature (ollama本地模型如qwen2.5-coder零成本; 事实类 0.1-0.3, 创意类 0.5-0.8)
 3. 确认 tools 列表 (只选必要的工具，避免权限过大)
 4. 如需自定义技能/插件，编写 PluginSpec JSON
 5. 输出完整可用的 Agent 配置 JSON
@@ -1791,7 +1797,7 @@ Agent 配置输出格式:
 1. Prompt 质量: 角色定义是否清晰? 边界是否明确? 输出格式是否约束?
 2. 安全合规: 敏感领域(医疗/法律/金融)是否有免责声明? 是否防止 prompt 泄露?
 3. 工具必要性: 每个 tool 是否真的需要? 权限是否最小化?
-4. 模型选择: 是否匹配使用场景? 成本是否合理?
+4. 模型选择: 是否匹配使用场景? 成本是否合理? (ollama本地模型可零成本运行)
 5. 测试覆盖: 测试用例是否覆盖了关键场景?
 
 输出 JSON:
