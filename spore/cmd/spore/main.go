@@ -362,7 +362,7 @@ func cmdToken(mgr *runtime.Manager) {
 		}
 	}
 
-	apiBase := fmt.Sprintf("http://127.0.0.1:%s/api/v1", port)
+	apiBase := fmt.Sprintf("http://127.0.0.1:%s/v1", port)
 	resp, err := http.Get(apiBase + "/setup/token")
 	if err != nil {
 		fatal("cannot connect to %s: %v (is it running?)", name, err)

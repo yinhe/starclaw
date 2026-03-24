@@ -276,7 +276,7 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	if startErr == nil {
 		sse.log("Retrieving auth token...", 93)
 		time.Sleep(2 * time.Second) // wait for Claw to fully start
-		apiBase := fmt.Sprintf("http://127.0.0.1:%s/api/v1", port)
+		apiBase := fmt.Sprintf("http://127.0.0.1:%s/v1", port)
 		// Try to get existing token first
 		if resp, err := http.Get(apiBase + "/setup/token"); err == nil {
 			defer resp.Body.Close()
