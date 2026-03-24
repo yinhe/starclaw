@@ -85,7 +85,7 @@ func (h *DashboardHandler) Services(c *gin.Context) {
 		url  string
 		env  string // "online" or "local"
 	}{
-		{"claw-api", fmt.Sprintf("%s/health", h.Cfg.ClawURL), "online"},
+		{"devclaw", fmt.Sprintf("%s/health", h.Cfg.DevClawURL), "local"},
 		{"queen-api", fmt.Sprintf("%s/health", h.Cfg.QueenURL), "online"},
 		{"overlord-api", fmt.Sprintf("%s/health", h.Cfg.OverlordURL), "local"},
 		{"nydus", fmt.Sprintf("%s/health", h.Cfg.NydusURL), "online"},

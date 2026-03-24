@@ -411,6 +411,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			// Agent Development (DevClaw sandbox + publish)
 			internal.POST("/agent-sandbox", overlordH.AgentSandbox)
 			internal.POST("/agent-publish", overlordH.AgentPublish)
+			// Team Agent Management (Phase 1: Agent 化)
+			internal.POST("/agents/register", overlordH.RegisterAgent)
+			internal.GET("/agents/team/:instanceId", overlordH.ListTeamAgents)
+			internal.DELETE("/agents/:id", overlordH.DeleteAgent)
+			internal.POST("/agents/:id/skills", overlordH.InstallSkill)
+			internal.DELETE("/agents/:id/skills/:skillName", overlordH.UninstallSkill)
 		}
 
 		// Inference Router (public status + signed contributor endpoints)

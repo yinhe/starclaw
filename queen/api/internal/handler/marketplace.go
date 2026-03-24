@@ -330,3 +330,72 @@ func (h *MarketplaceHandler) AdminRemove(c *gin.Context) {
 	})
 	c.JSON(http.StatusOK, gin.H{"message": "已下架"})
 }
+
+// GET /marketplace/items/:id/install-spec
+// Returns the install specification for a marketplace item (skill/agent).
+// Used by Overlord to install skills on Claw agents.
+func (h *MarketplaceHandler) InstallSpec(c *gin.Context) {
+	id := c.Param("id")
+	var item model.MarketplaceItem
+	if err := database.DB.First(&item, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "item not found"})
+		return
+	}
+
+	if item.Status != model.ItemStatusPublished && item.Status != model.ItemStatusApproved {
+		c.JSON(http.StatusForbidden, gin.H{"error": "item not available for install"})
+		return
+	}
+
+	// Increment download count
+	database.DB.Model(&item).Update("downloads", item.Downloads+1)
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":      item.ID,
+		"name":    item.Name,
+		"type":    item.Type,
+		"version": item.Version,
+		"config":  item.Config, // JSON spec (function definition for skills, agent config for agents)
+		"tags":    item.Tags,
+		"icon":    item.Icon,
+	})
+}
+
+// GET /marketplace/skills/search?q=code&name=web_search
+// Searches skills by name or keyword. Used by Overlord to find skills for agent provisioning.
+func (h *MarketplaceHandler) SearchSkills(c *gin.Context) {
+	q := c.Query("q")
+	name := c.Query("name")
+
+	query := database.DB.Model(&model.MarketplaceItem{}).
+		Where("type = ? AND status IN ?", "skill", []string{model.ItemStatusPublished, model.ItemStatusApproved})
+
+	if name != "" {
+		query = query.Where("name = ?", name)
+	} else if q != "" {
+		query = query.Where("name LIKE ? OR description LIKE ? OR tags LIKE ?", "%"+q+"%", "%"+q+"%", "%"+q+"%")
+	}
+
+	var items []model.MarketplaceItem
+	query.Order("downloads DESC").Limit(50).Find(&items)
+
+	type SkillInfo struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Version string `json:"version"`
+		Config  string `json:"config"`
+		Icon    string `json:"icon"`
+	}
+	skills := make([]SkillInfo, 0, len(items))
+	for _, item := range items {
+		skills = append(skills, SkillInfo{
+			ID:      item.ID,
+			Name:    item.Name,
+			Version: item.Version,
+			Config:  item.Config,
+			Icon:    item.Icon,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"skills": skills, "total": len(skills)})
+}

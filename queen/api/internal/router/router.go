@@ -67,7 +67,9 @@ func Setup() *gin.Engine {
 	mp := &handler.MarketplaceHandler{}
 	v1.GET("/marketplace/items", mp.List)
 	v1.GET("/marketplace/items/:id", mp.Get)
+	v1.GET("/marketplace/items/:id/install-spec", mp.InstallSpec)
 	v1.GET("/marketplace/stats", mp.Stats)
+	v1.GET("/marketplace/skills/search", mp.SearchSkills)
 
 	// ---- Billing (init clients) ----
 	billing := handler.NewBillingHandler()

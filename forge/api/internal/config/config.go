@@ -19,7 +19,7 @@ type Config struct {
 	Secret       string            // JWT signing key
 	Whitelist    map[string]string // node_id → password
 	// Service health check URLs (online services use public URLs)
-	ClawURL    string
+	DevClawURL string
 	HiveURL    string
 	QueenURL   string
 	SynapseURL string
@@ -33,7 +33,7 @@ func Load() *Config {
 		NydusSecret:  os.Getenv("NYDUS_SECRET"),
 		OverlordURL:  envOr("OVERLORD_URL", "https://overlord.starclaw.net"),
 		DevBridgeURL: envOr("DEVBRIDGE_URL", "http://host.docker.internal:9102"),
-		ClawURL:      envOr("CLAW_URL", "https://starclaw.me/api"),
+		DevClawURL:   envOr("DEVCLAW_URL", "http://host.docker.internal:8080"),
 		HiveURL:      envOr("HIVE_URL", "https://starclaw.me/hive"),
 		QueenURL:     envOr("QUEEN_URL", "https://api.starclaw.net"),
 		SynapseURL:   envOr("SYNAPSE_URL", "https://api.star-ai.net"),

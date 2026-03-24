@@ -422,6 +422,77 @@ func (c *Client) AgentPublish(nodeAddr, overlordToken string, req AgentPublishRe
 	return &resp, nil
 }
 
+// ── Team Agent Management (Phase 1) ──
+
+type RegisterAgentReq struct {
+	Name           string   `json:"name"`
+	RoleCode       string   `json:"role_code"`
+	TeamInstanceID string   `json:"team_instance_id"`
+	SystemPrompt   string   `json:"system_prompt"`
+	ModelName      string   `json:"model_name"`
+	Tools          []string `json:"tools"`
+	Config         string   `json:"config"`
+}
+
+type RegisterAgentResp struct {
+	Agent struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		RoleCode string `json:"role_code"`
+	} `json:"agent"`
+}
+
+// RegisterAgent registers a team agent on a Claw node.
+func (c *Client) RegisterAgent(nodeAddr, overlordToken string, req RegisterAgentReq) (*RegisterAgentResp, error) {
+	var resp RegisterAgentResp
+	if err := c.post(nodeAddr, "/v1/internal/agents/register", overlordToken, req, &resp); err != nil {
+		return nil, fmt.Errorf("register agent: %w", err)
+	}
+	return &resp, nil
+}
+
+type InstallSkillReq struct {
+	SkillID   string `json:"skill_id"`
+	SkillName string `json:"skill_name"`
+	SkillSpec string `json:"skill_spec"`
+	Version   string `json:"version"`
+}
+
+type InstallSkillResp struct {
+	Skill struct {
+		ID        string `json:"id"`
+		SkillName string `json:"skill_name"`
+	} `json:"skill"`
+}
+
+// InstallSkill installs a skill on an agent on a Claw node.
+func (c *Client) InstallSkill(nodeAddr, overlordToken, agentID string, req InstallSkillReq) (*InstallSkillResp, error) {
+	var resp InstallSkillResp
+	if err := c.post(nodeAddr, fmt.Sprintf("/v1/internal/agents/%s/skills", agentID), overlordToken, req, &resp); err != nil {
+		return nil, fmt.Errorf("install skill: %w", err)
+	}
+	return &resp, nil
+}
+
+type ListTeamAgentsResp struct {
+	Agents []struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		RoleCode string `json:"role_code"`
+		Tools    string `json:"tools"`
+	} `json:"agents"`
+	Total int `json:"total"`
+}
+
+// ListTeamAgents lists agents for a team instance on a Claw node.
+func (c *Client) ListTeamAgents(nodeAddr, overlordToken, instanceID string) (*ListTeamAgentsResp, error) {
+	var resp ListTeamAgentsResp
+	if err := c.get(nodeAddr, fmt.Sprintf("/v1/internal/agents/team/%s", instanceID), overlordToken, &resp); err != nil {
+		return nil, fmt.Errorf("list team agents: %w", err)
+	}
+	return &resp, nil
+}
+
 // ── HTTP helpers ──
 
 func (c *Client) post(nodeAddr, path, token string, body interface{}, out interface{}) error {

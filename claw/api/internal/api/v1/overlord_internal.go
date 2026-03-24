@@ -845,3 +845,183 @@ func (h *OverlordInternalHandler) AgentPublish(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, resp)
 }
+
+// ensureSystemUser creates or finds a system user for internal operations.
+func (h *OverlordInternalHandler) ensureSystemUser(username string) string {
+	var user model.User
+	if err := h.db.Where("username = ?", username).First(&user).Error; err == nil {
+		return user.ID
+	}
+	user = model.User{
+		Username: username,
+		Password: "!system-no-login",
+		Role:     "system",
+	}
+	h.db.Create(&user)
+	return user.ID
+}
+
+// ── Team Agent Management (Phase 1: Agent 化) ──
+
+// POST /v1/internal/agents/register
+// Registers a team agent on this Claw node. Called by Overlord during instance provisioning.
+func (h *OverlordInternalHandler) RegisterAgent(c *gin.Context) {
+	var req struct {
+		Name           string   `json:"name" binding:"required"`
+		RoleCode       string   `json:"role_code" binding:"required"`
+		TeamInstanceID string   `json:"team_instance_id" binding:"required"`
+		SystemPrompt   string   `json:"system_prompt"`
+		ModelName      string   `json:"model_name"`
+		Tools          []string `json:"tools"` // tool names to enable
+		Config         string   `json:"config"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	toolsJSON, _ := json.Marshal(req.Tools)
+	if req.Config == "" {
+		req.Config = "{}"
+	}
+
+	// Ensure a system user exists for team agents
+	sysUserID := h.ensureSystemUser("overlord-team-agent")
+
+	agent := model.Agent{
+		UserID:         sysUserID,
+		Name:           req.Name,
+		RoleCode:       req.RoleCode,
+		TeamInstanceID: req.TeamInstanceID,
+		SystemPrompt:   req.SystemPrompt,
+		ModelName:      req.ModelName,
+		Tools:          string(toolsJSON),
+		Config:         req.Config,
+		IsBuiltin:      true,
+	}
+	if err := h.db.Create(&agent).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register agent: " + err.Error()})
+		return
+	}
+
+	log.Printf("[overlord-internal] registered team agent %s (%s) for instance %s", agent.Name, agent.RoleCode, req.TeamInstanceID)
+	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+}
+
+// GET /v1/internal/agents/team/:instanceId
+// Lists all agents registered for a team instance.
+func (h *OverlordInternalHandler) ListTeamAgents(c *gin.Context) {
+	instanceID := c.Param("instanceId")
+	var agents []model.Agent
+	h.db.Where("team_instance_id = ?", instanceID).Preload("Skills").Find(&agents)
+	c.JSON(http.StatusOK, gin.H{"agents": agents, "total": len(agents)})
+}
+
+// DELETE /v1/internal/agents/:id
+func (h *OverlordInternalHandler) DeleteAgent(c *gin.Context) {
+	agentID := c.Param("id")
+	// Delete skills first
+	h.db.Where("agent_id = ?", agentID).Delete(&model.AgentSkill{})
+	// Delete agent
+	result := h.db.Delete(&model.Agent{}, "id = ?", agentID)
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "agent deleted"})
+}
+
+// POST /v1/internal/agents/:id/skills
+// Installs a skill on an agent. Called by Overlord after fetching skill spec from Queen.
+func (h *OverlordInternalHandler) InstallSkill(c *gin.Context) {
+	agentID := c.Param("id")
+	var req struct {
+		SkillID   string `json:"skill_id"`
+		SkillName string `json:"skill_name" binding:"required"`
+		SkillSpec string `json:"skill_spec"` // JSON function spec
+		Version   string `json:"version"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify agent exists
+	var agent model.Agent
+	if err := h.db.First(&agent, "id = ?", agentID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
+		return
+	}
+
+	// Check if skill already installed
+	var existing model.AgentSkill
+	if h.db.Where("agent_id = ? AND skill_name = ?", agentID, req.SkillName).First(&existing).Error == nil {
+		// Update existing
+		h.db.Model(&existing).Updates(map[string]interface{}{
+			"skill_spec": req.SkillSpec,
+			"version":    req.Version,
+		})
+		c.JSON(http.StatusOK, gin.H{"skill": existing, "updated": true})
+		return
+	}
+
+	skill := model.AgentSkill{
+		AgentID:   agentID,
+		SkillID:   req.SkillID,
+		SkillName: req.SkillName,
+		SkillSpec: req.SkillSpec,
+		Version:   req.Version,
+	}
+	if err := h.db.Create(&skill).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to install skill: " + err.Error()})
+		return
+	}
+
+	// Update agent's tools array to include this skill
+	var tools []string
+	json.Unmarshal([]byte(agent.Tools), &tools)
+	found := false
+	for _, t := range tools {
+		if t == req.SkillName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		tools = append(tools, req.SkillName)
+		toolsJSON, _ := json.Marshal(tools)
+		h.db.Model(&agent).Update("tools", string(toolsJSON))
+	}
+
+	log.Printf("[overlord-internal] installed skill %s on agent %s (%s)", req.SkillName, agent.Name, agentID)
+	c.JSON(http.StatusCreated, gin.H{"skill": skill})
+}
+
+// DELETE /v1/internal/agents/:id/skills/:skillName
+func (h *OverlordInternalHandler) UninstallSkill(c *gin.Context) {
+	agentID := c.Param("id")
+	skillName := c.Param("skillName")
+
+	result := h.db.Where("agent_id = ? AND skill_name = ?", agentID, skillName).Delete(&model.AgentSkill{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "skill not found"})
+		return
+	}
+
+	// Remove from agent's tools array
+	var agent model.Agent
+	if h.db.First(&agent, "id = ?", agentID).Error == nil {
+		var tools []string
+		json.Unmarshal([]byte(agent.Tools), &tools)
+		filtered := make([]string, 0, len(tools))
+		for _, t := range tools {
+			if t != skillName {
+				filtered = append(filtered, t)
+			}
+		}
+		toolsJSON, _ := json.Marshal(filtered)
+		h.db.Model(&agent).Update("tools", string(toolsJSON))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "skill uninstalled"})
+}

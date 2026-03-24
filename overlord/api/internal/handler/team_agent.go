@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"starclaw.net/overlord/api/internal/claw"
 	"starclaw.net/overlord/api/internal/middleware"
 	"starclaw.net/overlord/api/internal/model"
 	"starclaw.net/overlord/api/internal/ws"
-	"gorm.io/gorm"
 )
 
 // ── Types for template JSON fields ──
@@ -275,6 +275,9 @@ func (h *TeamAgentHandler) CreateInstance(c *gin.Context) {
 		instance.Status = "ready"
 		instance.Config = string(configJSON)
 	}
+
+	// Phase 1: Register each role as an Agent on the Claw node + install skills
+	go h.provisionAgents(instance.ID, node.Address, roles)
 
 	audit(h.db, c, "create_team_instance", instance.ID,
 		fmt.Sprintf("team instance created: %s (template: %s, node: %s)", req.Name, tmpl.Name, node.Name))
@@ -1423,6 +1426,46 @@ func (h *TeamAgentHandler) Stats(c *gin.Context) {
 		"total_energy":     totalEnergy,
 		"template_count":   templateCount,
 	})
+}
+
+// ── Agent Provisioning (Phase 1) ──
+
+// provisionAgents registers each template role as an Agent on the Claw node
+// and installs the corresponding skills. Runs in a background goroutine.
+func (h *TeamAgentHandler) provisionAgents(instanceID, nodeAddr string, roles []TeamRole) {
+	for _, role := range roles {
+		// Register agent on Claw
+		resp, err := h.clawClient.RegisterAgent(nodeAddr, h.overlordToken, claw.RegisterAgentReq{
+			Name:           role.Name,
+			RoleCode:       role.Code,
+			TeamInstanceID: instanceID,
+			SystemPrompt:   role.SystemPrompt,
+			ModelName:      role.Model,
+			Tools:          role.Tools,
+		})
+		if err != nil {
+			log.Printf("[team-agent] failed to register agent %s on claw: %v", role.Name, err)
+			continue
+		}
+		agentID := resp.Agent.ID
+		log.Printf("[team-agent] registered agent %s (%s) → %s", role.Name, role.Code, agentID)
+
+		// Install each tool as a skill on the agent
+		for _, toolName := range role.Tools {
+			_, err := h.clawClient.InstallSkill(nodeAddr, h.overlordToken, agentID, claw.InstallSkillReq{
+				SkillName: toolName,
+				Version:   "builtin",
+			})
+			if err != nil {
+				log.Printf("[team-agent] failed to install skill %s on agent %s: %v", toolName, role.Name, err)
+			}
+		}
+	}
+
+	// Update instance status to indicate provisioning complete
+	h.db.Model(&model.TeamInstance{}).Where("id = ?", instanceID).
+		Update("status", "active")
+	log.Printf("[team-agent] provisioning complete for instance %s", instanceID)
 }
 
 // ── Status Syncer (background goroutine) ──
