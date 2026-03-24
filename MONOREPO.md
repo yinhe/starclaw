@@ -15,6 +15,7 @@ starclaw/                          # 私有 monorepo
 ├── queen/      👑 虫后              # 中央管控平台（starclaw.net）
 ├── overlord/   👁️ 领主              # 企业 AI 管控（overlord.starclaw.net）
 ├── cerebrate/  🧠 脑虫              # 合伙人生态（partner + city 门户）
+├── forge/      🔥 熔炉              # 研发管控 + 可视化大屏（forge.starclaw.net）
 ├── nydus/      🕳️ 虫道              # 部署管道 + CI/CD
 ├── spore/      🍄 孢子              # 桌面一键安装器
 │
@@ -66,6 +67,7 @@ starclaw/                          # 私有 monorepo
 | **queen/** | 👑 虫后 | 中央管控 — 用户/计费/星能/投资人/社区/赏金/竞技场 | Go + React × 7 服务 | ❌ |
 | **overlord/** | 👁️ 领主 | 企业管控 — 节点编排/RBAC/SSO/订阅/Molt 更新 | Go + React × 2 前端 | ❌ |
 | **cerebrate/** | 🧠 脑虫 | 合伙人生态 — 战略合伙人门户 + 城市合伙人门户 | React × 2 前端 | ❌ |
+| **forge/** | 🔥 熔炉 | 研发管控 — 项目/Issue/看板/Sprint + 可视化大屏 | Go + React | ❌ |
 | **nydus/** | 🕳️ 虫道 | 部署管道 — git push → 自动分发到 3 台服务器 | Go + React | ❌ |
 | **spore/** | 🍄 孢子 | 桌面安装器 — 一键部署 Claw（免 Docker） | Go | ❌ |
 
@@ -354,6 +356,7 @@ Nydus 是虫群的物流系统:
 | 幼虫 | Larva | `larva/` | 虫卵 → 幼虫 — 用户接触虫群的入口 |
 | 虫后 | Queen | `queen/` | 虫群大脑 — 指挥一切 |
 | 领主 | Overlord | `overlord/` | 中层管理 — 管辖一片区域的 Claw |
+| 熔炉 | Forge | `forge/` | 进化室 — 研发指挥中心，熔炼项目与进度 |
 | 虫道 | Nydus | `nydus/` | 传送网络 — 代码瞬间到达目的地 |
 | 孢子 | Spore | `spore/` | 繁殖体 — 在新设备上萌发 |
 | 蜕皮 | Molt | Claw 内置 | 自动更新 — 脱壳进化 |
