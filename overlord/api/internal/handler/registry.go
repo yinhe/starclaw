@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"starclaw.net/overlord/api/internal/middleware"
 	"starclaw.net/overlord/api/internal/model"
-	"gorm.io/gorm"
 )
 
 // WebhookDispatcher dispatches events to registered webhooks
@@ -118,6 +118,7 @@ type HeartbeatRequest struct {
 	Version      string  `json:"version"`
 	ClawID       string  `json:"claw_id"`
 	Address      string  `json:"address"`
+	WebURL       string  `json:"web_url"`
 	CPUPercent   float64 `json:"cpu_percent"`
 	MemPercent   float64 `json:"mem_percent"`
 	TasksRunning int     `json:"tasks_running"`
@@ -159,6 +160,9 @@ func (h *RegistryHandler) Heartbeat(c *gin.Context) {
 	}
 	if req.Address != "" {
 		updates["address"] = req.Address
+	}
+	if req.WebURL != "" {
+		updates["web_url"] = req.WebURL
 	}
 
 	oldStatus := node.Status

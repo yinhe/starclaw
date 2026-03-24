@@ -1094,6 +1094,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				if cfg.Node.Address != "" {
 					oc.SetAddress(cfg.Node.Address)
 				}
+				if cfg.Node.WebURL != "" {
+					oc.SetWebURL(cfg.Node.WebURL)
+				}
 				oc.TaskCountFunc = func() overlord.TaskStats {
 					var running, queued int64
 					db.Model(&model.Mission{}).Where("status IN ?", []string{"executing", "reviewing"}).Count(&running)

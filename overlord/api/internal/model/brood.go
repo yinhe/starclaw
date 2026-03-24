@@ -11,7 +11,8 @@ import (
 type ClawNode struct {
 	ID      string `json:"id" gorm:"type:varchar(36);primaryKey"`
 	Name    string `json:"name" gorm:"type:varchar(200)"`
-	Address string `json:"address" gorm:"type:varchar(255);not null"` // host:port
+	Address string `json:"address" gorm:"type:varchar(255);not null"` // host:port (API)
+	WebURL  string `json:"web_url" gorm:"type:varchar(255)"`          // browser-accessible Web UI URL
 	Version string `json:"version" gorm:"type:varchar(20)"`
 	ClawID  string `json:"claw_id" gorm:"type:varchar(60);index"`               // claw:xxxx (Ed25519-derived)
 	Status  string `json:"status" gorm:"type:varchar(20);default:online;index"` // online, feral, offline

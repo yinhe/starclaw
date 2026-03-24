@@ -26,7 +26,8 @@ type Client struct {
 	nodeID        string
 	token         string
 	clawID        string
-	address       string // public address of this Claw, e.g. https://starclaw.me
+	address       string // public address of this Claw API, e.g. https://starclaw.me:8080
+	webURL        string // browser-accessible Web UI URL, e.g. https://starclaw.me
 	mu            sync.RWMutex
 	stopCh        chan struct{}
 	httpC         *http.Client
@@ -124,6 +125,13 @@ func (c *Client) SetClawID(id string) {
 func (c *Client) SetAddress(addr string) {
 	c.mu.Lock()
 	c.address = addr
+	c.mu.Unlock()
+}
+
+// SetWebURL sets the browser-accessible Web UI URL of this Claw node
+func (c *Client) SetWebURL(url string) {
+	c.mu.Lock()
+	c.webURL = url
 	c.mu.Unlock()
 }
 
@@ -229,6 +237,7 @@ func (c *Client) heartbeat() error {
 		"version":       molt.Version,
 		"claw_id":       cid,
 		"address":       c.getAddress(),
+		"web_url":       c.getWebURL(),
 		"cpu_percent":   cpu,
 		"mem_percent":   mem,
 		"tasks_running": ts.Running,
@@ -279,6 +288,13 @@ func LoadCredentials() (nodeID, token string) {
 		return string(parts[0]), string(parts[1])
 	}
 	return "", ""
+}
+
+func (c *Client) getWebURL() string {
+	c.mu.RLock()
+	url := c.webURL
+	c.mu.RUnlock()
+	return url
 }
 
 func (c *Client) getAddress() string {

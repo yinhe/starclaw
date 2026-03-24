@@ -60,6 +60,7 @@ export interface ClawNode {
   id: string
   name: string
   address: string
+  web_url: string
   version: string
   claw_id: string
   status: 'online' | 'feral' | 'offline'

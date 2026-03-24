@@ -27,7 +27,8 @@ type StorageConfig struct {
 }
 
 type NodeConfig struct {
-	Address string `mapstructure:"address"` // public address of this Claw, e.g. https://starclaw.me
+	Address string `mapstructure:"address"` // public address of this Claw API, e.g. https://starclaw.me:8080
+	WebURL  string `mapstructure:"web_url"` // browser-accessible Web UI URL, e.g. https://starclaw.me
 	Name    string `mapstructure:"name"`    // display name, default hostname
 	Region  string `mapstructure:"region"`  // e.g. cn-east, us-west
 }
@@ -154,6 +155,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("overlord.node_name", "")
 	viper.SetDefault("overlord.region", "")
 	viper.SetDefault("node.address", "")
+	viper.SetDefault("node.web_url", "")
 	viper.SetDefault("node.name", "")
 	viper.SetDefault("node.region", "")
 	viper.SetDefault("overlord.heartbeat_interval", 30)
