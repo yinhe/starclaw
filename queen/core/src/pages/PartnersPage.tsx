@@ -202,7 +202,7 @@ export default function PartnersPage() {
                   <td className="px-4 py-3 text-gray-500 font-mono text-[10px]">{p.claw_id ? (p.claw_id.length > 20 ? p.claw_id.slice(0, 20) + '…' : p.claw_id) : '-'}</td>
                   <td className="px-4 py-3">
                     <span className={`px-1.5 py-0.5 rounded ${p.type === 'core' ? 'text-purple-400 bg-purple-500/10' : 'text-blue-400 bg-blue-500/10'}`}>
-                      {p.type === 'core' ? '核心' : '城市'}
+                      {p.type === 'core' ? '团队' : '城市'}
                     </span>
                   </td>
                   <td className="px-4 py-3"><span className={`px-1.5 py-0.5 rounded ${lv.color}`}>{lv.label}</span></td>
