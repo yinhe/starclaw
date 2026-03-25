@@ -247,6 +247,9 @@ func Setup() *gin.Engine {
 	admin.GET("/partners", ph.AdminListPartners)
 	admin.POST("/partners", ph.AdminCreatePartner)
 	admin.PUT("/partners/:id", ph.AdminUpdatePartner)
+	admin.DELETE("/partners/:id", ph.AdminDeletePartner)
+	admin.PUT("/partners/:id/suspend", ph.AdminSuspendPartner)
+	admin.PUT("/partners/:id/activate", ph.AdminActivatePartner)
 	admin.POST("/partners/:id/equity", ph.AdminGrantEquity)
 	// Admin: Cerebrate elections
 	electionAdmin := &handler.ElectionHandler{}

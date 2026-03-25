@@ -570,6 +570,57 @@ func (h *PartnerHandler) AdminUpdatePartner(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
 }
 
+// AdminDeletePartner deletes a team or city partner
+func (h *PartnerHandler) AdminDeletePartner(c *gin.Context) {
+	partnerID := c.Param("id")
+
+	// Try team partner first
+	if err := database.DB.Where("id = ?", partnerID).Delete(&model.TeamPartner{}).Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+		return
+	}
+
+	// Try city partner
+	if err := database.DB.Where("id = ?", partnerID).Delete(&model.CityPartner{}).Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+		return
+	}
+
+	middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
+}
+
+// AdminSuspendPartner suspends a partner
+func (h *PartnerHandler) AdminSuspendPartner(c *gin.Context) {
+	partnerID := c.Param("id")
+	db := database.DB
+
+	if err := db.Model(&model.TeamPartner{}).Where("id = ?", partnerID).Update("status", "suspended").Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "suspended"})
+		return
+	}
+	if err := db.Model(&model.CityPartner{}).Where("id = ?", partnerID).Update("status", "suspended").Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "suspended"})
+		return
+	}
+	middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
+}
+
+// AdminActivatePartner reactivates a suspended partner
+func (h *PartnerHandler) AdminActivatePartner(c *gin.Context) {
+	partnerID := c.Param("id")
+	db := database.DB
+
+	if err := db.Model(&model.TeamPartner{}).Where("id = ?", partnerID).Update("status", "active").Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "activated"})
+		return
+	}
+	if err := db.Model(&model.CityPartner{}).Where("id = ?", partnerID).Update("status", "approved").Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "activated"})
+		return
+	}
+	middleware.Fail(c, http.StatusNotFound, middleware.CodeNotFound)
+}
+
 func (h *PartnerHandler) AdminGrantEquity(c *gin.Context) {
 	partnerID := c.Param("id")
 
