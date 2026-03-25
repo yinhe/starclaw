@@ -39,8 +39,17 @@ for repo in "${REPOS[@]}"; do
 
 done
 
-chown -R "$OWNER_USER:$OWNER_GROUP" "$REPO_ROOT"
-chmod -R ug+rwX "$REPO_ROOT"
+# Only chown/chmod the *.git repo dirs — never touch .ssh, .docker, .cache etc.
+for repo in "${REPOS[@]}"; do
+  target="$REPO_ROOT/$repo.git"
+  if [[ -d "$target" ]]; then
+    chown -R "$OWNER_USER:$OWNER_GROUP" "$target"
+    chmod -R ug+rwX "$target"
+  fi
+done
+# Ensure REPO_ROOT itself is owned by git but world-readable (sshd requires <=755 for home)
+chown "$OWNER_USER:$OWNER_GROUP" "$REPO_ROOT"
+chmod 755 "$REPO_ROOT"
 
 printf "\n[OK] Repo bootstrap done at %s\n" "$REPO_ROOT"
 ls -1 "$REPO_ROOT" | sed 's/^/ - /'
