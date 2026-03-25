@@ -89,7 +89,7 @@ repos:
 
   carapace:
     description: "StarClaw crypto & auth library (Go)"
-    public: true
+    public: false
     targets: []
 
   pheromone:
@@ -139,5 +139,5 @@ repos:
 
   spore:
     description: "StarClaw desktop installer & updater"
-    public: true
+    public: false
     targets: []
