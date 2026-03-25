@@ -84,3 +84,60 @@ repos:
     description: "StarClaw open-source AI agent platform"
     public: true
     targets: []
+
+  # ========== Polyrepo: 独立拆分仓库 ==========
+
+  carapace:
+    description: "StarClaw crypto & auth library (Go)"
+    public: true
+    targets: []
+
+  pheromone:
+    description: "StarClaw ESB — event bus (NATS + API + WebUI)"
+    public: false
+    targets: []
+
+  forge:
+    description: "StarClaw DevOps — CI/CD orchestrator"
+    public: false
+    targets: []
+
+  overlord:
+    description: "StarClaw enterprise AI management platform"
+    public: false
+    targets: []
+
+  synapse:
+    description: "StarClaw AI compute gateway (star-ai.net)"
+    public: false
+    targets: []
+
+  nydus:
+    description: "StarClaw Git server + deployment system"
+    public: false
+    targets: []
+
+  hive:
+    description: "StarClaw multi-tenant Claw controller"
+    public: false
+    targets: []
+
+  queen:
+    description: "StarClaw central platform — API, Swarm, Web, Core"
+    public: false
+    targets: []
+
+  cerebrate:
+    description: "StarClaw partner ecosystem service"
+    public: false
+    targets: []
+
+  larva:
+    description: "StarClaw incubation / experimental service"
+    public: false
+    targets: []
+
+  spore:
+    description: "StarClaw desktop installer & updater"
+    public: true
+    targets: []
