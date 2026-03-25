@@ -9,6 +9,25 @@ SERVER_A="root@starclaw.me"
 SERVER_B="root@47.103.51.32"
 SSH_KEY="/home/git/.ssh/id_ed25519"
 SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+PHEROMONE_NATS_HOST="127.0.0.1"
+PHEROMONE_NATS_PORT="4222"
+
+publish_pheromone_deploy() {
+  service="$1"
+  branch="$2"
+  commit="$3"
+
+  payload=$(printf '{"event":"deploy.triggered","repo":"starclaw","service":"%s","branch":"%s","commit":"%s","actor":"nydus"}' "$service" "$branch" "$commit")
+  subject="pheromone.events.deploy.$service"
+  bytes=${#payload}
+
+  (
+    exec 3<>/dev/tcp/$PHEROMONE_NATS_HOST/$PHEROMONE_NATS_PORT || exit 0
+    printf 'CONNECT {"verbose":false,"pedantic":false}\r\n' >&3
+    printf 'PUB %s %s\r\n%s\r\n' "$subject" "$bytes" "$payload" >&3
+    exec 3>&-
+  ) >/dev/null 2>&1 &
+}
 
 while read oldrev newrev refname; do
   # Sync tags to claw.git (for Molt release detection)
@@ -80,6 +99,7 @@ while read oldrev newrev refname; do
   # --- Queen (Server C — local + Server A for site) ---
   if echo "$CHANGED" | grep -q "^queen/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Queen changed — rebuilding..." | tee -a "$LOG"
+    publish_pheromone_deploy "queen" "$branch" "$newrev"
     (
       cd /opt/starclaw-queen
       git --git-dir="$REPO" archive HEAD:queen | tar xf - 2>/dev/null || true
@@ -122,6 +142,7 @@ while read oldrev newrev refname; do
   # --- Claw (Server A — starclaw.me) ---
   if echo "$CHANGED" | grep -q "^claw/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Claw changed — deploying to starclaw.me..." | tee -a "$LOG"
+    publish_pheromone_deploy "claw" "$branch" "$newrev"
     (
       git --git-dir="$REPO" archive HEAD:claw | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
@@ -135,6 +156,7 @@ while read oldrev newrev refname; do
   # --- Hive controller (Server A) ---
   if echo "$CHANGED" | grep -q "^hive/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Hive changed — rebuilding on starclaw.me..." | tee -a "$LOG"
+    publish_pheromone_deploy "hive" "$branch" "$newrev"
     (
       git --git-dir="$REPO" archive HEAD:hive | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw-hive && tar xf -"
       git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/starclaw-hive/carapace && cd /opt/starclaw-hive/carapace && tar xf -"
@@ -146,6 +168,7 @@ while read oldrev newrev refname; do
   # --- Synapse (Server B — star-ai.net) ---
   if echo "$CHANGED" | grep -q "^synapse/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Synapse changed — deploying to server B..." | tee -a "$LOG"
+    publish_pheromone_deploy "synapse" "$branch" "$newrev"
     (
       git --git-dir="$REPO" archive HEAD:synapse | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && tar xf -"
 
@@ -175,6 +198,7 @@ while read oldrev newrev refname; do
   # --- Overlord (Server C — local) ---
   if echo "$CHANGED" | grep -q "^overlord/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Overlord changed — rebuilding on server C..." | tee -a "$LOG"
+    publish_pheromone_deploy "overlord" "$branch" "$newrev"
     (
       mkdir -p /opt/starclaw-overlord
       cd /opt/starclaw-overlord
@@ -187,6 +211,7 @@ while read oldrev newrev refname; do
   # --- Forge (Server C — local) ---
   if echo "$CHANGED" | grep -q "^forge/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — rebuilding on server C..." | tee -a "$LOG"
+    publish_pheromone_deploy "forge" "$branch" "$newrev"
     (
       mkdir -p /opt/starclaw-forge
       cd /opt/starclaw-forge
@@ -212,6 +237,7 @@ while read oldrev newrev refname; do
   # --- Nydus config (reload if changed) ---
   if echo "$CHANGED" | grep -q "^nydus/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Nydus config changed — syncing..." | tee -a "$LOG"
+    publish_pheromone_deploy "nydus" "$branch" "$newrev"
     (
       cd /opt/nydus
       git --git-dir="$REPO" archive HEAD:nydus | tar xf - 2>/dev/null || true
