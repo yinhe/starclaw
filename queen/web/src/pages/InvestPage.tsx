@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { investorAPI, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant, type DiamondOrderResult } from '../lib/api';
+import { useState, useEffect, useRef } from 'react';
+import { investorAPI, clawAuthAPI, clawNodeRequest, type InvestorPoolInfo, type InvestorProfile, type DailyEarning, type EquityGrant, type DiamondOrderResult } from '../lib/api';
 import { isLoggedIn, setAuth, clearAuth, getUser } from '../lib/auth';
 import {
   Diamond, Wallet, ArrowRight, CheckCircle, ExternalLink, LogOut, CreditCard, Smartphone,
-  FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar, Fingerprint,
+  FileText, BarChart3, Gem, Zap, Lock, Unlock, Calendar, Fingerprint, Shield,
 } from 'lucide-react';
 
 function fmt(yuan: number) { return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
@@ -13,9 +13,11 @@ function pct(n: number, d: number) { return d > 0 ? `${(n / d * 100).toFixed(2)}
 export function InvestPage() {
   // ─── Auth ───
   const [authed, setAuthed] = useState(isLoggedIn());
-  const [loginToken, setLoginToken] = useState('');
+  const [clawUrl, setClawUrl] = useState('');
   const [loginErr, setLoginErr] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
+  const [loginStep, setLoginStep] = useState<'input' | 'connecting' | 'waiting' | 'verifying' | 'done' | 'error'>('input');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Data ───
   const [pool, setPool] = useState<InvestorPoolInfo | null>(null);
@@ -51,6 +53,57 @@ export function InvestPage() {
     if (authed) loadAll();
   }, [authed]);
 
+  async function handleClawLogin() {
+    if (!clawUrl.trim()) { setLoginErr('请输入 Claw 节点地址'); return; }
+    setLoginStep('connecting'); setLoginErr(''); setLoggingIn(true);
+    const baseUrl = new URL(clawUrl.includes('://') ? clawUrl : `https://${clawUrl}`).origin;
+    try {
+      await clawNodeRequest<{ node_id: string }>(baseUrl, '/v1/identity/info');
+      const { challenge } = await clawAuthAPI.challenge();
+      const reqRes = await clawNodeRequest<{ id: string }>(
+        baseUrl, '/v1/identity/auth-request',
+        { method: 'POST', body: JSON.stringify({ challenge, origin: window.location.hostname }) }
+      );
+      setLoginStep('waiting');
+
+      await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        pollRef.current = setInterval(async () => {
+          attempts++;
+          if (attempts > 100) { clearInterval(pollRef.current!); reject(new Error('授权超时')); return; }
+          try {
+            const s = await clawNodeRequest<{
+              status: string; node_id?: string; public_key?: string; signature?: string; challenge?: string;
+            }>(baseUrl, `/v1/identity/auth-request/${reqRes.id}`);
+            if (s.status === 'approved') {
+              clearInterval(pollRef.current!);
+              setLoginStep('verifying');
+              const data = await clawAuthAPI.verify({
+                challenge: s.challenge!, node_id: s.node_id!,
+                public_key: s.public_key!, signature: s.signature!,
+              });
+              setAuth(data.token, data.user);
+              setLoginStep('done');
+              setAuthed(true);
+              resolve();
+            } else if (s.status === 'rejected') {
+              clearInterval(pollRef.current!); reject(new Error('授权被拒绝'));
+            }
+          } catch (e: any) {
+            if (e.message?.includes('expired') || e.message?.includes('not found')) {
+              clearInterval(pollRef.current!); reject(new Error('请求已过期'));
+            }
+          }
+        }, 3000);
+      });
+    } catch (e: any) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      setLoginStep('error');
+      setLoginErr(e.message || '连接失败');
+    }
+    setLoggingIn(false);
+  }
+
   async function verifyAndLogin(token: string) {
     setLoggingIn(true); setLoginErr('');
     try {
@@ -65,11 +118,6 @@ export function InvestPage() {
       setAuthed(true);
     } catch (e: any) { setLoginErr(e.message); }
     setLoggingIn(false);
-  }
-
-  function handleLogin() {
-    if (!loginToken.trim()) { setLoginErr('请输入节点令牌'); return; }
-    verifyAndLogin(loginToken.trim());
   }
 
   function handleLogout() {
@@ -172,25 +220,68 @@ export function InvestPage() {
         <div className="rounded-2xl border border-purple-500/15 bg-white/[0.02] backdrop-blur-sm p-8">
           <div className="flex items-center gap-2 mb-6">
             <Fingerprint className="w-5 h-5 text-purple-400" />
-            <span className="text-sm font-medium text-gray-300">Claw 节点登录</span>
+            <span className="text-sm font-medium text-gray-300">Claw 节点认证</span>
           </div>
-          {loginErr && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{loginErr}</div>}
-          <input
-            type="password"
-            value={loginToken}
-            onChange={e => setLoginToken(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            placeholder="粘贴节点令牌 (Token)"
-            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 mb-4"
-          />
-          <button onClick={handleLogin} disabled={loggingIn}
-            className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-medium transition disabled:opacity-50 flex items-center justify-center gap-2">
-            {loggingIn ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />验证中...</> : <><Fingerprint size={16} />连接节点</>}
-          </button>
-          <div className="mt-5 pt-5 border-t border-white/5 text-xs text-gray-600 space-y-2">
-            <p>从 Claw 节点设置页 → Queen 账户 → 复制令牌</p>
-            <p>或从节点门户直接跳转（自动携带令牌）</p>
-          </div>
+
+          {loginStep === 'input' && (
+            <>
+              {loginErr && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{loginErr}</div>}
+              <div className="mb-2">
+                <label className="block text-xs text-gray-500 mb-1.5">Claw 节点地址</label>
+                <input
+                  type="url"
+                  value={clawUrl}
+                  onChange={e => setClawUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleClawLogin()}
+                  placeholder="如 https://app.starclaw.me"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50"
+                />
+              </div>
+              <div className="flex items-start gap-2 p-3 bg-purple-500/[0.06] rounded-xl mb-4">
+                <Shield className="w-4 h-4 text-purple-400 mt-0.5 flex-none" />
+                <p className="text-xs text-purple-300/70 leading-relaxed">
+                  安全回签：请求会发送到你的 Claw 节点，你需要在 Claw 界面确认授权后才能登录。
+                </p>
+              </div>
+              <button onClick={handleClawLogin} disabled={loggingIn}
+                className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-medium transition disabled:opacity-50 flex items-center justify-center gap-2">
+                <Fingerprint size={16} />发送认证请求
+              </button>
+            </>
+          )}
+
+          {loginStep === 'connecting' && (
+            <p className="text-sm text-gray-400 text-center py-6">连接 Claw 节点...</p>
+          )}
+
+          {loginStep === 'waiting' && (
+            <div className="text-center py-6">
+              <p className="text-sm text-purple-400 font-medium">请在你的 Claw 界面确认授权登录</p>
+              <p className="text-xs text-gray-500 mt-2">在 Claw 界面点击「授权登录」</p>
+            </div>
+          )}
+
+          {loginStep === 'verifying' && (
+            <p className="text-sm text-gray-400 text-center py-6">验证身份中...</p>
+          )}
+
+          {loginStep === 'done' && (
+            <p className="text-sm text-green-400 text-center py-6">认证成功</p>
+          )}
+
+          {loginStep === 'error' && (
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-red-400 text-center">{loginErr}</p>
+              <button onClick={() => { setLoginStep('input'); setLoginErr(''); }}
+                className="w-full py-2.5 rounded-xl border border-white/10 text-sm text-gray-400 hover:bg-white/5 transition">
+                重试
+              </button>
+            </div>
+          )}
+
+          <p className="mt-5 pt-5 border-t border-white/5 text-center text-xs text-gray-600">
+            没有 Claw 节点？<a href="https://starclaw.me/create" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">免费部署一个</a>
+          </p>
         </div>
       </div>
     </div>
