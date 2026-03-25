@@ -233,9 +233,9 @@ Go vanity import 已经配好（starclaw.net/* → nydus.starclaw.net/git/*.git�
    → Nydus post-receive hook 触发：
      a. 编译 + 测试
      b. 部署到 Server A
-     c. 通过 Ganglion 广播: pheromone.events.deploy.claw.completed
+     c. 通过 Pheromone 广播: pheromone.events.deploy.claw.completed
 
-2. Forge 监听 Ganglion 事件
+2. Forge 监听 Pheromone 事件
    → 记录构建历史、版本变更
    → 自动通知相关 Windsurf 实例（如果有 API 依赖变更）
 
@@ -266,7 +266,7 @@ for dir in queen synapse overlord forge hive pheromone cerebrate larva spore car
 done
 
 # 3. 本地 clone 每个独立 repo
-for repo in queen synapse overlord forge hive ganglion cerebrate larva spore carapace; do
+for repo in queen synapse overlord forge hive pheromone cerebrate larva spore carapace; do
   git clone git@nydus.starclaw.net:$repo.git E:\$repo
 done
 
@@ -282,21 +282,21 @@ done
 - [ ] 迁移 Nydus repos 到 /data/nydus
 - [ ] 迁移 Redis 数据到 /data/redis
 
-### Phase 2：Ganglion MVP（2 周）
-- [ ] 搭建 NATS Server（Docker，/data/ganglion/nats）
-- [ ] Ganglion SDK（Go 库，服务注册 + 消息发布/订阅）
-- [ ] Queen → Synapse 支付链路改走 Ganglion
+### Phase 2：Pheromone MVP（2 周）
+- [ ] 搭建 NATS Server（Docker，/data/pheromone/nats）
+- [ ] Pheromone SDK（Go 库，服务注册 + 消息发布/订阅）
+- [ ] Queen → Synapse 支付链路改走 Pheromone
 - [ ] 统一服务健康检查
 
 ### Phase 3：微服务分支（1 个月）
 - [ ] Nydus 支持子项目独立分支
-- [ ] Forge CI/CD pipeline 对接 Ganglion 事件
+- [ ] Forge CI/CD pipeline 对接 Pheromone 事件
 - [ ] 每个子项目独立 Windsurf workspace
 
 ### Phase 4：全面微服务化（2 个月）
-- [ ] 所有服务间通信迁移到 Ganglion
-- [ ] 统一认证中心（Ganglion Auth）
-- [ ] 分布式日志（Ganglion 收集 → 统一存储）
+- [ ] 所有服务间通信迁移到 Pheromone
+- [ ] 统一认证中心（Pheromone Auth）
+- [ ] 分布式日志（Pheromone 收集 → 统一存储）
 - [ ] 服务网格可观测性（Prometheus + Grafana）
 
 ---
