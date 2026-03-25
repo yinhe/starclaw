@@ -11,6 +11,7 @@ SSH_KEY="/home/git/.ssh/id_ed25519"
 SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10"
 PHEROMONE_NATS_HOST="127.0.0.1"
 PHEROMONE_NATS_PORT="4222"
+ENABLE_REMOTE_FORGE_DEPLOY="${ENABLE_REMOTE_FORGE_DEPLOY:-0}"
 
 publish_pheromone_deploy() {
   service="$1"
@@ -210,28 +211,32 @@ while read oldrev newrev refname; do
 
   # --- Forge (Server C — local) ---
   if echo "$CHANGED" | grep -q "^forge/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — rebuilding on server C..." | tee -a "$LOG"
-    publish_pheromone_deploy "forge" "$branch" "$newrev"
-    (
-      mkdir -p /opt/starclaw-forge
-      cd /opt/starclaw-forge
-      git --git-dir="$REPO" archive HEAD:forge | tar xf - 2>/dev/null || true
+    if [ "$ENABLE_REMOTE_FORGE_DEPLOY" != "1" ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — skipped (remote Forge disabled, using local Forge)" | tee -a "$LOG"
+    else
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — rebuilding on server C..." | tee -a "$LOG"
+      publish_pheromone_deploy "forge" "$branch" "$newrev"
+      (
+        mkdir -p /opt/starclaw-forge
+        cd /opt/starclaw-forge
+        git --git-dir="$REPO" archive HEAD:forge | tar xf - 2>/dev/null || true
 
-      if echo "$CHANGED" | grep -q "^forge/api/"; then
-        docker compose build --no-cache forge-api
-        docker compose up -d forge-api
-        echo "  -> forge-api rebuilt (Server C :8099)" | tee -a "$LOG"
-      fi
-      if echo "$CHANGED" | grep -q "^forge/web/"; then
-        docker compose build --no-cache forge-web
-        docker compose up -d forge-web
-        echo "  -> forge-web rebuilt (Server C :3099)" | tee -a "$LOG"
-      fi
-      if echo "$CHANGED" | grep -q "^forge/docker-compose"; then
-        docker compose up -d
-        echo "  -> forge compose refreshed" | tee -a "$LOG"
-      fi
-    ) >> "$LOG" 2>&1 &
+        if echo "$CHANGED" | grep -q "^forge/api/"; then
+          docker compose build --no-cache forge-api
+          docker compose up -d forge-api
+          echo "  -> forge-api rebuilt (Server C :8099)" | tee -a "$LOG"
+        fi
+        if echo "$CHANGED" | grep -q "^forge/web/"; then
+          docker compose build --no-cache forge-web
+          docker compose up -d forge-web
+          echo "  -> forge-web rebuilt (Server C :3099)" | tee -a "$LOG"
+        fi
+        if echo "$CHANGED" | grep -q "^forge/docker-compose"; then
+          docker compose up -d
+          echo "  -> forge compose refreshed" | tee -a "$LOG"
+        fi
+      ) >> "$LOG" 2>&1 &
+    fi
   fi
 
   # --- Nydus config (reload if changed) ---
