@@ -42,10 +42,14 @@ export default function GoalsPage() {
   }
 
   const createGoal = async () => {
-    await goalAPI.create(newGoal)
-    setShowCreate(false)
-    setNewGoal({ agent_id: '', title: '', description: '', priority: 5, trigger_type: 'manual', max_steps: 20 })
-    loadData()
+    try {
+      await goalAPI.create(newGoal)
+      setShowCreate(false)
+      setNewGoal({ agent_id: '', title: '', description: '', priority: 5, trigger_type: 'manual', max_steps: 20 })
+      loadData()
+    } catch (e: any) {
+      alert(e?.response?.data?.error || e?.message || '创建目标失败')
+    }
   }
 
   const activateGoal = async (id: string) => { await goalAPI.activate(id); loadData() }
