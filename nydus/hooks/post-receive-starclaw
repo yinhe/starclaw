@@ -218,6 +218,7 @@ while read oldrev newrev refname; do
       cd /opt/starclaw-pheromone
       git --git-dir="$REPO" archive HEAD:pheromone | tar xf - 2>/dev/null || true
       export REGISTRY="${REGISTRY:-docker.1ms.run}"
+      docker rm -f pheromone-api pheromone-web pheromone-nats pheromone-nats-exporter >/dev/null 2>&1 || true
       docker compose -f docker-compose.yml up -d --build
       echo "  -> pheromone stack refreshed (Server C :8100/:3110/:4222/:7777)" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
