@@ -120,7 +120,7 @@ export function BountyPage() {
     const st = STATUS_STYLES[currentBounty.status] || STATUS_STYLES.open;
     const cat = CATEGORY_LABELS[currentBounty.category] || CATEGORY_LABELS.other;
     const user = getUser();
-    const isCreator = user?.id === currentBounty.creator_id;
+    const isCreator = user?.id === (currentBounty.creator_id || currentBounty.user_id);
     const isClaimer = user?.id === currentBounty.claimed_by;
 
     return (
@@ -141,27 +141,27 @@ export function BountyPage() {
                 <h1 className="text-2xl font-bold text-gray-900">{currentBounty.title}</h1>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-bold text-emerald-600">{formatReward(currentBounty.reward_amount, currentBounty.reward_currency)}</p>
+                <p className="text-2xl font-bold text-emerald-600">{formatReward(currentBounty.reward_amount || currentBounty.reward, currentBounty.reward_currency || currentBounty.currency)}</p>
                 <p className="text-xs text-gray-400 mt-1">赏金</p>
               </div>
             </div>
 
             <div className="flex items-center gap-4 text-sm text-gray-500 mb-6">
-              <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />发布者: {currentBounty.creator_name}</span>
+              <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />发布者: {currentBounty.creator_name || currentBounty.node_id || 'System'}</span>
               <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{timeAgo(currentBounty.created_at)}</span>
               {currentBounty.deadline && <span className="flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" />截止: {new Date(currentBounty.deadline).toLocaleDateString('zh-CN')}</span>}
             </div>
 
             <div className="prose prose-gray max-w-none whitespace-pre-wrap mb-6">{currentBounty.description}</div>
 
-            {currentBounty.claimed_by_name && (
+            {currentBounty.claimed_by && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 text-sm text-blue-700">
-                <strong>领取者:</strong> {currentBounty.claimed_by_name}
+                <strong>领取者:</strong> {currentBounty.claimed_by_name || currentBounty.claimed_by}
               </div>
             )}
-            {currentBounty.delivery_notes && (
+            {(currentBounty.delivery_notes || currentBounty.delivery_note) && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 text-sm text-amber-700">
-                <strong>交付说明:</strong> {currentBounty.delivery_notes}
+                <strong>交付说明:</strong> {currentBounty.delivery_notes || currentBounty.delivery_note}
               </div>
             )}
 
@@ -207,7 +207,7 @@ export function BountyPage() {
                     取消赏金
                   </button>
                 )}
-                <button onClick={() => setReportTarget({ type: 'bounty', id: currentBounty.id, title: currentBounty.title, authorId: currentBounty.creator_id })}
+                <button onClick={() => setReportTarget({ type: 'bounty', id: currentBounty.id, title: currentBounty.title, authorId: currentBounty.creator_id || currentBounty.user_id })}
                   className="px-4 py-2 rounded-lg border text-gray-400 text-sm hover:text-red-500 hover:border-red-300 transition flex items-center gap-1.5">
                   <Flag className="w-4 h-4" /> 举报
                 </button>
@@ -313,12 +313,12 @@ export function BountyPage() {
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${st.class}`}>{st.label}</span>
                       <span className="text-xs text-gray-400">{cat.icon} {cat.label}</span>
                     </div>
-                    <span className="text-lg font-bold text-emerald-600">{formatReward(b.reward_amount, b.reward_currency)}</span>
+                    <span className="text-lg font-bold text-emerald-600">{formatReward(b.reward_amount || b.reward, b.reward_currency || b.currency)}</span>
                   </div>
                   <h3 className="font-semibold text-gray-900 mb-1.5 truncate">{b.title}</h3>
                   <p className="text-sm text-gray-500 line-clamp-2 mb-3">{b.description}</p>
                   <div className="flex items-center gap-4 text-xs text-gray-400">
-                    <span className="flex items-center gap-1"><User className="w-3 h-3" />{b.creator_name}</span>
+                    <span className="flex items-center gap-1"><User className="w-3 h-3" />{b.creator_name || b.node_id || 'System'}</span>
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{timeAgo(b.created_at)}</span>
                   </div>
                 </button>

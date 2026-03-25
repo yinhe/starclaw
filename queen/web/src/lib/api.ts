@@ -212,18 +212,31 @@ export const arenaAPI = {
 
 export interface Bounty {
   id: string;
-  creator_id: string;
-  creator_name: string;
+  node_id: string;
+  user_id: string;
+  creator_id?: string;
+  creator_name?: string;
   title: string;
   description: string;
-  category: string; // physical_delivery | human_judgment | creative_review | data_collection | real_world_verification | specialized_skill | other
-  reward_amount: number;
-  reward_currency: string;
-  status: string; // open | claimed | delivered | completed | disputed | cancelled | expired
+  category: string;
+  requirements: string;
+  reward: number;
+  reward_amount?: number;
+  currency: string;
+  reward_currency?: string;
+  status: string;
+  visibility: string;
   claimed_by: string;
-  claimed_by_name: string;
-  delivery_notes: string;
-  deadline: string;
+  claimed_by_name?: string;
+  claimed_at: string | null;
+  delivery_note: string;
+  delivery_notes?: string;
+  delivery_url: string;
+  delivered_at: string | null;
+  completed_at: string | null;
+  rating: number;
+  feedback: string;
+  deadline: string | null;
   created_at: string;
   updated_at: string;
 }
