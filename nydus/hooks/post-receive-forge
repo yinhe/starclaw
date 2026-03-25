@@ -1,0 +1,80 @@
+#!/bin/bash
+# Nydus post-receive hook for forge.git (Server C local deployment)
+SERVICE="forge"
+REPO="/data/nydus/repos/forge.git"
+DEPLOY_DIR="/opt/starclaw-forge"
+
+LOG=/var/log/nydus-deploy.log
+NYDUS_API="http://127.0.0.1:8095"
+NYDUS_SECRET="nydus-sc2026-vKwRmT9xLpQjN3hB"
+PHEROMONE_NATS_HOST="127.0.0.1"
+PHEROMONE_NATS_PORT="4222"
+
+# Set to "1" to enable Forge auto-deploy on push; default disabled (using local Forge)
+ENABLE_REMOTE_FORGE_DEPLOY="${ENABLE_REMOTE_FORGE_DEPLOY:-0}"
+
+publish_pheromone_deploy() {
+  local svc="$1" branch="$2" commit="$3"
+  local payload
+  payload=$(printf '{"event":"deploy.triggered","repo":"%s","service":"%s","branch":"%s","commit":"%s","actor":"nydus"}' "$svc" "$svc" "$branch" "$commit")
+  local subject="pheromone.events.deploy.$svc"
+  local bytes=${#payload}
+  (
+    exec 3<>/dev/tcp/$PHEROMONE_NATS_HOST/$PHEROMONE_NATS_PORT || exit 0
+    printf 'CONNECT {"verbose":false,"pedantic":false}\r\n' >&3
+    printf 'PUB %s %s\r\n%s\r\n' "$subject" "$bytes" "$payload" >&3
+    exec 3>&-
+  ) >/dev/null 2>&1 &
+}
+
+while read oldrev newrev refname; do
+  if echo "$refname" | grep -q '^refs/tags/'; then
+    tag=$(echo "$refname" | sed 's|refs/tags/||')
+    curl -sf -X POST "$NYDUS_API/hooks/push?secret=$NYDUS_SECRET" \
+      -H "Content-Type: application/json" \
+      -d "{\"repo\":\"$SERVICE\",\"branch\":\"\",\"newrev\":\"$newrev\",\"tag\":\"$tag\"}" || true
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Tag $tag pushed" | tee -a "$LOG"
+    continue
+  fi
+
+  branch=$(echo "$refname" | sed 's|refs/heads/||')
+  curl -sf -X POST "$NYDUS_API/hooks/push?secret=$NYDUS_SECRET" \
+    -H "Content-Type: application/json" \
+    -d "{\"repo\":\"$SERVICE\",\"branch\":\"$branch\",\"newrev\":\"$newrev\",\"tag\":\"\"}" || true
+
+  if [ "$branch" != "master" ]; then
+    continue
+  fi
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Push to master: $oldrev -> $newrev" | tee -a "$LOG"
+  publish_pheromone_deploy "$SERVICE" "$branch" "$newrev"
+
+  if [ "$ENABLE_REMOTE_FORGE_DEPLOY" != "1" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Skipped (remote deploy disabled, using local Forge)" | tee -a "$LOG"
+    continue
+  fi
+
+  CHANGED=$(git --git-dir="$REPO" diff --name-only "$oldrev" "$newrev" 2>/dev/null)
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Deploying to Server C..." | tee -a "$LOG"
+  (
+    mkdir -p "$DEPLOY_DIR"
+    cd "$DEPLOY_DIR"
+    git --git-dir="$REPO" archive HEAD | tar xf - 2>/dev/null || true
+
+    if echo "$CHANGED" | grep -q "^api/"; then
+      docker compose build --no-cache forge-api
+      docker compose up -d forge-api
+      echo "  -> forge-api rebuilt (Server C :8099)" | tee -a "$LOG"
+    fi
+    if echo "$CHANGED" | grep -q "^web/"; then
+      docker compose build --no-cache forge-web
+      docker compose up -d forge-web
+      echo "  -> forge-web rebuilt (Server C :3099)" | tee -a "$LOG"
+    fi
+    if echo "$CHANGED" | grep -q "^docker-compose"; then
+      docker compose up -d
+      echo "  -> forge compose refreshed" | tee -a "$LOG"
+    fi
+  ) >> "$LOG" 2>&1 &
+done

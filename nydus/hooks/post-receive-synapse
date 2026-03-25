@@ -1,0 +1,79 @@
+#!/bin/bash
+# Nydus post-receive hook for synapse.git (Server B — star-ai.net)
+SERVICE="synapse"
+REPO="/data/nydus/repos/synapse.git"
+DEPLOY_DIR="/opt/starclaw/synapse"
+
+LOG=/var/log/nydus-deploy.log
+NYDUS_API="http://127.0.0.1:8095"
+NYDUS_SECRET="nydus-sc2026-vKwRmT9xLpQjN3hB"
+PHEROMONE_NATS_HOST="127.0.0.1"
+PHEROMONE_NATS_PORT="4222"
+
+SERVER_B="root@47.103.51.32"
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+
+publish_pheromone_deploy() {
+  local svc="$1" branch="$2" commit="$3"
+  local payload
+  payload=$(printf '{"event":"deploy.triggered","repo":"%s","service":"%s","branch":"%s","commit":"%s","actor":"nydus"}' "$svc" "$svc" "$branch" "$commit")
+  local subject="pheromone.events.deploy.$svc"
+  local bytes=${#payload}
+  (
+    exec 3<>/dev/tcp/$PHEROMONE_NATS_HOST/$PHEROMONE_NATS_PORT || exit 0
+    printf 'CONNECT {"verbose":false,"pedantic":false}\r\n' >&3
+    printf 'PUB %s %s\r\n%s\r\n' "$subject" "$bytes" "$payload" >&3
+    exec 3>&-
+  ) >/dev/null 2>&1 &
+}
+
+while read oldrev newrev refname; do
+  if echo "$refname" | grep -q '^refs/tags/'; then
+    tag=$(echo "$refname" | sed 's|refs/tags/||')
+    curl -sf -X POST "$NYDUS_API/hooks/push?secret=$NYDUS_SECRET" \
+      -H "Content-Type: application/json" \
+      -d "{\"repo\":\"$SERVICE\",\"branch\":\"\",\"newrev\":\"$newrev\",\"tag\":\"$tag\"}" || true
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Tag $tag pushed" | tee -a "$LOG"
+    continue
+  fi
+
+  branch=$(echo "$refname" | sed 's|refs/heads/||')
+  curl -sf -X POST "$NYDUS_API/hooks/push?secret=$NYDUS_SECRET" \
+    -H "Content-Type: application/json" \
+    -d "{\"repo\":\"$SERVICE\",\"branch\":\"$branch\",\"newrev\":\"$newrev\",\"tag\":\"\"}" || true
+
+  if [ "$branch" != "master" ]; then
+    continue
+  fi
+
+  CHANGED=$(git --git-dir="$REPO" diff --name-only "$oldrev" "$newrev" 2>/dev/null)
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Push to master: $oldrev -> $newrev" | tee -a "$LOG"
+  publish_pheromone_deploy "$SERVICE" "$branch" "$newrev"
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Deploying to Server B..." | tee -a "$LOG"
+  (
+    git --git-dir="$REPO" archive HEAD | ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && tar xf -"
+
+    if echo "$CHANGED" | grep -q "^api/\|^docker-compose"; then
+      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache api && docker compose up -d api"
+      echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | tee -a "$LOG"
+    fi
+    if echo "$CHANGED" | grep -q "^web/"; then
+      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache web && docker compose up -d web"
+      echo "  -> synapse-web rebuilt on B (star-ai-web :3096)" | tee -a "$LOG"
+    fi
+    if echo "$CHANGED" | grep -q "^core/"; then
+      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache core && docker compose up -d core"
+      echo "  -> synapse-core rebuilt on B (star-ai-core :3097)" | tee -a "$LOG"
+    fi
+    if echo "$CHANGED" | grep -q "^proxy/"; then
+      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache proxy && docker compose up -d proxy"
+      echo "  -> synapse-proxy rebuilt on B (overseas relay)" | tee -a "$LOG"
+    fi
+    if echo "$CHANGED" | grep -q "^deploy/"; then
+      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && cp deploy/nginx-starai.conf /etc/nginx/sites-available/star-ai 2>/dev/null; nginx -t && systemctl reload nginx" || true
+      echo "  -> synapse nginx config updated on B" | tee -a "$LOG"
+    fi
+  ) >> "$LOG" 2>&1 &
+done
