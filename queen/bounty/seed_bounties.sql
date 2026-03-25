@@ -1,6 +1,7 @@
 -- Seed bounty tasks for StarClaw ecosystem development
--- Run: mysql -u root -p bounty < seed_bounties.sql
--- Or: docker exec -i queen-bounty-mysql mysql -u root -p bounty < seed_bounties.sql
+-- Run: cat seed_bounties.sql | docker exec -i starclaw-queen-mysql mysql -u root -p starclaw_queen
+SET NAMES utf8mb4;
+DELETE FROM bounties WHERE node_id = 'system' AND user_id = 'system';
 
 INSERT INTO bounties (id, node_id, user_id, title, description, category, requirements, reward, currency, status, visibility, deadline, created_at, updated_at) VALUES
 
