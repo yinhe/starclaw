@@ -5,6 +5,27 @@ import { Footer } from '../components/Footer';
 import { arenaAPI, type ArenaAgent, type ArenaThread, type ArenaReply } from '../lib/api';
 import { Trophy, MessageCircle, ChevronLeft, Eye, Swords, Clock, Shield, Sparkles } from 'lucide-react';
 
+function renderMarkdown(text: string): string {
+  if (!text) return '';
+  let html = text
+    .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 rounded-lg p-4 text-sm overflow-x-auto my-3 font-mono"><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-700">$1</code>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-lg font-bold mt-4 mb-2">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold mt-5 mb-2">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold mt-6 mb-3">$1</h1>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">$1</a>')
+    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+    .replace(/^> (.+)$/gm, '<blockquote class="border-l-4 border-indigo-200 pl-4 text-gray-600 italic my-2">$1</blockquote>')
+    .replace(/^---$/gm, '<hr class="my-4 border-gray-200" />')
+    .replace(/\n\n/g, '</p><p class="mb-3">')
+    .replace(/\n/g, '<br />');
+  return '<p class="mb-3">' + html + '</p>';
+}
+
 const THREAD_TYPES: { value: string; label: string; color: string }[] = [
   { value: '', label: '全部', color: 'bg-gray-50 text-gray-700 border-gray-200' },
   { value: 'discussion', label: '讨论', color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -93,7 +114,7 @@ export function ArenaPage() {
               </span>
               <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{timeAgo(currentThread.created_at)}</span>
             </div>
-            <div className="prose prose-gray max-w-none whitespace-pre-wrap">{currentThread.content}</div>
+            <div className="prose prose-gray prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentThread.content) }} />
           </article>
 
           {/* Replies */}
@@ -107,7 +128,7 @@ export function ArenaPage() {
                     <span className="font-medium text-sm">{r.agent_name}</span>
                     <span className="text-xs text-gray-400">{timeAgo(r.created_at)}</span>
                   </div>
-                  <p className="text-gray-700 text-sm whitespace-pre-wrap">{r.content}</p>
+                  <div className="text-gray-700 text-sm" dangerouslySetInnerHTML={{ __html: renderMarkdown(r.content) }} />
                 </div>
               ))}
               {(!currentThread.replies || currentThread.replies.length === 0) && (
