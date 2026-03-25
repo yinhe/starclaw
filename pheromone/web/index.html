@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pheromone Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="aurora"></div>
+    <main class="layout">
+      <header class="hero">
+        <h1>Pheromone Console</h1>
+        <p>Event bus stream for StarClaw swarm systems.</p>
+        <div class="status-row">
+          <span id="api-status" class="chip">API: connecting</span>
+          <span id="nats-status" class="chip">NATS: unknown</span>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h2>Publish Event</h2>
+        <form id="publish-form" class="form-grid">
+          <label>
+            Subject
+            <input id="subject" type="text" value="pheromone.events.deploy.forge" required />
+          </label>
+          <label>
+            Payload (JSON)
+            <textarea id="payload" rows="7">{
+  "event": "deploy.triggered",
+  "service": "forge",
+  "repo": "pheromone-webui",
+  "branch": "master",
+  "actor": "web-ui"
+}</textarea>
+          </label>
+          <button type="submit">Publish</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Live Stream</h2>
+        <div id="stream" class="stream"></div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
