@@ -1,0 +1,118 @@
+#!/bin/bash
+# Nydus post-receive hook for queen.git (Server C local + Server A site + Server B gateway)
+SERVICE="queen"
+REPO="/data/nydus/repos/queen.git"
+DEPLOY_DIR="/opt/starclaw-queen"
+
+LOG=/var/log/nydus-deploy.log
+NYDUS_API="http://127.0.0.1:8095"
+NYDUS_SECRET="nydus-sc2026-vKwRmT9xLpQjN3hB"
+PHEROMONE_NATS_HOST="127.0.0.1"
+PHEROMONE_NATS_PORT="4222"
+
+SERVER_A="root@starclaw.me"
+SERVER_B="root@47.103.51.32"
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+
+publish_pheromone_deploy() {
+  local svc="$1" branch="$2" commit="$3"
+  local payload
+  payload=$(printf '{"event":"deploy.triggered","repo":"%s","service":"%s","branch":"%s","commit":"%s","actor":"nydus"}' "$svc" "$svc" "$branch" "$commit")
+  local subject="pheromone.events.deploy.$svc"
+  local bytes=${#payload}
+  (
+    exec 3<>/dev/tcp/$PHEROMONE_NATS_HOST/$PHEROMONE_NATS_PORT || exit 0
+    printf 'CONNECT {"verbose":false,"pedantic":false}\r\n' >&3
+    printf 'PUB %s %s\r\n%s\r\n' "$subject" "$bytes" "$payload" >&3
+    exec 3>&-
+  ) >/dev/null 2>&1 &
+}
+
+while read oldrev newrev refname; do
+  if echo "$refname" | grep -q '^refs/tags/'; then
+    tag=$(echo "$refname" | sed 's|refs/tags/||')
+    curl -sf -X POST "$NYDUS_API/hooks/push?secret=$NYDUS_SECRET" \
+      -H "Content-Type: application/json" \
+      -d "{\"repo\":\"$SERVICE\",\"branch\":\"\",\"newrev\":\"$newrev\",\"tag\":\"$tag\"}" || true
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Tag $tag pushed" | tee -a "$LOG"
+    continue
+  fi
+
+  branch=$(echo "$refname" | sed 's|refs/heads/||')
+  curl -sf -X POST "$NYDUS_API/hooks/push?secret=$NYDUS_SECRET" \
+    -H "Content-Type: application/json" \
+    -d "{\"repo\":\"$SERVICE\",\"branch\":\"$branch\",\"newrev\":\"$newrev\",\"tag\":\"\"}" || true
+
+  if [ "$branch" != "master" ]; then
+    continue
+  fi
+
+  CHANGED=$(git --git-dir="$REPO" diff --name-only "$oldrev" "$newrev" 2>/dev/null || echo "all")
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Push to master: $oldrev -> $newrev" | tee -a "$LOG"
+  publish_pheromone_deploy "$SERVICE" "$branch" "$newrev"
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [$SERVICE] Deploying..." | tee -a "$LOG"
+  (
+    cd "$DEPLOY_DIR"
+    git --git-dir="$REPO" archive HEAD | tar xf - 2>/dev/null || true
+
+    # --- Queen API (Server C) ---
+    if echo "$CHANGED" | grep -q "^api/"; then
+      docker compose -f docker-compose.prod.yml build --no-cache queen-api
+      docker compose -f docker-compose.prod.yml up -d queen-api
+      echo "  -> queen-api rebuilt (Server C)" | tee -a "$LOG"
+    fi
+
+    # --- Queen Swarm (Server C) ---
+    if echo "$CHANGED" | grep -q "^swarm/"; then
+      docker compose -f docker-compose.prod.yml build --no-cache swarm
+      docker compose -f docker-compose.prod.yml up -d swarm
+      echo "  -> queen-swarm rebuilt (Server C)" | tee -a "$LOG"
+    fi
+
+    # --- Queen Web / Dashboard (Server C) ---
+    if echo "$CHANGED" | grep -q "^web/"; then
+      docker compose -f docker-compose.prod.yml build --no-cache queen-web
+      docker compose -f docker-compose.prod.yml up -d queen-web
+      echo "  -> queen-web rebuilt (Server C)" | tee -a "$LOG"
+    fi
+
+    # --- Queen Core admin (Server C) ---
+    if echo "$CHANGED" | grep -q "^core/"; then
+      docker compose -f docker-compose.prod.yml build --no-cache queen-core
+      docker compose -f docker-compose.prod.yml up -d queen-core
+      echo "  -> queen-core rebuilt (Server C)" | tee -a "$LOG"
+    fi
+
+    # --- Queen Proxy (Server C) ---
+    if echo "$CHANGED" | grep -q "^proxy/"; then
+      docker compose -f docker-compose.prod.yml build --no-cache queen-proxy
+      docker compose -f docker-compose.prod.yml up -d queen-proxy
+      echo "  -> queen-proxy rebuilt (Server C)" | tee -a "$LOG"
+    fi
+
+    # --- Queen Site → Server A (starclaw.me static site) ---
+    if echo "$CHANGED" | grep -q "^site/"; then
+      echo "  -> deploying queen-site to starclaw.me (Server A)..." | tee -a "$LOG"
+      git --git-dir="$REPO" archive HEAD:site | ssh $SSH_OPTS "$SERVER_A" "rm -rf /tmp/queen-site-build && mkdir -p /tmp/queen-site-build && cd /tmp/queen-site-build && tar xf -"
+      ssh $SSH_OPTS "$SERVER_A" "cd /tmp/queen-site-build && docker run --rm -v \$(pwd):/app -w /app node:20-alpine sh -c 'npm ci --registry=https://registry.npmmirror.com && npm run build'"
+      ssh $SSH_OPTS "$SERVER_A" "rm -rf /opt/starclaw/queen/site-old && mv /opt/starclaw/queen/site /opt/starclaw/queen/site-old 2>/dev/null; mv /tmp/queen-site-build/dist /opt/starclaw/queen/site && rm -rf /tmp/queen-site-build"
+      echo "  -> queen-site deployed to starclaw.me (static files updated)" | tee -a "$LOG"
+    fi
+
+    # --- Gateway (queen/api → Server B star-ai.net) ---
+    if echo "$CHANGED" | grep -q "^api/"; then
+      echo "  -> syncing gateway to Server B..." | tee -a "$LOG"
+      git --git-dir="$REPO" archive HEAD:api | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/gateway && tar xf -"
+      ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/gateway && docker compose -f docker-compose.gateway.yml up -d --build" || true
+      echo "  -> gateway rebuilt on Server B (star-ai.net/v1/*)" | tee -a "$LOG"
+    fi
+
+    # --- docker-compose changes (full refresh) ---
+    if echo "$CHANGED" | grep -q "^docker-compose"; then
+      docker compose -f docker-compose.prod.yml up -d
+      echo "  -> queen compose refreshed" | tee -a "$LOG"
+    fi
+  ) >> "$LOG" 2>&1 &
+done
