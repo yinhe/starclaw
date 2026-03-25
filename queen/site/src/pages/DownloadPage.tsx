@@ -168,6 +168,20 @@ export function DownloadPage() {
             <p className="mt-4 text-xs text-gray-500 text-center">
               {t('dl.spore.footer')}
             </p>
+
+            {/* Antivirus Notice */}
+            <div className="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/[0.04] px-5 py-4">
+              <p className="text-sm font-medium text-amber-400 mb-2">🛡️ 杀毒软件误报说明</p>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Spore 安装器由 Go 语言编译，代码完全开源。部分杀毒软件可能对未签名的新程序触发误报（误判为"木马"或"未知程序"）。
+                这是因为安装器需要下载文件、创建服务等系统操作，属于正常安装行为。
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                <strong className="text-gray-400">解决方法：</strong>在杀毒软件中将 StarClaw-Setup 添加到信任列表/白名单即可。
+                如果你不放心，可以使用下方的 Docker 方式安装，或直接查看
+                <a href="https://github.com/yinhe/starclaw" target="_blank" rel="noopener" className="text-claw-400 hover:underline ml-1">源代码</a>。
+              </p>
+            </div>
           </div>
 
           {/* Docker Method */}
