@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  pheromone-nats:
+    image: nats:2.10-alpine
+    container_name: pheromone-nats
+    restart: unless-stopped
+    command:
+      - "-js"
+      - "-sd"
+      - "/data/nats"
+      - "-m"
+      - "8222"
+      - "-p"
+      - "4222"
+      - "-name"
+      - "pheromone-nats"
+      - "--http_port"
+      - "8222"
+    ports:
+      - "4222:4222"   # NATS client
+      - "8222:8222"   # Monitoring endpoint
+    volumes:
+      - /data/pheromone/nats:/data/nats
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  pheromone-nats-exporter:
+    image: natsio/prometheus-nats-exporter:0.14.0
+    container_name: pheromone-nats-exporter
+    restart: unless-stopped
+    command:
+      - "-varz"
+      - "http://pheromone-nats:8222"
+      - "-connz"
+      - "http://pheromone-nats:8222"
+      - "-routez"
+      - "http://pheromone-nats:8222"
+      - "-subz"
+      - "http://pheromone-nats:8222"
+      - "-channelz"
+      - "http://pheromone-nats:8222"
+      - "-jsz=all"
+      - "http://pheromone-nats:8222"
+    ports:
+      - "7777:7777"
+    depends_on:
+      pheromone-nats:
+        condition: service_healthy
+
+networks:
+  default:
+    name: starclaw-pheromone

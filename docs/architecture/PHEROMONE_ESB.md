@@ -299,6 +299,17 @@ done
 - [ ] 分布式日志（Pheromone 收集 → 统一存储）
 - [ ] 服务网格可观测性（Prometheus + Grafana）
 
+## 七、执行落地脚本（已提供）
+
+为减少手工操作，已提供可直接执行的脚本与模板：
+
+- `scripts/serverc-init-data-disk.sh`：Server C 数据盘初始化（挂载 `/data` + 目录创建）
+- `scripts/nydus-init-polyrepos.sh`：Nydus 批量初始化 polyrepo bare 仓库
+- `scripts/docker-compose.pheromone-mvp.yml`：Pheromone MVP（NATS JetStream + Exporter）
+- `docs/architecture/PHEROMONE_MVP_RUNBOOK.md`：一步步运行手册
+
+建议按 Runbook 顺序执行，先基础设施再消息总线接入业务链路。
+
 ---
 
 > **Pheromone（信息素）** — 虫群的化学通信网络，让每个个体都能感知群体信号，协同进化。
