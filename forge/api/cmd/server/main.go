@@ -39,6 +39,19 @@ func main() {
 	// Aggregators
 	nydusAgg := aggregator.NewNydusClient(cfg.NydusURL, cfg.NydusSecret)
 	bridgeAgg := aggregator.NewDevBridgeClient(cfg.DevBridgeURL)
+	pheromoneAgg, err := aggregator.NewPheromoneClient(cfg.PheromoneNATSURL)
+	if err != nil {
+		log.Printf("[WARN] Pheromone subscriber disabled: %v", err)
+	} else if pheromoneAgg != nil {
+		_, err := pheromoneAgg.SubscribeDeployEvents(func(subject string, payload []byte) {
+			handlePheromoneDeployEvent(db, subject, payload)
+		})
+		if err != nil {
+			log.Printf("[WARN] Failed to subscribe Pheromone deploy events: %v", err)
+		} else {
+			log.Printf("[INFO] Pheromone deploy subscriber connected: %s (%s)", cfg.PheromoneNATSURL, aggregator.DeploySubjectPattern)
+		}
+	}
 
 	// Handlers
 	projectH := &handler.ProjectHandler{DB: db}
@@ -424,4 +437,47 @@ func toJSON(v interface{}) string {
 		return string(b[:5000]) + "...[truncated]"
 	}
 	return string(b)
+}
+
+func handlePheromoneDeployEvent(db *gorm.DB, subject string, payload []byte) {
+	if db == nil {
+		return
+	}
+
+	detail := string(payload)
+	eventName := subject
+	repo := ""
+	actor := "pheromone"
+
+	var p map[string]interface{}
+	if err := json.Unmarshal(payload, &p); err == nil {
+		if v, ok := p["event"].(string); ok && v != "" {
+			eventName = v
+		}
+		if v, ok := p["repo"].(string); ok {
+			repo = v
+		}
+		if v, ok := p["service"].(string); ok && v != "" {
+			repo = v
+		}
+		if v, ok := p["actor"].(string); ok && v != "" {
+			actor = v
+		}
+	}
+
+	summary := fmt.Sprintf("Pheromone event: %s", eventName)
+	if repo != "" {
+		summary = fmt.Sprintf("Pheromone deploy: %s (%s)", repo, eventName)
+	}
+
+	if err := db.Create(&model.ForgeActivity{
+		Type:    "deploy",
+		Actor:   actor,
+		Summary: summary,
+		Detail:  detail,
+		Service: repo,
+		Source:  "pheromone",
+	}).Error; err != nil {
+		log.Printf("[WARN] Failed to persist Pheromone event (%s): %v", subject, err)
+	}
 }

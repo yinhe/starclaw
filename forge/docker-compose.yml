@@ -17,6 +17,7 @@ services:
       - NYDUS_URL=${NYDUS_URL:-https://nydus.starclaw.net}
       - OVERLORD_URL=${OVERLORD_URL:-http://overlord-api:8095}
       - DEVBRIDGE_URL=${DEVBRIDGE_URL:-http://host.docker.internal:9102}
+      - PHEROMONE_NATS_URL=${PHEROMONE_NATS_URL:-}
       - FORGE_LLM_BASE_URL=${FORGE_LLM_BASE_URL:-https://api.star-ai.net/v1}
       - FORGE_LLM_API_KEY=${FORGE_LLM_API_KEY}
       - FORGE_LLM_MODEL=${FORGE_LLM_MODEL:-deepseek-chat}
