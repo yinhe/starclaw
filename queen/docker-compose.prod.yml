@@ -115,7 +115,7 @@ services:
       BOUNTY_URL: "http://bounty:8092"
       FORUM_URL: "http://forum:8093"
       ARENA_URL: "http://arena:8094"
-      STARAI_URL: "${STARAI_URL:-}"
+      STARAI_URL: "${STARAI_URL:-https://api.star-ai.net}"
       STARAI_TOKEN: "${STARAI_TOKEN:-}"
       STARAI_CALLBACK_BASE: "${STARAI_CALLBACK_BASE:-}"
       GIN_MODE: release
