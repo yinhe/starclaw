@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { Users, TrendingUp, Award, MapPin, Plus, X } from 'lucide-react'
+import { Users, TrendingUp, Award, MapPin, Plus, X, Eye, Pencil, Pause, Trash2, Play } from 'lucide-react'
 
 interface PartnerPerf {
   id: string
@@ -189,6 +189,7 @@ export default function PartnersPage() {
               <th className="px-4 py-3 font-medium text-right">佣金</th>
               <th className="px-4 py-3 font-medium text-right">客户</th>
               <th className="px-4 py-3 font-medium text-right">佣金率</th>
+              <th className="px-4 py-3 font-medium text-right">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -211,11 +212,38 @@ export default function PartnersPage() {
                   <td className="px-4 py-3 text-right text-green-400">{fen2yuan(p.total_commission)}</td>
                   <td className="px-4 py-3 text-right text-gray-300">{p.active_clients}</td>
                   <td className="px-4 py-3 text-right text-gray-400">{(p.comm_rate * 100).toFixed(0)}%</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => alert('TODO: 查看 ' + p.name + ' 详情')}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition" title="查看详情">
+                        <Eye size={14} />
+                      </button>
+                      <button onClick={() => alert('TODO: 编辑 ' + p.name)}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 transition" title="编辑">
+                        <Pencil size={14} />
+                      </button>
+                      {p.status === 'active' || p.status === 'approved' ? (
+                        <button onClick={async () => { if (!confirm(`确定暂停 ${p.name} 吗？`)) return; try { await api.put(`/admin/partners/${p.id}/suspend`); loadPartners() } catch {} }}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-amber-400 hover:bg-amber-500/10 transition" title="暂停">
+                          <Pause size={14} />
+                        </button>
+                      ) : p.status === 'suspended' ? (
+                        <button onClick={async () => { try { await api.put(`/admin/partners/${p.id}/activate`); loadPartners() } catch {} }}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-green-400 hover:bg-green-500/10 transition" title="激活">
+                          <Play size={14} />
+                        </button>
+                      ) : null}
+                      <button onClick={async () => { if (!confirm(`确定删除 ${p.name} 吗？此操作不可恢复。`)) return; try { await api.delete(`/admin/partners/${p.id}`); loadPartners() } catch {} }}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition" title="删除">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               )
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-600">暂无合伙人数据</td></tr>
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-600">暂无合伙人数据</td></tr>
             )}
           </tbody>
         </table>
