@@ -21,6 +21,9 @@ services:
       - FORGE_LLM_BASE_URL=${FORGE_LLM_BASE_URL:-https://api.star-ai.net/v1}
       - FORGE_LLM_API_KEY=${FORGE_LLM_API_KEY}
       - FORGE_LLM_MODEL=${FORGE_LLM_MODEL:-deepseek-chat}
+    networks:
+      - default
+      - pheromone
     restart: unless-stopped
 
   forge-web:
@@ -37,3 +40,8 @@ services:
 
 volumes:
   forge-data:
+
+networks:
+  pheromone:
+    external: true
+    name: starclaw-pheromone
