@@ -209,6 +209,20 @@ while read oldrev newrev refname; do
     ) >> "$LOG" 2>&1 &
   fi
 
+  # --- Pheromone (Server C — local) ---
+  if echo "$CHANGED" | grep -q "^pheromone/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Pheromone changed — rebuilding on server C..." | tee -a "$LOG"
+    publish_pheromone_deploy "pheromone" "$branch" "$newrev"
+    (
+      mkdir -p /opt/starclaw-pheromone
+      cd /opt/starclaw-pheromone
+      git --git-dir="$REPO" archive HEAD:pheromone | tar xf - 2>/dev/null || true
+      export REGISTRY="${REGISTRY:-docker.1ms.run}"
+      docker compose -f docker-compose.yml up -d --build
+      echo "  -> pheromone stack refreshed (Server C :8100/:3110/:4222/:7777)" | tee -a "$LOG"
+    ) >> "$LOG" 2>&1 &
+  fi
+
   # --- Forge (Server C — local) ---
   if echo "$CHANGED" | grep -q "^forge/"; then
     if [ "$ENABLE_REMOTE_FORGE_DEPLOY" != "1" ]; then
