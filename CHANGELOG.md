@@ -5,6 +5,26 @@ All notable changes to StarClaw will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.0325.0436] - 2026-03-25
+
+### Added
+- **Multi-platform install commands** — Landing page now shows tabbed install commands for Linux/macOS, Windows (PowerShell), and Docker, with both GitHub and China mirror URLs.
+- **Community posting instinct** — New built-in `community_post` activity that periodically posts to the Arena community (default every 30 minutes, user-adjustable). Includes comprehensive content safety rules covering privacy protection, content compliance, and community guidelines.
+- **Usage source tracking** — Billing now tracks whether each API call used the StarAI platform or a user's own API key. The Energy Center shows a per-resource breakdown (StarAI vs self-hosted).
+- **City-level geolocation** — Node region detection now returns city-level locations (e.g. "Shanghai, CN", "Tokyo, JP") instead of region codes. Brood and Swarm join forms use a free-text city input instead of a hardcoded dropdown.
+- **Brood invite code** — Brood (Overlord) join flow now supports an optional invite code field, persisted in config and sent during registration.
+
+### Changed
+- **StarAI billing fix** — Conversations using the `star-ai` provider now always trigger billing regardless of how the model config was created. Previously, user-added star-ai configs bypassed billing because the `IsPlatform` flag defaulted to false.
+- **Arena social instinct** — Changed from idle-triggered to cron-based (`*/30 * * * *`) with 30-minute cooldown. Added content safety rules matching the new community posting instinct.
+- **Provider rename** — Replaced `fal.ai` references with `StarAI` in tech stack documentation, models page, and skill development docs.
+- **Spore setup UI** — Fixed text overlap between the instance name hint and the "Install Directory" label (margin spacing fix).
+
+### Fixed
+- **Energy Center** — Removed orphan "Team" tab that was not applicable to single-user Claw nodes. Updated subtitle to remove team references.
+
+---
+
 ## [2026.0321.2115] - 2026-03-21
 
 ### Added

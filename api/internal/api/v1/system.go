@@ -479,6 +479,7 @@ func (h *SystemHandler) JoinOverlord(c *gin.Context) {
 		OverlordURL string `json:"overlord_url" binding:"required"`
 		NodeName    string `json:"node_name"`
 		Region      string `json:"region"`
+		InviteCode  string `json:"invite_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -493,6 +494,9 @@ func (h *SystemHandler) JoinOverlord(c *gin.Context) {
 	if req.Region != "" {
 		h.cfg.Overlord.Region = req.Region
 	}
+	if req.InviteCode != "" {
+		h.cfg.Overlord.InviteCode = req.InviteCode
+	}
 
 	viper.Set("overlord.enabled", true)
 	viper.Set("overlord.overlord_url", req.OverlordURL)
@@ -501,6 +505,9 @@ func (h *SystemHandler) JoinOverlord(c *gin.Context) {
 	}
 	if req.Region != "" {
 		viper.Set("overlord.region", req.Region)
+	}
+	if req.InviteCode != "" {
+		viper.Set("overlord.invite_code", req.InviteCode)
 	}
 	_ = viper.WriteConfig()
 
@@ -896,43 +903,60 @@ echo "@@UPDATE_COMPLETE"
 func performSporeUpdate(targetVersion string) error {
 	ulogInfo("下载 v%s 二进制文件...", targetVersion)
 
-	// Determine download URL based on platform
-	binaryURL := sporeDownloadURL(targetVersion)
-	if binaryURL == "" {
+	// Build candidate URLs: Nydus first (faster in China), then GitHub
+	urls := sporeDownloadURLs(targetVersion)
+	if len(urls) == 0 {
 		return fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
-	// Download to temp file
-	tmpFile, err := os.CreateTemp("", "starclaw-update-*")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-
+	// Try each URL until one succeeds
+	var tmpPath string
+	var lastErr error
 	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Get(binaryURL)
-	if err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
-		return fmt.Errorf("download: %w", err)
-	}
-	defer resp.Body.Close()
+	for _, binaryURL := range urls {
+		ulogInfo("尝试下载: %s", binaryURL)
+		tmpFile, err := os.CreateTemp("", "starclaw-update-*")
+		if err != nil {
+			return fmt.Errorf("create temp file: %w", err)
+		}
+		tp := tmpFile.Name()
 
-	if resp.StatusCode != http.StatusOK {
-		tmpFile.Close()
-		os.Remove(tmpPath)
-		return fmt.Errorf("download returned HTTP %d", resp.StatusCode)
-	}
+		resp, err := client.Get(binaryURL)
+		if err != nil {
+			tmpFile.Close()
+			os.Remove(tp)
+			ulogError("下载失败: %v，尝试下一个镜像...", err)
+			lastErr = err
+			continue
+		}
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
-		return fmt.Errorf("write binary: %w", err)
-	}
-	tmpFile.Close()
-	os.Chmod(tmpPath, 0755)
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			tmpFile.Close()
+			os.Remove(tp)
+			ulogError("下载返回 HTTP %d，尝试下一个镜像...", resp.StatusCode)
+			lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, binaryURL)
+			continue
+		}
 
-	ulogInfo("下载完成: %s", binaryURL)
+		if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+			resp.Body.Close()
+			tmpFile.Close()
+			os.Remove(tp)
+			ulogError("写入失败: %v，尝试下一个镜像...", err)
+			lastErr = err
+			continue
+		}
+		resp.Body.Close()
+		tmpFile.Close()
+		os.Chmod(tp, 0755)
+		tmpPath = tp
+		ulogInfo("下载完成: %s", binaryURL)
+		break
+	}
+	if tmpPath == "" {
+		return fmt.Errorf("所有下载镜像均失败: %v", lastErr)
+	}
 
 	// Find current binary path
 	currentBin, err := os.Executable()
@@ -976,7 +1000,9 @@ func performStandaloneUpdate(targetVersion string) error {
 	return performSporeUpdate(targetVersion) // same logic: download + replace + exit
 }
 
-func sporeDownloadURL(version string) string {
+// sporeDownloadURLs returns candidate download URLs for the given version.
+// Nydus mirror first (faster in China), GitHub second.
+func sporeDownloadURLs(version string) []string {
 	os_ := runtime.GOOS
 	arch := runtime.GOARCH
 
@@ -986,19 +1012,10 @@ func sporeDownloadURL(version string) string {
 		name += ".exe"
 	}
 
-	// Try Nydus mirror first (faster in China), then GitHub
 	nydusURL := fmt.Sprintf("https://nydus.starclaw.net/releases/binary/v%s/%s", version, name)
 	ghURL := fmt.Sprintf("https://github.com/yinhe/starclaw/releases/download/v%s/%s", version, name)
 
-	// Quick probe: try Nydus HEAD
-	client := &http.Client{Timeout: 5 * time.Second}
-	if resp, err := client.Head(nydusURL); err == nil {
-		resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			return nydusURL
-		}
-	}
-	return ghURL
+	return []string{nydusURL, ghURL}
 }
 
 // ── MCP Bridge update (source build, legacy fallback) ──

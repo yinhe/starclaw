@@ -25,7 +25,7 @@ export default function SettingsPage() {
   const [bridgeStatus, setBridgeStatus] = useState<any>(null)
   const [overlordStatus, setOverlordStatus] = useState<any>(null)
   const [joiningOverlord, setJoiningOverlord] = useState(false)
-  const [overlordForm, setOverlordForm] = useState({ overlord_url: '', node_name: '', region: '' })
+  const [overlordForm, setOverlordForm] = useState({ overlord_url: '', node_name: '', region: '', invite_code: '' })
   const [overlordMsg, setOverlordMsg] = useState('')
 
   // Queen Account state
@@ -148,7 +148,15 @@ export default function SettingsPage() {
     if (isNearBottom) el.scrollTop = el.scrollHeight
   }, [updateLogs])
 
-  const updateSteps = [
+  const isSpore = updateInfo?.runtime_mode === 'spore' || updateInfo?.runtime_mode === 'standalone'
+  const updateSteps = isSpore ? [
+    '',
+    '下载新版本...',
+    '替换二进制...',
+    '重启服务...',
+    '等待 API 就绪...',
+    '更新完成！',
+  ] : [
     '',
     '拉取最新版本...',
     '安装更新...',
@@ -482,7 +490,7 @@ export default function SettingsPage() {
                 ))}
               </div>
               <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-                <span>拉取</span><span>构建</span><span>重启</span><span>就绪</span>
+                {isSpore ? <><span>下载</span><span>替换</span><span>重启</span><span>就绪</span></> : <><span>拉取</span><span>构建</span><span>重启</span><span>就绪</span></>}
               </div>
             </div>
           )}
@@ -522,7 +530,13 @@ export default function SettingsPage() {
           {updateInfo?.version?.release_notes && updateInfo.version.update_available && (
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
               <p className="font-medium text-gray-600 mb-1">更新日志:</p>
-              <pre className="whitespace-pre-wrap">{updateInfo.version.release_notes}</pre>
+              <pre className="whitespace-pre-wrap">{isSpore
+                ? updateInfo.version.release_notes
+                    .replace(/## Install[\s\S]*?(?=##|$)/i, '')
+                    .replace(/```bash\ndocker pull[\s\S]*?```/g, '')
+                    .trim()
+                : updateInfo.version.release_notes
+              }</pre>
             </div>
           )}
           {updateInfo?.version?.latest_url && updateInfo.version.update_available && (
@@ -654,7 +668,7 @@ export default function SettingsPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-amber-600">点击即可一键配置，地域将根据 IP 自动检测。<button onClick={() => { setEditingNode(true); setNodeForm({ address: '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }} className="text-violet-600 hover:underline ml-1">手动输入域名</button></p>
+              <p className="text-xs text-amber-600">点击即可一键配置，城市将根据 IP 自动检测。<button onClick={() => { setEditingNode(true); setNodeForm({ address: '', name: nodeInfo.name || '', region: nodeInfo.region || '' }) }} className="text-violet-600 hover:underline ml-1">手动输入域名</button></p>
               {nodeMsg && <p className="text-xs text-violet-600 mt-1">{nodeMsg}</p>}
             </div>
           )}
@@ -749,7 +763,7 @@ export default function SettingsPage() {
                 </>
               ) : (
                 <div className="space-y-3 mt-1">
-                  <p className="text-xs text-gray-500">选择一个地址，地域将自动检测：</p>
+                  <p className="text-xs text-gray-500">选择一个地址，城市将自动检测：</p>
                   <div className="flex flex-wrap gap-2">
                     {nodeInfo.public_ip && (
                       <button
@@ -877,7 +891,7 @@ export default function SettingsPage() {
               <div className="space-y-2.5 mb-4">
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">1</span>
-                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <><Check className="w-3 h-3 text-green-500 inline mr-1" />已配置: <span className="font-mono text-violet-600">{nodeInfo.address}</span></> : <>点击上方按钮<strong className="text-gray-700">一键配置地址</strong>（自动检测IP和地域）</>}</span>
+                  <span className="text-gray-500 pt-0.5">{nodeInfo?.address ? <><Check className="w-3 h-3 text-green-500 inline mr-1" />已配置: <span className="font-mono text-violet-600">{nodeInfo.address}</span></> : <>点击上方按钮<strong className="text-gray-700">一键配置地址</strong>（自动检测IP和城市）</>}</span>
                 </div>
                 <div className="flex items-start gap-2.5 text-xs">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-100 text-violet-600 font-semibold shrink-0">2</span>
@@ -942,6 +956,15 @@ export default function SettingsPage() {
                   placeholder="例如 http://192.168.1.100:8095 或 https://overlord.company.com"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">邀请码 (可选)</label>
+                <input
+                  value={overlordForm.invite_code}
+                  onChange={(e) => setOverlordForm({ ...overlordForm, invite_code: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 font-mono"
+                  placeholder="如 SC-A3F8-K9M2，留空跳过"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">节点名称 (可选)</label>
@@ -953,26 +976,13 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选，留空自动检测)</label>
-                  <select
+                  <label className="block text-xs font-medium text-gray-600 mb-1">城市 (可选，留空根据 IP 自动检测)</label>
+                  <input
                     value={overlordForm.region}
                     onChange={(e) => setOverlordForm({ ...overlordForm, region: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                  >
-                    <option value="">自动检测...</option>
-                    <option value="local">local (局域网)</option>
-                    <option value="cn-east">cn-east (华东)</option>
-                    <option value="cn-south">cn-south (华南)</option>
-                    <option value="cn-north">cn-north (华北)</option>
-                    <option value="cn-central">cn-central (华中)</option>
-                    <option value="cn-southwest">cn-southwest (西南)</option>
-                    <option value="hk">香港</option>
-                    <option value="us-west">us-west (美西)</option>
-                    <option value="us-east">us-east (美东)</option>
-                    <option value="eu-west">eu-west (西欧)</option>
-                    <option value="ap-southeast">ap-southeast (东南亚)</option>
-                    <option value="jp">日本</option>
-                  </select>
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="如 Shanghai, CN 或 Tokyo, JP，留空自动检测"
+                  />
                 </div>
               </div>
               <button
@@ -1001,7 +1011,7 @@ export default function SettingsPage() {
           ) : (
             <div className="flex items-center justify-between">
               <div className="text-xs text-gray-400">
-                节点: {overlordStatus.node_name || '—'} · 地域: {overlordStatus.region || '—'}
+                节点: {overlordStatus.node_name || '—'} · 城市: {overlordStatus.region || '—'}
               </div>
               <button
                 onClick={async () => {
@@ -1089,26 +1099,13 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">地域 (可选，留空自动检测)</label>
-                  <select
+                  <label className="block text-xs font-medium text-gray-600 mb-1">城市 (可选，留空根据 IP 自动检测)</label>
+                  <input
                     value={swarmForm.region}
                     onChange={(e) => setSwarmForm({ ...swarmForm, region: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                  >
-                    <option value="">自动检测...</option>
-                    <option value="local">local (局域网)</option>
-                    <option value="cn-east">cn-east (华东)</option>
-                    <option value="cn-south">cn-south (华南)</option>
-                    <option value="cn-north">cn-north (华北)</option>
-                    <option value="cn-central">cn-central (华中)</option>
-                    <option value="cn-southwest">cn-southwest (西南)</option>
-                    <option value="hk">香港</option>
-                    <option value="us-west">us-west (美西)</option>
-                    <option value="us-east">us-east (美东)</option>
-                    <option value="eu-west">eu-west (西欧)</option>
-                    <option value="ap-southeast">ap-southeast (东南亚)</option>
-                    <option value="jp">日本</option>
-                  </select>
+                    className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="如 Shanghai, CN 或 Tokyo, JP，留空自动检测"
+                  />
                 </div>
               </div>
               <button

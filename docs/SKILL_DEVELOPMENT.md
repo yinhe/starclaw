@@ -168,7 +168,7 @@ return toJSON(map[string]interface{}{
 | `http_request` | `http_request.go` | Generic HTTP requests |
 | `browser` | `browser_tool.go` | Headless Chrome browser control |
 | `video_generation` | `video_tool.go` | AI video generation |
-| `image_generation` | `image_tool.go` | AI image generation (fal.ai) |
+| `image_generation` | `image_tool.go` | AI image generation (StarAI) |
 | `music_generation` | `music_tool.go` | AI music generation |
 | `document` | `document_tool.go` | Conversation summary + Word export |
 | `dubbing` | `dubbing_tool.go` | TTS dubbing |

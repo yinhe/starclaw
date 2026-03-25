@@ -809,8 +809,9 @@ func detectHostIPs() (publicIP string, privateIPs []string) {
 	return
 }
 
-// detectRegionFromAddress extracts IP from address URL and detects region.
-// Private IPs → "local", public IPs → query ip-api.com, domains → resolve then query.
+// detectRegionFromAddress extracts IP from address URL and detects city.
+// Private IPs → "local", public IPs → query ip-api.com for city + country.
+// Returns city-level location like "Shanghai, CN" or "San Francisco, US".
 func detectRegionFromAddress(address string) string {
 	// Parse URL to extract host
 	u, err := url.Parse(address)
@@ -840,7 +841,7 @@ func detectRegionFromAddress(address string) string {
 
 	// Query ip-api.com for geolocation (free, no key needed, 45 req/min)
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://ip-api.com/json/%s?fields=status,countryCode,regionName,city", ip.String()))
+	resp, err := client.Get(fmt.Sprintf("http://ip-api.com/json/%s?fields=status,countryCode,city", ip.String()))
 	if err != nil {
 		log.Printf("[node] ip-api.com query failed: %v", err)
 		return ""
@@ -850,68 +851,20 @@ func detectRegionFromAddress(address string) string {
 	var geo struct {
 		Status      string `json:"status"`
 		CountryCode string `json:"countryCode"`
-		RegionName  string `json:"regionName"`
 		City        string `json:"city"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&geo) != nil || geo.Status != "success" {
 		return ""
 	}
 
-	// Build city suffix (lowercase, ascii only)
-	city := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(geo.City), " ", ""))
+	city := strings.TrimSpace(geo.City)
+	country := strings.TrimSpace(geo.CountryCode)
 
-	// Map to our region codes: big-region-city
-	var base string
-	switch geo.CountryCode {
-	case "CN":
-		region := strings.ToLower(geo.RegionName)
-		switch {
-		case strings.Contains(region, "shanghai") || strings.Contains(region, "zhejiang") ||
-			strings.Contains(region, "jiangsu") || strings.Contains(region, "anhui") ||
-			strings.Contains(region, "fujian") || strings.Contains(region, "jiangxi"):
-			base = "cn-east"
-		case strings.Contains(region, "guangdong") || strings.Contains(region, "guangxi") ||
-			strings.Contains(region, "hainan"):
-			base = "cn-south"
-		case strings.Contains(region, "beijing") || strings.Contains(region, "tianjin") ||
-			strings.Contains(region, "hebei") || strings.Contains(region, "shandong") ||
-			strings.Contains(region, "liaoning") || strings.Contains(region, "jilin") ||
-			strings.Contains(region, "heilongjiang") || strings.Contains(region, "inner mongolia"):
-			base = "cn-north"
-		case strings.Contains(region, "hubei") || strings.Contains(region, "hunan") ||
-			strings.Contains(region, "henan"):
-			base = "cn-central"
-		case strings.Contains(region, "sichuan") || strings.Contains(region, "chongqing") ||
-			strings.Contains(region, "yunnan") || strings.Contains(region, "guizhou") ||
-			strings.Contains(region, "tibet"):
-			base = "cn-southwest"
-		default:
-			base = "cn-east"
-		}
-	case "HK", "MO":
-		base = "hk"
-	case "TW":
-		base = "hk"
-	case "JP":
-		base = "jp"
-	case "US":
-		region := strings.ToLower(geo.RegionName)
-		if strings.Contains(region, "california") || strings.Contains(region, "oregon") ||
-			strings.Contains(region, "washington") || strings.Contains(region, "nevada") {
-			base = "us-west"
-		} else {
-			base = "us-east"
-		}
-	case "DE", "FR", "GB", "NL", "IE", "IT", "ES", "SE", "NO", "FI", "DK", "CH", "AT", "BE", "PL":
-		base = "eu-west"
-	case "SG", "MY", "TH", "VN", "PH", "ID":
-		base = "ap-southeast"
-	default:
-		base = strings.ToLower(geo.CountryCode)
+	if city != "" && country != "" {
+		return city + ", " + country
 	}
-
-	if city != "" {
-		return base + "-" + city
+	if country != "" {
+		return country
 	}
-	return base
+	return ""
 }

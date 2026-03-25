@@ -116,10 +116,10 @@ starclaw/
 | **Frontend** | React 18 + Vite + TypeScript + TailwindCSS + Zustand + React Flow |
 | **Backend** | Go 1.24 + Gin + GORM + Viper |
 | **Database** | MySQL 8.0 + Redis 7 |
-| **AI** | Qwen / OpenAI / DeepSeek / Anthropic / Ollama / OpenRouter + fal.ai |
+| **AI** | Qwen / OpenAI / DeepSeek / Anthropic / Ollama / OpenRouter + StarAI |
 | **P2P** | Ed25519 + Gossip v2 + DHT + NAT traversal |
 | **Security** | AES-256-GCM encryption + Merkle-linked audit chain |
-| **Multimedia** | FFmpeg + DashScope TTS + fal.ai (video/music/image) |
+| **Multimedia** | FFmpeg + DashScope TTS + StarAI (video/music/image) |
 | **Deploy** | Docker Compose + Nginx |
 
 ## 🌐 Swarm Network (Optional)

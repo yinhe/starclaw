@@ -119,13 +119,17 @@ func (h *BillingHandler) GetCurrentPlan(c *gin.Context) {
 		}
 	}
 
+	// Usage split by source (starai vs self)
+	usageBySrc := h.getMonthUsageBySource(tenant.ID, userID, month)
+
 	c.JSON(200, gin.H{
-		"tenant":  tenant,
-		"balance": balance,
-		"usage":   usage,
-		"cost":    cost,
-		"period":  month,
-		"pricing": resourcePrice,
+		"tenant":          tenant,
+		"balance":         balance,
+		"usage":           usage,
+		"cost":            cost,
+		"usage_by_source": usageBySrc,
+		"period":          month,
+		"pricing":         resourcePrice,
 	})
 }
 
@@ -441,11 +445,17 @@ func recordUsage(db *gorm.DB, userID, resourceType string, quantity int64, platf
 		cost = math.Round(float64(quantity)*price*10000) / 10000
 	}
 
+	// Source: "starai" when using platform/StarAI key, "self" when using user's own API key
+	source := "self"
+	if platformKey {
+		source = "starai"
+	}
+
 	today := time.Now().Format("2006-01-02")
 
 	var existing model.UsageRecord
-	result := db.Where("tenant_id = ? AND resource_type = ? AND date = ? AND user_id = ?",
-		user.TenantID, resourceType, today, userID).First(&existing)
+	result := db.Where("tenant_id = ? AND resource_type = ? AND date = ? AND user_id = ? AND source = ?",
+		user.TenantID, resourceType, today, userID, source).First(&existing)
 
 	if result.Error == nil {
 		db.Model(&existing).Updates(map[string]interface{}{
@@ -457,6 +467,7 @@ func recordUsage(db *gorm.DB, userID, resourceType string, quantity int64, platf
 			TenantID:     user.TenantID,
 			UserID:       userID,
 			ResourceType: resourceType,
+			Source:       source,
 			Quantity:     quantity,
 			Cost:         cost,
 			Date:         today,
@@ -554,6 +565,37 @@ func (h *BillingHandler) getMonthCost(tenantID, userID, month string) map[string
 		cost[r.ResourceType] += r.TotalCost
 	}
 	return cost
+}
+
+// getMonthUsageBySource returns usage split by source (starai vs self)
+func (h *BillingHandler) getMonthUsageBySource(tenantID, userID, month string) map[string]map[string]int64 {
+	result := map[string]map[string]int64{
+		"starai": {"tokens": 0, "video": 0, "image": 0, "music": 0},
+		"self":   {"tokens": 0, "video": 0, "image": 0, "music": 0},
+	}
+
+	var rows []struct {
+		Source       string
+		ResourceType string
+		Total        int64
+	}
+	h.db.Model(&model.UsageRecord{}).
+		Select("COALESCE(source, 'self') as source, resource_type, SUM(quantity) as total").
+		Where("tenant_id = ? AND date LIKE ?", tenantID, month+"%").
+		Group("source, resource_type").
+		Find(&rows)
+
+	for _, r := range rows {
+		src := r.Source
+		if src == "" {
+			src = "self"
+		}
+		if _, ok := result[src]; !ok {
+			result[src] = map[string]int64{}
+		}
+		result[src][r.ResourceType] = r.Total
+	}
+	return result
 }
 
 // nextMonth returns the next month in "2006-01" format

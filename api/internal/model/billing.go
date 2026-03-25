@@ -72,6 +72,7 @@ type UsageRecord struct {
 	TenantID     string    `json:"tenant_id" gorm:"type:varchar(36);index;not null"`
 	UserID       string    `json:"user_id" gorm:"type:varchar(36);index"`
 	ResourceType string    `json:"resource_type" gorm:"type:varchar(30);index;not null"` // tokens, video, image, music, storage
+	Source       string    `json:"source" gorm:"type:varchar(20);default:self"`          // starai = StarAI platform, self = user's own API key
 	Quantity     int64     `json:"quantity" gorm:"default:0"`
 	Cost         float64   `json:"cost" gorm:"type:decimal(10,4);default:0"` // 本次消费金额
 	Date         string    `json:"date" gorm:"type:varchar(10);index;not null"`

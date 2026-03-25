@@ -106,6 +106,7 @@ export default function BillingPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [usage, setUsage] = useState<Record<string, number>>({})
   const [cost, setCost] = useState<Record<string, number>>({})
+  const [usageBySrc, setUsageBySrc] = useState<{ starai: Record<string, number>; self: Record<string, number> }>({ starai: {}, self: {} })
   const [period, setPeriod] = useState('')
   const [credits, setCredits] = useState<CreditData | null>(null)
   const [nodeInfo, setNodeInfo] = useState<any>(null)
@@ -141,8 +142,8 @@ export default function BillingPage() {
         setTenant(planRes.data.tenant)
         setUsage(planRes.data.usage || {})
         setCost(planRes.data.cost || {})
+        setUsageBySrc(planRes.data.usage_by_source || { starai: {}, self: {} })
         setPeriod(planRes.data.period || '')
-        setTeamName(planRes.data.tenant?.name || '')
       }
       if (creditsRes?.data) setCredits(creditsRes.data)
       if (nodeRes?.data) setNodeInfo(nodeRes.data)
@@ -298,7 +299,6 @@ export default function BillingPage() {
     { key: 'overview', label: '概览', icon: Zap },
     { key: 'usage', label: '用量', icon: BarChart3 },
     { key: 'transactions', label: '流水', icon: Receipt },
-    { key: 'team', label: '团队', icon: Users },
   ]
 
   return (
@@ -306,7 +306,7 @@ export default function BillingPage() {
       <div className="max-w-5xl mx-auto px-6 py-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">星能中心</h1>
-          <p className="text-sm text-gray-500 mt-1">查看真实星能余额、消耗用量和团队协作信息</p>
+          <p className="text-sm text-gray-500 mt-1">查看星能余额、消耗用量和交易流水</p>
         </div>
 
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-950/20">
@@ -482,11 +482,6 @@ export default function BillingPage() {
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">¥{totalCost.toFixed(2)}</p>
                   <p className="text-sm text-gray-500 mt-1">统计周期：{period || '--'}</p>
                 </div>
-                {tenant && (
-                  <div className="text-right text-sm text-gray-500">
-                    <p>团队：<span className="font-medium text-gray-900 dark:text-white">{tenant.name}</span></p>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -495,13 +490,21 @@ export default function BillingPage() {
                 <BarChart3 className="w-4 h-4 text-blue-500" /> 本月用量 ({period})
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {['tokens', 'video', 'image', 'music'].map(key => (
-                  <div key={key} className="text-center p-4 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatNum(usage[key] || 0)}</p>
-                    <p className="text-xs text-gray-500 mt-1">{resourceLabels[key]}</p>
-                    <p className="text-xs text-emerald-500 mt-1">¥{(cost[key] || 0).toFixed(2)}</p>
-                  </div>
-                ))}
+                {['tokens', 'video', 'image', 'music'].map(key => {
+                  const staraiVal = usageBySrc.starai?.[key] || 0
+                  const selfVal = usageBySrc.self?.[key] || 0
+                  return (
+                    <div key={key} className="text-center p-4 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatNum(usage[key] || 0)}</p>
+                      <p className="text-xs text-gray-500 mt-1">{resourceLabels[key]}</p>
+                      <p className="text-xs text-emerald-500 mt-1">¥{(cost[key] || 0).toFixed(2)}</p>
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 space-y-0.5">
+                        <p className="text-[10px] text-violet-500">⚡ StarAI: {formatNum(staraiVal)}</p>
+                        <p className="text-[10px] text-gray-400">🔑 自用: {formatNum(selfVal)}</p>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
