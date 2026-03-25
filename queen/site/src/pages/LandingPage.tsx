@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import {
   Bot,
   Brain,
@@ -16,10 +17,61 @@ import {
   ArrowRight,
   Users,
   Sparkles,
+  Terminal,
+  Monitor,
+  Container,
 } from 'lucide-react'
 import { Layout } from '../components/Layout'
 import { CopyBlock } from '../components/CopyBlock'
 import { useI18n } from '../i18n'
+
+const INSTALL_TABS = [
+  { key: 'linux', label: 'Linux / macOS', icon: Terminal, commands: [
+    { label: 'GitHub', cmd: 'curl -fsSL https://starclaw.me/install.sh | bash' },
+    { label: '国内镜像', cmd: 'curl -fsSL https://nydus.starclaw.net/install.sh | bash' },
+  ]},
+  { key: 'windows', label: 'Windows', icon: Monitor, commands: [
+    { label: 'PowerShell (GitHub)', cmd: 'irm https://starclaw.me/install.ps1 | iex' },
+    { label: 'PowerShell (国内镜像)', cmd: 'irm https://nydus.starclaw.net/install.ps1 | iex' },
+  ]},
+  { key: 'docker', label: 'Docker', icon: Container, commands: [
+    { label: 'Docker Compose', cmd: 'git clone https://github.com/yinhe/starclaw.git && cd starclaw && docker compose up -d' },
+    { label: 'Docker (国内镜像)', cmd: 'git clone https://nydus.starclaw.net/git/starclaw.git && cd starclaw && docker compose up -d' },
+  ]},
+]
+
+function InstallBlock() {
+  const [tab, setTab] = useState(0)
+  const current = INSTALL_TABS[tab]
+  return (
+    <div className="mt-12 max-w-2xl mx-auto">
+      <div className="flex items-center justify-center gap-1 mb-3">
+        {INSTALL_TABS.map((t, i) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(i)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition ${
+              tab === i
+                ? 'bg-claw-500/15 text-claw-400 border border-claw-500/30'
+                : 'text-gray-500 hover:text-gray-300 border border-transparent'
+            }`}
+          >
+            <t.icon size={14} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {current.commands.map((c) => (
+          <div key={c.label}>
+            <div className="text-[11px] text-gray-500 mb-1 pl-1">{c.label}</div>
+            <CopyBlock text={c.cmd} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const FEATURE_KEYS = [
   { icon: MessageSquare, key: 'chat' },
@@ -101,10 +153,8 @@ export function LandingPage() {
             </a>
           </div>
 
-          {/* Quick install */}
-          <div className="mt-12 max-w-2xl mx-auto">
-            <CopyBlock text="curl -fsSL https://starclaw.me/install.sh | bash" />
-          </div>
+          {/* Quick install — multi-platform */}
+          <InstallBlock />
         </div>
       </section>
 

@@ -5,15 +5,15 @@ import { authAPI, clawAuthAPI, clawNodeRequest } from '../lib/api';
 import { isLoggedIn, setAuth, clearAuth, getUserDisplayName } from '../lib/auth';
 import { Fingerprint, CheckCircle2, AlertCircle, Loader2 as Spinner, Shield, Mail, Lock, UserPlus } from 'lucide-react';
 
-const isInvestDomain = window.location.hostname === 'invest.starclaw.net';
+const isClawOnlyAuth = window.location.hostname.endsWith('starclaw.net') || window.location.hostname.endsWith('starclaw.me');
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const logged = isLoggedIn();
-  const initTab = isInvestDomain ? 'claw' : (searchParams.get('tab') || 'claw');
+  const initTab = isClawOnlyAuth ? 'claw' : (searchParams.get('tab') || 'claw');
   const [mode, setMode] = useState<'login' | 'register' | 'claw'>(initTab as any);
-  const defaultRedirect = isInvestDomain ? '/' : '/dashboard';
+  const defaultRedirect = isClawOnlyAuth ? '/' : '/dashboard';
 
   // Email/password login state
   const [email, setEmail] = useState('');
@@ -159,7 +159,7 @@ export function AuthPage() {
           ) : (
             <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
               {/* Mode Tabs — hidden on invest domain (Claw-only auth) */}
-              {!isInvestDomain && (
+              {!isClawOnlyAuth && (
                 <div className="flex border-b border-gray-100">
                   <button onClick={() => { setMode('login'); setAuthMsg(null); }}
                     className={`flex-1 py-3 text-sm font-medium transition ${mode === 'login' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>

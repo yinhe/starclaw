@@ -49,6 +49,10 @@ func main() {
 		log.Printf("[star-ai] warning: failed to load providers: %v", err)
 	}
 
+	// Price syncer (fetch latest pricing from provider APIs every 6 hours)
+	priceSyncer := provider.NewPriceSyncer(reg, "./data/pricing", 6*time.Hour)
+	priceSyncer.Start()
+
 	// Billing meter
 	meter := billing.NewMeter(db, reg)
 

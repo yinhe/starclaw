@@ -42,7 +42,7 @@ export default function LoginPage() {
                 public_key: s.public_key!, signature: s.signature!,
               })
               if (data.user.role !== 'partner' && data.user.role !== 'admin') {
-                reject(new Error('此 Claw 地址不是核心合伙人，请联系管理员添加白名单'))
+                reject(new Error('此 Claw 地址不是团队合伙人，请联系管理员添加白名单'))
                 return
               }
               setToken(data.token)
@@ -76,7 +76,7 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">
             <span className="text-claw-500">Star</span>Claw
           </h1>
-          <p className="text-sm text-gray-400 mt-1">核心合伙人门户</p>
+          <p className="text-sm text-gray-400 mt-1">团队合伙人门户</p>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 space-y-4">

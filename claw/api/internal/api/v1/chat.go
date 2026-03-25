@@ -283,7 +283,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	c.Request = c.Request.WithContext(ctx)
 
 	// Store platform key flag for billing
-	c.Set("is_platform_key", modelCfg.IsPlatform)
+	// StarAI provider always bills (whether platform-seeded or user-added config)
+	isStarAI := modelCfg.Provider == "star-ai" || modelCfg.Provider == "starai"
+	c.Set("is_platform_key", modelCfg.IsPlatform || isStarAI)
 	c.Set("agent_id_for_cerebrate", agent.ID)
 
 	if req.Stream {

@@ -12,16 +12,16 @@ import {
 } from 'lucide-react'
 
 const ROUNDS = [
-  { label: '种子轮', price: '¥0.20', raised: '¥200万', mult: '1×', status: 'open' },
-  { label: '天使轮', price: '¥1.00', raised: '¥1,000万', mult: '5×', status: 'upcoming' },
-  { label: 'A轮', price: '¥5.00', raised: '¥5,000万', mult: '25×', status: 'upcoming' },
-  { label: 'B轮', price: '¥25.00', raised: '¥2.5亿', mult: '125×', status: 'upcoming' },
-  { label: 'C轮', price: '¥125.00', raised: '¥12.5亿', mult: '625×', status: 'upcoming' },
+  { label: '孢子期', price: '¥0.50', raised: '¥500万', mult: '1×', status: 'open' },
+  { label: '幼虫期', price: '¥2.50', raised: '¥2,500万', mult: '5×', status: 'upcoming' },
+  { label: '虫兵期', price: '¥12.50', raised: '¥1.25亿', mult: '25×', status: 'upcoming' },
+  { label: '领主期', price: '¥62.50', raised: '¥6.25亿', mult: '125×', status: 'upcoming' },
+  { label: '虫后期', price: '¥312.50', raised: '¥31.25亿', mult: '625×', status: 'upcoming' },
 ]
 
 const HIGHLIGHTS = [
   { icon: Shield, title: '收益权凭证', desc: '非股权、非代币、非基金份额。投资人签署《收益权转让协议》，合规合法。' },
-  { icon: TrendingUp, title: '双驱动定价', desc: '价格 = max(NAV净值, 轮次地板价)。利润推高 NAV，轮次推高地板，只涨不跌。' },
+  { icon: TrendingUp, title: '双驱动定价', desc: '价格 = max(NAV净值, 轮次地板价)。双驱动定价机制为价格提供支撑，价格随业务发展动态调整。' },
   { icon: Users, title: '利润分配', desc: '平台交易利润的 10% 按份额分配给星钻持有人，按月结算。' },
   { icon: Layers, title: '总量恒定', desc: '星钻总量 1 亿份，固定永不增发。稀缺性保证价值。' },
 ]
@@ -45,7 +45,7 @@ export function InvestPage() {
         <div className="mx-auto max-w-5xl px-4 sm:px-6 pt-16 sm:pt-24 pb-12 text-center relative">
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-sm text-amber-400 mb-8">
             <Diamond size={14} />
-            种子轮开放中
+            孢子期开放中
           </div>
 
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-tight">
@@ -79,11 +79,11 @@ export function InvestPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8 text-center">
               <div>
                 <div className="text-sm text-gray-400 mb-1">当前轮次</div>
-                <div className="text-2xl font-bold text-amber-400">种子轮</div>
+                <div className="text-2xl font-bold text-amber-400">孢子期</div>
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">当前价格</div>
-                <div className="text-2xl font-bold text-white">¥0.20<span className="text-sm text-gray-400">/份</span></div>
+                <div className="text-2xl font-bold text-white">¥0.50<span className="text-sm text-gray-400">/份</span></div>
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">本轮额度</div>
@@ -91,7 +91,7 @@ export function InvestPage() {
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">本轮募资</div>
-                <div className="text-2xl font-bold text-white">¥200万</div>
+                <div className="text-2xl font-bold text-white">¥500万</div>
               </div>
             </div>
           </div>
@@ -170,7 +170,7 @@ export function InvestPage() {
                   <td className="py-4 px-4 font-semibold text-gray-400">5轮合计</td>
                   <td className="py-4 px-4" />
                   <td className="py-4 px-4" />
-                  <td className="py-4 px-4 text-right font-bold text-amber-400">¥15.92 亿</td>
+                  <td className="py-4 px-4 text-right font-bold text-amber-400">¥39.75 亿</td>
                   <td className="py-4 px-4" />
                 </tr>
               </tfoot>
@@ -179,40 +179,31 @@ export function InvestPage() {
         </div>
       </section>
 
-      {/* Pricing Example */}
+      {/* Pricing Mechanism */}
       <section className="py-16 border-t border-white/5">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-12">
-            价格演进示例
+            定价机制
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center">
-              <div className="text-sm text-gray-400 mb-2">种子轮买入</div>
-              <div className="text-3xl font-bold text-white">¥0.20</div>
-              <div className="text-xs text-gray-500 mt-1">地板价驱动</div>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center">
-              <div className="text-sm text-gray-400 mb-2">A轮时价格</div>
-              <div className="text-3xl font-bold text-claw-400">¥5.00</div>
-              <div className="text-xs text-green-400 mt-1">25× 回报</div>
-            </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-6 text-center">
-              <div className="text-sm text-amber-400 mb-2">C轮后期（业务爆发）</div>
-              <div className="text-3xl font-bold text-amber-400">¥200.00</div>
-              <div className="text-xs text-amber-300 mt-1">1,000× 回报</div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8">
+            <div className="max-w-2xl mx-auto space-y-4 text-sm text-gray-400 leading-relaxed">
+              <p>星钻采用双驱动定价机制：价格 = max(NAV 净值, 轮次地板价)。</p>
+              <p><strong className="text-white">业务驱动：</strong>平台利润累积推高 NAV 净值，反映实际业务增长。</p>
+              <p><strong className="text-white">里程碑驱动：</strong>融资轮次推进抬高地板价，为早期投资人提供价格支撑。</p>
+              <p><strong className="text-white">退出机制：</strong>协议到期后按当时 NAV 结算退出，公司有优先回购权。</p>
+              <p className="text-xs text-gray-600 border-t border-white/5 pt-4">
+                * 价格随业务发展动态调整，不构成收益承诺。投资有风险，决策需谨慎。
+              </p>
             </div>
           </div>
-          <p className="text-center text-gray-500 text-sm mt-6">
-            * 以上仅为演示性示例，实际价格由 NAV 净值和轮次地板价共同驱动，不构成收益承诺。
-          </p>
         </div>
       </section>
 
       {/* Product Status */}
       <section className="py-16 border-t border-white/5">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-4">
-            产品完成度
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center">
+            加入孢子期
           </h2>
           <p className="text-center text-gray-400 mb-12">
             一人全栈完成，代码可运行、可演示
@@ -238,11 +229,10 @@ export function InvestPage() {
       <section className="py-16 border-t border-white/5">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            加入种子轮
+            加入孢子期
           </h2>
           <p className="mt-4 text-gray-400 text-lg">
-            种子轮 ¥0.20/份，最低认购 ¥1万（5万份星钻）。<br />
-            名额有限，欢迎一对一沟通。
+            孢子期开放中，名额有限，欢迎一对一沟通。
           </p>
           <div className="mt-8">
             <a
@@ -255,6 +245,7 @@ export function InvestPage() {
           </div>
           <p className="mt-6 text-xs text-gray-600">
             本页面仅供信息展示，不构成公开募集或收益承诺。星钻为收益权凭证，投资人需签署《收益权转让协议》。
+            协议到期后按当时 NAV 结算退出，公司享有优先回购权。投资有风险，决策需谨慎。
           </p>
         </div>
       </section>

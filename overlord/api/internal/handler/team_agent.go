@@ -1729,7 +1729,7 @@ func buildDevClaw() model.TeamAgentTemplate {
 ## Agent 开发模式
 当收到 Agent 设计方案后:
 1. 精炼和完善 system_prompt (确保清晰、无歧义、有安全边界)
-2. 配置 model 和 temperature (ollama本地模型如qwen2.5-coder零成本; 事实类 0.1-0.3, 创意类 0.5-0.8)
+2. 配置 model 和 temperature (ollama本地模型如qwen3-coder零成本; 事实类 0.1-0.3, 创意类 0.5-0.8)
 3. 确认 tools 列表 (只选必要的工具，避免权限过大)
 4. 如需自定义技能/插件，编写 PluginSpec JSON
 5. 输出完整可用的 Agent 配置 JSON

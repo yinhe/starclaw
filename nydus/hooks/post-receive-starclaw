@@ -77,9 +77,9 @@ while read oldrev newrev refname; do
   # Detect which directories changed
   CHANGED=$(git --git-dir="$REPO" diff --name-only "$oldrev" "$newrev" 2>/dev/null || echo "all")
 
-  # --- Queen (Server C — local) ---
+  # --- Queen (Server C — local + Server A for site) ---
   if echo "$CHANGED" | grep -q "^queen/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Queen changed — rebuilding on server C..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Queen changed — rebuilding..." | tee -a "$LOG"
     (
       cd /opt/starclaw-queen
       git --git-dir="$REPO" archive HEAD:queen | tar xf - 2>/dev/null || true
@@ -87,17 +87,34 @@ while read oldrev newrev refname; do
       if echo "$CHANGED" | grep -q "^queen/api/"; then
         docker compose -f docker-compose.prod.yml build --no-cache queen-api
         docker compose -f docker-compose.prod.yml up -d queen-api
-        echo "  -> queen-api rebuilt" | tee -a "$LOG"
-      fi
-      if echo "$CHANGED" | grep -q "^queen/site/"; then
-        docker compose -f docker-compose.prod.yml build --no-cache queen-site
-        docker compose -f docker-compose.prod.yml up -d queen-site
-        echo "  -> queen-site rebuilt (Server C :8097)" | tee -a "$LOG"
+        echo "  -> queen-api rebuilt (Server C)" | tee -a "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/swarm/"; then
         docker compose -f docker-compose.prod.yml build --no-cache swarm
         docker compose -f docker-compose.prod.yml up -d swarm
-        echo "  -> queen-swarm rebuilt" | tee -a "$LOG"
+        echo "  -> queen-swarm rebuilt (Server C)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^queen/web/"; then
+        docker compose -f docker-compose.prod.yml build --no-cache queen-web
+        docker compose -f docker-compose.prod.yml up -d queen-web
+        echo "  -> queen-web rebuilt (Server C)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^queen/core/"; then
+        docker compose -f docker-compose.prod.yml build --no-cache queen-core
+        docker compose -f docker-compose.prod.yml up -d queen-core
+        echo "  -> queen-core rebuilt (Server C)" | tee -a "$LOG"
+      fi
+
+      # Deploy queen/site to Server A (starclaw.me — nginx root: /opt/starclaw/queen/site)
+      if echo "$CHANGED" | grep -q "^queen/site/"; then
+        echo "  -> deploying queen-site to starclaw.me (Server A)..." | tee -a "$LOG"
+        # 1. Ship source to a build directory on Server A
+        git --git-dir="$REPO" archive HEAD:queen/site | ssh $SSH_OPTS "$SERVER_A" "rm -rf /tmp/queen-site-build && mkdir -p /tmp/queen-site-build && cd /tmp/queen-site-build && tar xf -"
+        # 2. Build with Docker (node:20-alpine), output goes to /tmp/queen-site-build/dist
+        ssh $SSH_OPTS "$SERVER_A" "cd /tmp/queen-site-build && docker run --rm -v \$(pwd):/app -w /app node:20-alpine sh -c 'npm ci --registry=https://registry.npmmirror.com && npm run build'"
+        # 3. Atomic swap: replace nginx root with fresh dist
+        ssh $SSH_OPTS "$SERVER_A" "rm -rf /opt/starclaw/queen/site-old && mv /opt/starclaw/queen/site /opt/starclaw/queen/site-old 2>/dev/null; mv /tmp/queen-site-build/dist /opt/starclaw/queen/site && rm -rf /tmp/queen-site-build"
+        echo "  -> queen-site deployed to starclaw.me (static files updated)" | tee -a "$LOG"
       fi
     ) >> "$LOG" 2>&1 &
   fi
@@ -134,11 +151,23 @@ while read oldrev newrev refname; do
 
       if echo "$CHANGED" | grep -q "^synapse/api/\|^synapse/docker-compose"; then
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache api && docker compose up -d api"
-        echo "  -> synapse-api rebuilt on B" | tee -a "$LOG"
+        echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | tee -a "$LOG"
       fi
-      if echo "$CHANGED" | grep -q "^synapse/web/\|^synapse/core/"; then
+      if echo "$CHANGED" | grep -q "^synapse/web/"; then
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache web && docker compose up -d web"
-        echo "  -> synapse-web rebuilt on B" | tee -a "$LOG"
+        echo "  -> synapse-web rebuilt on B (star-ai-web :3096)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^synapse/core/"; then
+        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache core && docker compose up -d core"
+        echo "  -> synapse-core rebuilt on B (star-ai-core :3097 → core.star-ai.net)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^synapse/proxy/"; then
+        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache proxy && docker compose up -d proxy"
+        echo "  -> synapse-proxy rebuilt on B (overseas relay)" | tee -a "$LOG"
+      fi
+      if echo "$CHANGED" | grep -q "^synapse/deploy/"; then
+        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && cp deploy/nginx-starai.conf /etc/nginx/sites-available/star-ai 2>/dev/null; nginx -t && systemctl reload nginx" || true
+        echo "  -> synapse nginx config updated on B" | tee -a "$LOG"
       fi
     ) >> "$LOG" 2>&1 &
   fi

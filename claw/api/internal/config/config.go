@@ -47,7 +47,8 @@ type OverlordConfig struct {
 	Enabled           bool   `mapstructure:"enabled"`            // enable overlord monitoring
 	OverlordURL       string `mapstructure:"overlord_url"`       // e.g. https://overlord.starclaw.me
 	NodeName          string `mapstructure:"node_name"`          // display name for this Claw
-	Region            string `mapstructure:"region"`             // e.g. cn-east
+	Region            string `mapstructure:"region"`             // e.g. Shanghai, CN
+	InviteCode        string `mapstructure:"invite_code"`        // optional invite code for brood join
 	HeartbeatInterval int    `mapstructure:"heartbeat_interval"` // seconds, default 30
 }
 

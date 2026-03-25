@@ -84,7 +84,7 @@ export default function PartnersPage() {
         <h2 className="text-xl font-bold">合伙人管理</h2>
         <button onClick={() => setShowAdd(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-purple-600 text-white hover:bg-purple-500 transition-colors">
-          <Plus size={14} /> 添加核心合伙人
+          <Plus size={14} /> 添加团队合伙人
         </button>
       </div>
 
@@ -93,7 +93,7 @@ export default function PartnersPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">添加核心合伙人</h3>
+              <h3 className="text-lg font-semibold text-white">添加团队合伙人</h3>
               <button onClick={() => setShowAdd(false)} className="text-gray-500 hover:text-gray-300"><X size={18} /></button>
             </div>
             {addError && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-3 py-2 rounded-lg">{addError}</div>}
@@ -140,7 +140,7 @@ export default function PartnersPage() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-gray-500 text-xs mb-2"><Users size={14} /> 核心合伙人</div>
+          <div className="flex items-center gap-2 text-gray-500 text-xs mb-2"><Users size={14} /> 团队合伙人</div>
           <div className="text-2xl font-bold text-white">{coreCount}</div>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -161,7 +161,7 @@ export default function PartnersPage() {
       <div className="flex items-center gap-3 mb-4">
         {[
           { value: '', label: '全部' },
-          { value: 'core', label: '核心合伙人' },
+          { value: 'core', label: '团队合伙人' },
           { value: 'city', label: '城市合伙人' },
         ].map(f => (
           <button key={f.value} onClick={() => setTypeFilter(f.value)}

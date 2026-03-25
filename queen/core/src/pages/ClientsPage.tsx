@@ -104,7 +104,7 @@ export default function ClientsPage() {
         <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white">
           <option value="">全部来源</option>
-          <option value="crm">核心合伙人 CRM</option>
+          <option value="crm">团队合伙人 CRM</option>
           <option value="city">城市合伙人</option>
         </select>
         <span className="text-xs text-gray-600 ml-2">共 {filtered.length} 条</span>

@@ -16,6 +16,7 @@ import {
   Building2,
   Calculator,
   Activity,
+  ExternalLink,
 } from 'lucide-react'
 
 const navItems = [
@@ -32,7 +33,6 @@ const navItems = [
   { to: '/partners', icon: Handshake, label: '合伙人管理' },
   { to: '/clients', icon: Building2, label: '客户总览' },
   { to: '/settlement', icon: Calculator, label: '结算管理' },
-  { to: '/overseer', icon: Activity, label: 'Overseer 监控' },
 ]
 
 export default function Layout() {
@@ -70,6 +70,16 @@ export default function Layout() {
               {item.label}
             </NavLink>
           ))}
+          <a
+            href="/overseer"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-colors"
+          >
+            <Activity size={18} />
+            Overseer 监控
+            <ExternalLink size={12} className="ml-auto opacity-40" />
+          </a>
         </nav>
 
         <div className="p-3 border-t border-gray-800">

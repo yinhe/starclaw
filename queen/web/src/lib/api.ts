@@ -362,6 +362,7 @@ export interface InvestorProfile {
     name: string;
     email: string;
     phone: string;
+    tier: string;
     shares: number;
     total_dividends: number;
     total_invested: number;
@@ -381,6 +382,10 @@ export interface InvestorProfile {
   price_driver: string;
   pool_total_shares: number;
   pool_balance: number;
+  min_invest_yuan: number;
+  max_invest_yuan: number;
+  tier: string;
+  tier_label: string;
   min_recharge_yuan: number;
   activation_yuan: number;
   settlement: {

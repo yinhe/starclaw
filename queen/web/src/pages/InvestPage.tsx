@@ -111,11 +111,15 @@ export function InvestPage() {
     setAgreeing(false);
   }
 
+  const myMaxInvest = profile?.max_invest_yuan ?? pool?.max_invest_yuan ?? 50000;
+  const myMinInvest = pool?.min_invest_yuan ?? 10000;
+  const tierLabel = profile?.tier_label || '合伙人';
+
   async function handlePurchase() {
     const yuan = parseFloat(purchaseYuan);
     if (!pool) return;
-    if (!yuan || yuan < pool.min_invest_yuan) { setErr(`${pool.current_round_label} 最低购买 ${fmt(pool.min_invest_yuan)}`); return; }
-    if (yuan > pool.max_invest_yuan) { setErr(`${pool.current_round_label} 最高购买 ${fmt(pool.max_invest_yuan)}`); return; }
+    if (!yuan || yuan < myMinInvest) { setErr(`${pool.current_round_label} 最低购买 ${fmt(myMinInvest)}`); return; }
+    if (yuan > myMaxInvest) { setErr(`${tierLabel}单笔上限 ${fmt(myMaxInvest)}`); return; }
     setErr(''); setMsg(''); setPurchasing(true);
     try {
       const fen = Math.round(yuan * 100);
@@ -163,7 +167,7 @@ export function InvestPage() {
             <Diamond className="w-8 h-8 text-purple-400" />
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-300 to-fuchsia-300 bg-clip-text text-transparent mb-2">星钻合伙人</h1>
-          <p className="text-sm text-gray-500">Star Diamond Partnership · Queen's Hive</p>
+          <p className="text-sm text-gray-500">Star Diamond Partnership</p>
         </div>
         <div className="rounded-2xl border border-purple-500/15 bg-white/[0.02] backdrop-blur-sm p-8">
           <div className="flex items-center gap-2 mb-6">
@@ -212,8 +216,8 @@ export function InvestPage() {
               <Diamond className="w-4.5 h-4.5 text-purple-400" />
             </div>
             <div>
-              <h1 className="text-base font-bold leading-tight bg-gradient-to-r from-purple-300 to-fuchsia-300 bg-clip-text text-transparent">虫后视角 · 星钻合伙</h1>
-              <p className="text-[11px] text-gray-500 leading-tight">Queen's Hive · Star Diamond Partnership</p>
+              <h1 className="text-base font-bold leading-tight bg-gradient-to-r from-purple-300 to-fuchsia-300 bg-clip-text text-transparent">星钻合伙人</h1>
+              <p className="text-[11px] text-gray-500 leading-tight">Star Diamond Partnership</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -291,7 +295,7 @@ export function InvestPage() {
           <div className="rounded-2xl border border-purple-500/15 bg-gradient-to-b from-purple-500/[0.04] to-transparent p-12 text-center">
             <Diamond className="w-14 h-14 text-purple-400 mx-auto mb-5" />
             <h2 className="text-xl font-bold mb-2">加入虫巢 · 成为合伙人</h2>
-            <p className="text-gray-400 text-sm mb-8 max-w-md mx-auto">签署合伙人协议 → 购买星钻 → 分享虫巢利润。成为 StarClaw 生态的核心合伙人。</p>
+            <p className="text-gray-400 text-sm mb-8 max-w-md mx-auto">签署合伙人协议 → 购买星钻 → 分享虫巢利润。成为 StarClaw 生态的团队合伙人。</p>
             <button onClick={handleRegister} className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-medium transition inline-flex items-center gap-2">
               <ArrowRight size={18} /> 立即注册
             </button>
@@ -335,8 +339,8 @@ export function InvestPage() {
                     <div className="text-white font-bold">{fmt(pool.price_yuan)}<span className="text-gray-500 font-normal">/份</span></div>
                   </div>
                   <div className="rounded-lg border border-purple-500/10 bg-white/[0.02] p-3 text-center">
-                    <div className="text-gray-500 text-xs mb-0.5">单笔限额</div>
-                    <div className="text-purple-400 font-bold">{fmt(pool.min_invest_yuan)} - {fmt(pool.max_invest_yuan)}</div>
+                    <div className="text-gray-500 text-xs mb-0.5">单笔限额 ({tierLabel})</div>
+                    <div className="text-purple-400 font-bold">{fmt(myMinInvest)} - {fmt(myMaxInvest)}</div>
                   </div>
                   <div className="rounded-lg border border-purple-500/10 bg-white/[0.02] p-3 text-center">
                     <div className="text-gray-500 text-xs mb-0.5">当前期</div>
@@ -357,7 +361,7 @@ export function InvestPage() {
 
                 <div className="flex gap-2 mb-3">
                   <input type="number" value={purchaseYuan} onChange={e => setPurchaseYuan(e.target.value)}
-                    placeholder={`购买金额 (${fmt(pool.min_invest_yuan)} - ${fmt(pool.max_invest_yuan)})`}
+                    placeholder={`购买金额 (${fmt(myMinInvest)} - ${fmt(myMaxInvest)})`}
                     className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50" />
                   <button onClick={handlePurchase} disabled={purchasing || !pool.payment_available}
                     className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 shrink-0">
@@ -563,7 +567,7 @@ export function InvestPage() {
               <div className="rounded-xl border border-purple-500/10 bg-white/[0.02] p-10 text-center">
                 <Lock className="w-8 h-8 text-gray-600 mx-auto mb-3" />
                 <div className="text-sm text-gray-500">暂无期权授予</div>
-                <div className="text-xs text-gray-600 mt-1">成为核心合伙人后由管理员授予</div>
+                <div className="text-xs text-gray-600 mt-1">成为团队合伙人后由管理员授予</div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -616,7 +620,7 @@ export function InvestPage() {
 
       {/* Footer */}
       <div className="border-t border-purple-500/10 mt-16 py-6 text-center text-xs text-gray-600">
-        <span className="text-purple-500/40">◆</span> StarClaw · Queen's Hive <span className="text-purple-500/40">◆</span>
+        <span className="text-purple-500/40">◆</span> StarClaw · Star Diamond <span className="text-purple-500/40">◆</span>
       </div>
     </div>
   );

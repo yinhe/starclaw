@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"starclaw.net/queen/bounty/internal/billing"
 	"starclaw.net/queen/bounty/internal/model"
-	"gorm.io/gorm"
 )
 
 const platformFeeRate = 0.05 // 5% platform service fee
@@ -93,6 +93,7 @@ func (h *BountyHandler) Create(c *gin.Context) {
 func (h *BountyHandler) List(c *gin.Context) {
 	status := c.DefaultQuery("status", "open")
 	category := c.Query("category")
+	visibility := c.DefaultQuery("visibility", "public") // public | partner | all
 
 	q := h.db.Order("reward DESC, created_at DESC")
 	if status != "all" {
@@ -101,6 +102,13 @@ func (h *BountyHandler) List(c *gin.Context) {
 	if category != "" {
 		q = q.Where("category = ?", category)
 	}
+	if visibility == "public" {
+		q = q.Where("visibility = ? OR visibility = ''", "public")
+	} else if visibility == "partner" {
+		// Partners can see both public and partner-only tasks
+		q = q.Where("visibility IN ?", []string{"public", "partner", ""})
+	}
+	// visibility=all → no filter (admin view)
 
 	var bounties []model.Bounty
 	if err := q.Limit(100).Find(&bounties).Error; err != nil {

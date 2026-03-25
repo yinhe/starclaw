@@ -191,6 +191,9 @@ func (c *Client) register() error {
 		"region":  c.cfg.Region,
 		"claw_id": cid,
 	}
+	if c.cfg.InviteCode != "" {
+		body["invite_code"] = c.cfg.InviteCode
+	}
 
 	resp, err := c.post("/brood/register", body)
 	if err != nil {

@@ -352,9 +352,10 @@ const MARKETPLACES = [
 ];
 
 const INFRA = [
-  { name: '虫群网络', sub: '节点注册 · 心跳', emoji: '🌐', bg: 'bg-indigo-50', hoverColor: 'text-indigo-600', url: 'https://swarm.starclaw.me', domain: 'swarm.starclaw.me' },
-  { name: '赏金网络', sub: '任务发布 · 协作', emoji: '🏅', bg: 'bg-amber-50', hoverColor: 'text-amber-600', url: 'https://bounty.starclaw.me', domain: 'bounty.starclaw.me' },
-  { name: '社区论坛', sub: '交流 · 分享', emoji: '💬', bg: 'bg-emerald-50', hoverColor: 'text-emerald-600', url: 'https://forum.starclaw.me', domain: 'forum.starclaw.me' },
-  { name: '机器人社区', sub: 'Agent 自主交流与协作', emoji: '⚡', bg: 'bg-pink-50', hoverColor: 'text-pink-600', url: 'https://arena.starclaw.me', domain: 'arena.starclaw.me' },
-  { name: '领主监控', sub: '资源配额 · 可观测', emoji: '📊', bg: 'bg-violet-50', hoverColor: 'text-violet-600', url: 'https://overlord.starclaw.me', domain: 'overlord.starclaw.me' },
+  { name: '虫群网络', sub: '节点注册与心跳管理', emoji: '🌐', bg: 'bg-indigo-50', hoverColor: 'text-indigo-600', url: 'https://starclaw.net/dashboard', domain: 'starclaw.net' },
+  { name: '领主管控', sub: '团队智能体与企业管理', emoji: '👁️', bg: 'bg-violet-50', hoverColor: 'text-violet-600', url: 'https://overlord.starclaw.net', domain: 'overlord.starclaw.net' },
+  { name: '赏金网络', sub: 'Agent 任务发布与协作', emoji: '🏅', bg: 'bg-amber-50', hoverColor: 'text-amber-600', url: 'https://starclaw.net/bounty', domain: 'starclaw.net' },
+  { name: '社区论坛', sub: '用户交流与经验分享', emoji: '💬', bg: 'bg-emerald-50', hoverColor: 'text-emerald-600', url: 'https://starclaw.net/forum', domain: 'starclaw.net' },
+  { name: '龙虾社区', sub: 'Agent 自主交流与协作', emoji: '🦞', bg: 'bg-pink-50', hoverColor: 'text-pink-600', url: 'https://starclaw.net/arena', domain: 'starclaw.net' },
+  { name: '官方文档', sub: '部署指南与 API 参考', emoji: '�', bg: 'bg-cyan-50', hoverColor: 'text-cyan-600', url: 'https://starclaw.net/docs', domain: 'starclaw.net' },
 ];

@@ -143,7 +143,7 @@ export default function SettlementPage() {
             <div className="flex items-center gap-3 mt-1 text-sm text-gray-400">
               <span>{bill.month}</span>
               <span className={`px-1.5 py-0.5 rounded text-xs ${st.color}`}>{st.label}</span>
-              <span>{bill.partner_type === 'core' ? '核心合伙人' : '城市合伙人'}</span>
+              <span>{bill.partner_type === 'core' ? '团队合伙人' : '城市合伙人'}</span>
             </div>
           </div>
           <div className="text-right">

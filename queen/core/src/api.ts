@@ -62,6 +62,24 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
+// Claw Node Auth
+export const clawAuth = {
+  challenge: () =>
+    request<{ challenge: string; expires_in: number }>('/v1/auth/claw/challenge', { method: 'POST' }),
+  verify: (body: { challenge: string; node_id: string; public_key: string; signature: string }) =>
+    request<{ token: string; user: { id: string; role: string; claw_id: string } }>(
+      '/v1/auth/claw/verify', { method: 'POST', body: JSON.stringify(body) }
+    ),
+}
+
+export async function clawNodeRequest<T>(clawUrl: string, path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...options?.headers as Record<string, string> }
+  const res = await fetch(`${clawUrl}${path}`, { ...options, headers })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+  return data as T
+}
+
 // ---- API types ----
 
 export interface BillingStats {

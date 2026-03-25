@@ -36,8 +36,8 @@ server {
 
     client_max_body_size 50m;
 
-    # API
-    location / {
+    # API routes → per-instance Claw backend
+    location /v1/ {
         proxy_pass http://127.0.0.1:{{.Port}};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -54,6 +54,23 @@ server {
         proxy_cache off;
         proxy_read_timeout 86400s;
     }
+
+    location /health {
+        proxy_pass http://127.0.0.1:{{.Port}};
+    }
+
+    location /metrics {
+        proxy_pass http://127.0.0.1:{{.Port}};
+    }
+
+    # Frontend → shared Claw web container (latest version)
+    location / {
+        proxy_pass http://127.0.0.1:{{.ClawWebPort}};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 
 server {
@@ -64,21 +81,23 @@ server {
 `
 
 type nginxData struct {
-	Slug    string
-	Domain  string
-	Port    int
-	SSLCert string
-	SSLKey  string
+	Slug        string
+	Domain      string
+	Port        int
+	ClawWebPort int
+	SSLCert     string
+	SSLKey      string
 }
 
 // WriteConfig generates and writes nginx config for a Claw instance
 func (n *NginxService) WriteConfig(slug string, port int) error {
 	data := nginxData{
-		Slug:    slug,
-		Domain:  n.cfg.Domain,
-		Port:    port,
-		SSLCert: n.cfg.SSLCertPath,
-		SSLKey:  n.cfg.SSLKeyPath,
+		Slug:        slug,
+		Domain:      n.cfg.Domain,
+		Port:        port,
+		ClawWebPort: n.cfg.ClawWebPort,
+		SSLCert:     n.cfg.SSLCertPath,
+		SSLKey:      n.cfg.SSLKeyPath,
 	}
 
 	t, err := template.New("nginx").Parse(nginxTmpl)

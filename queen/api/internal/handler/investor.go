@@ -14,12 +14,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"starclaw.net/queen/api/internal/config"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/middleware"
 	"starclaw.net/queen/api/internal/model"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type InvestorHandler struct{}
@@ -541,10 +541,14 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 		"pool_balance_yuan":   float64(pool.PoolBalance) / 100,
 		"min_invest_yuan":     float64(minFen) / 100,
 		"max_invest_yuan":     float64(maxFen) / 100,
-		"activation_yuan":     float64(ActivationThreshold) / 100,
-		"terms_available":     []int{1, 3, 5},
-		"payment_available":   config.C.StarAI.URL != "",
-		"payment_channels":    paymentChannels(),
+		"tier_limits": gin.H{
+			"team": float64(model.TierMaxInvest("team")) / 100,
+			"city": float64(model.TierMaxInvest("city")) / 100,
+		},
+		"activation_yuan":   float64(ActivationThreshold) / 100,
+		"terms_available":   []int{1, 3, 5},
+		"payment_available": config.C.StarAI.URL != "",
+		"payment_channels":  paymentChannels(),
 	})
 }
 
@@ -579,6 +583,15 @@ func (h *InvestorHandler) Register(c *gin.Context) {
 	var existing model.Investor
 	if err := db.Where("user_id = ?", userID).First(&existing).Error; err == nil {
 		c.JSON(http.StatusOK, gin.H{"investor": existing, "message": "已注册"})
+		return
+	}
+
+	// 200-person red line: restrict total investor count (regulatory compliance)
+	const MaxInvestors = 200
+	var investorCount int64
+	db.Model(&model.Investor{}).Where("status = ?", "active").Count(&investorCount)
+	if investorCount >= MaxInvestors {
+		c.JSON(http.StatusForbidden, gin.H{"error": "投资人名额已满（上限 200 人），暂停注册"})
 		return
 	}
 
@@ -718,13 +731,14 @@ func (h *InvestorHandler) Recharge(c *gin.Context) {
 		}
 		cost := shares * dynPrice
 
-		// Per-round min/max validation
-		minFen, maxFen := model.RoundLimits(round.Round)
+		// Per-round min + tier-based max validation
+		minFen, _ := model.RoundLimits(round.Round)
 		if req.Amount < minFen {
 			return fmt.Errorf("%s 最低购买 ¥%.0f", round.Label, float64(minFen)/100)
 		}
-		if req.Amount > maxFen {
-			return fmt.Errorf("%s 最高购买 ¥%.0f", round.Label, float64(maxFen)/100)
+		tierMax := model.TierMaxInvest(investor.Tier)
+		if req.Amount > tierMax {
+			return fmt.Errorf("%s单笔上限 ¥%.0f", model.TierLabel(investor.Tier), float64(tierMax)/100)
 		}
 
 		// Resolve claw_id for star energy deduction
@@ -1037,7 +1051,9 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 		"pool_total_shares": pool.TotalShares,
 		"pool_balance":      pool.PoolBalance,
 		"min_invest_yuan":   float64(func() int64 { m, _ := model.RoundLimits(pool.CurrentRound); return m }()) / 100,
-		"max_invest_yuan":   float64(func() int64 { _, m := model.RoundLimits(pool.CurrentRound); return m }()) / 100,
+		"max_invest_yuan":   float64(model.TierMaxInvest(investor.Tier)) / 100,
+		"tier":              investor.Tier,
+		"tier_label":        model.TierLabel(investor.Tier),
 		"activation_yuan":   float64(ActivationThreshold) / 100,
 		"settlement":        settlement,
 		"dividends":         dividends,
@@ -1063,8 +1079,8 @@ func (h *InvestorHandler) CreatePurchaseOrder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定金额和支付方式"})
 		return
 	}
-	// Per-round min/max validation
-	minFen, maxFen := model.RoundLimits(func() string {
+	// Per-round min validation
+	minFen, _ := model.RoundLimits(func() string {
 		var p model.InvestorPool
 		if database.DB.First(&p).Error == nil {
 			return p.CurrentRound
@@ -1073,10 +1089,6 @@ func (h *InvestorHandler) CreatePurchaseOrder(c *gin.Context) {
 	}())
 	if req.Amount < minFen {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("本期最低购买 ¥%.0f", float64(minFen)/100)})
-		return
-	}
-	if req.Amount > maxFen {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("本期最高购买 ¥%.0f", float64(maxFen)/100)})
 		return
 	}
 	if req.PayForm == "" {
@@ -1097,6 +1109,13 @@ func (h *InvestorHandler) CreatePurchaseOrder(c *gin.Context) {
 	}
 	if investor.AgreementTerm == 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "请先签署合伙人协议"})
+		return
+	}
+
+	// Tier-based per-transaction max (团队合伙人 ¥10万, 城市合伙人 ¥5万)
+	tierMax := model.TierMaxInvest(investor.Tier)
+	if req.Amount > tierMax {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s单笔上限 ¥%.0f", model.TierLabel(investor.Tier), float64(tierMax)/100)})
 		return
 	}
 

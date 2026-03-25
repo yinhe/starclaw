@@ -380,6 +380,171 @@ func (h *AdminAnalyticsHandler) AdminPartnerPerformance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"partners": result, "total": len(result)})
 }
 
+// ProfitOverview returns the profit chain tracking dashboard.
+// 已结算利润 = confirmed margin from completed API consumption
+// 在途利润 = estimated margin from unconsumed user balances
+// GET /v1/admin/analytics/profit
+func (h *AdminAnalyticsHandler) ProfitOverview(c *gin.Context) {
+	db := database.DB
+	now := time.Now()
+	thisMonth := now.Format("2006-01")
+
+	// ── 1. Revenue: total recharges (分) ──
+	var totalRevenue int64
+	db.Model(&model.RechargeOrder{}).Where("status = ?", "paid").
+		Select("COALESCE(SUM(amount), 0)").Scan(&totalRevenue)
+
+	var monthRevenue int64
+	db.Model(&model.RechargeOrder{}).
+		Where("status = ? AND paid_at >= ?", "paid", thisMonth+"-01").
+		Select("COALESCE(SUM(amount), 0)").Scan(&monthRevenue)
+
+	// ── 2. Settled margin from PoolDeposit (分) ──
+	// Each PoolDeposit records margin_total = full margin, amount = 10% investor share
+	var settledMargin int64
+	db.Model(&model.PoolDeposit{}).
+		Select("COALESCE(SUM(margin_total), 0)").Scan(&settledMargin)
+
+	var monthSettledMargin int64
+	db.Model(&model.PoolDeposit{}).
+		Where("created_at >= ?", thisMonth+"-01").
+		Select("COALESCE(SUM(margin_total), 0)").Scan(&monthSettledMargin)
+
+	// ── 3. Upstream cost = consumption revenue - margin ──
+	// We derive consumption revenue from PoolDeposit: cost_total = margin / rate
+	// Since investor gets 10% of margin, and margin = cost - upstream:
+	// We need to sum the actual consumption amounts.
+	// From CreditTransaction (type=consume): total consumed in star energy units
+	var totalConsumedUnits int64
+	db.Model(&model.CreditTransaction{}).Where("type = ?", "consume").
+		Select("COALESCE(SUM(amount), 0)").Scan(&totalConsumedUnits)
+	totalConsumedFen := totalConsumedUnits / 10000 // 1分 = 10000 units
+
+	totalUpstreamCost := totalConsumedFen - settledMargin
+	if totalUpstreamCost < 0 {
+		totalUpstreamCost = 0
+	}
+
+	// ── 4. Unconsumed balance (在途金额) ──
+	var totalBalanceUnits int64
+	db.Model(&model.CreditAccount{}).Where("status = ?", "active").
+		Select("COALESCE(SUM(balance), 0)").Scan(&totalBalanceUnits)
+	unconsumedFen := totalBalanceUnits / 10000
+
+	// ── 5. Average margin rate ──
+	var avgMarginRate float64
+	if totalConsumedFen > 0 {
+		avgMarginRate = float64(settledMargin) / float64(totalConsumedFen)
+	}
+
+	// ── 6. Pipeline profit (在途利润) = unconsumed × avg margin rate ──
+	pipelineProfit := int64(float64(unconsumedFen) * avgMarginRate)
+
+	// ── 7. Projected total = settled + pipeline ──
+	projectedTotal := settledMargin + pipelineProfit
+
+	// ── 8. Settled splits breakdown ──
+	var investorDeposits int64
+	db.Model(&model.PoolDeposit{}).
+		Select("COALESCE(SUM(amount), 0)").Scan(&investorDeposits)
+
+	var cityCommissions int64
+	db.Model(&model.Commission{}).Where("type = ?", "usage").
+		Select("COALESCE(SUM(amount), 0)").Scan(&cityCommissions)
+
+	var teamCommissions int64
+	db.Model(&model.Commission{}).Where("type = ?", "mgmt_fee").
+		Select("COALESCE(SUM(amount), 0)").Scan(&teamCommissions)
+
+	platformRetained := settledMargin - investorDeposits - cityCommissions - teamCommissions
+	if platformRetained < 0 {
+		platformRetained = 0
+	}
+
+	// ── 9. Pipeline splits estimate (using same ratios) ──
+	pipelineInvestor := int64(float64(pipelineProfit) * 0.10)
+	var pipelineCity, pipelineTeam int64
+	if settledMargin > 0 {
+		pipelineCity = int64(float64(pipelineProfit) * float64(cityCommissions) / float64(settledMargin))
+		pipelineTeam = int64(float64(pipelineProfit) * float64(teamCommissions) / float64(settledMargin))
+	}
+	pipelinePlatform := pipelineProfit - pipelineInvestor - pipelineCity - pipelineTeam
+	if pipelinePlatform < 0 {
+		pipelinePlatform = 0
+	}
+
+	// ── 10. Monthly trend (last 6 months) ──
+	type ProfitTrend struct {
+		Month    string  `json:"month"`
+		Revenue  int64   `json:"revenue"`
+		Margin   int64   `json:"margin"`
+		Investor int64   `json:"investor"`
+		Rate     float64 `json:"margin_rate"`
+	}
+	var trend []ProfitTrend
+	for i := 5; i >= 0; i-- {
+		m := now.AddDate(0, -i, 0).Format("2006-01")
+		next := nextMonthStr(m)
+
+		var rev int64
+		db.Model(&model.RechargeOrder{}).
+			Where("status = ? AND paid_at >= ? AND paid_at < ?", "paid", m+"-01", next+"-01").
+			Select("COALESCE(SUM(amount), 0)").Scan(&rev)
+
+		var margin int64
+		db.Model(&model.PoolDeposit{}).
+			Where("created_at >= ? AND created_at < ?", m+"-01", next+"-01").
+			Select("COALESCE(SUM(margin_total), 0)").Scan(&margin)
+
+		var inv int64
+		db.Model(&model.PoolDeposit{}).
+			Where("created_at >= ? AND created_at < ?", m+"-01", next+"-01").
+			Select("COALESCE(SUM(amount), 0)").Scan(&inv)
+
+		rate := float64(0)
+		if rev > 0 {
+			rate = float64(margin) / float64(rev)
+		}
+
+		trend = append(trend, ProfitTrend{Month: m, Revenue: rev, Margin: margin, Investor: inv, Rate: rate})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		// Core profit metrics (分)
+		"settled_profit":   settledMargin,
+		"pipeline_profit":  pipelineProfit,
+		"projected_profit": projectedTotal,
+
+		// Revenue chain (分)
+		"total_revenue":    totalRevenue,
+		"month_revenue":    monthRevenue,
+		"total_consumed":   totalConsumedFen,
+		"total_unconsumed": unconsumedFen,
+		"total_upstream":   totalUpstreamCost,
+		"avg_margin_rate":  avgMarginRate,
+		"month_settled":    monthSettledMargin,
+
+		// Settled splits (分)
+		"settled_splits": gin.H{
+			"investor_pool":     investorDeposits,
+			"city_commission":   cityCommissions,
+			"team_commission":   teamCommissions,
+			"platform_retained": platformRetained,
+		},
+
+		// Pipeline splits estimate (分)
+		"pipeline_splits": gin.H{
+			"investor_pool_est":     pipelineInvestor,
+			"city_commission_est":   pipelineCity,
+			"team_commission_est":   pipelineTeam,
+			"platform_retained_est": pipelinePlatform,
+		},
+
+		// Trend
+		"trend": trend,
+	})
+}
+
 func nextMonthStr(month string) string {
 	t, _ := time.Parse("2006-01", month)
 	t = t.AddDate(0, 1, 0)

@@ -56,7 +56,7 @@ starclaw/
 | 前端 | React 18 + Vite + TypeScript + TailwindCSS + Zustand + React Flow |
 | 后端 | Go 1.24 + Gin + GORM + Viper |
 | 数据库 | MySQL 8.0 + Redis 7 |
-| AI | Qwen / OpenAI / DeepSeek / Anthropic / Ollama / OpenRouter + fal.ai |
+| AI | Qwen / OpenAI / DeepSeek / Anthropic / Ollama / OpenRouter + StarAI |
 | 部署 | Docker Compose + Nginx |
 
 ## 快速开始

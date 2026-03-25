@@ -119,6 +119,29 @@ func RoundLabel(round string) string {
 	return round
 }
 
+// TierMaxInvest returns the per-transaction max investment (分) for the given investor tier.
+//
+//	team (团队合伙人): ¥10万 = 10_000_000 分
+//	city (城市合伙人): ¥5万  =  5_000_000 分
+func TierMaxInvest(tier string) int64 {
+	switch tier {
+	case "team":
+		return 10_000_000 // ¥100,000
+	default: // "city" or empty
+		return 5_000_000 // ¥50,000
+	}
+}
+
+// TierLabel returns the display label for an investor tier.
+func TierLabel(tier string) string {
+	switch tier {
+	case "team":
+		return "团队合伙人"
+	default:
+		return "城市合伙人"
+	}
+}
+
 // DiamondOrder represents a direct payment order for purchasing Star Diamonds.
 // Flow: create order → pay via Alipay/WeChat → callback issues shares.
 type DiamondOrder struct {
@@ -179,11 +202,12 @@ type Investor struct {
 	Name           string     `json:"name" gorm:"type:varchar(100)"`
 	Email          string     `json:"email" gorm:"type:varchar(200)"`
 	Phone          string     `json:"phone" gorm:"type:varchar(20)"`
-	Shares         int64      `json:"shares" gorm:"default:0"`          // current share holdings
-	TotalDividends int64      `json:"total_dividends" gorm:"default:0"` // lifetime dividends received (分)
-	TotalInvested  int64      `json:"total_invested" gorm:"default:0"`  // lifetime recharge amount (分)
-	Activated      bool       `json:"activated" gorm:"default:false"`   // true when TotalInvested >= ActivationThreshold
-	ActivatedAt    *time.Time `json:"activated_at"`                     // when profit sharing started
+	Tier           string     `json:"tier" gorm:"type:varchar(20);default:city"` // team / city — determines per-txn purchase cap
+	Shares         int64      `json:"shares" gorm:"default:0"`                   // current share holdings
+	TotalDividends int64      `json:"total_dividends" gorm:"default:0"`          // lifetime dividends received (分)
+	TotalInvested  int64      `json:"total_invested" gorm:"default:0"`           // lifetime recharge amount (分)
+	Activated      bool       `json:"activated" gorm:"default:false"`            // true when TotalInvested >= ActivationThreshold
+	ActivatedAt    *time.Time `json:"activated_at"`                              // when profit sharing started
 
 	// Agreement
 	AgreementTerm      int        `json:"agreement_term" gorm:"default:0"` // investment term: 1 / 3 / 5 (years), 0=not signed

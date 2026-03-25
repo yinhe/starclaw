@@ -16,6 +16,7 @@ type Config struct {
 	ClawLiteImage  string // Docker image for Claw Lite (Spark tier, SQLite)
 	HivePort       int    // Hive Controller port (injected into containers for Molt→Hive notifications)
 	WebImage       string // Docker image for Claw Web (shared)
+	ClawWebPort    int    // Port of shared Claw Web container (for nginx routing)
 	NetworkName    string // Docker network name
 	PortRangeStart int    // Starting port for Claw instances
 	PortRangeEnd   int    // Ending port
@@ -78,6 +79,7 @@ func Load() *Config {
 		ClawLiteImage:  envStr("HIVE_CLAW_LITE_IMAGE", "starclaw-claw-lite:latest"),
 		HivePort:       envInt("HIVE_PORT", 9090),
 		WebImage:       envStr("HIVE_WEB_IMAGE", "starclaw-web:latest"),
+		ClawWebPort:    envInt("HIVE_CLAW_WEB_PORT", 8083),
 		NetworkName:    envStr("HIVE_NETWORK", "hive-net"),
 		PortRangeStart: envInt("HIVE_PORT_START", 9001),
 		PortRangeEnd:   envInt("HIVE_PORT_END", 9999),

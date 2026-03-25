@@ -301,6 +301,7 @@ func Setup() *gin.Engine {
 	// ---- Admin Analytics (GMV/MRR/ARR) ----
 	analytics := &handler.AdminAnalyticsHandler{}
 	admin.GET("/analytics", analytics.QueenAnalytics)
+	admin.GET("/analytics/profit", analytics.ProfitOverview)
 	admin.GET("/clients", analytics.AdminListAllClients)
 	admin.GET("/partners/performance", analytics.AdminPartnerPerformance)
 

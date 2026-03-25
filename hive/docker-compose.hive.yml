@@ -64,6 +64,18 @@ services:
     ports:
       - "127.0.0.1:8082:80"
 
+  # Shared Claw frontend (latest) for all Hive instances
+  claw-web:
+    build:
+      context: ../claw/web
+      dockerfile: Dockerfile
+    container_name: hive-claw-web
+    restart: always
+    networks:
+      - hive-net
+    ports:
+      - "127.0.0.1:8083:80"
+
   # Hive Controller API
   controller:
     build:
@@ -102,6 +114,7 @@ services:
       ALIYUN_REGION_ID: ${ALIYUN_REGION_ID:-cn-shanghai}
       ALIYUN_DNS_DOMAIN: ${ALIYUN_DNS_DOMAIN:-starclaw.me}
       HIVE_ADMIN_TOKEN: ${HIVE_ADMIN_TOKEN:-}
+      HIVE_CLAW_WEB_PORT: 8083
       HIVE_FREE_EXPIRE_DAYS: ${HIVE_FREE_EXPIRE_DAYS:-7}
       HIVE_MAX_FREE: ${HIVE_MAX_FREE:-100}
     volumes:

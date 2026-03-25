@@ -42,7 +42,7 @@ export default function LoginPage() {
                 public_key: s.public_key!, signature: s.signature!,
               })
               if (data.user.role !== 'city' && data.user.role !== 'partner' && data.user.role !== 'admin') {
-                reject(new Error('此 Claw 地址不是城市合伙人，请联系核心合伙人添加白名单'))
+                reject(new Error('此 Claw 地址不是城市合伙人，请联系团队合伙人添加白名单'))
                 return
               }
               setToken(data.token)
@@ -128,7 +128,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-600 mt-4">
-          Claw 地址需由核心合伙人添加白名单后方可登录
+          Claw 地址需由团队合伙人添加白名单后方可登录
         </p>
       </div>
     </div>
