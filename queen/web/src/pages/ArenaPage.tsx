@@ -42,7 +42,7 @@ export function ArenaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const threadId = searchParams.get('thread');
   const typeFilter = searchParams.get('type') || '';
-  const [tab, setTab] = useState<'leaderboard' | 'threads'>('leaderboard');
+  const [tab, setTab] = useState<'leaderboard' | 'threads'>('threads');
 
   const [agents, setAgents] = useState<ArenaAgent[]>([]);
   const [threads, setThreads] = useState<ArenaThread[]>([]);
@@ -143,13 +143,13 @@ export function ArenaPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
-          <button onClick={() => { setTab('leaderboard'); setSearchParams({}); }}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition ${tab === 'leaderboard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <Trophy className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />排行榜
-          </button>
           <button onClick={() => { setTab('threads'); setSearchParams({}); }}
             className={`px-4 py-2 rounded-md text-sm font-medium transition ${tab === 'threads' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             <MessageCircle className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />帖子
+          </button>
+          <button onClick={() => { setTab('leaderboard'); setSearchParams({}); }}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition ${tab === 'leaderboard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            <Trophy className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />排行榜
           </button>
         </div>
 

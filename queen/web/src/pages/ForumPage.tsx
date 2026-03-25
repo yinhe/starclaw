@@ -16,6 +16,48 @@ const CATEGORY_COLORS: Record<string, string> = {
   'showcase': 'bg-cyan-50 text-cyan-700 border-cyan-200',
 };
 
+// Simple Markdown renderer (no external dependency)
+function renderMarkdown(text: string): string {
+  if (!text) return '';
+  let html = text
+    // Code blocks (```...```)
+    .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 rounded-lg p-4 text-sm overflow-x-auto my-3 font-mono"><code>$1</code></pre>')
+    // Inline code (`...`)
+    .replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-700">$1</code>')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3 class="text-lg font-bold mt-4 mb-2">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold mt-5 mb-2">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold mt-6 mb-3">$1</h1>')
+    // Bold + Italic
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Links [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">$1</a>')
+    // Unordered lists
+    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    // Ordered lists
+    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+    // Blockquotes
+    .replace(/^> (.+)$/gm, '<blockquote class="border-l-4 border-indigo-200 pl-4 text-gray-600 italic my-2">$1</blockquote>')
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr class="my-4 border-gray-200" />')
+    // Paragraphs (double newline)
+    .replace(/\n\n/g, '</p><p class="mb-3">')
+    // Single newlines
+    .replace(/\n/g, '<br />');
+  return '<p class="mb-3">' + html + '</p>';
+}
+
+function MarkdownContent({ content, className = '' }: { content: string; className?: string }) {
+  return (
+    <div
+      className={`prose prose-gray prose-sm max-w-none ${className}`}
+      dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+    />
+  );
+}
+
 function timeAgo(dateStr: string) {
   const d = new Date(dateStr);
   const now = new Date();
@@ -162,7 +204,7 @@ export function ForumPage() {
                 ))}
               </div>
             )}
-            <div className="prose prose-gray max-w-none whitespace-pre-wrap">{currentPost.content}</div>
+            <MarkdownContent content={currentPost.content} />
             <div className="mt-6 flex gap-3">
               <button onClick={() => handleLike(currentPost.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm text-gray-600 hover:text-indigo-600 hover:border-indigo-300 transition">
                 <ThumbsUp className="w-4 h-4" /> 点赞
@@ -190,7 +232,7 @@ export function ForumPage() {
                     <span className="text-xs text-gray-400">{timeAgo(r.created_at)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <p className="text-gray-700 text-sm whitespace-pre-wrap flex-1">{r.content}</p>
+                    <div className="text-gray-700 text-sm flex-1"><MarkdownContent content={r.content} /></div>
                     {isLoggedIn() && (
                       <button onClick={() => setReportTarget({ type: 'forum_reply', id: r.id, title: r.content.slice(0, 50), authorId: r.author_id })}
                         className="ml-2 p-1 rounded text-gray-300 hover:text-red-400 transition" title="举报">
@@ -203,11 +245,12 @@ export function ForumPage() {
             </div>
             {isLoggedIn() && (
               <div className="mt-6 flex gap-3">
-                <input
+                <textarea
                   value={replyText} onChange={e => setReplyText(e.target.value)}
-                  placeholder="写下你的回复..."
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-indigo-400"
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleReply()}
+                  placeholder="写下你的回复... 支持 Markdown 语法"
+                  rows={3}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-indigo-400 resize-none"
+                  onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleReply(); }}
                 />
                 <button onClick={handleReply} disabled={replying || !replyText.trim()}
                   className="px-4 py-2.5 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 transition flex items-center gap-1.5">
@@ -290,7 +333,7 @@ export function ForumPage() {
                       {post.is_pinned && <Pin className="w-3.5 h-3.5 text-amber-500" />}
                       <h3 className="font-semibold text-gray-900 truncate">{post.title}</h3>
                     </div>
-                    <p className="text-sm text-gray-500 line-clamp-2">{post.content}</p>
+                    <p className="text-sm text-gray-500 line-clamp-2">{post.content.replace(/[#*`>\[\]\-]/g, '').slice(0, 200)}</p>
                     <div className="flex items-center gap-4 mt-3 text-xs text-gray-400">
                       <span className="font-medium text-gray-600">{post.author_name}</span>
                       <span>{timeAgo(post.created_at)}</span>
@@ -320,7 +363,7 @@ export function ForumPage() {
                 <option value="">选择板块（可选）</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
               </select>
-              <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="正文内容..." rows={8}
+              <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="正文内容... 支持 Markdown 语法（# 标题、**加粗**、`代码`、- 列表）" rows={8}
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm mb-3 focus:outline-none focus:border-indigo-400 resize-none" />
               <input value={newTags} onChange={e => setNewTags(e.target.value)} placeholder="标签（逗号分隔，可选）"
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm mb-4 focus:outline-none focus:border-indigo-400" />
