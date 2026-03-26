@@ -11,7 +11,7 @@ dist/
 *.dylib
 mcp-bridge
 mcp-bridge-linux
-server
+/server
 
 # Runtime data
 data/
