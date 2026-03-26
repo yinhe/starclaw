@@ -17,12 +17,13 @@ type Plan struct {
 	BandwidthMB int     `json:"bandwidth_mb"` // Mbps (ECS only)
 
 	// Features
+	MaxTeams     int  `json:"max_teams"` // max agent teams (0 = unlimited)
 	CustomDomain bool `json:"custom_domain"`
 	SSLIncluded  bool `json:"ssl_included"`
 	BackupDaily  bool `json:"backup_daily"`
 	SLAPercent   int  `json:"sla_percent"` // e.g. 99, 999 (99.9%)
 
-	ExpireDays int  `json:"expire_days"` // 0 = no expiry (paid plans)
+	ExpireDays int  `json:"expire_days"` // 0 = no expiry (paid plans), 7 = 7-day free trial
 	IsActive   bool `gorm:"default:true" json:"is_active"`
 
 	CreatedAt time.Time `json:"created_at"`
@@ -41,13 +42,15 @@ func DefaultPlans() []Plan {
 			ID: "free", DisplayName: "Spark 火花",
 			DeployMode: "lite", PriceDaily: 0, PriceMonthly: 0,
 			CPU: 0.25, MemoryMB: 256, StorageGB: 1, BandwidthMB: 0,
+			MaxTeams:     2,
 			CustomDomain: false, SSLIncluded: true, BackupDaily: false, SLAPercent: 0,
-			ExpireDays: 0, IsActive: true,
+			ExpireDays: 7, IsActive: true, // 7天免费试用
 		},
 		{
 			ID: "pulse", DisplayName: "Pulse 脉冲",
 			DeployMode: "hive", PriceDaily: 500_000, PriceMonthly: 10_000_000,
 			CPU: 1, MemoryMB: 1024, StorageGB: 10, BandwidthMB: 0,
+			MaxTeams:     10,
 			CustomDomain: false, SSLIncluded: true, BackupDaily: true, SLAPercent: 99,
 			ExpireDays: 0, IsActive: true,
 		},
@@ -55,6 +58,7 @@ func DefaultPlans() []Plan {
 			ID: "surge", DisplayName: "Surge 激流",
 			DeployMode: "ecs", PriceDaily: 2_000_000, PriceMonthly: 40_000_000,
 			CPU: 2, MemoryMB: 4096, StorageGB: 40, BandwidthMB: 5,
+			MaxTeams:     0, // 无限智能体团队
 			CustomDomain: true, SSLIncluded: true, BackupDaily: true, SLAPercent: 999,
 			ExpireDays: 0, IsActive: true,
 		},
@@ -62,6 +66,7 @@ func DefaultPlans() []Plan {
 			ID: "storm", DisplayName: "Storm 风暴",
 			DeployMode: "ecs", PriceDaily: 8_000_000, PriceMonthly: 160_000_000,
 			CPU: 4, MemoryMB: 8192, StorageGB: 100, BandwidthMB: 10,
+			MaxTeams:     0, // 无限智能体团队
 			CustomDomain: true, SSLIncluded: true, BackupDaily: true, SLAPercent: 999,
 			ExpireDays: 0, IsActive: true,
 		},

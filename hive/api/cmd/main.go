@@ -224,6 +224,8 @@ func seedPlans(db *gorm.DB) {
 				"cpu":           p.CPU,
 				"memory_mb":     p.MemoryMB,
 				"storage_gb":    p.StorageGB,
+				"bandwidth_mb":  p.BandwidthMB,
+				"max_teams":     p.MaxTeams,
 				"expire_days":   p.ExpireDays,
 				"is_active":     p.IsActive,
 			})

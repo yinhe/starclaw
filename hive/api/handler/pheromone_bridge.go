@@ -96,7 +96,43 @@ func RegisterPheromoneRPC(client *pheromone.Client) {
 	if err := client.HandleRPC(pheromone.RPCListInstances, handleListInstances); err != nil {
 		log.Printf("[hive] pheromone RPC register %s failed: %v", pheromone.RPCListInstances, err)
 	}
-	log.Printf("[hive] pheromone RPC handlers registered: %s", pheromone.RPCListInstances)
+	if err := client.HandleRPC("hive-stats", handleHiveStats); err != nil {
+		log.Printf("[hive] pheromone RPC register hive-stats failed: %v", err)
+	}
+	log.Printf("[hive] pheromone RPC handlers registered: %s, hive-stats", pheromone.RPCListInstances)
+}
+
+func handleHiveStats(data []byte) (interface{}, error) {
+	phMu.RLock()
+	db := phDB
+	phMu.RUnlock()
+	if db == nil {
+		return nil, nil
+	}
+
+	var total, running, stopped, errCount, free, pulse, surge, storm int64
+	db.Model(&model.ClawInstance{}).Where("status != 'destroyed'").Count(&total)
+	db.Model(&model.ClawInstance{}).Where("status = 'running'").Count(&running)
+	db.Model(&model.ClawInstance{}).Where("status = 'stopped'").Count(&stopped)
+	db.Model(&model.ClawInstance{}).Where("status = 'error'").Count(&errCount)
+
+	// Plan distribution (join with orders or use deploy_mode as proxy)
+	db.Model(&model.ClawInstance{}).Where("deploy_mode = 'lite' AND status != 'destroyed'").Count(&free)
+	db.Model(&model.ClawInstance{}).Where("deploy_mode = 'hive' AND status != 'destroyed'").Count(&pulse)
+	db.Model(&model.ClawInstance{}).Where("deploy_mode = 'ecs' AND status != 'destroyed'").Count(&surge)
+
+	// Recent activity (last 24h)
+	var recentCreated int64
+	db.Model(&model.ClawInstance{}).Where("created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)").Count(&recentCreated)
+
+	return map[string]interface{}{
+		"total":       total,
+		"running":     running,
+		"stopped":     stopped,
+		"error":       errCount,
+		"by_plan":     map[string]int64{"spark": free, "pulse": pulse, "surge_storm": surge + storm},
+		"created_24h": recentCreated,
+	}, nil
 }
 
 type listInstancesRequest struct {
