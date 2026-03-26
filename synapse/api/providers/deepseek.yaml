@@ -6,14 +6,16 @@ auth:
   type: "bearer"
   key_env: "DEEPSEEK_API_KEY"
 models:
+  # DeepSeek V3 (latest)
   - name: "deepseek/deepseek-chat"
     type: "chat"
     context_length: 128000
-    input_price_cny: 0.002    # per 千 tokens (CNY)
-    output_price_cny: 0.008
+    input_price_cny: 0.001    # ¥1/百万tokens (缓存命中 ¥0.1/百万)
+    output_price_cny: 0.002   # ¥2/百万tokens
+  # DeepSeek R1 (reasoning)
   - name: "deepseek/deepseek-reasoner"
     type: "reasoning"
     context_length: 128000
-    input_price_cny: 0.004
-    output_price_cny: 0.016
+    input_price_cny: 0.004    # ¥4/百万tokens (缓存命中 ¥1/百万)
+    output_price_cny: 0.016   # ¥16/百万tokens
 regions: ["cn", "global"]

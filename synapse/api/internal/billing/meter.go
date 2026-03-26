@@ -126,9 +126,9 @@ func (m *Meter) CalculateCost(modelName string, promptTokens, completionTokens i
 	mc := entry.Model
 
 	switch mc.Type {
-	case "chat", "reasoning", "embedding":
+	case "chat", "reasoning", "embedding", "vision":
 		return m.calculateTokenCost(mc, promptTokens, completionTokens)
-	case "image", "video", "tts", "stt", "image_edit":
+	case "image", "video", "tts", "stt", "image_edit", "music", "training":
 		return m.calculateCallCost(mc)
 	default:
 		return 0, 0
