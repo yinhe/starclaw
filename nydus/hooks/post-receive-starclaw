@@ -32,8 +32,71 @@ publish_pheromone_deploy() {
 
 # ========== Polyrepo Sync (monorepo subdir → individual bare repos) ==========
 # Each push to master auto-syncs changed subdirectories to their polyrepo on Nydus
-# Note: claw is excluded — it syncs via starclaw-oss (main branch) to GitHub + nydus:claw.git
+# claw uses sync_claw_to_oss (main branch + OSS files preserved + GitHub push)
 POLYREPO_SERVICES="queen hive synapse overlord pheromone forge nydus carapace cerebrate larva spore"
+
+# Sync monorepo claw/ → claw.git (OSS repo, main branch)
+# Preserves OSS-only files (LICENSE, .github/, CONTRIBUTING, docker-compose, etc.)
+# Then pushes to GitHub if remote is configured
+sync_claw_to_oss() {
+  local msg="$1"
+  [ ! -d "$CLAW_REPO" ] && return 0
+
+  local tmpdir=$(mktemp -d)
+
+  # Step 1: Extract current claw.git main (has OSS files: LICENSE, .github, etc.)
+  git --git-dir="$CLAW_REPO" archive refs/heads/main 2>/dev/null | tar xf - -C "$tmpdir" 2>/dev/null || true
+
+  # Step 2: Overlay monorepo claw/ on top (updates code, preserves OSS-only files)
+  git --git-dir="$REPO" archive "${newrev}:claw" 2>/dev/null | tar xf - -C "$tmpdir" 2>/dev/null || true
+
+  if [ -z "$(ls -A "$tmpdir" 2>/dev/null)" ]; then
+    rm -rf "$tmpdir"
+    return 0
+  fi
+
+  local idx=$(mktemp)
+  rm -f "$idx"
+
+  export GIT_DIR="$CLAW_REPO"
+  export GIT_WORK_TREE="$tmpdir"
+  export GIT_INDEX_FILE="$idx"
+  export GIT_AUTHOR_NAME="Nydus Sync"
+  export GIT_AUTHOR_EMAIL="nydus@starclaw.net"
+  export GIT_COMMITTER_NAME="Nydus Sync"
+  export GIT_COMMITTER_EMAIL="nydus@starclaw.net"
+
+  git add -A 2>/dev/null
+
+  if git diff --cached --quiet refs/heads/main 2>/dev/null; then
+    rm -f "$idx"; rm -rf "$tmpdir"
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+    return 0
+  fi
+
+  local tree=$(git write-tree)
+  local parent=$(git rev-parse refs/heads/main 2>/dev/null) || true
+  local new_commit
+  if [ -n "$parent" ]; then
+    new_commit=$(echo "$msg" | git commit-tree "$tree" -p "$parent")
+  else
+    new_commit=$(echo "$msg" | git commit-tree "$tree")
+  fi
+  git update-ref refs/heads/main "$new_commit"
+
+  rm -f "$idx"; rm -rf "$tmpdir"
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] claw.git (OSS) main updated (${new_commit:0:7})"
+
+  # Push to GitHub (requires: git --git-dir=$CLAW_REPO remote add github git@github.com:yinhe/starclaw.git)
+  if git --git-dir="$CLAW_REPO" remote get-url github >/dev/null 2>&1; then
+    GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no" \
+      git --git-dir="$CLAW_REPO" push github main 2>/dev/null && \
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] claw.git → GitHub pushed" || \
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] claw.git → GitHub push failed"
+  fi
+}
 
 sync_to_polyrepo() {
   local subdir="$1"
@@ -339,6 +402,11 @@ while read oldrev newrev refname; do
         sync_to_polyrepo "$svc" "$sync_msg" && synced="$synced $svc"
       fi
     done
+
+    # Sync claw/ → claw.git OSS repo (main branch, preserves OSS files, pushes to GitHub)
+    if echo "$CHANGED" | grep -q "^claw/"; then
+      sync_claw_to_oss "$sync_msg" && synced="$synced claw(oss)"
+    fi
 
     if [ -n "$synced" ]; then
       echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] polyrepo sync done:$synced"
