@@ -30,6 +30,24 @@ publish_pheromone_deploy() {
   ) >/dev/null 2>&1 &
 }
 
+publish_pheromone_deploy_result() {
+  service="$1"
+  status="$2"       # completed | failed
+  duration="$3"
+  error_msg="$4"
+
+  subject="pheromone.events.nydus.deploy.$status"
+  payload=$(printf '{"service":"%s","status":"%s","duration":"%s","error":"%s","actor":"nydus"}' "$service" "$status" "$duration" "$error_msg")
+  bytes=${#payload}
+
+  (
+    exec 3<>/dev/tcp/$PHEROMONE_NATS_HOST/$PHEROMONE_NATS_PORT || exit 0
+    printf 'CONNECT {"verbose":false,"pedantic":false}\r\n' >&3
+    printf 'PUB %s %s\r\n%s\r\n' "$subject" "$bytes" "$payload" >&3
+    exec 3>&-
+  ) >/dev/null 2>&1 &
+}
+
 # ========== Polyrepo Sync (monorepo subdir → individual bare repos) ==========
 # Each push to master auto-syncs changed subdirectories to their polyrepo on Nydus
 # claw uses sync_claw_to_oss (main branch + OSS files preserved + GitHub push)

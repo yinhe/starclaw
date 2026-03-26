@@ -160,6 +160,8 @@ func main() {
 	} else {
 		ph.StartHeartbeat(30 * time.Second)
 		defer ph.Close()
+		handler.SetPheromone(ph)
+		handler.RegisterPheromoneRPC(ph)
 		log.Printf("[hive] pheromone ESB connected (%s)", natsURL)
 	}
 

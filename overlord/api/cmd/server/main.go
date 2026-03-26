@@ -434,6 +434,7 @@ func main() {
 	} else {
 		ph.StartHeartbeat(30 * time.Second)
 		defer ph.Close()
+		handler.SubscribePheromoneEvents(ph)
 		log.Printf("[overlord] pheromone ESB connected (%s)", natsURL)
 	}
 
