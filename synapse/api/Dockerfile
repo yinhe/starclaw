@@ -14,7 +14,7 @@ COPY pheromone-sdk/ ./pheromone-sdk/
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /star-ai-api ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=$(date +%Y.%m%d.%H%M)" -o /star-ai-api ./cmd/server
 
 ARG REGISTRY=docker.io
 FROM ${REGISTRY}/alpine:latest

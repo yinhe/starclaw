@@ -5,7 +5,7 @@ COPY go.mod go.sum ./
 COPY pheromone-sdk/ ./pheromone-sdk/
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o /nydus-server ./cmd/server/
+RUN CGO_ENABLED=1 go build -ldflags="-s -w -X main.version=$(date +%Y.%m%d.%H%M)" -o /nydus-server ./cmd/server/
 
 FROM alpine:3.19
 RUN apk add --no-cache git curl openssh-server openssh-client shadow bash && \

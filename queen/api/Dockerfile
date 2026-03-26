@@ -10,7 +10,7 @@ COPY go.mod go.sum ./
 COPY pheromone-sdk/ ./pheromone-sdk/
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /queen-api ./cmd/server/
+RUN CGO_ENABLED=0 go build -ldflags="-X main.version=$(date +%Y.%m%d.%H%M)" -o /queen-api ./cmd/server/
 
 ARG REGISTRY=docker.m.daocloud.io
 FROM ${REGISTRY}/library/alpine:3.19

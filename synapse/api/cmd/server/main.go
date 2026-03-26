@@ -18,6 +18,8 @@ import (
 	"starclaw.net/synapse/api/internal/proxy"
 )
 
+var version = "dev"
+
 func main() {
 	// Load config
 	cfg, err := config.Load()
@@ -230,7 +232,7 @@ func main() {
 	}
 	ph, phErr := pheromone.New(natsURL, pheromone.ServiceInfo{
 		Name:    "synapse",
-		Version: "1.0.0",
+		Version: version,
 		Port:    8096,
 		Tags:    []string{"ai", "gateway", "llm"},
 	})

@@ -14,6 +14,8 @@ import (
 	"starclaw.net/nydus/api/internal/router"
 )
 
+var version = "dev"
+
 func main() {
 	cfgPath := "nydus.yaml"
 	if v := os.Getenv("NYDUS_CONFIG"); v != "" {
@@ -46,7 +48,7 @@ func main() {
 	}
 	ph, err := pheromone.New(natsURL, pheromone.ServiceInfo{
 		Name:    "nydus",
-		Version: "1.0.0",
+		Version: version,
 		Port:    8085,
 		Tags:    []string{"git", "deploy", "registry"},
 	})

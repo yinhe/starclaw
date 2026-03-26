@@ -6,7 +6,7 @@ COPY pheromone-sdk/ ./pheromone-sdk/
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o overlord-api ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=$(date +%Y.%m%d.%H%M)" -o overlord-api ./cmd/server
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata

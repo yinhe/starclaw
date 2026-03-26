@@ -16,6 +16,8 @@ import (
 	"starclaw.net/queen/api/internal/router"
 )
 
+var version = "dev"
+
 func seedAdmin() {
 	var count int64
 	database.DB.Model(&model.User{}).Where("role = ?", "admin").Count(&count)
@@ -113,7 +115,7 @@ func main() {
 	}
 	ph, err := pheromone.New(natsURL, pheromone.ServiceInfo{
 		Name:    "queen",
-		Version: "1.0.0",
+		Version: version,
 		Port:    8085,
 		Tags:    []string{"community", "marketplace", "billing"},
 	})

@@ -19,6 +19,8 @@ import (
 	pheromone "starclaw.net/pheromone/sdk"
 )
 
+var version = "dev"
+
 func main() {
 	dsn := getEnv("OVERLORD_DSN", "root:starclaw@tcp(127.0.0.1:3306)/starclaw_overlord?charset=utf8mb4&parseTime=True&loc=Local")
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -425,7 +427,7 @@ func main() {
 	natsURL := getEnv("PHEROMONE_NATS_URL", "nats://127.0.0.1:4222")
 	ph, phErr := pheromone.New(natsURL, pheromone.ServiceInfo{
 		Name:    "overlord",
-		Version: "1.0.0",
+		Version: version,
 		Port:    8095,
 		Tags:    []string{"management", "monitoring", "team-agent"},
 	})
