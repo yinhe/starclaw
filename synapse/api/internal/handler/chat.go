@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"starclaw.net/synapse/api/internal/billing"
 	"starclaw.net/synapse/api/internal/middleware"
 	"starclaw.net/synapse/api/internal/model"
 	"starclaw.net/synapse/api/internal/provider"
 	"starclaw.net/synapse/api/internal/proxy"
-	"gorm.io/gorm"
 )
 
 type ChatHandler struct {
@@ -359,6 +359,7 @@ func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug
 				record.UpstreamCost = upstreamCents
 				h.db.Create(record)
 				middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via, "billing_error").Inc()
+				billing.PublishUsageAlert(userID, modelName, costCents, 0, fmt.Sprintf("billing deduct failed: %v", err))
 			} else {
 				middleware.InferenceRequestsTotal.WithLabelValues(provSlug, modelName, via, "ok").Inc()
 				middleware.BillingDeductionsTotal.WithLabelValues("cny").Inc()

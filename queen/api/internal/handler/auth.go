@@ -10,11 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+	pheromone "starclaw.net/pheromone/sdk"
 	"starclaw.net/queen/api/internal/config"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/middleware"
 	"starclaw.net/queen/api/internal/model"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct{}
@@ -87,6 +88,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			}
 		}
 	}
+
+	PublishUserEvent(pheromone.SubjectUserCreated, pheromone.UserEvent{
+		UserID:   user.ID,
+		Username: req.Nickname,
+		Action:   "created",
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "注册成功", "user_id": user.ID})
 }
@@ -344,6 +351,11 @@ func findOrCreateOAuthUser(provider, oauthID, email, name, avatar string) *model
 	if err := database.DB.Create(&user).Error; err != nil {
 		return nil
 	}
+	PublishUserEvent(pheromone.SubjectUserCreated, pheromone.UserEvent{
+		UserID:   user.ID,
+		Username: name,
+		Action:   "created",
+	})
 	return &user
 }
 

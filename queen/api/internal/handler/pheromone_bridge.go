@@ -4,11 +4,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 
 	pheromone "starclaw.net/pheromone/sdk"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/model"
 )
+
+// ph holds the Pheromone client singleton for use by handlers.
+var (
+	ph   *pheromone.Client
+	phMu sync.RWMutex
+)
+
+// SetPheromone stores the Pheromone client for handler use.
+func SetPheromone(client *pheromone.Client) {
+	phMu.Lock()
+	ph = client
+	phMu.Unlock()
+}
 
 // RegisterPheromoneRPC registers Queen's RPC handlers on the Pheromone ESB.
 // This exposes credit-check and user-lookup as NATS request/reply endpoints
@@ -34,12 +48,32 @@ func RegisterPheromoneRPC(ph *pheromone.Client) {
 }
 
 // PublishUserEvent publishes a user event to the Pheromone ESB.
-func PublishUserEvent(ph *pheromone.Client, subject string, evt pheromone.UserEvent) {
-	if ph == nil {
+func PublishUserEvent(subject string, evt pheromone.UserEvent) {
+	phMu.RLock()
+	c := ph
+	phMu.RUnlock()
+	if c == nil {
 		return
 	}
-	if err := ph.Publish(subject, evt); err != nil {
+	if err := c.Publish(subject, evt); err != nil {
 		log.Printf("[queen] pheromone publish %s failed: %v", subject, err)
+	}
+}
+
+// PublishPaymentEvent publishes a payment event to the Pheromone ESB.
+func PublishPaymentEvent(userID string, amount int64, orderNo string) {
+	phMu.RLock()
+	c := ph
+	phMu.RUnlock()
+	if c == nil {
+		return
+	}
+	if err := c.Publish(pheromone.SubjectPayment, pheromone.PaymentEvent{
+		UserID:  userID,
+		Amount:  amount,
+		OrderNo: orderNo,
+	}); err != nil {
+		log.Printf("[queen] pheromone publish payment failed: %v", err)
 	}
 }
 

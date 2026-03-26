@@ -9,11 +9,11 @@ const (
 	SubjectDeployFailed    = "nydus.deploy.failed"
 
 	// --- Hive instance events ---
-	SubjectInstanceCreated  = "hive.instance.created"
-	SubjectInstanceDeleted  = "hive.instance.deleted"
-	SubjectInstanceStarted  = "hive.instance.started"
-	SubjectInstanceStopped  = "hive.instance.stopped"
-	SubjectInstanceError    = "hive.instance.error"
+	SubjectInstanceCreated = "hive.instance.created"
+	SubjectInstanceDeleted = "hive.instance.deleted"
+	SubjectInstanceStarted = "hive.instance.started"
+	SubjectInstanceStopped = "hive.instance.stopped"
+	SubjectInstanceError   = "hive.instance.error"
 
 	// --- Queen user/billing events ---
 	SubjectUserCreated  = "queen.user.created"
@@ -76,6 +76,22 @@ type BuildEvent struct {
 	Branch    string `json:"branch,omitempty"`
 	Duration  string `json:"duration,omitempty"`
 	Error     string `json:"error,omitempty"`
+}
+
+// PaymentEvent is published when a payment is completed in Queen.
+type PaymentEvent struct {
+	UserID  string `json:"user_id"`
+	Amount  int64  `json:"amount"`
+	OrderNo string `json:"order_no"`
+}
+
+// UsageAlertEvent is published when Synapse detects unusual usage.
+type UsageAlertEvent struct {
+	UserID    string  `json:"user_id"`
+	Model     string  `json:"model,omitempty"`
+	Cost      float64 `json:"cost"`
+	Threshold float64 `json:"threshold"`
+	Message   string  `json:"message"`
 }
 
 // CreditRequest is the payload for check-credit / deduct-credit RPC.

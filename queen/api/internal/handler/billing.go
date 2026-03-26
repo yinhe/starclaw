@@ -14,11 +14,11 @@ import (
 	"github.com/go-pay/gopay/alipay"
 	wechat "github.com/go-pay/gopay/wechat/v3"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"starclaw.net/queen/api/internal/config"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/model"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type BillingHandler struct {
@@ -603,6 +603,12 @@ func (h *BillingHandler) completeOrder(orderNo, tradeNo, callbackRaw string) {
 
 	if err != nil {
 		log.Printf("[billing] completeOrder error: %v", err)
+	} else {
+		// Publish payment event to Pheromone ESB (outside transaction)
+		var order model.RechargeOrder
+		if database.DB.Where("order_no = ?", orderNo).First(&order).Error == nil {
+			PublishPaymentEvent(order.UserID, order.Amount, orderNo)
+		}
 	}
 }
 
