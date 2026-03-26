@@ -1,5 +1,5 @@
 #!/bin/bash
-# Nydus post-receive hook: auto-deploy on push to master
+# Nydus post-receive hook: auto-deploy on push to master + polyrepo sync
 # Location: /data/nydus/repos/starclaw.git/hooks/post-receive
 
 REPO=/data/nydus/repos/starclaw.git
