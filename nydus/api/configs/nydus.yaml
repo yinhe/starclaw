@@ -9,6 +9,47 @@ repos:
     description: "StarClaw monorepo"
     public: false
     targets:
+      # ── Pre-sync: pheromone-sdk for services that depend on it ──
+      # These run BEFORE the build targets (sequential execution).
+
+      - name: "sdk-queen"
+        worm_url: "http://nydus-worm:8096"
+        deploy_path: "/opt/queen/api/pheromone-sdk"
+        deploy_cmd: "echo 'pheromone-sdk synced for queen'"
+        subdir: "pheromone/sdk"
+        branch: "master"
+
+      - name: "sdk-overlord"
+        worm_url: "http://nydus-worm:8096"
+        deploy_path: "/opt/overlord/api/pheromone-sdk"
+        deploy_cmd: "echo 'pheromone-sdk synced for overlord'"
+        subdir: "pheromone/sdk"
+        branch: "master"
+
+      - name: "sdk-synapse"
+        ssh_host: "root@47.103.51.32"
+        ssh_key: "/root/.ssh/id_ed25519"
+        deploy_path: "/opt/starclaw/synapse/api/pheromone-sdk"
+        deploy_cmd: "echo 'pheromone-sdk synced for synapse'"
+        subdir: "pheromone/sdk"
+        branch: "master"
+
+      - name: "sdk-hive"
+        ssh_host: "root@starclaw.me"
+        ssh_key: "/root/.ssh/id_ed25519"
+        deploy_path: "/opt/pheromone/sdk"
+        deploy_cmd: "echo 'pheromone-sdk synced for hive'"
+        subdir: "pheromone/sdk"
+        branch: "master"
+
+      - name: "carapace-hive"
+        ssh_host: "root@starclaw.me"
+        ssh_key: "/root/.ssh/id_ed25519"
+        deploy_path: "/opt/carapace"
+        deploy_cmd: "echo 'carapace synced for hive'"
+        subdir: "carapace"
+        branch: "master"
+
       # ========== INTERNAL (Queen 服务端 — 仅限我们自己的服务器) ==========
       # queen/ 代码绝不部署到客户服务器
 
@@ -39,6 +80,16 @@ repos:
         subdir: "synapse"
         branch: "master"
 
+      # ========== HIVE (多租户 Claw 控制器 — Server A) ==========
+
+      - name: "hive-server-a"
+        ssh_host: "root@starclaw.me"
+        ssh_key: "/root/.ssh/id_ed25519"
+        deploy_path: "/opt/hive"
+        deploy_cmd: "docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
+        subdir: "hive"
+        branch: "master"
+
       # ========== CEREBRATE (合伙人生态 — Server C 本地, Queen docker-compose 引用) ==========
 
       - name: "cerebrate-server-c"
@@ -55,6 +106,15 @@ repos:
         deploy_path: "/opt/overlord"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api console web"
         subdir: "overlord"
+        branch: "master"
+
+      # ========== PHEROMONE (ESB 事件总线 — Server C 本地) ==========
+
+      - name: "pheromone-server-c"
+        worm_url: "http://nydus-worm:8096"
+        deploy_path: "/opt/pheromone"
+        deploy_cmd: "docker compose up -d --build"
+        subdir: "pheromone"
         branch: "master"
 
       # ========== OUR CLAW (我们自己的 Claw 演示实例) ==========

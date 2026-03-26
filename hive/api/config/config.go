@@ -71,8 +71,8 @@ func Load() *Config {
 	return &Config{
 		Port:           envInt("HIVE_PORT", 9090),
 		Domain:         envStr("HIVE_DOMAIN", "starclaw.me"),
-		DataDir:        envStr("HIVE_DATA_DIR", "/opt/starclaw-hive"),
-		NginxConfDir:   envStr("HIVE_NGINX_CONF_DIR", "/opt/starclaw-hive/nginx/conf.d"),
+		DataDir:        envStr("HIVE_DATA_DIR", "/opt/hive/data"),
+		NginxConfDir:   envStr("HIVE_NGINX_CONF_DIR", "/opt/hive/nginx/conf.d"),
 		SSLCertPath:    envStr("HIVE_SSL_CERT", "/etc/letsencrypt/live/starclaw.me/fullchain.pem"),
 		SSLKeyPath:     envStr("HIVE_SSL_KEY", "/etc/letsencrypt/live/starclaw.me/privkey.pem"),
 		ClawImage:      envStr("HIVE_CLAW_IMAGE", "starclaw-api:latest"),

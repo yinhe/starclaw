@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Add proxy + redis services to Queen docker-compose.prod.yml"""
 
-path = '/opt/starclaw-queen/docker-compose.prod.yml'
+path = '/opt/queen/docker-compose.prod.yml'
 with open(path) as f:
     content = f.read()
 
