@@ -8,6 +8,8 @@ services:
         REGISTRY: ${REGISTRY:-docker.io}
     container_name: starclaw-pheromone-api
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - PHEROMONE_PORT=8100
       - PHEROMONE_NATS_URL=nats://pheromone-nats:4222
