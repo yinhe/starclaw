@@ -1,3 +1,3 @@
 # Carapace
 
-StarClaw crypto & auth library (Go).
+StarClaw shared Go library — crypto, auth, middleware.
