@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     environment:
       NYDUS_CONFIG: /app/configs/nydus.yaml
+      PHEROMONE_NATS_URL: nats://pheromone-nats:4222
     volumes:
       - /data/nydus/repos:/data/nydus/repos
       - /data/nydus/nydus.db:/data/nydus/nydus.db
