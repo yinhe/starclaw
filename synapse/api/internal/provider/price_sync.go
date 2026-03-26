@@ -109,6 +109,45 @@ func (s *PriceSyncer) SyncAll() {
 		updated += n
 	}
 
+	// Anthropic
+	if n, err := s.syncAnthropic(); err != nil {
+		s.lastErrors["anthropic"] = err.Error()
+		log.Printf("[price-sync] anthropic failed: %v", err)
+		errors++
+	} else {
+		delete(s.lastErrors, "anthropic")
+		updated += n
+	}
+
+	// Google Gemini
+	if n, err := s.syncGoogle(); err != nil {
+		s.lastErrors["google"] = err.Error()
+		log.Printf("[price-sync] google failed: %v", err)
+		errors++
+	} else {
+		delete(s.lastErrors, "google")
+		updated += n
+	}
+
+	// Grok (xAI)
+	if n, err := s.syncGrok(); err != nil {
+		s.lastErrors["grok"] = err.Error()
+		log.Printf("[price-sync] grok failed: %v", err)
+		errors++
+	} else {
+		delete(s.lastErrors, "grok")
+		updated += n
+	}
+
+	// MiniMax (no public /models API, use hardcoded pricing)
+	if n, err := s.syncMiniMax(); err != nil {
+		s.lastErrors["minimax"] = err.Error()
+		errors++
+	} else {
+		delete(s.lastErrors, "minimax")
+		updated += n
+	}
+
 	s.lastSync = time.Now()
 	s.writeSnapshot()
 
@@ -167,23 +206,23 @@ func (s *PriceSyncer) syncQwen() (int, error) {
 	// Known Qwen pricing (from https://help.aliyun.com/zh/model-studio/pricing)
 	// Prices are per 千 tokens (CNY)
 	qwenPricing := map[string][2]float64{
-		"qwen-max":         {0.0025, 0.01},
-		"qwen-plus":        {0.0008, 0.002},
-		"qwen-turbo":       {0.0003, 0.0006},
-		"qwen-flash":       {0, 0},
-		"qwen-long":        {0.0005, 0.002},
-		"qwen3-max":        {0.0025, 0.01},
-		"qwen3.5-plus":     {0.0008, 0.0048},
-		"qwen3.5-flash":    {0, 0},
-		"qwq-plus":         {0.0008, 0.002},
-		"qwq-max":          {0.0025, 0.01},
-		"qwen3-coder-plus": {0.0008, 0.002},
+		"qwen-max":          {0.0025, 0.01},
+		"qwen-plus":         {0.0008, 0.002},
+		"qwen-turbo":        {0.0003, 0.0006},
+		"qwen-flash":        {0, 0},
+		"qwen-long":         {0.0005, 0.002},
+		"qwen3-max":         {0.0025, 0.01},
+		"qwen3.5-plus":      {0.0008, 0.0048},
+		"qwen3.5-flash":     {0, 0},
+		"qwq-plus":          {0.0008, 0.002},
+		"qwq-max":           {0.0025, 0.01},
+		"qwen3-coder-plus":  {0.0008, 0.002},
 		"qwen3-coder-flash": {0, 0},
-		"qwen3-vl-plus":    {0.0008, 0.002},
-		"qwen3-vl-flash":   {0, 0},
-		"qwen-vl-max":      {0.003, 0.009},
-		"qwen-vl-plus":     {0.0008, 0.002},
-		"qwen3-omni-flash": {0, 0},
+		"qwen3-vl-plus":     {0.0008, 0.002},
+		"qwen3-vl-flash":    {0, 0},
+		"qwen-vl-max":       {0.003, 0.009},
+		"qwen-vl-plus":      {0.0008, 0.002},
+		"qwen3-omni-flash":  {0, 0},
 	}
 
 	updated := 0
@@ -228,8 +267,8 @@ func (s *PriceSyncer) syncDeepSeek() (int, error) {
 
 	// DeepSeek published pricing (from https://api-docs.deepseek.com/zh-cn/quick_start/pricing)
 	deepseekPricing := map[string][2]float64{
-		"deepseek-chat":     {0.001, 0.002},   // 1元/百万输入, 2元/百万输出
-		"deepseek-reasoner": {0.004, 0.016},    // 4元/百万输入, 16元/百万输出
+		"deepseek-chat":     {0.001, 0.002}, // 1元/百万输入, 2元/百万输出
+		"deepseek-reasoner": {0.004, 0.016}, // 4元/百万输入, 16元/百万输出
 	}
 
 	updated := 0
@@ -270,15 +309,15 @@ func (s *PriceSyncer) syncOpenAI() (int, error) {
 
 	// OpenAI published pricing (USD per 1M tokens, from https://openai.com/pricing)
 	openaiPricing := map[string][2]float64{
-		"gpt-4.1":              {2.00, 8.00},
-		"gpt-4.1-mini":         {0.40, 1.60},
-		"gpt-4.1-nano":         {0.10, 0.40},
-		"gpt-4o":               {2.50, 10.00},
-		"gpt-4o-mini":          {0.15, 0.60},
-		"o3":                   {2.00, 8.00},
-		"o3-mini":              {1.10, 4.40},
-		"o4-mini":              {1.10, 4.40},
-		"gpt-4-turbo":          {10.00, 30.00},
+		"gpt-4.1":      {2.00, 8.00},
+		"gpt-4.1-mini": {0.40, 1.60},
+		"gpt-4.1-nano": {0.10, 0.40},
+		"gpt-4o":       {2.50, 10.00},
+		"gpt-4o-mini":  {0.15, 0.60},
+		"o3":           {2.00, 8.00},
+		"o3-mini":      {1.10, 4.40},
+		"o4-mini":      {1.10, 4.40},
+		"gpt-4-turbo":  {10.00, 30.00},
 	}
 
 	updated := 0
@@ -294,6 +333,171 @@ func (s *PriceSyncer) syncOpenAI() (int, error) {
 				updated++
 				log.Printf("[price-sync] updated %s: input=$%.2f output=$%.2f /1M tokens",
 					fullName, pricing[0], pricing[1])
+			}
+		}
+	}
+
+	return updated, nil
+}
+
+// ── Anthropic ──
+func (s *PriceSyncer) syncAnthropic() (int, error) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		return 0, fmt.Errorf("ANTHROPIC_API_KEY not set")
+	}
+
+	// Anthropic published pricing (USD per 1M tokens)
+	anthropicPricing := map[string][2]float64{
+		"claude-opus-4":     {15.00, 75.00},
+		"claude-sonnet-4":   {3.00, 15.00},
+		"claude-3.7-sonnet": {3.00, 15.00},
+		"claude-3.5-sonnet": {3.00, 15.00},
+		"claude-3.5-haiku":  {0.80, 4.00},
+		"claude-3-opus":     {15.00, 75.00},
+		"claude-3-haiku":    {0.25, 1.25},
+	}
+
+	updated := 0
+	s.registry.mu.Lock()
+	defer s.registry.mu.Unlock()
+
+	for modelID, pricing := range anthropicPricing {
+		fullName := "anthropic/" + modelID
+		if entry, exists := s.registry.models[fullName]; exists {
+			if entry.Model.InputPrice != pricing[0] || entry.Model.OutputPrice != pricing[1] {
+				entry.Model.InputPrice = pricing[0]
+				entry.Model.OutputPrice = pricing[1]
+				updated++
+				log.Printf("[price-sync] updated %s: input=$%.2f output=$%.2f /1M tokens",
+					fullName, pricing[0], pricing[1])
+			}
+		}
+	}
+
+	return updated, nil
+}
+
+// ── Google Gemini ──
+func (s *PriceSyncer) syncGoogle() (int, error) {
+	apiKey := os.Getenv("GOOGLE_API_KEY")
+	if apiKey == "" {
+		return 0, fmt.Errorf("GOOGLE_API_KEY not set")
+	}
+
+	// Google published pricing (USD per 1M tokens, ≤200K context)
+	googlePricing := map[string][2]float64{
+		"gemini-2.5-pro":        {1.25, 10.00},
+		"gemini-2.5-flash":      {0.15, 0.60},
+		"gemini-2.5-flash-lite": {0.075, 0.30},
+		"gemini-2.0-flash":      {0.10, 0.40},
+		"gemini-2.0-flash-lite": {0.075, 0.30},
+		"gemini-1.5-pro":        {1.25, 5.00},
+		"gemini-1.5-flash":      {0.075, 0.30},
+	}
+
+	updated := 0
+	s.registry.mu.Lock()
+	defer s.registry.mu.Unlock()
+
+	for modelID, pricing := range googlePricing {
+		fullName := "google/" + modelID
+		if entry, exists := s.registry.models[fullName]; exists {
+			if entry.Model.InputPrice != pricing[0] || entry.Model.OutputPrice != pricing[1] {
+				entry.Model.InputPrice = pricing[0]
+				entry.Model.OutputPrice = pricing[1]
+				updated++
+				log.Printf("[price-sync] updated %s: input=$%.2f output=$%.2f /1M tokens",
+					fullName, pricing[0], pricing[1])
+			}
+		}
+	}
+
+	return updated, nil
+}
+
+// ── Grok (xAI) ──
+func (s *PriceSyncer) syncGrok() (int, error) {
+	apiKey := os.Getenv("XAI_API_KEY")
+	if apiKey == "" {
+		return 0, fmt.Errorf("XAI_API_KEY not set")
+	}
+
+	// xAI published pricing (USD per 1M tokens)
+	grokPricing := map[string][2]float64{
+		"grok-3":        {3.00, 15.00},
+		"grok-3-mini":   {0.30, 0.50},
+		"grok-3-fast":   {5.00, 25.00},
+		"grok-2":        {2.00, 10.00},
+		"grok-2-mini":   {0.20, 1.00},
+		"grok-2-vision": {2.00, 10.00},
+	}
+
+	updated := 0
+	s.registry.mu.Lock()
+	defer s.registry.mu.Unlock()
+
+	for modelID, pricing := range grokPricing {
+		fullName := "grok/" + modelID
+		if entry, exists := s.registry.models[fullName]; exists {
+			if entry.Model.InputPrice != pricing[0] || entry.Model.OutputPrice != pricing[1] {
+				entry.Model.InputPrice = pricing[0]
+				entry.Model.OutputPrice = pricing[1]
+				updated++
+				log.Printf("[price-sync] updated %s: input=$%.2f output=$%.2f /1M tokens",
+					fullName, pricing[0], pricing[1])
+			}
+		}
+	}
+
+	return updated, nil
+}
+
+// ── MiniMax ──
+func (s *PriceSyncer) syncMiniMax() (int, error) {
+	// MiniMax pricing (CNY per 千 tokens)
+	minimaxTokenPricing := map[string][2]float64{
+		"MiniMax-M2.5":           {0.001, 0.01},
+		"MiniMax-M2.5-highspeed": {0.001, 0.004},
+		"MiniMax-M2.1":           {0.001, 0.01},
+		"MiniMax-M2":             {0.001, 0.01},
+		"MiniMax-Text-01":        {0.001, 0.005},
+		"MiniMax-VL-01":          {0.003, 0.009},
+	}
+
+	// MiniMax per-call pricing (CNY)
+	minimaxCallPricing := map[string]float64{
+		"MiniMax-Hailuo-2.3":      0.30,
+		"MiniMax-Hailuo-2.3-Fast": 0.15,
+		"MiniMax-Music-2.5+":      0.15,
+		"MiniMax-Music-2.5":       0.10,
+		"image-01":                0.04,
+	}
+
+	updated := 0
+	s.registry.mu.Lock()
+	defer s.registry.mu.Unlock()
+
+	for modelID, pricing := range minimaxTokenPricing {
+		fullName := "minimax/" + modelID
+		if entry, exists := s.registry.models[fullName]; exists {
+			if entry.Model.InputPriceCNY != pricing[0] || entry.Model.OutputPriceCNY != pricing[1] {
+				entry.Model.InputPriceCNY = pricing[0]
+				entry.Model.OutputPriceCNY = pricing[1]
+				updated++
+				log.Printf("[price-sync] updated %s: input=%.4f output=%.4f CNY/千tokens",
+					fullName, pricing[0], pricing[1])
+			}
+		}
+	}
+
+	for modelID, price := range minimaxCallPricing {
+		fullName := "minimax/" + modelID
+		if entry, exists := s.registry.models[fullName]; exists {
+			if entry.Model.PricePerCallCNY != price {
+				entry.Model.PricePerCallCNY = price
+				updated++
+				log.Printf("[price-sync] updated %s: ¥%.2f/call", fullName, price)
 			}
 		}
 	}
@@ -335,10 +539,10 @@ func (s *PriceSyncer) writeSnapshot() {
 	}
 
 	snapshot := struct {
-		SyncedAt string       `json:"synced_at"`
-		Count    int          `json:"count"`
+		SyncedAt string            `json:"synced_at"`
+		Count    int               `json:"count"`
 		Errors   map[string]string `json:"errors,omitempty"`
-		Models   []PriceEntry `json:"models"`
+		Models   []PriceEntry      `json:"models"`
 	}{
 		SyncedAt: time.Now().Format(time.RFC3339),
 		Count:    len(entries),
