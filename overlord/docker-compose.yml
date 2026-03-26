@@ -27,13 +27,15 @@ services:
       OVERLORD_ADMIN_PASSWORD: "${OVERLORD_ADMIN_PASSWORD:-admin123}"
       OVERLORD_MAX_NODES: "${OVERLORD_MAX_NODES:-10}"
       OVERLORD_CLAW_TOKEN: "${OVERLORD_CLAW_TOKEN:-overlord-internal-default}"
+      PHEROMONE_NATS_URL: ${PHEROMONE_NATS_URL:-nats://pheromone-nats:4222}
       GIN_MODE: release
     ports:
-      - "8095:8095"
+      - "127.0.0.1:8095:8095"
     depends_on:
       - mysql-overlord
     networks:
       - overlord
+      - starclaw-pheromone
 
   console:
     build:
@@ -62,3 +64,5 @@ services:
 networks:
   overlord:
     driver: bridge
+  starclaw-pheromone:
+    external: true
