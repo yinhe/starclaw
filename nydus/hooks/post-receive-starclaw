@@ -338,8 +338,14 @@ echo "$REFS" | while read oldrev newrev refname; do
       git --git-dir="$REPO" archive HEAD:hive | ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && tar xf -"
       git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/carapace && cd /opt/carapace && tar xf -"
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/pheromone/sdk && cd /opt/pheromone/sdk && tar xf -"
+      # Rebuild controller (always when hive/ changes)
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
       echo "  -> hive-controller rebuilt on Server A" | cat >> "$LOG"
+      # Rebuild web if hive/web/ changed
+      if echo "$CHANGED" | grep -q "^hive/web/"; then
+        ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache web && docker compose -f docker-compose.hive.yml up -d web"
+        echo "  -> hive-web rebuilt on Server A" | cat >> "$LOG"
+      fi
       publish_pheromone_deploy_result "hive" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "hive-server-a" "success" "deployed in $((SECONDS - _start))s"
     ) </dev/null >> "$LOG" 2>&1 &
