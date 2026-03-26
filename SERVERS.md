@@ -212,24 +212,29 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 **SSL：** Let's Encrypt 通配符证书 `*.starclaw.net`（DNS-01 验证）
 **状态：** ✅ 容器运行中
 
-### Nydus 虫道部署系统
+### Nydus 虫道部署系统 (Diff-Based + 并行)
 
-一次 `git push`，两台服务器同时部署：
+`git push nydus master` → `post-receive-starclaw` bash hook 自动检测变更目录，**只部署有变化的服务**，并行执行。
 
 ```
 git push nydus master
   → SSH → /data/nydus/repos/starclaw.git (bare repo)
-  → post-receive hook → Nydus API (:8098)
-  ├─ Pre-sync: pheromone-sdk → queen/overlord/synapse/hive 构建目录
-  ├─ queen-server-c     (本地 Worm, git archive + docker build)
-  ├─ overlord-server-c  (本地 Worm)
-  ├─ pheromone-server-c (本地 Worm)
-  ├─ cerebrate-server-c (本地 Worm)
-  ├─ gateway-server-b   (SSH → Server B, git archive + Worm)
-  ├─ synapse-server-b   (SSH → Server B)
-  ├─ hive-server-a      (SSH → Server A)
-  └─ claw-starclaw-me   (SSH → Server A)
+  → post-receive hook (bash, diff-based)
+  │ git diff --name-only oldrev newrev → 检测变更目录
+  │
+  ├─ queen/    → queen-server-c     (本地 docker build, 子组件粒度)
+  ├─ claw/     → claw-starclaw-me   (SSH → Server A, 含 Hive 实例升级)
+  ├─ hive/     → hive-server-a      (SSH → Server A + carapace/pheromone-sdk)
+  ├─ synapse/  → synapse-server-b   (SSH → Server B, 子组件粒度)
+  ├─ overlord/ → overlord-server-c  (本地 docker build)
+  ├─ pheromone/→ pheromone-server-c (本地 docker build)
+  ├─ nydus/    → nydus-server-c     (本地 docker build)
+  └─ polyrepo sync: 变更子目录 → 独立 bare repo (claw.git → GitHub)
 ```
+
+**Hook 源码：** `nydus/hooks/post-receive-starclaw`
+**部署日志：** `/var/log/nydus-deploy.log` on Server C
+**Dashboard 上报：** hook 完成后 POST `/hooks/deploy-report` → Nydus API
 
 **Nydus remote:** `git remote add nydus git@43.106.158.26:starclaw.git`
 **SSH config:** `~/.ssh/config` 中 Host 43.106.158.26 使用 `~/.ssh/queen_deploy`
@@ -242,18 +247,20 @@ git push nydus master
     │
     ▼
 Server C: starclaw.git (bare)
-    │ post-receive hook
-    ▼
-Nydus API (:8098)
-    ├─────────────────────────────────────┐──────────────┐
-    │ Local (Docker network)                   │ SSH + archive  │ SSH + archive
-    ▼                                          ▼              ▼
-Worm C (git archive → deploy)          Server B          Server A
-    │                                    (Synapse+GW)    (Hive+Claw)
-    ├→ Queen     (starclaw.net)
-    ├→ Overlord  (overlord.starclaw.net)
-    ├→ Pheromone (ESB)
-    └→ Cerebrate
+    │ post-receive hook (bash)
+    │ git diff → 检测变更目录
+    │
+    ├─ 并行 ──────────────────────────────────────────────┐
+    │                                                      │
+    ▼ 本地 (docker build)          SSH + archive ──────────┼──────────────┐
+    ├→ Queen     (queen/)          ▼                       ▼              │
+    ├→ Overlord  (overlord/)       Server B (synapse/)     Server A       │
+    ├→ Pheromone (pheromone/)      Synapse API/Web/Core    Claw (claw/)   │
+    ├→ Nydus    (nydus/)                                   Hive (hive/)   │
+    └→ Cerebrate (cerebrate/)                                             │
+                                                                          │
+    polyrepo sync (后台): 变更子目录 → 独立 bare repo → GitHub            │
+    deploy report: POST /hooks/deploy-report → Nydus Dashboard ───────────┘
 ```
 
 ## Server D — 已废弃 (~47.237.11.193)
