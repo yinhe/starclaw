@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"starclaw.net/synapse/api/internal/billing"
 	"starclaw.net/synapse/api/internal/model"
 	"starclaw.net/synapse/api/internal/provider"
-	"gorm.io/gorm"
 )
 
 // GenerationHandler manages async media generation tasks (video, image, audio)
@@ -249,18 +249,36 @@ func (h *GenerationHandler) ProxyDashScopeVideo(c *gin.Context, provSlug, subPat
 	}
 
 	// Calculate cost
-	costCents, _ := h.meter.CalculateCost("dashscope/"+reqBody.Model, 0, 0)
+	costCents, upstreamCents := h.meter.CalculateCost("dashscope/"+reqBody.Model, 0, 0)
 	if costCents <= 0 {
-		// Fallback: use per-call pricing from model config
 		if entry, ok := h.registry.GetModel("dashscope/" + reqBody.Model); ok && entry.Model.PricePerCallCNY > 0 {
-			costCents = entry.Model.PricePerCallCNY * 100
+			upstreamCents = entry.Model.PricePerCallCNY * 100
+			costCents = upstreamCents * 1.3
 		}
 	}
 	gen.CostCents = costCents
 
+	// Actually deduct from user balance
+	if costCents > 0 && gen.Status != "failed" {
+		authType := c.GetString("auth_type")
+		if authType == "claw" && clawID != "" {
+			if err := h.meter.DeductClaw(clawID, costCents, "dashscope/"+reqBody.Model, "/v1/proxy/dashscope", nil); err != nil {
+				log.Printf("[star-ai] dashscope video deduct failed: claw=%s cost=%.2f err=%v", clawID, costCents, err)
+			}
+		} else if userID != "" {
+			record := &model.UsageRecord{
+				UserID: userID, Provider: "dashscope", Model: reqBody.Model,
+				Endpoint: "/v1/proxy/dashscope" + subPath, Via: "proxy", Status: "ok",
+			}
+			if err := h.meter.Deduct(userID, costCents, upstreamCents, record); err != nil {
+				log.Printf("[star-ai] dashscope video deduct failed: user=%s cost=%.2f err=%v", userID, costCents, err)
+			}
+		}
+	}
+
 	h.db.Create(&gen)
 
-	log.Printf("[star-ai] generation tracked: id=%s task=%s model=%s status=%s cost=%.2f分",
+	log.Printf("[star-ai] generation tracked+billed: id=%s task=%s model=%s status=%s cost=%.2f分",
 		gen.ID, gen.TaskID, gen.Model, gen.Status, gen.CostCents)
 
 	// Forward response to client
@@ -345,10 +363,39 @@ func (h *GenerationHandler) ProxyFalVideo(c *gin.Context, provSlug, subPath stri
 		gen.ErrorMsg = string(respBody)
 	}
 
+	// Calculate cost for fal video
+	falFullName := "fal/" + falModel
+	costCents, upstreamCents := h.meter.CalculateCost(falFullName, 0, 0)
+	if costCents <= 0 {
+		if entry, ok := h.registry.GetModel(falFullName); ok && entry.Model.PricePerCall > 0 {
+			upstreamCents = entry.Model.PricePerCall * 7.2 * 100 // USD→CNY→分
+			costCents = upstreamCents * 1.3
+		}
+	}
+	gen.CostCents = costCents
+
+	// Actually deduct from user balance
+	if costCents > 0 && gen.Status != "failed" {
+		authType := c.GetString("auth_type")
+		if authType == "claw" && clawID != "" {
+			if err := h.meter.DeductClaw(clawID, costCents, falFullName, "/v1/proxy/fal", nil); err != nil {
+				log.Printf("[star-ai] fal video deduct failed: claw=%s cost=%.2f err=%v", clawID, costCents, err)
+			}
+		} else if userID != "" {
+			record := &model.UsageRecord{
+				UserID: userID, Provider: "fal", Model: falModel,
+				Endpoint: "/v1/proxy/fal" + subPath, Via: "proxy", Status: "ok",
+			}
+			if err := h.meter.Deduct(userID, costCents, upstreamCents, record); err != nil {
+				log.Printf("[star-ai] fal video deduct failed: user=%s cost=%.2f err=%v", userID, costCents, err)
+			}
+		}
+	}
+
 	h.db.Create(&gen)
 
-	log.Printf("[star-ai] generation tracked: id=%s task=%s model=%s status=%s",
-		gen.ID, gen.TaskID, gen.Model, gen.Status)
+	log.Printf("[star-ai] generation tracked+billed: id=%s task=%s model=%s status=%s cost=%.2f分",
+		gen.ID, gen.TaskID, gen.Model, gen.Status, gen.CostCents)
 
 	for k, vals := range resp.Header {
 		for _, v := range vals {
@@ -468,18 +515,43 @@ func (h *GenerationHandler) ProxyFalImage(c *gin.Context, provSlug, subPath stri
 		gen.ErrorMsg = string(respBody)
 	}
 
-	// Calculate cost
-	costCents, _ := h.meter.CalculateCost("fal/"+falModel, 0, 0)
+	// Calculate cost for fal image
+	falFullName := "fal/" + falModel
+	costCents, upstreamCents := h.meter.CalculateCost(falFullName, 0, 0)
 	if costCents <= 0 {
-		if entry, ok := h.registry.GetModel("fal/" + falModel); ok && entry.Model.PricePerCallCNY > 0 {
-			costCents = entry.Model.PricePerCallCNY * 100
+		if entry, ok := h.registry.GetModel(falFullName); ok {
+			if entry.Model.PricePerCallCNY > 0 {
+				upstreamCents = entry.Model.PricePerCallCNY * 100
+				costCents = upstreamCents * 1.3
+			} else if entry.Model.PricePerCall > 0 {
+				upstreamCents = entry.Model.PricePerCall * 7.2 * 100
+				costCents = upstreamCents * 1.3
+			}
 		}
 	}
 	gen.CostCents = costCents
 
+	// Actually deduct from user balance
+	if costCents > 0 && gen.Status != "failed" {
+		authType := c.GetString("auth_type")
+		if authType == "claw" && clawID != "" {
+			if err := h.meter.DeductClaw(clawID, costCents, falFullName, "/v1/proxy/fal", nil); err != nil {
+				log.Printf("[star-ai] fal image deduct failed: claw=%s cost=%.2f err=%v", clawID, costCents, err)
+			}
+		} else if userID != "" {
+			record := &model.UsageRecord{
+				UserID: userID, Provider: "fal", Model: falModel,
+				Endpoint: "/v1/proxy/fal" + subPath, Via: "proxy", Status: "ok",
+			}
+			if err := h.meter.Deduct(userID, costCents, upstreamCents, record); err != nil {
+				log.Printf("[star-ai] fal image deduct failed: user=%s cost=%.2f err=%v", userID, costCents, err)
+			}
+		}
+	}
+
 	h.db.Create(&gen)
 
-	log.Printf("[star-ai] generation tracked: id=%s task=%s model=%s type=image status=%s cost=%.2f分",
+	log.Printf("[star-ai] generation tracked+billed: id=%s task=%s model=%s type=image status=%s cost=%.2f分",
 		gen.ID, gen.TaskID, gen.Model, gen.Status, gen.CostCents)
 
 	for k, vals := range resp.Header {
@@ -493,30 +565,69 @@ func (h *GenerationHandler) ProxyFalImage(c *gin.Context, provSlug, subPath stri
 
 func determineFalImageModel(path string) string {
 	switch {
+	// ── Nano Banana (Google) ──
+	case strings.Contains(path, "nano-banana-2"):
+		return "nano-banana-2"
+	case strings.Contains(path, "nano-banana-pro"):
+		return "nano-banana-pro"
+	case strings.Contains(path, "nano-banana"):
+		return "nano-banana"
+	// ── Seedream (ByteDance) ──
+	case strings.Contains(path, "seedream"):
+		if strings.Contains(path, "v5") {
+			return "bytedance/seedream/v5/lite/edit"
+		}
+		if strings.Contains(path, "v4.5") {
+			return "bytedance/seedream/v4.5/edit"
+		}
+		return "bytedance/seedream/v4/text-to-image"
+	// ── Flux Kontext ──
+	case strings.Contains(path, "flux-pro/kontext") || strings.Contains(path, "flux-kontext"):
+		return "flux-pro/kontext"
+	// ── FLUX.2 ──
+	case strings.Contains(path, "flux-2-pro"):
+		return "flux-2-pro"
+	case strings.Contains(path, "flux-2-max"):
+		return "flux-2-max"
+	case strings.Contains(path, "flux-2-flex"):
+		return "flux-2-flex"
+	case strings.Contains(path, "flux-2/turbo"):
+		return "flux-2/turbo"
+	case strings.Contains(path, "flux-2/flash"):
+		return "flux-2/flash"
+	case strings.Contains(path, "flux-2/klein/4b"):
+		return "flux-2/klein/4b"
+	case strings.Contains(path, "flux-2/klein/9b"):
+		return "flux-2/klein/9b"
+	case strings.Contains(path, "flux-2/lora"):
+		return "flux-2/lora"
+	case strings.Contains(path, "flux-2"):
+		return "flux-2"
+	// ── FLUX.1 ──
 	case strings.Contains(path, "flux-pro"):
-		return "flux-pro"
+		return "flux-pro/v1.1"
 	case strings.Contains(path, "flux-lora"):
 		return "flux-lora"
-	case strings.Contains(path, "flux-realism"):
-		return "flux-realism"
 	case strings.Contains(path, "flux/schnell"):
-		return "flux-schnell"
+		return "flux/schnell"
 	case strings.Contains(path, "flux/dev"):
-		return "flux-dev"
+		return "flux/dev"
 	case strings.Contains(path, "flux"):
-		return "flux"
-	case strings.Contains(path, "stable-diffusion-v35-large"):
-		return "stable-diffusion-v35-large"
-	case strings.Contains(path, "stable-diffusion"):
-		return "stable-diffusion"
-	case strings.Contains(path, "aura-sr"):
-		return "aura-sr"
-	case strings.Contains(path, "recraft"):
-		return "recraft-v3"
-	case strings.Contains(path, "ideogram"):
-		return "ideogram"
-	case strings.Contains(path, "omnigen"):
-		return "omnigen"
+		return "flux/schnell"
+	// ── Qwen Image ──
+	case strings.Contains(path, "qwen-image"):
+		return "qwen-image"
+	// ── GPT Image ──
+	case strings.Contains(path, "gpt-image"):
+		return "gpt-image-1.5/edit"
+	// ── Reve ──
+	case strings.Contains(path, "reve"):
+		return "reve/edit"
+	// ── Upscale/BG ──
+	case strings.Contains(path, "seedvr/upscale"):
+		return "seedvr/upscale/image"
+	case strings.Contains(path, "remove-bg") || strings.Contains(path, "background/remove"):
+		return "remove-bg"
 	default:
 		return "fal-image-unknown"
 	}
@@ -524,19 +635,69 @@ func determineFalImageModel(path string) string {
 
 func determineFalModel(path string) string {
 	switch {
+	case strings.Contains(path, "veo3.1/fast"):
+		return "veo3.1/fast"
 	case strings.Contains(path, "veo3.1"):
 		return "veo3.1"
 	case strings.Contains(path, "veo3"):
-		return "veo3"
+		return "veo3.1" // veo3 deprecated, map to 3.1
 	case strings.Contains(path, "sora-2"):
-		return "sora2"
+		return "sora-2"
+	case strings.Contains(path, "kling-video/o3"):
+		if strings.Contains(path, "pro") {
+			return "kling-video/o3/pro/image-to-video"
+		}
+		return "kling-video/o3/standard/image-to-video"
+	case strings.Contains(path, "kling-video/v3/pro"):
+		if strings.Contains(path, "image") {
+			return "kling-video/v3/pro/image-to-video"
+		}
+		return "kling-video/v3/pro/text-to-video"
+	case strings.Contains(path, "kling-video/v3/standard"):
+		if strings.Contains(path, "image") {
+			return "kling-video/v3/standard/image-to-video"
+		}
+		return "kling-video/v3/standard/text-to-video"
 	case strings.Contains(path, "kling-video"):
-		return "kling-v3"
+		return "kling-video/v3/standard/text-to-video"
+	case strings.Contains(path, "wan-25") || strings.Contains(path, "wan/v2"):
+		return "wan-25-preview/text-to-video"
 	case strings.Contains(path, "minimax-video"):
 		return "minimax-video"
 	case strings.Contains(path, "luma-dream-machine"):
-		return "luma"
+		return "luma-dream-machine"
+	case strings.Contains(path, "ltx-2.3"):
+		return "ltx-2.3/text-to-video"
+	case strings.Contains(path, "ltx-2"):
+		return "ltx-2-19b/image-to-video"
+	case strings.Contains(path, "ovi"):
+		return "ovi/image-to-video"
+	case strings.Contains(path, "grok-imagine-video"):
+		return "xai/grok-imagine-video/reference-to-video"
 	default:
 		return "fal-unknown"
 	}
+}
+
+func isVideoPath(path string) bool {
+	videoKeywords := []string{"veo3", "sora-2", "kling-video", "minimax-video", "luma-dream-machine",
+		"wan-25", "wan/v2", "ltx-2", "ovi", "grok-imagine-video", "goal-force"}
+	for _, kw := range videoKeywords {
+		if strings.Contains(path, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func isImagePath(path string) bool {
+	imageKeywords := []string{"flux", "nano-banana", "seedream", "qwen-image", "gpt-image",
+		"reve", "seedvr", "remove-bg", "background/remove", "onereward",
+		"stable-diffusion", "recraft", "ideogram", "z-image"}
+	for _, kw := range imageKeywords {
+		if strings.Contains(path, kw) {
+			return true
+		}
+	}
+	return false
 }

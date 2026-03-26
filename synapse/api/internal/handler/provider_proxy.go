@@ -164,24 +164,4 @@ func (h *ProviderProxyHandler) ForwardGET(c *gin.Context) {
 	h.Forward(c)
 }
 
-// isVideoPath checks if a fal.ai proxy path is a video generation endpoint
-func isVideoPath(path string) bool {
-	videoKeywords := []string{"veo3", "sora-2", "kling-video", "minimax-video", "luma-dream-machine"}
-	for _, kw := range videoKeywords {
-		if strings.Contains(path, kw) {
-			return true
-		}
-	}
-	return false
-}
-
-// isImagePath checks if a fal.ai proxy path is an image generation endpoint
-func isImagePath(path string) bool {
-	imageKeywords := []string{"flux", "stable-diffusion", "aura-sr", "recraft", "ideogram", "omnigen"}
-	for _, kw := range imageKeywords {
-		if strings.Contains(path, kw) {
-			return true
-		}
-	}
-	return false
-}
+// isVideoPath and isImagePath are defined in generation.go
