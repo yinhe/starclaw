@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
+
+	pheromone "starclaw.net/pheromone/sdk"
 
 	"starclaw.net/nydus/api/internal/config"
 	"starclaw.net/nydus/api/internal/database"
@@ -34,6 +37,25 @@ func main() {
 
 	if config.C.Server.Secret == "" {
 		log.Fatal("[nydus] server.secret must be set in config")
+	}
+
+	// Connect to Pheromone ESB
+	natsURL := os.Getenv("PHEROMONE_NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://127.0.0.1:4222"
+	}
+	ph, err := pheromone.New(natsURL, pheromone.ServiceInfo{
+		Name:    "nydus",
+		Version: "1.0.0",
+		Port:    8085,
+		Tags:    []string{"git", "deploy", "registry"},
+	})
+	if err != nil {
+		log.Printf("[nydus] pheromone connect failed (non-fatal): %v", err)
+	} else {
+		ph.StartHeartbeat(30 * time.Second)
+		defer ph.Close()
+		log.Printf("[nydus] pheromone ESB connected (%s)", natsURL)
 	}
 
 	r := router.Setup()
