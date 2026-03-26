@@ -107,6 +107,12 @@ button:hover { opacity: 0.9; }
 .event .meta .subj { color: var(--accent); }
 .event pre { margin: 0; white-space: pre-wrap; font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; }
 .event.new { border-left: 3px solid var(--accent-2); }
+.event.expanded { background: rgba(8,18,32,0.85); border-color: var(--accent); }
+.evt-detail { padding-top: 0.3rem; }
+.evt-detail-header { display: flex; gap: 0.5rem; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.3rem; }
+.evt-detail-header .subj { color: var(--accent); }
+.evt-full { max-height: 400px; overflow: auto; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 0.5rem;
+  font-size: 0.78rem; line-height: 1.5; }
 
 @keyframes sweep { from { transform: translateX(-20%); } to { transform: translateX(20%); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }

@@ -159,15 +159,40 @@
   function renderEvent(evt, toTop) {
     const el = document.createElement('article');
     el.className = toTop ? 'event new' : 'event';
-    const payload = typeof evt.payload === 'string' ? evt.payload : JSON.stringify(evt.payload, null, 2);
+    const raw = typeof evt.payload === 'string' ? evt.payload : JSON.stringify(evt.payload, null, 2);
+    const summary = raw.length > 120 ? raw.slice(0, 120) + '…' : raw;
     const ts = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
+    const full = evt.timestamp ? new Date(evt.timestamp).toLocaleString() : '';
+
     el.innerHTML = `
       <div class="meta">
         <span class="subj">${esc(evt.subject || '')}</span>
         <span>${ts}</span>
       </div>
-      <pre>${esc(payload)}</pre>
+      <pre class="evt-summary">${esc(summary)}</pre>
+      <div class="evt-detail" style="display:none">
+        <div class="evt-detail-header">
+          <span class="subj">${esc(evt.subject || '')}</span>
+          <span>${full}</span>
+        </div>
+        <pre class="evt-full">${esc(raw)}</pre>
+      </div>
     `;
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => {
+      const detail = el.querySelector('.evt-detail');
+      const summ = el.querySelector('.evt-summary');
+      if (detail.style.display === 'none') {
+        detail.style.display = '';
+        summ.style.display = 'none';
+        el.classList.add('expanded');
+      } else {
+        detail.style.display = 'none';
+        summ.style.display = '';
+        el.classList.remove('expanded');
+      }
+    });
+
     const stream = $('stream');
     if (toTop && stream.firstChild) {
       stream.insertBefore(el, stream.firstChild);
