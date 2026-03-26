@@ -287,8 +287,8 @@ while read oldrev newrev refname; do
     publish_pheromone_deploy "hive" "$branch" "$newrev"
     (
       git --git-dir="$REPO" archive HEAD:hive | ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && tar xf -"
-      git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/hive/carapace && cd /opt/hive/carapace && tar xf -"
-      git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/hive/pheromone/sdk && cd /opt/hive/pheromone/sdk && tar xf -"
+      git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/carapace && cd /opt/carapace && tar xf -"
+      git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/pheromone/sdk && cd /opt/pheromone/sdk && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
       echo "  -> hive-controller rebuilt on Server A" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
