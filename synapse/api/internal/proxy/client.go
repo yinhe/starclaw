@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -58,9 +59,16 @@ func (c *Client) Forward(method, path string, body io.Reader, headers http.Heade
 
 // ForwardStream sends a request and streams the response back via the provided writer.
 func (c *Client) ForwardStream(w http.ResponseWriter, method, path string, body io.Reader, headers http.Header) error {
+	_, err := c.ForwardStreamCapture(w, method, path, body, headers)
+	return err
+}
+
+// ForwardStreamCapture streams the response and captures the full response body for usage extraction.
+// Returns the accumulated response body bytes (for non-stream) or the last SSE data line (for stream).
+func (c *Client) ForwardStreamCapture(w http.ResponseWriter, method, path string, body io.Reader, headers http.Header) ([]byte, error) {
 	resp, err := c.Forward(method, path, body, headers)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -72,22 +80,51 @@ func (c *Client) ForwardStream(w http.ResponseWriter, method, path string, body 
 	}
 	w.WriteHeader(resp.StatusCode)
 
-	// Stream body
+	isSSE := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+
 	if f, ok := w.(http.Flusher); ok {
 		buf := make([]byte, 4096)
+		var lastDataLine string
+		var partial string
+		var fullBody []byte
+
 		for {
-			n, err := resp.Body.Read(buf)
+			n, readErr := resp.Body.Read(buf)
 			if n > 0 {
 				w.Write(buf[:n])
 				f.Flush()
+
+				if isSSE {
+					// Track last SSE data line for usage extraction
+					partial += string(buf[:n])
+					for {
+						idx := strings.Index(partial, "\n")
+						if idx < 0 {
+							break
+						}
+						line := strings.TrimSpace(partial[:idx])
+						partial = partial[idx+1:]
+						if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
+							lastDataLine = line[6:]
+						}
+					}
+				} else {
+					fullBody = append(fullBody, buf[:n]...)
+				}
 			}
-			if err != nil {
+			if readErr != nil {
 				break
 			}
 		}
-	} else {
-		io.Copy(w, resp.Body)
+
+		if isSSE {
+			return []byte(lastDataLine), nil
+		}
+		return fullBody, nil
 	}
 
-	return nil
+	// Non-flusher fallback
+	data, _ := io.ReadAll(resp.Body)
+	w.Write(data)
+	return data, nil
 }

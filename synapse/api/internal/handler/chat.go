@@ -126,7 +126,7 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 				bodyBytes = rewritten
 			}
 		}
-		h.forwardToProxy(c, "/chat", bodyBytes)
+		usage = h.forwardToProxy(c, "/chat", bodyBytes)
 	} else {
 		c.JSON(http.StatusBadRequest, openAIError(
 			fmt.Sprintf("unknown provider: %s", provSlug),
@@ -288,28 +288,33 @@ func parseUsageFromJSON(data string) *usageInfo {
 	return nil
 }
 
-// forwardToProxy sends request to the Node.js overseas relay proxy
-func (h *ChatHandler) forwardToProxy(c *gin.Context, path string, body []byte) {
+// forwardToProxy sends request to the Node.js overseas relay proxy.
+// Returns parsed usage from the upstream response for accurate billing.
+func (h *ChatHandler) forwardToProxy(c *gin.Context, path string, body []byte) *usageInfo {
 	headers := http.Header{}
 	headers.Set("Content-Type", "application/json")
 
-	err := h.proxy.ForwardStream(c.Writer, "POST", path, bytes.NewReader(body), headers)
+	captured, err := h.proxy.ForwardStreamCapture(c.Writer, "POST", path, bytes.NewReader(body), headers)
 	if err != nil {
 		log.Printf("[star-ai] proxy forward error: %v", err)
 		c.JSON(http.StatusBadGateway, openAIError("proxy unreachable: "+err.Error(), "server_error"))
+		return nil
 	}
+	return parseUsageFromJSON(string(captured))
 }
 
 func (h *ChatHandler) recordAndBill(authType, userID, apiKeyID, clawID, provSlug, modelName, endpoint, via string, duration time.Duration, usage *usageInfo) {
 	// Record inference metrics
 	middleware.InferenceLatency.WithLabelValues(provSlug, modelName).Observe(duration.Seconds())
 
-	// Use actual tokens from upstream response, fall back to estimates
+	// Use actual tokens from upstream response, fall back to conservative estimates
 	promptTokens := 500
 	completionTokens := 200
-	if usage != nil {
+	if usage != nil && (usage.PromptTokens > 0 || usage.CompletionTokens > 0) {
 		promptTokens = usage.PromptTokens
 		completionTokens = usage.CompletionTokens
+	} else {
+		log.Printf("[star-ai] WARNING: no usage data from %s via %s, using estimate %d+%d tokens", modelName, via, promptTokens, completionTokens)
 	}
 
 	costCents, upstreamCents := h.meter.CalculateCost(modelName, promptTokens, completionTokens)
