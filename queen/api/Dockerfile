@@ -7,6 +7,7 @@ ENV GONOSUMCHECK=starclaw.net
 ENV GONOSUMDB=starclaw.net
 WORKDIR /build
 COPY go.mod go.sum ./
+COPY pheromone-sdk/ ./pheromone-sdk/
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /queen-api ./cmd/server/

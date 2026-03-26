@@ -9,7 +9,10 @@ require (
 	github.com/nats-io/nats.go v1.38.0
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.26.0
+	starclaw.net/pheromone/sdk v0.0.0
 )
+
+replace starclaw.net/pheromone/sdk => ./pheromone-sdk
 
 require (
 	github.com/bytedance/sonic v1.13.2 // indirect

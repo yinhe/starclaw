@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"runtime"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	pheromone "starclaw.net/pheromone/sdk"
 
 	"starclaw.net/forge/internal/aggregator"
 	"starclaw.net/forge/internal/config"
@@ -427,6 +429,25 @@ func main() {
   ║   Sprint:     /api/sprints/:id/start             ║
   ╚══════════════════════════════════════════════════╝
 `, version, cfg.Port, cfg.DBPath, authStatus, runtime.GOOS, runtime.GOARCH)
+
+	// Connect to Pheromone ESB (service registration + heartbeat)
+	natsURL := os.Getenv("PHEROMONE_NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://127.0.0.1:4222"
+	}
+	ph, phErr := pheromone.New(natsURL, pheromone.ServiceInfo{
+		Name:    "forge",
+		Version: version,
+		Port:    8099,
+		Tags:    []string{"devops", "project", "ci"},
+	})
+	if phErr != nil {
+		log.Printf("[forge] pheromone SDK connect failed (non-fatal): %v", phErr)
+	} else {
+		ph.StartHeartbeat(30 * time.Second)
+		defer ph.Close()
+		log.Printf("[forge] pheromone ESB connected (%s)", natsURL)
+	}
 
 	log.Fatal(r.Run(":" + cfg.Port))
 }

@@ -4,14 +4,16 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+	pheromone "starclaw.net/pheromone/sdk"
 	"starclaw.net/queen/api/internal/config"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/handler"
 	"starclaw.net/queen/api/internal/model"
 	"starclaw.net/queen/api/internal/router"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func seedAdmin() {
@@ -103,6 +105,25 @@ func main() {
 
 	seedAdmin()
 	handler.SeedOfficialAgents()
+
+	// Connect to Pheromone ESB
+	natsURL := os.Getenv("PHEROMONE_NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://127.0.0.1:4222"
+	}
+	ph, err := pheromone.New(natsURL, pheromone.ServiceInfo{
+		Name:    "queen",
+		Version: "1.0.0",
+		Port:    8085,
+		Tags:    []string{"community", "marketplace", "billing"},
+	})
+	if err != nil {
+		log.Printf("[queen] pheromone connect failed (non-fatal): %v", err)
+	} else {
+		ph.StartHeartbeat(30 * time.Second)
+		defer ph.Close()
+		log.Printf("[queen] pheromone ESB connected (%s)", natsURL)
+	}
 
 	r := router.Setup()
 

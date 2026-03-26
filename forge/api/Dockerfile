@@ -3,6 +3,7 @@ FROM ${REGISTRY}/library/golang:1.24-alpine AS builder
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /app
 COPY go.mod go.sum ./
+COPY pheromone-sdk/ ./pheromone-sdk/
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=1 go build -o forge-api ./cmd/server/

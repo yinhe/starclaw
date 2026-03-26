@@ -10,6 +10,7 @@ ENV GONOSUMCHECK=starclaw.net
 ENV GONOSUMDB=starclaw.net
 
 COPY go.mod go.sum ./
+COPY pheromone-sdk/ ./pheromone-sdk/
 RUN go mod download
 
 COPY . .

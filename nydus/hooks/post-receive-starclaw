@@ -229,7 +229,10 @@ while read oldrev newrev refname; do
       cd /opt/starclaw-queen
       git --git-dir="$REPO" archive HEAD:queen | tar xf - 2>/dev/null || true
 
-      if echo "$CHANGED" | grep -q "^queen/api/"; then
+      if echo "$CHANGED" | grep -q "^queen/api/\|^pheromone/sdk/"; then
+        # Copy pheromone/sdk into api/ for Docker build context
+        mkdir -p /opt/starclaw-queen/api/pheromone-sdk
+        git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/starclaw-queen/api/pheromone-sdk 2>/dev/null || true
         docker compose -f docker-compose.prod.yml build --no-cache queen-api
         docker compose -f docker-compose.prod.yml up -d queen-api
         echo "  -> queen-api rebuilt (Server C)" | tee -a "$LOG"
@@ -285,6 +288,7 @@ while read oldrev newrev refname; do
     (
       git --git-dir="$REPO" archive HEAD:hive | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw-hive && tar xf -"
       git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/starclaw-hive/carapace && cd /opt/starclaw-hive/carapace && tar xf -"
+      git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/starclaw-hive/pheromone/sdk && cd /opt/starclaw-hive/pheromone/sdk && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw-hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
       echo "  -> hive-controller rebuilt on Server A" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
@@ -297,7 +301,9 @@ while read oldrev newrev refname; do
     (
       git --git-dir="$REPO" archive HEAD:synapse | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && tar xf -"
 
-      if echo "$CHANGED" | grep -q "^synapse/api/\|^synapse/docker-compose"; then
+      if echo "$CHANGED" | grep -q "^synapse/api/\|^synapse/docker-compose\|^pheromone/sdk/"; then
+        # Copy pheromone/sdk into api/ for Docker build context
+        git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_B" "mkdir -p /opt/starclaw/synapse/api/pheromone-sdk && cd /opt/starclaw/synapse/api/pheromone-sdk && tar xf -"
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache api && docker compose up -d api"
         echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | tee -a "$LOG"
       fi
@@ -328,6 +334,9 @@ while read oldrev newrev refname; do
       mkdir -p /opt/starclaw-overlord
       cd /opt/starclaw-overlord
       git --git-dir="$REPO" archive HEAD:overlord | tar xf - 2>/dev/null || true
+      # Copy pheromone/sdk into api/ for Docker build context
+      mkdir -p /opt/starclaw-overlord/api/pheromone-sdk
+      git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/starclaw-overlord/api/pheromone-sdk 2>/dev/null || true
       docker compose -f docker-compose.prod.yml up -d --build api console web
       echo "  -> overlord rebuilt" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
@@ -359,6 +368,9 @@ while read oldrev newrev refname; do
         mkdir -p /opt/starclaw-forge
         cd /opt/starclaw-forge
         git --git-dir="$REPO" archive HEAD:forge | tar xf - 2>/dev/null || true
+        # Copy pheromone/sdk into api/ for Docker build context
+        mkdir -p /opt/starclaw-forge/api/pheromone-sdk
+        git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/starclaw-forge/api/pheromone-sdk 2>/dev/null || true
 
         if echo "$CHANGED" | grep -q "^forge/api/"; then
           docker compose build --no-cache forge-api

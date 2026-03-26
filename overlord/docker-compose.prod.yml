@@ -28,6 +28,7 @@ services:
       OVERLORD_PORT: "8095"
       OVERLORD_MAX_NODES: "${OVERLORD_MAX_NODES:-10}"
       OVERLORD_ADMIN_PASSWORD: ${OVERLORD_ADMIN_PASSWORD:-admin123}
+      PHEROMONE_NATS_URL: nats://pheromone-nats:4222
       GIN_MODE: release
     ports:
       - "127.0.0.1:${OVERLORD_API_PORT:-8098}:8095"
@@ -41,6 +42,7 @@ services:
         condition: service_healthy
     networks:
       - overlord
+      - starclaw-pheromone
 
   console:
     build:
@@ -69,3 +71,6 @@ services:
 networks:
   overlord:
     driver: bridge
+  starclaw-pheromone:
+    name: starclaw-pheromone
+    external: true

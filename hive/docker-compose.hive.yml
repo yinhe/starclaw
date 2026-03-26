@@ -117,6 +117,7 @@ services:
       HIVE_CLAW_WEB_PORT: 8083
       HIVE_FREE_EXPIRE_DAYS: ${HIVE_FREE_EXPIRE_DAYS:-7}
       HIVE_MAX_FREE: ${HIVE_MAX_FREE:-100}
+      PHEROMONE_NATS_URL: ${PHEROMONE_NATS_URL:-nats://43.106.158.26:4222}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/run/nginx.pid:/var/run/nginx.pid:ro

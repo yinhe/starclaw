@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -14,6 +16,7 @@ import (
 	"starclaw.net/hive/api/handler"
 	"starclaw.net/hive/api/model"
 	"starclaw.net/hive/api/service"
+	pheromone "starclaw.net/pheromone/sdk"
 )
 
 func main() {
@@ -139,6 +142,25 @@ func main() {
 		admin.POST("/upgrade-instances", h.UpgradeInstances)
 		admin.GET("/blacklist", h.ListBlacklist)
 		admin.POST("/blacklist", h.AddBlacklist)
+	}
+
+	// Connect to Pheromone ESB
+	natsURL := os.Getenv("PHEROMONE_NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://127.0.0.1:4222"
+	}
+	ph, phErr := pheromone.New(natsURL, pheromone.ServiceInfo{
+		Name:    "hive",
+		Version: "1.0.0",
+		Port:    9090,
+		Tags:    []string{"hosting", "claw-instances", "docker"},
+	})
+	if phErr != nil {
+		log.Printf("[hive] pheromone connect failed (non-fatal): %v", phErr)
+	} else {
+		ph.StartHeartbeat(30 * time.Second)
+		defer ph.Close()
+		log.Printf("[hive] pheromone ESB connected (%s)", natsURL)
 	}
 
 	log.Printf("[hive] 🐝 Hive Controller starting on :%d (domain: %s)", cfg.Port, cfg.Domain)

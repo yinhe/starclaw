@@ -16,6 +16,7 @@ import (
 	"starclaw.net/overlord/api/internal/middleware"
 	"starclaw.net/overlord/api/internal/model"
 	"starclaw.net/overlord/api/internal/ws"
+	pheromone "starclaw.net/pheromone/sdk"
 )
 
 func main() {
@@ -419,6 +420,22 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "overlord-api"})
 	})
+
+	// Connect to Pheromone ESB
+	natsURL := getEnv("PHEROMONE_NATS_URL", "nats://127.0.0.1:4222")
+	ph, phErr := pheromone.New(natsURL, pheromone.ServiceInfo{
+		Name:    "overlord",
+		Version: "1.0.0",
+		Port:    8095,
+		Tags:    []string{"management", "monitoring", "team-agent"},
+	})
+	if phErr != nil {
+		log.Printf("[overlord] pheromone connect failed (non-fatal): %v", phErr)
+	} else {
+		ph.StartHeartbeat(30 * time.Second)
+		defer ph.Close()
+		log.Printf("[overlord] pheromone ESB connected (%s)", natsURL)
+	}
 
 	port := getEnv("OVERLORD_PORT", "8095")
 	log.Printf("[overlord] API service starting on :%s", port)

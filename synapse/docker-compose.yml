@@ -34,6 +34,7 @@ services:
       # Queen credit billing (star energy)
       - STAR_AI_QUEEN_URL=${STAR_AI_QUEEN_URL:-}
       - STAR_AI_QUEEN_TOKEN=${STAR_AI_QUEEN_TOKEN:-}
+      - PHEROMONE_NATS_URL=${PHEROMONE_NATS_URL:-nats://43.106.158.26:4222}
       # Provider API Keys（直接作为 env，provider registry 通过 key_env 读取）
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}

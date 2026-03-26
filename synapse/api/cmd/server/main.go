@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	pheromone "starclaw.net/pheromone/sdk"
 	"starclaw.net/synapse/api/internal/billing"
 	"starclaw.net/synapse/api/internal/config"
 	"starclaw.net/synapse/api/internal/database"
@@ -220,6 +222,25 @@ func main() {
 	providerProxy := handler.NewProviderProxyHandler(reg)
 	providerProxy.SetGenerationHandler(genHandler)
 	v1.Any("/proxy/:provider/*path", providerProxy.Forward)
+
+	// Connect to Pheromone ESB
+	natsURL := os.Getenv("PHEROMONE_NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://127.0.0.1:4222"
+	}
+	ph, phErr := pheromone.New(natsURL, pheromone.ServiceInfo{
+		Name:    "synapse",
+		Version: "1.0.0",
+		Port:    8096,
+		Tags:    []string{"ai", "gateway", "llm"},
+	})
+	if phErr != nil {
+		log.Printf("[star-ai] pheromone connect failed (non-fatal): %v", phErr)
+	} else {
+		ph.StartHeartbeat(30 * time.Second)
+		defer ph.Close()
+		log.Printf("[star-ai] pheromone ESB connected (%s)", natsURL)
+	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	log.Printf("[star-ai] API starting on %s (proxy → %s)", addr, cfg.Proxy.URL)
