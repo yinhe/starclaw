@@ -149,8 +149,9 @@ func Setup() *gin.Engine {
 		node.GET("/repos/:name/access", handler.CheckAccess)
 	}
 
-	// Hook endpoint (called by post-receive, uses same secret)
+	// Hook endpoints (called by post-receive, uses same secret)
 	r.POST("/hooks/push", middleware.SecretAuth(), handler.HookPush)
+	r.POST("/hooks/deploy-report", middleware.SecretAuth(), handler.ReportDeploy)
 
 	return r
 }

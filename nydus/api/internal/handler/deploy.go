@@ -114,6 +114,36 @@ func ListDeploys(c *gin.Context) {
 	c.JSON(200, gin.H{"deploys": result})
 }
 
+// ReportDeploy accepts deploy results from the post-receive bash hook.
+// POST /hooks/deploy-report
+func ReportDeploy(c *gin.Context) {
+	var records []DeployRecord
+	if err := c.ShouldBindJSON(&records); err != nil {
+		// Try single record
+		var single DeployRecord
+		if err2 := c.ShouldBindJSON(&single); err2 != nil {
+			c.JSON(400, gin.H{"error": "expected array or single deploy record"})
+			return
+		}
+		records = []DeployRecord{single}
+	}
+
+	deployMu.Lock()
+	for _, r := range records {
+		if r.Timestamp == "" {
+			r.Timestamp = time.Now().Format(time.RFC3339)
+		}
+		recentDeploys = append(recentDeploys, r)
+	}
+	if len(recentDeploys) > 200 {
+		recentDeploys = recentDeploys[len(recentDeploys)-200:]
+	}
+	deployMu.Unlock()
+
+	log.Printf("[nydus] received %d deploy report(s) from hook", len(records))
+	c.JSON(200, gin.H{"accepted": len(records)})
+}
+
 func deployToTargets(repo, branch, rev string, targets []config.TargetConfig) []DeployRecord {
 	var results []DeployRecord
 	for _, t := range targets {

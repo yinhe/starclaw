@@ -11,7 +11,19 @@ SSH_KEY="/home/git/.ssh/id_ed25519"
 SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10"
 PHEROMONE_NATS_HOST="127.0.0.1"
 PHEROMONE_NATS_PORT="4222"
+NYDUS_API="http://127.0.0.1:8098"
+NYDUS_SECRET="nydus-sc2026-vKwRmT9xLpQjN3hB"
 ENABLE_REMOTE_FORGE_DEPLOY="${ENABLE_REMOTE_FORGE_DEPLOY:-0}"
+
+# Report deploy result to Nydus API for dashboard display
+report_deploy_result() {
+  local repo="$1" branch="$2" rev="$3" target="$4" status="$5" msg="$6"
+  local ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  curl -sf -X POST "${NYDUS_API}/hooks/deploy-report?secret=${NYDUS_SECRET}" \
+    -H "Content-Type: application/json" \
+    -d "[{\"repo\":\"${repo}\",\"branch\":\"${branch}\",\"rev\":\"${rev}\",\"target\":\"${target}\",\"status\":\"${status}\",\"message\":\"${msg}\",\"timestamp\":\"${ts}\"}]" \
+    >/dev/null 2>&1 || true
+}
 
 publish_pheromone_deploy() {
   service="$1"
@@ -284,6 +296,7 @@ while read oldrev newrev refname; do
         echo "  -> queen-site deployed to starclaw.me (static files updated)" | tee -a "$LOG"
       fi
       publish_pheromone_deploy_result "queen" "completed" "$((SECONDS - _start))s" ""
+      report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "queen-server-c" "success" "deployed in $((SECONDS - _start))s"
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -300,6 +313,7 @@ while read oldrev newrev refname; do
       ssh $SSH_OPTS "$SERVER_A" 'curl -sf -X POST http://localhost:9090/hive/admin/upgrade-instances -H "Authorization: Bearer $HIVE_ADMIN_TOKEN"' >> "$LOG" 2>&1 || true
       echo "  -> hive instances upgrade triggered" | tee -a "$LOG"
       publish_pheromone_deploy_result "claw" "completed" "$((SECONDS - _start))s" ""
+      report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "claw-starclaw-me" "success" "deployed in $((SECONDS - _start))s"
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -315,6 +329,7 @@ while read oldrev newrev refname; do
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
       echo "  -> hive-controller rebuilt on Server A" | tee -a "$LOG"
       publish_pheromone_deploy_result "hive" "completed" "$((SECONDS - _start))s" ""
+      report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "hive-server-a" "success" "deployed in $((SECONDS - _start))s"
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -349,6 +364,7 @@ while read oldrev newrev refname; do
         echo "  -> synapse nginx config updated on B" | tee -a "$LOG"
       fi
       publish_pheromone_deploy_result "synapse" "completed" "$((SECONDS - _start))s" ""
+      report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "synapse-server-b" "success" "deployed in $((SECONDS - _start))s"
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -367,6 +383,7 @@ while read oldrev newrev refname; do
       docker compose -f docker-compose.prod.yml up -d --build api console web
       echo "  -> overlord rebuilt" | tee -a "$LOG"
       publish_pheromone_deploy_result "overlord" "completed" "$((SECONDS - _start))s" ""
+      report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "overlord-server-c" "success" "deployed in $((SECONDS - _start))s"
     ) >> "$LOG" 2>&1 &
   fi
 
