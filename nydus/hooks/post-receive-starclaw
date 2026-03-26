@@ -52,6 +52,7 @@ sync_to_polyrepo() {
 
   # Use separate index to avoid conflicts with concurrent operations
   local idx=$(mktemp)
+  rm -f "$idx"  # Remove empty file so git creates a valid index from scratch
 
   export GIT_DIR="$polyrepo"
   export GIT_WORK_TREE="$tmpdir"
