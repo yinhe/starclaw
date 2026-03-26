@@ -6,7 +6,7 @@ services:
     container_name: nydus-api
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8097:8095"
+      - "127.0.0.1:8098:8098"
     environment:
       NYDUS_CONFIG: /app/configs/nydus.yaml
       PHEROMONE_NATS_URL: nats://pheromone-nats:4222

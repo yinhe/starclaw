@@ -1,5 +1,5 @@
 server:
-  port: "8095"
+  port: "8098"
   secret: "nydus-sc2026-vKwRmT9xLpQjN3hB"
   repos_dir: "/data/nydus/repos"
   ssh_user: "git"
