@@ -31,7 +31,7 @@ services:
       PHEROMONE_NATS_URL: nats://pheromone-nats:4222
       GIN_MODE: release
     ports:
-      - "127.0.0.1:${OVERLORD_API_PORT:-8098}:8095"
+      - "127.0.0.1:${OVERLORD_API_PORT:-8095}:8095"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8095/health"]
       interval: 10s
