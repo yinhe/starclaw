@@ -33,6 +33,7 @@ export function InvestPage() {
   const [purchasing, setPurchasing] = useState(false);
   const [payMethod, setPayMethod] = useState<'alipay' | 'wechatpay'>('alipay');
   const [orderResult, setOrderResult] = useState<DiamondOrderResult | null>(null);
+  const [wxQr, setWxQr] = useState<{ orderNo: string; codeUrl: string; amount: string } | null>(null);
 
   // Agreement
   const [agreeTerm, setAgreeTerm] = useState(3);
@@ -178,6 +179,7 @@ export function InvestPage() {
         window.open(r.pay_url, '_blank');
         setMsg(`订单已创建 (${r.order_no})，请在新窗口完成支付`);
       } else if (r.code_url) {
+        setWxQr({ orderNo: r.order_no, codeUrl: r.code_url, amount: fmt(r.amount_yuan) });
         setMsg(`微信支付二维码已生成 (${r.order_no})`);
       }
       setPurchaseYuan('');
@@ -723,6 +725,29 @@ export function InvestPage() {
       <div className="border-t border-purple-500/10 mt-16 py-6 text-center text-xs text-gray-600">
         <span className="text-purple-500/40">◆</span> StarClaw · Star Diamond <span className="text-purple-500/40">◆</span>
       </div>
+      {/* WeChat QR Code Modal */}
+      {wxQr && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setWxQr(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-sm w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">微信扫码支付</h3>
+              <button onClick={() => setWxQr(null)} className="text-gray-500 hover:text-white cursor-pointer text-xl">&times;</button>
+            </div>
+            <div className="text-center space-y-3">
+              <div className="text-2xl font-bold text-green-400">¥{wxQr.amount}</div>
+              <div className="bg-white rounded-xl p-4 inline-block">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wxQr.codeUrl)}`}
+                  alt="WeChat Pay QR Code"
+                  className="w-48 h-48"
+                />
+              </div>
+              <p className="text-gray-400 text-sm">请用微信扫描二维码完成支付</p>
+              <p className="text-gray-500 text-xs">支付成功后页面会自动刷新</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
