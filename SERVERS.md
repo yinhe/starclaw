@@ -34,10 +34,14 @@
       ├── overseer.starclaw.net → overseer (:8087)       ← 监控面板
       ├── partner.starclaw.net  → partner (:8088)        ← 城市合伙人招募
       ├── city.starclaw.net    → city (:8089)           ← 城市合伙人 CRM
-      ├── overlord.starclaw.net → overlord-api (:8098)    ← 企业 AI 管控
+      ├── overlord.starclaw.net → overlord-api (:8095)    ← 企业 AI 管控
       │                          overlord-console (:3095)
       │                          overlord-web (:3096)
-      ├── nydus.starclaw.net   → nydus-server (:8095)   ← Claw 更新备源
+      ├── nydus.starclaw.net   → nydus-api (:8098)      ← 部署调度 + 更新备源
+      │                          nydus-web (:8101)       ← Nydus Dashboard
+      ├── forge                → forge-api (:8099)       ← CI/CD
+      ├── pheromone            → pheromone-api (:8100)   ← ESB 事件总线
+      │                          pheromone-nats (:4222)  ← NATS
       └── proxy.starclaw.net   → proxy (:8000)          ← AI API 中转
 ```
 
@@ -50,11 +54,21 @@
 | **官网** | — (静态文件) | — | **starclaw.me** | **落地页 + 文档 (10 语言)** |
 | Claw Web | starclaw-web | 8081 | app.starclaw.me | React 前端 (产品 Demo) |
 | Claw API | starclaw-api | 8080 | api.starclaw.me | Go 后端 |
-| MySQL | starclaw-mysql | 3306 | — | 数据库 |
+| MySQL | starclaw-mysql | 3306 | — | Claw 数据库 |
 | Redis | starclaw-redis | 6379 | — | 缓存 |
+| **Hive Web** | **hive-web** | **8082** | — | **多租户控制面板前端** |
+| **Hive Controller** | **hive-controller** | **9090** | — | **Hive API (实例管理)** |
+| **Hive MySQL** | **hive-mysql** | **3307** | — | **Hive 数据库** |
+| **Hive Redis** | **hive-redis** | **6380** | — | **Hive 缓存** |
+| Overlord API | starclaw-overlord-api | — | — | Overlord 客户端 (连 Server C 管控) |
+| Overlord Console | starclaw-overlord-console | 3095 | — | 管理控制台 |
+| Overlord Web | starclaw-overlord-web | 3096 | — | 员工工作台 |
+| Overlord MySQL | starclaw-overlord-mysql | 3306 | — | Overlord 数据库 |
+| Claw 实例 | claw-*-lite | 9001-9020 | *.starclaw.me | 租户 Claw 实例 (动态分配) |
 
-**代码目录：** `claw/` (开源产品) + `queen/site/` (官网，闭源)
-**部署：** `docker-compose.prod.yml` (Claw) + 静态文件 `/var/www/starclaw/website/` (官网)
+**代码目录：** `claw/` (开源产品) + `hive/` (多租户控制器) + `queen/site/` (官网，闭源)
+**部署路径：** `/opt/starclaw/` (Claw) + `/opt/hive/` (Hive) + `/opt/overlord/` (Overlord)
+**部署：** `docker-compose.prod.yml` (Claw) + `docker-compose.hive.yml` (Hive) + 静态文件 `/var/www/starclaw/website/` (官网)
 **nginx：** `/etc/nginx/sites-enabled/starclaw`
 
 ### 官网部署 (queen/site → starclaw.me)
@@ -147,18 +161,23 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 | City | starclaw-queen-city | 8089 | city.starclaw.net | 城市合伙人 CRM |
 | **Proxy** | **starclaw-queen-proxy** | **8000** | **proxy.starclaw.net** | **AI API 中转 (OpenAI/Grok/Fal/Runway)** |
 | **Redis** | **starclaw-queen-redis** | **6379** | — | **Proxy 队列** |
-| **Overlord API** | **starclaw-overlord-api** | **8098** | **overlord.starclaw.net** | **企业 AI 管控平台 API** |
+| **Overlord API** | **starclaw-overlord-api** | **8095** | **overlord.starclaw.net** | **企业 AI 管控平台 API** |
 | **Overlord Console** | **starclaw-overlord-console** | **3095** | **overlord.starclaw.net** | **管理控制台 (12 页)** |
 | **Overlord Web** | **starclaw-overlord-web** | **3096** | **overlord.starclaw.net/app** | **员工工作台 (5 页)** |
-| Overlord MySQL | starclaw-overlord-mysql | 3307 | — | Overlord 独立数据库 |
-| Nydus Server | nydus-server | 8095 | nydus.starclaw.net | Git 仓库 + 部署调度 + Claw 更新备源 |
-| Nydus Worm | nydus-worm | 8096 | — | 部署执行 Agent |
+| Overlord MySQL | starclaw-overlord-mysql | 3306 | — | Overlord 独立数据库 (内网) |
+| Nydus API | nydus-api | 8098 | nydus.starclaw.net | Git 仓库 + 部署调度 + Claw 更新备源 |
+| Nydus Web | nydus-web | 8101 | nydus.starclaw.net | Nydus Dashboard 前端 |
+| Nydus Worm | nydus-worm | — | — | 部署执行 Agent (Docker 内网) |
+| **Forge API** | **forge-api** | **8099** | — | **CI/CD 构建系统** |
+| **Pheromone API** | **pheromone-api** | **8100** | — | **ESB 事件总线** |
+| **Pheromone Web** | **pheromone-web** | **3110** | — | **ESB Dashboard** |
+| **Pheromone NATS** | **pheromone-nats** | **4222/8880** | **nats.starclaw.net** | **消息队列 (TCP + WebSocket)** |
 | MySQL | starclaw-queen-mysql | 3306 | — | 数据库 (starclaw_queen) |
 | Prometheus | starclaw-queen-prometheus | 9090 | — | 监控指标 (内网) |
 
-**代码目录：** `queen/` (含 `queen/proxy/`) + `nydus/`
-**部署路径：** `/opt/queen/` (Queen+Proxy) + `/opt/nydus/` (Nydus)
-**部署：** `docker-compose.prod.yml` (Queen+Proxy+Redis) + Nydus (裸进程)
+**代码目录：** `queen/` (含 `queen/proxy/`) + `nydus/` + `overlord/` + `forge/` + `pheromone/`
+**部署路径：** `/opt/queen/` + `/opt/nydus/` + `/opt/overlord/` + `/opt/forge/` + `/opt/pheromone/`
+**部署：** 各服务独立 `docker-compose` 文件
 **nginx：** `/etc/nginx/sites-enabled/queen` — 单文件统一管理所有子域名
 **SSL：** Let's Encrypt 通配符证书 `*.starclaw.net`（DNS-01 验证）
 **状态：** ✅ 容器运行中
@@ -170,13 +189,16 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 ```
 git push nydus master
   → SSH → /data/nydus/repos/starclaw.git (bare repo)
-  → post-receive hook → Nydus Server (:8095)
-  ├─ Target 1: queen-server-c (本地)
-  │  → Worm clone + sync queen/ 子目录
-  │  → docker compose -f docker-compose.prod.yml up -d --build (~20s)
-  └─ Target 2: gateway-server-b (跨服务器 SSH)
-     → git archive HEAD:queen/api | ssh → Server B
-     → SSH → Worm (:8097) → docker compose gateway (~1s cached)
+  → post-receive hook → Nydus API (:8098)
+  ├─ Pre-sync: pheromone-sdk → queen/overlord/synapse/hive 构建目录
+  ├─ queen-server-c     (本地 Worm, git archive + docker build)
+  ├─ overlord-server-c  (本地 Worm)
+  ├─ pheromone-server-c (本地 Worm)
+  ├─ cerebrate-server-c (本地 Worm)
+  ├─ gateway-server-b   (SSH → Server B, git archive + Worm)
+  ├─ synapse-server-b   (SSH → Server B)
+  ├─ hive-server-a      (SSH → Server A)
+  └─ claw-starclaw-me   (SSH → Server A)
 ```
 
 **Nydus remote:** `git remote add nydus git@43.106.158.26:starclaw.git`
@@ -192,15 +214,16 @@ git push nydus master
 Server C: starclaw.git (bare)
     │ post-receive hook
     ▼
-Nydus Server (:8095)
-    ├───────────────────────────────────────────────┐
-    │ Local (Docker network)                        │ SSH tunnel
-    ▼                                               ▼
-Worm Server C (:8096)                    Worm Server B (:8097)
-    │ clone + sync queen/                    │ code synced via git archive
-    ▼                                               ▼
-Queen (12 containers)                    Gateway (queen-api)
-starclaw.net                             star-ai.net/v1/*
+Nydus API (:8098)
+    ├─────────────────────────────────────┐──────────────┐
+    │ Local (Docker network)                   │ SSH + archive  │ SSH + archive
+    ▼                                          ▼              ▼
+Worm C (git archive → deploy)          Server B          Server A
+    │                                    (Synapse+GW)    (Hive+Claw)
+    ├→ Queen     (starclaw.net)
+    ├→ Overlord  (overlord.starclaw.net)
+    ├→ Pheromone (ESB)
+    └→ Cerebrate
 ```
 
 ## Server D — 已废弃 (~47.237.11.193)
@@ -212,15 +235,21 @@ starclaw.net                             star-ai.net/v1/*
 
 ```
 starclaw/                        # 私有 monorepo
-├── claw/           🦞           # Server A — 开源 Claw
-├── synapse/        ⛽           # Server B — star-ai.net
+├── claw/           🦞           # Server A — 开源 Claw (starclaw.me)
+├── hive/           🐝           # Server A — 多租户 Claw 控制器
+├── synapse/        ⛽           # Server B — star-ai.net AI 算力平台
+├── queen/          👑           # Server C — Queen 中央控制 (starclaw.net)
 ├── queen/proxy/    🌏           # Server C — AI API 海外中转 (proxy.starclaw.net)
-├── queen/          👑           # Server C — Queen 中央控制
-├── overlord/       👁️           # Server C — 企业 AI 管控 (overlord.starclaw.net)
-├── nydus/          🕳️           # Server C — 虫道代码分发系统
+├── overlord/       👁️           # Server C+A — 企业 AI 管控 (overlord.starclaw.net)
+├── nydus/          🕳️           # Server C — 虫道部署系统
+├── pheromone/      📡           # Server C — ESB 事件总线 (NATS)
+├── forge/          🔨           # Server C — CI/CD 构建系统
+├── cerebrate/      🧠           # Server C — 合伙人生态
+├── carapace/       🛡️           # Server A — 共享 Go 库
+├── spore/          🌱           # 桌面客户端 (Spore)
+├── larva/          🐛           # CLI 工具
 ├── .env                         # 环境变量（gitignored，含密钥）
 ├── .env.production.example      # 环境变量模板（tracked）
-├── .env.example                 # Claw 开源版模板
 ├── docker-compose.yml           # Claw 本地开发
 ├── docker-compose.prod.yml      # Claw 生产部署
 ├── SERVERS.md                   # 本文档
@@ -238,31 +267,20 @@ starclaw/                        # 私有 monorepo
 ## 网络拓扑
 
 ```
-                    ┌─────────────┐
-                    │   用户/Claw  │
-                    └──────┬──────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-     ┌────────▼──────┐  ┌─▼──────────┐ │
-     │  Server A     │  │ Server B   │ │
-     │  starclaw.me  │  │ star-ai.net│ │
-     │  (Claw)       │  │ (Synapse)  │ │
-     └───────┬───────┘  └──┬──────┬──┘ │
-             │             │      │    │
-             │    ┌────────▼──┐   │    │
-             │    │ Server D  │   │    │
-             │    │ proxy.    │   │    │
-             │    │ star-ai.  │   │    │
-             │    │ net       │   │    │
-             │    │(海外中转) │   │    │
-             │    └───────────┘   │    │
-             │                    │    │
-             └─────┐    ┌────────┘    │
-                   │    │             │
-              ┌────▼────▼────┐       │
-              │  Server C    │◄──────┘
-              │ starclaw.net │
-              │  (Queen)     │
-              └──────────────┘
+                      ┌─────────────┐
+                      │   用户/Claw  │
+                      └──────┬──────┘
+                             │
+           ┌─────────────────┼─────────────────┐
+           │                 │                 │
+  ┌────────▼──────┐  ┌──────▼───────┐  ┌──────▼──────────┐
+  │  Server A     │  │  Server B    │  │  Server C       │
+  │  starclaw.me  │  │  star-ai.net │  │  starclaw.net   │
+  │  Claw+Hive    │  │  Synapse     │  │  Queen+Overlord │
+  │  +Overlord    │  │  +Gateway    │  │  +Nydus+Pheromone│
+  └───────┬───────┘  └──────┬───────┘  │  +Forge+Proxy   │
+          │                 │          └────────┬────────┘
+          │   Pheromone ESB (NATS)              │
+          └──────────────┼──────────────────────┘
+                    TCP :4222 / WSS :8880
 ```

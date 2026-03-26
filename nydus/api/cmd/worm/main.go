@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -90,51 +89,33 @@ func deploy(c *gin.Context) {
 		return
 	}
 
-	// Step 2: Sync code from bare repo
+	// Step 2: Sync code from bare repo via git archive (fast, no clone needed)
 	if req.RepoURL != "" {
-		cacheDir := fmt.Sprintf("/tmp/nydus-cache/%s", req.Repo)
-		gitDir := fmt.Sprintf("%s/.git", cacheDir)
-
-		if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-			log.Printf("[worm] cloning %s → %s", req.RepoURL, cacheDir)
-			os.MkdirAll(cacheDir, 0755)
-			cmd := exec.Command("git", "clone", "--branch", req.Branch, "--single-branch", req.RepoURL, cacheDir)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				log.Printf("[worm] git clone failed: %v\n%s", err, out)
-				result.Status = "failed"
-				result.Output = fmt.Sprintf("git clone failed: %v\n%s", err, lastN(string(out), 2000))
-				result.Duration = time.Since(start).String()
-				saveDeploy(result)
-				c.JSON(500, result)
-				return
-			}
-		} else {
-			log.Printf("[worm] pulling latest in %s", cacheDir)
-			cmd := exec.Command("git", "-C", cacheDir, "fetch", "origin", req.Branch)
-			cmd.CombinedOutput()
-			cmd = exec.Command("git", "-C", cacheDir, "reset", "--hard", fmt.Sprintf("origin/%s", req.Branch))
-			cmd.CombinedOutput()
-		}
-
-		// Step 3: sync subdir to deploy path
-		srcDir := cacheDir
+		archivePath := "HEAD"
 		if req.Subdir != "" {
-			srcDir = fmt.Sprintf("%s/%s", cacheDir, req.Subdir)
+			archivePath = fmt.Sprintf("HEAD:%s", req.Subdir)
 		}
-		log.Printf("[worm] syncing %s/ → %s/", srcDir, req.DeployPath)
-		syncCmd := exec.Command("sh", "-c", fmt.Sprintf(
-			`cd "%s" && find . -not -path './.git/*' -not -name '.git' | while read f; do
-				if [ -d "$f" ]; then mkdir -p "%s/$f"; else cp -f "$f" "%s/$f" 2>/dev/null; fi
-			done`, srcDir, req.DeployPath, req.DeployPath))
-		if out, err := syncCmd.CombinedOutput(); err != nil {
-			log.Printf("[worm] sync warning: %v\n%s", err, out)
+		archiveCmd := fmt.Sprintf(
+			`git --git-dir=%s archive %s | tar xf - -C %s`,
+			req.RepoURL, archivePath, req.DeployPath,
+		)
+		log.Printf("[worm] syncing %s:%s → %s", req.RepoURL, archivePath, req.DeployPath)
+		cmd := exec.Command("sh", "-c", archiveCmd)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("[worm] git archive sync failed: %v\n%s", err, out)
+			result.Status = "failed"
+			result.Output = fmt.Sprintf("code sync failed: %v\n%s", err, lastN(string(out), 2000))
+			result.Duration = time.Since(start).String()
+			saveDeploy(result)
+			c.JSON(500, result)
+			return
 		}
+		log.Printf("[worm] code synced to %s", req.DeployPath)
 	}
 
-	// Step 4: Run deploy command
+	// Step 3: Run deploy command via sh -c (supports pipes, &&, etc.)
 	log.Printf("[worm] running: %s (in %s)", req.DeployCmd, req.DeployPath)
-	parts := strings.Fields(req.DeployCmd)
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command("sh", "-c", req.DeployCmd)
 	cmd.Dir = req.DeployPath
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("NYDUS_REPO=%s", req.Repo),
