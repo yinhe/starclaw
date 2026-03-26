@@ -39,6 +39,13 @@ func (d *DockerService) CreateContainer(inst *model.ClawInstance) (string, error
 		// Resource limits
 		"--cpus", fmt.Sprintf("%.1f", inst.CPULimit),
 		"--memory", fmt.Sprintf("%dM", inst.MemoryLimit/(1024*1024)),
+		"--pids-limit", "256",
+		// Security hardening — prevent host control
+		"--security-opt", "no-new-privileges",
+		"--cap-drop", "ALL",
+		"--read-only",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
+		"--tmpfs", "/app/tmp:rw,noexec,nosuid,size=128m",
 		// Volumes
 		"-v", fmt.Sprintf("%s/identity:/app/data/identity", dataDir),
 		"-v", fmt.Sprintf("%s/uploads:/app/uploads", dataDir),
@@ -92,6 +99,12 @@ func (d *DockerService) CreateLiteContainer(inst *model.ClawInstance) (string, e
 		// Resource limits (Spark: lightweight)
 		"--cpus", fmt.Sprintf("%.2f", inst.CPULimit),
 		"--memory", fmt.Sprintf("%dM", inst.MemoryLimit/(1024*1024)),
+		"--pids-limit", "128",
+		// Security hardening
+		"--security-opt", "no-new-privileges",
+		"--cap-drop", "ALL",
+		"--read-only",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
 		// Volumes (data + identity only, no uploads/workspaces for lite)
 		"-v", fmt.Sprintf("%s/data:/opt/claw/data", dataDir),
 		"-v", fmt.Sprintf("%s/identity:/app/data/identity", dataDir),

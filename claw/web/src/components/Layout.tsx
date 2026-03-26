@@ -49,7 +49,6 @@ function getNavGroups(t: (key: string) => string): NavGroup[] {
         { to: '/agents', icon: Bot, label: t('nav.agents') },
         { to: '/marketplace', icon: Store, label: t('nav.marketplace') },
         { to: '/squads', icon: Swords, label: t('nav.squads') },
-        { to: '/hivemind', icon: Radar, label: t('nav.hivemind') },
       ],
     },
     {
