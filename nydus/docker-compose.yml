@@ -16,6 +16,7 @@ services:
       - /root/.ssh/known_hosts:/root/.ssh/known_hosts
     networks:
       - starqueen
+      - starclaw-pheromone
 
   web:
     build:
@@ -49,4 +50,7 @@ services:
 networks:
   starqueen:
     name: starqueen
+    external: true
+  starclaw-pheromone:
+    name: starclaw-pheromone
     external: true
