@@ -152,9 +152,25 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # 📊 Price Scraper: Scrapling-based model pricing monitor (6h interval)
+  scraper:
+    build:
+      context: ./scraper
+    container_name: starclaw-synapse-scraper
+    environment:
+      - PROVIDERS_DIR=/providers
+      - SNAPSHOT_DIR=/data/pricing-snapshots
+      - PHEROMONE_NATS_URL=nats://starclaw-pheromone-nats:4222
+      - SCRAPE_INTERVAL_HOURS=6
+    volumes:
+      - ./api/providers:/providers:ro
+      - scraper_data:/data/pricing-snapshots
+    restart: unless-stopped
+
 volumes:
   star_ai_mysql:
   proxy_data:
+  scraper_data:
 
 networks:
   default:
