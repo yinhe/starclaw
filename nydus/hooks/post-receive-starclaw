@@ -184,11 +184,18 @@ sync_to_polyrepo() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] ${subdir}.git updated (${new_commit:0:7})"
 }
 
-# Close stdout/stderr inherited from git SSH so push returns immediately.
-# All output goes to LOG file only.
-exec 1>>"$LOG" 2>&1
-
+# Read all refs from stdin FIRST (git writes multiple lines for multi-commit push)
+REFS=""
 while read oldrev newrev refname; do
+  REFS="${REFS}${oldrev} ${newrev} ${refname}\n"
+done
+
+# Fork entire processing into background so git push returns immediately
+(
+exec >>"$LOG" 2>&1
+
+echo "$REFS" | while read oldrev newrev refname; do
+  [ -z "$oldrev" ] && continue
   # Sync tags to claw.git (for Molt release detection)
   case "$refname" in
     refs/tags/v*)
@@ -477,5 +484,11 @@ while read oldrev newrev refname; do
     fi
   ) </dev/null >> "$LOG" 2>&1 &
 
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED" | cat >> "$LOG"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED"
 done
+
+# Wait for all background deploy jobs to finish before exiting
+wait
+echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] All background jobs completed"
+
+) </dev/null &
