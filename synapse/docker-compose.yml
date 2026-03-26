@@ -14,7 +14,7 @@ services:
       args:
         GOPROXY: https://goproxy.cn,direct
         REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
-    container_name: star-ai-api
+    container_name: starclaw-synapse-api
     ports:
       - "8096:8096"
     environment:
@@ -61,7 +61,7 @@ services:
       dockerfile: Dockerfile
       args:
         REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
-    container_name: star-ai-proxy
+    container_name: starclaw-synapse-proxy
     # 不暴露端口！仅内网 proxy:8000 可达
     expose:
       - "8000"
@@ -104,7 +104,7 @@ services:
       dockerfile: Dockerfile
       args:
         REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
-    container_name: star-ai-web
+    container_name: starclaw-synapse-web
     ports:
       - "3096:80"
     depends_on:
@@ -118,7 +118,7 @@ services:
       dockerfile: Dockerfile
       args:
         REGISTRY: ${DOCKER_REGISTRY:-docker.m.daocloud.io}
-    container_name: star-ai-core
+    container_name: starclaw-synapse-core
     ports:
       - "3097:80"
     depends_on:
@@ -127,7 +127,7 @@ services:
 
   mysql:
     image: docker.m.daocloud.io/library/mysql:8.0
-    container_name: star-ai-mysql
+    container_name: starclaw-synapse-mysql
     ports:
       - "13306:3306"   # dev access (remove in production)
     environment:
@@ -144,7 +144,7 @@ services:
 
   redis:
     image: docker.m.daocloud.io/library/redis:7-alpine
-    container_name: star-ai-redis
+    container_name: starclaw-synapse-redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -155,3 +155,7 @@ services:
 volumes:
   star_ai_mysql:
   proxy_data:
+
+networks:
+  default:
+    name: starclaw-synapse

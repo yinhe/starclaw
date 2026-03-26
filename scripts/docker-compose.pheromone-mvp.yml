@@ -4,7 +4,7 @@ name: pheromone
 services:
   pheromone-nats:
     image: nats:2.10-alpine
-    container_name: pheromone-nats
+    container_name: starclaw-pheromone-nats
     restart: unless-stopped
     command:
       - "-js"
@@ -31,7 +31,7 @@ services:
 
   pheromone-nats-exporter:
     image: natsio/prometheus-nats-exporter:0.14.0
-    container_name: pheromone-nats-exporter
+    container_name: starclaw-pheromone-exporter
     restart: unless-stopped
     command:
       - "-varz"

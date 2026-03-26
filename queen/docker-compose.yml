@@ -11,7 +11,7 @@ services:
     volumes:
       - ./data/mysql:/var/lib/mysql
     networks:
-      - starqueen
+      - starclaw-queen
 
   swarm:
     build:
@@ -27,7 +27,7 @@ services:
     depends_on:
       - mysql-queen
     networks:
-      - starqueen
+      - starclaw-queen
 
   core:
     build:
@@ -39,7 +39,7 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   bounty:
     build:
@@ -58,7 +58,7 @@ services:
       - mysql-queen
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   forum:
     build:
@@ -74,7 +74,7 @@ services:
     depends_on:
       - mysql-queen
     networks:
-      - starqueen
+      - starclaw-queen
 
   arena:
     build:
@@ -90,7 +90,7 @@ services:
     depends_on:
       - mysql-queen
     networks:
-      - starqueen
+      - starclaw-queen
 
   queen-api:
     build:
@@ -112,7 +112,7 @@ services:
       - mysql-queen
       - swarm
     networks:
-      - starqueen
+      - starclaw-queen
 
   queen-web:
     build:
@@ -127,7 +127,7 @@ services:
       - arena
       - bounty
     networks:
-      - starqueen
+      - starclaw-queen
 
   city:
     build:
@@ -139,7 +139,7 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   partner:
     build:
@@ -151,9 +151,9 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
 networks:
-  starqueen:
-    name: starqueen
+  starclaw-queen:
+    name: starclaw-queen
     driver: bridge

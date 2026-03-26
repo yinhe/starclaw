@@ -3,13 +3,13 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: nydus-api
+    container_name: starclaw-nydus-api
     restart: unless-stopped
     ports:
       - "127.0.0.1:8098:8098"
     environment:
       NYDUS_CONFIG: /app/configs/nydus.yaml
-      PHEROMONE_NATS_URL: nats://pheromone-nats:4222
+      PHEROMONE_NATS_URL: nats://starclaw-pheromone-nats:4222
     volumes:
       - /data/nydus/repos:/data/nydus/repos
       - /data/nydus/nydus.db:/data/nydus/nydus.db
@@ -17,27 +17,27 @@ services:
       - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
       - /root/.ssh/known_hosts:/root/.ssh/known_hosts
     networks:
-      - starqueen
+      - starclaw-queen
       - starclaw-pheromone
 
   web:
     build:
       context: ./web
       dockerfile: Dockerfile
-    container_name: nydus-web
+    container_name: starclaw-nydus-web
     restart: unless-stopped
     ports:
       - "127.0.0.1:8101:80"
     depends_on:
       - api
     networks:
-      - starqueen
+      - starclaw-queen
 
   worm:
     build:
       context: ./api
       dockerfile: Dockerfile.worm
-    container_name: nydus-worm
+    container_name: starclaw-nydus-worm
     restart: unless-stopped
     environment:
       NYDUS_WORM_CONFIG: /app/configs/worm.yaml
@@ -47,11 +47,11 @@ services:
       - /opt:/opt
       - /data/nydus/repos:/data/nydus/repos:ro
     networks:
-      - starqueen
+      - starclaw-queen
 
 networks:
-  starqueen:
-    name: starqueen
+  starclaw-queen:
+    name: starclaw-queen
     external: true
   starclaw-pheromone:
     name: starclaw-pheromone

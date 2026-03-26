@@ -13,7 +13,7 @@ services:
     volumes:
       - ./data/mysql:/var/lib/mysql
     networks:
-      - overlord
+      - starclaw-overlord
 
   api:
     build:
@@ -27,14 +27,14 @@ services:
       OVERLORD_ADMIN_PASSWORD: "${OVERLORD_ADMIN_PASSWORD:-admin123}"
       OVERLORD_MAX_NODES: "${OVERLORD_MAX_NODES:-10}"
       OVERLORD_CLAW_TOKEN: "${OVERLORD_CLAW_TOKEN:-overlord-internal-default}"
-      PHEROMONE_NATS_URL: ${PHEROMONE_NATS_URL:-nats://pheromone-nats:4222}
+      PHEROMONE_NATS_URL: ${PHEROMONE_NATS_URL:-nats://starclaw-pheromone-nats:4222}
       GIN_MODE: release
     ports:
       - "127.0.0.1:8095:8095"
     depends_on:
       - mysql-overlord
     networks:
-      - overlord
+      - starclaw-overlord
       - starclaw-pheromone
 
   console:
@@ -47,7 +47,7 @@ services:
     depends_on:
       - api
     networks:
-      - overlord
+      - starclaw-overlord
 
   web:
     build:
@@ -59,10 +59,10 @@ services:
     depends_on:
       - api
     networks:
-      - overlord
+      - starclaw-overlord
 
 networks:
-  overlord:
+  starclaw-overlord:
     driver: bridge
   starclaw-pheromone:
     external: true

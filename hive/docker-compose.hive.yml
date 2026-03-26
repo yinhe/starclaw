@@ -7,7 +7,7 @@ services:
   # Shared MySQL for all Hive Claw instances + Hive Controller DB
   mysql:
     image: mysql:8.0
-    container_name: hive-mysql
+    container_name: starclaw-hive-mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: ${HIVE_MYSQL_ROOT_PASS:-hive_prod_2026}
@@ -32,7 +32,7 @@ services:
   # Shared Redis for all Hive Claw instances
   redis:
     image: redis:7-alpine
-    container_name: hive-redis
+    container_name: starclaw-hive-redis
     restart: always
     command: >
       redis-server
@@ -57,7 +57,7 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
-    container_name: hive-web
+    container_name: starclaw-hive-web
     restart: always
     networks:
       - hive-net
@@ -69,7 +69,7 @@ services:
     build:
       context: ../claw/web
       dockerfile: Dockerfile
-    container_name: hive-claw-web
+    container_name: starclaw-hive-claw-web
     restart: always
     networks:
       - hive-net
@@ -81,7 +81,7 @@ services:
     build:
       context: ..
       dockerfile: hive/api/Dockerfile
-    container_name: hive-controller
+    container_name: starclaw-hive-controller
     restart: always
     pid: "host"
     privileged: true
@@ -93,7 +93,7 @@ services:
       HIVE_SSL_CERT: /etc/letsencrypt/live/starclaw.me/fullchain.pem
       HIVE_SSL_KEY: /etc/letsencrypt/live/starclaw.me/privkey.pem
       HIVE_CLAW_IMAGE: starclaw-api:latest
-      HIVE_NETWORK: hive-net
+      HIVE_NETWORK: starclaw-hive
       HIVE_PORT_START: 9001
       HIVE_PORT_END: 9999
       HIVE_MYSQL_HOST: hive-mysql
@@ -137,4 +137,4 @@ services:
 networks:
   hive-net:
     driver: bridge
-    name: hive-net
+    name: starclaw-hive

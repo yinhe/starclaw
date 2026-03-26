@@ -9,7 +9,7 @@ services:
     volumes:
       - ./data/mysql:/var/lib/mysql
     networks:
-      - starqueen
+      - starclaw-queen
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${QUEEN_DB_PASSWORD:-starclaw_queen_2026}"]
       interval: 10s
@@ -33,7 +33,7 @@ services:
       mysql-queen:
         condition: service_healthy
     networks:
-      - starqueen
+      - starclaw-queen
 
   core:
     build:
@@ -45,7 +45,7 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   bounty:
     build:
@@ -66,7 +66,7 @@ services:
       queen-api:
         condition: service_started
     networks:
-      - starqueen
+      - starclaw-queen
 
   forum:
     build:
@@ -83,7 +83,7 @@ services:
       mysql-queen:
         condition: service_healthy
     networks:
-      - starqueen
+      - starclaw-queen
 
   arena:
     build:
@@ -100,7 +100,7 @@ services:
       mysql-queen:
         condition: service_healthy
     networks:
-      - starqueen
+      - starclaw-queen
 
   queen-api:
     build:
@@ -118,7 +118,7 @@ services:
       STARAI_URL: "${STARAI_URL:-https://api.star-ai.net}"
       STARAI_TOKEN: "${STARAI_TOKEN:-}"
       STARAI_CALLBACK_BASE: "${STARAI_CALLBACK_BASE:-}"
-      PHEROMONE_NATS_URL: nats://pheromone-nats:4222
+      PHEROMONE_NATS_URL: nats://starclaw-pheromone-nats:4222
       GIN_MODE: release
     ports:
       - "127.0.0.1:8085:8085"
@@ -128,7 +128,7 @@ services:
       swarm:
         condition: service_started
     networks:
-      - starqueen
+      - starclaw-queen
       - starclaw-pheromone
 
   queen-web:
@@ -141,7 +141,7 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   # ===================== Landing Page (starclaw.net site) =====================
 
@@ -153,7 +153,7 @@ services:
     ports:
       - "127.0.0.1:8097:80"
     networks:
-      - starqueen
+      - starclaw-queen
 
   # ===================== Overseer (monitoring dashboard) =====================
 
@@ -167,7 +167,7 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   # ===================== City Partner Portal =====================
 
@@ -181,7 +181,7 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   # ===================== Partner Portal =====================
 
@@ -195,7 +195,7 @@ services:
     depends_on:
       - queen-api
     networks:
-      - starqueen
+      - starclaw-queen
 
   # ===================== Monitoring =====================
 
@@ -213,14 +213,14 @@ services:
     ports:
       - "127.0.0.1:9090:9090"
     networks:
-      - starqueen
+      - starclaw-queen
 
 volumes:
   prometheus_data:
 
 networks:
-  starqueen:
-    name: starqueen
+  starclaw-queen:
+    name: starclaw-queen
     driver: bridge
   starclaw-pheromone:
     name: starclaw-pheromone

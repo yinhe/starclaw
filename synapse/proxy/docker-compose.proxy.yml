@@ -8,7 +8,7 @@
     volumes:
       - redis_proxy_data:/data
     networks:
-      - starqueen
+      - starclaw-queen
 
   proxy:
     build:
@@ -24,4 +24,4 @@
     depends_on:
       - redis-proxy
     networks:
-      - starqueen
+      - starclaw-queen

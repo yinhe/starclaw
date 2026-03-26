@@ -17,7 +17,7 @@ proxy_services = """
     volumes:
       - redis_proxy_data:/data
     networks:
-      - starqueen
+      - starclaw-queen
 
   proxy:
     build:
@@ -33,7 +33,7 @@ proxy_services = """
     depends_on:
       - redis-proxy
     networks:
-      - starqueen
+      - starclaw-queen
 """
 
 # Insert before 'volumes:' section and add redis_proxy_data volume

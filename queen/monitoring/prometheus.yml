@@ -6,7 +6,7 @@ rule_files:
   - "alerts.yml"
 
 scrape_configs:
-  # ── Queen Services (same Docker network: starqueen) ──
+  # ── Queen Services (same Docker network: starclaw-queen) ──
   - job_name: 'queen-api'
     static_configs:
       - targets: ['queen-api:8085']
