@@ -469,6 +469,16 @@ export function InvestPage() {
                     <div className="text-xs text-gray-500 mb-2">
                       {orderResult.shares} 份 × {fmt(orderResult.price_yuan)} = {fmt(orderResult.amount_yuan)}
                     </div>
+                    {orderResult.code_url && (
+                      <div className="flex flex-col items-center gap-2 py-3">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(orderResult.code_url)}`}
+                          alt="微信支付二维码"
+                          className="w-48 h-48 rounded-lg bg-white p-2"
+                        />
+                        <span className="text-xs text-green-400">请用微信扫码支付</span>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       {orderResult.pay_url && (
                         <a href={orderResult.pay_url} target="_blank" rel="noopener noreferrer"
