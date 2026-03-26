@@ -458,6 +458,12 @@ echo "$REFS" | while read oldrev newrev refname; do
       mkdir -p /opt/nydus/api/pheromone-sdk
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/nydus/api/pheromone-sdk 2>/dev/null || true
       docker compose up -d --build api
+      # Auto-install the smart hook (this file) into the bare repo
+      if [ -f /opt/nydus/hooks/post-receive-starclaw ]; then
+        cp /opt/nydus/hooks/post-receive-starclaw "$REPO/hooks/post-receive"
+        chmod +x "$REPO/hooks/post-receive"
+        echo "  -> hook auto-installed from post-receive-starclaw"
+      fi
       echo "  -> nydus config synced & api rebuilt" | cat >> "$LOG"
     ) </dev/null >> "$LOG" 2>&1 &
   fi
