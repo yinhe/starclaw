@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pheromone Console</title>
+    <title>Pheromone Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -11,42 +11,89 @@
   </head>
   <body>
     <div class="aurora"></div>
-    <main class="layout">
-      <header class="hero">
-        <h1>Pheromone Console</h1>
-        <p>Event bus stream for StarClaw swarm systems.</p>
-        <div class="status-row">
-          <span id="api-status" class="chip">API: connecting</span>
-          <span id="nats-status" class="chip">NATS: unknown</span>
+
+    <!-- Login Gate -->
+    <div id="login-view" class="login-view">
+      <div class="login-card">
+        <h1>Pheromone</h1>
+        <p>StarClaw Event Bus Dashboard</p>
+        <form id="login-form">
+          <input id="token-input" type="password" placeholder="Access Token" required autocomplete="off" />
+          <button type="submit">Enter</button>
+        </form>
+        <div id="login-error" class="login-error"></div>
+      </div>
+    </div>
+
+    <!-- Dashboard (hidden until auth) -->
+    <main id="dashboard" class="layout" style="display:none">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1>Pheromone</h1>
+          <span id="api-chip" class="chip">API: connecting</span>
+          <span id="nats-chip" class="chip">NATS: unknown</span>
+        </div>
+        <div class="topbar-right">
+          <span id="user-label" class="chip user-chip"></span>
+          <button id="logout-btn" class="btn-sm">Logout</button>
         </div>
       </header>
 
-      <section class="panel">
-        <h2>Publish Event</h2>
-        <form id="publish-form" class="form-grid">
-          <label>
-            Subject
-            <input id="subject" type="text" value="pheromone.events.deploy.forge" required />
-          </label>
-          <label>
-            Payload (JSON)
-            <textarea id="payload" rows="7">{
-  "event": "deploy.triggered",
-  "service": "forge",
-  "repo": "pheromone-webui",
-  "branch": "master",
-  "actor": "web-ui"
-}</textarea>
-          </label>
-          <button type="submit">Publish</button>
-        </form>
+      <!-- Stats Row -->
+      <section class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-services">0</div>
+          <div class="stat-label">Services</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-online">0</div>
+          <div class="stat-label">Online</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-events">0</div>
+          <div class="stat-label">Total Events</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-subjects">0</div>
+          <div class="stat-label">Subjects</div>
+        </div>
       </section>
 
+      <!-- Services -->
       <section class="panel">
-        <h2>Live Stream</h2>
+        <h2>Services</h2>
+        <div id="services-grid" class="services-grid"></div>
+      </section>
+
+      <!-- Two-column: Subjects + Publish -->
+      <div class="two-col">
+        <section class="panel">
+          <h2>Subjects</h2>
+          <div id="subjects-list" class="subjects-list"></div>
+        </section>
+        <section class="panel">
+          <h2>Publish Event</h2>
+          <form id="publish-form" class="form-grid">
+            <label>Subject<input id="pub-subject" type="text" value="pheromone.events.test" required /></label>
+            <label>Payload<textarea id="pub-payload" rows="5">{"message":"hello from dashboard"}</textarea></label>
+            <button type="submit">Publish</button>
+          </form>
+        </section>
+      </div>
+
+      <!-- Live Stream -->
+      <section class="panel stream-panel">
+        <div class="stream-header">
+          <h2>Live Event Stream</h2>
+          <div class="stream-controls">
+            <button id="pause-btn" class="btn-sm">Pause</button>
+            <button id="clear-btn" class="btn-sm">Clear</button>
+          </div>
+        </div>
         <div id="stream" class="stream"></div>
       </section>
     </main>
+
     <script src="./app.js"></script>
   </body>
 </html>

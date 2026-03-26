@@ -20,6 +20,60 @@ type Event struct {
 	Timestamp time.Time       `json:"timestamp"`
 }
 
+// ========== Dashboard Auth (whitelist tokens) ==========
+
+var dashboardTokens map[string]string // token → label
+
+func loadDashboardTokens() {
+	dashboardTokens = make(map[string]string)
+	// Format: "token1:label1,token2:label2" or just "token1,token2"
+	raw := envOr("PHEROMONE_DASHBOARD_TOKENS", "")
+	if raw == "" {
+		// Default dev token
+		dashboardTokens["ph-admin-2026"] = "admin"
+		return
+	}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if idx := strings.Index(part, ":"); idx > 0 {
+			dashboardTokens[part[:idx]] = part[idx+1:]
+		} else {
+			dashboardTokens[part] = "user"
+		}
+	}
+	log.Printf("[pheromone] loaded %d dashboard tokens", len(dashboardTokens))
+}
+
+func checkAuth(r *http.Request) (string, bool) {
+	// Check Authorization: Bearer <token>
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if label, ok := dashboardTokens[token]; ok {
+			return label, true
+		}
+	}
+	// Check query param ?token=<token>
+	token := r.URL.Query().Get("token")
+	if label, ok := dashboardTokens[token]; ok {
+		return label, true
+	}
+	return "", false
+}
+
+func withAuth(next http.HandlerFunc) http.HandlerFunc {
+	return withCORS(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := checkAuth(r); !ok {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		next(w, r)
+	})
+}
+
 // ========== Service Registry ==========
 
 type ServiceEntry struct {
@@ -151,6 +205,54 @@ func (r *ServiceRegistry) reaper() {
 	}
 }
 
+// ========== Subject Stats ==========
+
+type SubjectStats struct {
+	mu       sync.RWMutex
+	counts   map[string]int64
+	lastSeen map[string]time.Time
+}
+
+func NewSubjectStats() *SubjectStats {
+	return &SubjectStats{
+		counts:   make(map[string]int64),
+		lastSeen: make(map[string]time.Time),
+	}
+}
+
+func (s *SubjectStats) Record(subject string) {
+	s.mu.Lock()
+	s.counts[subject]++
+	s.lastSeen[subject] = time.Now().UTC()
+	s.mu.Unlock()
+}
+
+type SubjectInfo struct {
+	Subject  string    `json:"subject"`
+	Count    int64     `json:"count"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
+func (s *SubjectStats) List() []SubjectInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]SubjectInfo, 0, len(s.counts))
+	for subj, cnt := range s.counts {
+		out = append(out, SubjectInfo{Subject: subj, Count: cnt, LastSeen: s.lastSeen[subj]})
+	}
+	return out
+}
+
+func (s *SubjectStats) Total() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var total int64
+	for _, c := range s.counts {
+		total += c
+	}
+	return total
+}
+
 type EventHub struct {
 	mu     sync.RWMutex
 	recent []Event
@@ -215,6 +317,8 @@ func main() {
 	port := envOr("PHEROMONE_PORT", "8100")
 	natsURL := envOr("PHEROMONE_NATS_URL", "nats://pheromone-nats:4222")
 	hub := NewEventHub(300)
+	subjectStats := NewSubjectStats()
+	loadDashboardTokens()
 
 	registry := NewServiceRegistry(90 * time.Second)
 
@@ -232,6 +336,7 @@ func main() {
 	_, err = nc.Subscribe("pheromone.events.>", func(msg *nats.Msg) {
 		payload := normalizePayload(msg.Data)
 		hub.Add(Event{Subject: msg.Subject, Payload: payload, Timestamp: time.Now().UTC()})
+		subjectStats.Record(msg.Subject)
 	})
 	if err != nil {
 		log.Fatalf("subscribe events: %v", err)
@@ -262,10 +367,16 @@ func main() {
 		}
 		registry.Update(name, msg.Data)
 		hub.Add(Event{Subject: msg.Subject, Payload: msg.Data, Timestamp: time.Now().UTC()})
+		subjectStats.Record(msg.Subject)
 	})
 	if err != nil {
 		log.Fatalf("subscribe registry: %v", err)
 	}
+
+	// Also track heartbeats in stats
+	_, _ = nc.Subscribe("pheromone.heartbeat.>", func(msg *nats.Msg) {
+		subjectStats.Record(msg.Subject)
+	})
 
 	http.HandleFunc("/health", withCORS(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -276,12 +387,33 @@ func main() {
 		})
 	}))
 
-	// Service registry API
-	http.HandleFunc("/api/services", withCORS(func(w http.ResponseWriter, _ *http.Request) {
+	// Auth check endpoint
+	http.HandleFunc("/api/auth/check", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		label, ok := checkAuth(r)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "label": label})
+	}))
+
+	// Dashboard stats (protected)
+	http.HandleFunc("/api/dashboard/stats", withAuth(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"total_events":   subjectStats.Total(),
+			"subjects":       subjectStats.List(),
+			"services":       registry.List(),
+			"nats_connected": nc.IsConnected(),
+			"event_buffer":   len(hub.recent),
+		})
+	}))
+
+	// Service registry API (protected)
+	http.HandleFunc("/api/services", withAuth(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"services": registry.List()})
 	}))
 
-	http.HandleFunc("/api/services/", withCORS(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/services/", withAuth(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/api/services/")
 		if name == "" {
 			writeJSON(w, http.StatusOK, map[string]interface{}{"services": registry.List()})
@@ -295,7 +427,7 @@ func main() {
 		writeJSON(w, http.StatusOK, entry)
 	}))
 
-	http.HandleFunc("/api/events/recent", withCORS(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/events/recent", withAuth(func(w http.ResponseWriter, r *http.Request) {
 		limit := 50
 		if q := r.URL.Query().Get("limit"); q != "" {
 			if n, err := strconv.Atoi(q); err == nil {
@@ -305,7 +437,7 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"events": hub.Recent(limit)})
 	}))
 
-	http.HandleFunc("/api/events", withCORS(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/events", withAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
@@ -340,7 +472,7 @@ func main() {
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "published"})
 	}))
 
-	http.HandleFunc("/api/events/stream", withCORS(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/events/stream", withAuth(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stream unsupported"})
