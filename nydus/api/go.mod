@@ -12,7 +12,7 @@ require (
 	starclaw.net/pheromone/sdk v0.0.0
 )
 
-replace starclaw.net/pheromone/sdk => ../../pheromone/sdk
+replace starclaw.net/pheromone/sdk => ./pheromone-sdk
 
 require (
 	github.com/bytedance/sonic v1.12.6 // indirect

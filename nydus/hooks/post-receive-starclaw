@@ -385,9 +385,9 @@ while read oldrev newrev refname; do
     (
       cd /opt/nydus
       git --git-dir="$REPO" archive HEAD:nydus | tar xf - 2>/dev/null || true
-      # Ensure pheromone/sdk is available for go.mod replace directive
-      mkdir -p /opt/pheromone/sdk
-      git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/pheromone/sdk 2>/dev/null || true
+      # Copy pheromone/sdk into api/ for Docker build context (go.mod replace ./pheromone-sdk)
+      mkdir -p /opt/nydus/api/pheromone-sdk
+      git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/nydus/api/pheromone-sdk 2>/dev/null || true
       docker compose up -d --build api
       echo "  -> nydus config synced & api rebuilt" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
