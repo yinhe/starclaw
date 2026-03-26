@@ -187,7 +187,8 @@ sync_to_polyrepo() {
 # Read all refs from stdin FIRST (git writes multiple lines for multi-commit push)
 REFS=""
 while read oldrev newrev refname; do
-  REFS="${REFS}${oldrev} ${newrev} ${refname}\n"
+  REFS="${REFS}${oldrev} ${newrev} ${refname}
+"
 done
 
 # Fork entire processing into background so git push returns immediately
