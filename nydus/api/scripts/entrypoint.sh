@@ -27,6 +27,16 @@ chown -R git:git /data/nydus/repos/.ssh
 chmod 700 /data/nydus/repos/.ssh
 echo "[nydus] git user home set to /data/nydus/repos"
 
+# Install smart post-receive hook (if available in mounted volume)
+HOOK_SRC="/opt/nydus/hooks/post-receive-starclaw"
+HOOK_DST="/data/nydus/repos/starclaw.git/hooks/post-receive"
+if [ -f "$HOOK_SRC" ] && [ -d "/data/nydus/repos/starclaw.git" ]; then
+    cp "$HOOK_SRC" "$HOOK_DST"
+    chmod +x "$HOOK_DST"
+    chown git:git "$HOOK_DST"
+    echo "[nydus] smart hook installed from $HOOK_SRC"
+fi
+
 # Start SSH daemon
 /usr/sbin/sshd -D &
 echo "[nydus] SSH daemon started on port 22"

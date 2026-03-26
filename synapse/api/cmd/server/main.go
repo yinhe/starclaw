@@ -246,7 +246,16 @@ func main() {
 		billing.RegisterSynapseRPC(ph)
 		billing.SubscribeQueenEvents(ph)
 		meter.SetPheromoneCredit(billing.NewPheromoneCredit(ph, queenCredit))
-		log.Printf("[star-ai] pheromone ESB connected (%s), RPC + events enabled", natsURL)
+		// Subscribe to scraper pricing snapshots (Server C → Server B real-time sync)
+		if priceSyncer != nil {
+			if err := ph.Subscribe("synapse.pricing.>", func(subject string, data []byte) {
+				log.Printf("[star-ai] received pricing event: %s", subject)
+				priceSyncer.ApplyScrapedPricing(data)
+			}); err != nil {
+				log.Printf("[star-ai] subscribe pricing events failed: %v", err)
+			}
+		}
+		log.Printf("[star-ai] pheromone ESB connected (%s), RPC + events + pricing sync enabled", natsURL)
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

@@ -411,19 +411,40 @@ def run_scrape(providers=None, do_update=False):
     print(f"\n[scraper] Done. {len(all_diffs)} total changes across {len(providers)} providers.")
     print(f"[scraper] Snapshot: {snapshot_path}")
 
-    # Publish to Pheromone if changes found
-    if all_diffs and NATS_URL:
+    # Always publish full scraped pricing to Pheromone (Synapse subscribes to update in-memory)
+    if NATS_URL:
+        all_scraped = {}
+        for slug in providers:
+            scraper = SCRAPERS.get(slug)
+            if not scraper:
+                continue
+            try:
+                all_scraped[slug] = scraper()
+            except Exception:
+                pass
+
         publish_pheromone_event(
-            "pheromone.events.synapse.pricing.updated",
+            "pheromone.events.synapse.pricing.snapshot",
             {
-                "event": "pricing.updated",
+                "event": "pricing.snapshot",
                 "service": "synapse-scraper",
-                "changes": len(all_diffs),
-                "providers": list(summary.keys()),
                 "timestamp": ts,
+                "providers": all_scraped,
             },
         )
-        print("[scraper] Published pricing update event to Pheromone")
+        print(f"[scraper] Published pricing snapshot to Pheromone ({sum(len(v) for v in all_scraped.values())} models)")
+
+        if all_diffs:
+            publish_pheromone_event(
+                "pheromone.events.synapse.pricing.changed",
+                {
+                    "event": "pricing.changed",
+                    "service": "synapse-scraper",
+                    "changes": all_diffs,
+                    "timestamp": ts,
+                },
+            )
+            print(f"[scraper] Published {len(all_diffs)} price changes to Pheromone")
 
     return all_diffs
 

@@ -505,6 +505,83 @@ func (s *PriceSyncer) syncMiniMax() (int, error) {
 	return updated, nil
 }
 
+// ApplyScrapedPricing updates the in-memory registry with scraped pricing data.
+// Called when a pricing.snapshot event is received from the scraper via Pheromone.
+func (s *PriceSyncer) ApplyScrapedPricing(data []byte) {
+	var payload struct {
+		Providers map[string]map[string]struct {
+			Type         string  `json:"type"`
+			Input        float64 `json:"input"`
+			Output       float64 `json:"output"`
+			PricePerCall float64 `json:"price_per_call"`
+			Unit         string  `json:"unit"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		log.Printf("[price-sync] failed to parse scraped pricing: %v", err)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	updated := 0
+	s.registry.mu.Lock()
+	defer s.registry.mu.Unlock()
+
+	for _, models := range payload.Providers {
+		for modelName, pricing := range models {
+			entry, exists := s.registry.models[modelName]
+			if !exists {
+				continue
+			}
+
+			changed := false
+			switch pricing.Unit {
+			case "usd_per_1m":
+				if entry.Model.InputPrice != pricing.Input || entry.Model.OutputPrice != pricing.Output {
+					entry.Model.InputPrice = pricing.Input
+					entry.Model.OutputPrice = pricing.Output
+					changed = true
+				}
+			case "cny_per_1m":
+				// Convert to per-千-tokens for storage (divide by 1000)
+				inCNY := pricing.Input / 1000.0
+				outCNY := pricing.Output / 1000.0
+				if entry.Model.InputPriceCNY != inCNY || entry.Model.OutputPriceCNY != outCNY {
+					entry.Model.InputPriceCNY = inCNY
+					entry.Model.OutputPriceCNY = outCNY
+					changed = true
+				}
+			default:
+				if pricing.PricePerCall > 0 {
+					if strings.Contains(pricing.Unit, "cny") {
+						if entry.Model.PricePerCallCNY != pricing.PricePerCall {
+							entry.Model.PricePerCallCNY = pricing.PricePerCall
+							changed = true
+						}
+					} else {
+						if entry.Model.PricePerCall != pricing.PricePerCall {
+							entry.Model.PricePerCall = pricing.PricePerCall
+							changed = true
+						}
+					}
+				}
+			}
+
+			if changed {
+				updated++
+			}
+		}
+	}
+
+	if updated > 0 {
+		log.Printf("[price-sync] applied %d price updates from scraper snapshot", updated)
+		s.lastSync = time.Now()
+		s.writeSnapshot()
+	}
+}
+
 // writeSnapshot writes current pricing to a JSON file for transparency
 func (s *PriceSyncer) writeSnapshot() {
 	if s.snapshotDir == "" {

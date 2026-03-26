@@ -16,6 +16,7 @@ services:
       - ./api/configs/nydus.yaml:/app/configs/nydus.yaml:ro
       - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
       - /root/.ssh/known_hosts:/root/.ssh/known_hosts
+      - ./hooks:/opt/nydus/hooks:ro
     networks:
       - starclaw-queen
       - starclaw-pheromone
