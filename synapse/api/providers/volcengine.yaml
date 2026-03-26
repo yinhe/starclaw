@@ -1,0 +1,146 @@
+name: "Volcengine (ByteDance)"
+type: "llm"
+enabled: true
+endpoint: "https://ark.cn-beijing.volces.com/api/v3"
+description: "火山方舟 — 字节跳动豆包大模型平台。Prices from volcengine.com/docs (scraped 2026-03-26)."
+auth:
+  type: "bearer"
+  key_env: "VOLCENGINE_API_KEY"
+models:
+  # ══════════════════════════════════════════════════
+  # Doubao Seed 2.0 系列 (最新旗舰)
+  # ══════════════════════════════════════════════════
+  - name: "volcengine/doubao-seed-2-0-pro"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.004     # ¥4/百万tokens
+    output_price_cny: 0.016    # ¥16/百万tokens (思维链+输出)
+    description: "豆包 Seed 2.0 Pro — 旗舰多模态+深度思考"
+  - name: "volcengine/doubao-seed-2-0-lite"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.0008    # ¥0.8/百万tokens
+    output_price_cny: 0.002    # ¥2/百万tokens
+    description: "豆包 Seed 2.0 Lite — 轻量高效"
+  - name: "volcengine/doubao-seed-2-0-mini"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.0003    # ¥0.3/百万tokens
+    output_price_cny: 0.0006   # ¥0.6/百万tokens
+    description: "豆包 Seed 2.0 Mini — 超轻量极速"
+  - name: "volcengine/doubao-seed-2-0-code-preview"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.004     # ¥4/百万tokens
+    output_price_cny: 0.016    # ¥16/百万tokens
+    description: "豆包 Seed 2.0 Code — 编程增强"
+
+  # ══════════════════════════════════════════════════
+  # Doubao Seed 1.8 / 1.6 系列
+  # ══════════════════════════════════════════════════
+  - name: "volcengine/doubao-seed-1-8"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.004     # ¥4/百万tokens
+    output_price_cny: 0.016    # ¥16/百万tokens
+    description: "豆包 Seed 1.8 — 深度思考+多模态+工具调用"
+  - name: "volcengine/doubao-seed-1-6"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.002     # ¥2/百万tokens
+    output_price_cny: 0.008    # ¥8/百万tokens
+    description: "豆包 Seed 1.6 — 均衡性能"
+  - name: "volcengine/doubao-seed-1-6-lite"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.0004    # ¥0.4/百万tokens
+    output_price_cny: 0.0008   # ¥0.8/百万tokens
+    description: "豆包 Seed 1.6 Lite — 轻量版"
+  - name: "volcengine/doubao-seed-1-6-flash"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.0003    # ¥0.3/百万tokens
+    output_price_cny: 0.0006   # ¥0.6/百万tokens
+    description: "豆包 Seed 1.6 Flash — 极速版 (视觉定位)"
+  - name: "volcengine/doubao-seed-1-6-vision"
+    type: "vision"
+    context_length: 256000
+    input_price_cny: 0.004     # ¥4/百万tokens
+    output_price_cny: 0.016    # ¥16/百万tokens
+    description: "豆包 Seed 1.6 Vision — GUI任务+多模态理解"
+  - name: "volcengine/doubao-seed-code-preview"
+    type: "chat"
+    context_length: 256000
+    input_price_cny: 0.002     # ¥2/百万tokens
+    output_price_cny: 0.008    # ¥8/百万tokens
+    description: "豆包 Seed Code — 编程场景增强"
+  - name: "volcengine/doubao-seed-translation"
+    type: "chat"
+    context_length: 4000
+    input_price_cny: 0.0003    # ¥0.3/百万tokens
+    output_price_cny: 0.0006   # ¥0.6/百万tokens
+    description: "豆包 Seed Translation — 翻译增强"
+
+  # ══════════════════════════════════════════════════
+  # DeepSeek (火山方舟托管)
+  # ══════════════════════════════════════════════════
+  - name: "volcengine/deepseek-v3-2"
+    type: "chat"
+    context_length: 128000
+    input_price_cny: 0.002     # ¥2/百万tokens
+    output_price_cny: 0.008    # ¥8/百万tokens
+    description: "DeepSeek V3.2 (火山方舟托管)"
+  - name: "volcengine/deepseek-v3-1"
+    type: "chat"
+    context_length: 128000
+    input_price_cny: 0.002     # ¥2/百万tokens
+    output_price_cny: 0.008    # ¥8/百万tokens
+    description: "DeepSeek V3.1 (火山方舟托管)"
+  - name: "volcengine/deepseek-r1"
+    type: "reasoning"
+    context_length: 128000
+    input_price_cny: 0.004     # ¥4/百万tokens
+    output_price_cny: 0.016    # ¥16/百万tokens
+    description: "DeepSeek R1 推理 (火山方舟托管)"
+
+  # ══════════════════════════════════════════════════
+  # Seedance 视频生成
+  # ══════════════════════════════════════════════════
+  - name: "volcengine/seedance-1.5-pro"
+    type: "video"
+    price_per_call_cny: 0.60
+    description: "Seedance 1.5 Pro 文生视频 (5s/720p)"
+  - name: "volcengine/seedance-1.0-pro"
+    type: "video"
+    price_per_call_cny: 0.50
+    description: "Seedance 1.0 Pro 文生视频"
+  - name: "volcengine/seedance-1.0-lite"
+    type: "video"
+    price_per_call_cny: 0.12
+    description: "Seedance 1.0 Lite 快速视频"
+
+  # ══════════════════════════════════════════════════
+  # Seedream 图像生成
+  # ══════════════════════════════════════════════════
+  - name: "volcengine/seedream-5.0"
+    type: "image"
+    price_per_call_cny: 0.04
+    description: "Seedream 5.0 文生图 (最新)"
+  - name: "volcengine/seedream-4.0"
+    type: "image"
+    price_per_call_cny: 0.04
+    description: "Seedream 4.0 文生图"
+  - name: "volcengine/seedream-3.0"
+    type: "image"
+    price_per_call_cny: 0.02
+    description: "Seedream 3.0 文生图"
+
+  # ══════════════════════════════════════════════════
+  # 语音 (TTS / STT)
+  # ══════════════════════════════════════════════════
+  - name: "volcengine/doubao-tts"
+    type: "tts"
+    price_per_char_cny: 0.00002
+    description: "豆包语音合成"
+
+regions: ["cn-beijing"]
