@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -839,7 +840,8 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"margin": 0, "splits": gin.H{}})
 		return
 	}
-	marginFen := int64(margin) // truncate to whole 分
+	// Use math.Round instead of truncation to preserve small margins
+	marginFen := int64(math.Round(margin))
 
 	db := database.DB
 	splits := gin.H{}
@@ -848,7 +850,7 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 	var binding model.NodeBinding
 	if err := db.Where("node_id = ? AND status = ?", req.ClawID, "active").First(&binding).Error; err != nil {
 		// No binding — no partner chain, still deposit to investor pool
-		investDeposit := int64(float64(marginFen) * 0.10)
+		investDeposit := int64(math.Round(float64(marginFen) * 0.10))
 		if investDeposit > 0 {
 			depositToInvestorPool(db, investDeposit, marginFen, "token_usage", req.ClawID)
 			splits["investor_pool"] = investDeposit
@@ -867,7 +869,7 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 		var cityPartner model.CityPartner
 		if err := db.Where("id = ? AND status = ?", cityClient.PartnerID, "approved").First(&cityPartner).Error; err == nil {
 			cityPartnerID = cityPartner.ID
-			cityCommAmt = int64(float64(marginFen) * cityPartner.CommRate)
+			cityCommAmt = int64(math.Round(float64(marginFen) * cityPartner.CommRate))
 			if cityCommAmt > 0 {
 				month := time.Now().Format("2006-01")
 				db.Create(&model.Commission{
@@ -905,7 +907,7 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 			}
 		}
 		if found && teamPartner.ManageFeeRate > 0 {
-			mgmtFee := int64(float64(cityCommAmt) * teamPartner.ManageFeeRate)
+			mgmtFee := int64(math.Round(float64(cityCommAmt) * teamPartner.ManageFeeRate))
 			if mgmtFee > 0 {
 				month := time.Now().Format("2006-01")
 				db.Create(&model.PartnerCommission{
@@ -926,7 +928,7 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 	}
 
 	// ── 4. Investor pool deposit (10% of margin) ──
-	investDeposit := int64(float64(marginFen) * 0.10)
+	investDeposit := int64(math.Round(float64(marginFen) * 0.10))
 	if investDeposit > 0 {
 		depositToInvestorPool(db, investDeposit, marginFen, "token_usage", req.ClawID)
 		splits["investor_pool"] = investDeposit

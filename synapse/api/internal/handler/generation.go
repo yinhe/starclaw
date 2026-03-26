@@ -264,6 +264,13 @@ func (h *GenerationHandler) ProxyDashScopeVideo(c *gin.Context, provSlug, subPat
 		if authType == "claw" && clawID != "" {
 			if err := h.meter.DeductClaw(clawID, costCents, "dashscope/"+reqBody.Model, "/v1/proxy/dashscope", nil); err != nil {
 				log.Printf("[star-ai] dashscope video deduct failed: claw=%s cost=%.2f err=%v", clawID, costCents, err)
+			} else if costCents > upstreamCents {
+				if qc := h.meter.QueenCredit(); qc != nil && qc.Enabled() {
+					go qc.ProfitSplit(&billing.ProfitSplitRequest{
+						ClawID: clawID, CostCents: costCents, UpstreamCents: upstreamCents,
+						Model: "dashscope/" + reqBody.Model, Endpoint: "/v1/proxy/dashscope",
+					})
+				}
 			}
 		} else if userID != "" {
 			record := &model.UsageRecord{
@@ -380,6 +387,13 @@ func (h *GenerationHandler) ProxyFalVideo(c *gin.Context, provSlug, subPath stri
 		if authType == "claw" && clawID != "" {
 			if err := h.meter.DeductClaw(clawID, costCents, falFullName, "/v1/proxy/fal", nil); err != nil {
 				log.Printf("[star-ai] fal video deduct failed: claw=%s cost=%.2f err=%v", clawID, costCents, err)
+			} else {
+				if qc := h.meter.QueenCredit(); qc != nil && qc.Enabled() {
+					go qc.ProfitSplit(&billing.ProfitSplitRequest{
+						ClawID: clawID, CostCents: costCents, UpstreamCents: upstreamCents,
+						Model: falFullName, Endpoint: "/v1/proxy/fal",
+					})
+				}
 			}
 		} else if userID != "" {
 			record := &model.UsageRecord{
@@ -537,6 +551,13 @@ func (h *GenerationHandler) ProxyFalImage(c *gin.Context, provSlug, subPath stri
 		if authType == "claw" && clawID != "" {
 			if err := h.meter.DeductClaw(clawID, costCents, falFullName, "/v1/proxy/fal", nil); err != nil {
 				log.Printf("[star-ai] fal image deduct failed: claw=%s cost=%.2f err=%v", clawID, costCents, err)
+			} else if costCents > upstreamCents {
+				if qc := h.meter.QueenCredit(); qc != nil && qc.Enabled() {
+					go qc.ProfitSplit(&billing.ProfitSplitRequest{
+						ClawID: clawID, CostCents: costCents, UpstreamCents: upstreamCents,
+						Model: falFullName, Endpoint: "/v1/proxy/fal",
+					})
+				}
 			}
 		} else if userID != "" {
 			record := &model.UsageRecord{
