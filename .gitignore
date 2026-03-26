@@ -9,8 +9,8 @@ dist/
 *.dll
 *.so
 *.dylib
-mcp-bridge
-mcp-bridge-linux
+/mcp-bridge
+/mcp-bridge-linux
 /server
 
 # Runtime data
