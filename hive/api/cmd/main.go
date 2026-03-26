@@ -166,6 +166,11 @@ func main() {
 		log.Printf("[hive] pheromone ESB connected (%s)", natsURL)
 	}
 
+	// ── Background tasks for multi-tenant stability ──
+	go h.BackgroundCleanupLoop(1 * time.Hour)    // cleanup expired instances every hour
+	go h.BackgroundRenewalLoop(30 * time.Minute) // check renewals every 30 min
+	go h.BackgroundHealthLoop(5 * time.Minute)   // health check every 5 min
+
 	log.Printf("[hive] 🐝 Hive Controller starting on :%d (domain: %s)", cfg.Port, cfg.Domain)
 	if err := r.Run(fmt.Sprintf(":%d", cfg.Port)); err != nil {
 		log.Fatalf("[hive] server failed: %v", err)
