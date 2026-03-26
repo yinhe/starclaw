@@ -177,7 +177,7 @@ function App() {
           <p className="text-lg text-zinc-400 mb-12 max-w-xl mx-auto">
             输入你想要的子域名，3 秒获得一个完整的 AI 智能体平台。
             <br className="hidden sm:block" />
-            永久免费，无需配置，随时升级。
+            7 天免费试用，无需配置，按需升级。
           </p>
 
           {/* Create Form */}
@@ -293,12 +293,12 @@ function App() {
       <section className="border-t border-zinc-800" id="pricing">
         <div className="max-w-5xl mx-auto px-6 py-16">
           <h2 className="text-2xl font-bold text-center mb-3">选择规格</h2>
-          <p className="text-center text-zinc-400 text-sm mb-10">永久免费开始，按需升级，数据无缝迁移</p>
+          <p className="text-center text-zinc-400 text-sm mb-10">7 天免费试用，按需升级，数据无缝迁移</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {[
-              { id: 'spark', icon: '🔥', name: 'Spark', sub: '火花', price: '永久免费', color: 'orange', highlight: false, specs: ['0.25 核 CPU', '256MB 内存', '1GB 存储', 'SQLite 极简数据库', '2 个团队智能体', '3 秒极速部署'], tag: '体验入门', tagColor: 'emerald' },
-              { id: 'pulse', icon: '⚡', name: 'Pulse', sub: '脉冲', price: '¥50/月', color: 'purple', highlight: false, specs: ['1 核 CPU', '1GB 内存', '10GB 存储', 'MySQL + Redis', 'Web UI 管理面板', '10 个团队智能体', '每日自动备份'], tag: '团队生产', tagColor: 'purple' },
-              { id: 'surge', icon: '🚀', name: 'Surge', sub: '激流', price: '¥200/月', color: 'blue', highlight: true, specs: ['2 核 CPU', '4GB 内存', '40GB 存储', '独立云服务器', '5Mbps 带宽', '无限团队智能体', '自定义子域名', '高级监控'], tag: '推荐', tagColor: 'blue' },
+              { id: 'spark', icon: '🔥', name: 'Spark', sub: '火花', price: '7天免费', color: 'orange', highlight: false, specs: ['0.25 核 CPU', '256MB 内存', '1GB 存储', 'SQLite 极简数据库', '2 个智能体团队', '3 秒极速部署'], tag: '免费试用', tagColor: 'emerald' },
+              { id: 'pulse', icon: '⚡', name: 'Pulse', sub: '脉冲', price: '¥50/月', color: 'purple', highlight: false, specs: ['1 核 CPU', '1GB 内存', '10GB 存储', 'MySQL + Redis', 'Web UI 管理面板', '10 个智能体团队', '每日自动备份'], tag: '团队生产', tagColor: 'purple' },
+              { id: 'surge', icon: '🚀', name: 'Surge', sub: '激流', price: '¥200/月', color: 'blue', highlight: true, specs: ['2 核 CPU', '4GB 内存', '40GB 存储', '独立云服务器', '5Mbps 带宽', '无限智能体团队', '自定义子域名', '高级监控'], tag: '推荐', tagColor: 'blue' },
               { id: 'storm', icon: '👑', name: 'Storm', sub: '风暴', price: '¥800/月', color: 'amber', highlight: false, specs: ['4 核 CPU', '8GB 内存', '100GB 存储', '独立高配服务器', '10Mbps 带宽', 'SSO 企业登录', 'SLA 99.9%', '专属技术支持'], tag: '企业级', tagColor: 'amber' },
             ].map(tier => {
               const selected = selectedPlan === tier.id || (selectedPlan === 'free' && tier.id === 'spark')
@@ -331,7 +331,7 @@ function App() {
                       <div className="text-emerald-500/80 text-xs pt-1">按月续费 · 随时取消</div>
                     )}
                     {tier.id === 'spark' && (
-                      <div className="text-emerald-500/80 text-xs pt-1">永久免费 · 随时升级</div>
+                      <div className="text-emerald-500/80 text-xs pt-1">7天免费 · 到期可升级</div>
                     )}
                   </div>
                   {selected && (
@@ -343,7 +343,7 @@ function App() {
               )
             })}
           </div>
-          <p className="text-center text-zinc-500 text-xs mt-6">升级时数据无缝迁移，节点 ID 不变，团队智能体不中断</p>
+          <p className="text-center text-zinc-500 text-xs mt-6">升级时数据无缝迁移，节点 ID 不变，智能体团队不中断</p>
         </div>
       </section>
 
