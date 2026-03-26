@@ -184,6 +184,10 @@ sync_to_polyrepo() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] ${subdir}.git updated (${new_commit:0:7})"
 }
 
+# Close stdout/stderr inherited from git SSH so push returns immediately.
+# All output goes to LOG file only.
+exec 1>>"$LOG" 2>&1
+
 while read oldrev newrev refname; do
   # Sync tags to claw.git (for Molt release detection)
   case "$refname" in
@@ -197,7 +201,7 @@ while read oldrev newrev refname; do
 
       # Auto cross-compile binaries for Spore update & download page
       # Uses Docker golang image (Go/Node not installed on host)
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Building binaries for $tag..." | tee -a "$LOG"
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Building binaries for $tag..." | cat >> "$LOG"
       (
         BUILD_DIR=$(mktemp -d)
         RELEASE_DIR="/opt/releases/binary/$tag"
@@ -233,7 +237,7 @@ while read oldrev newrev refname; do
           "
 
         rm -rf "$BUILD_DIR"
-        echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Binaries for $tag ready in $RELEASE_DIR" | tee -a "$LOG"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Binaries for $tag ready in $RELEASE_DIR" | cat >> "$LOG"
         ls -lh "$RELEASE_DIR/" 2>/dev/null || true
       ) </dev/null >> "$LOG" 2>&1 &
 
@@ -246,14 +250,14 @@ while read oldrev newrev refname; do
     continue
   fi
 
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Push to master: $oldrev -> $newrev" | tee -a "$LOG"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Push to master: $oldrev -> $newrev" | cat >> "$LOG"
 
   # Detect which directories changed
   CHANGED=$(git --git-dir="$REPO" diff --name-only "$oldrev" "$newrev" 2>/dev/null || echo "all")
 
   # --- Queen (Server C — local + Server A for site) ---
   if echo "$CHANGED" | grep -q "^queen/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Queen changed — rebuilding..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Queen changed — rebuilding..." | cat >> "$LOG"
     publish_pheromone_deploy "queen" "$branch" "$newrev"
     (
       _start=$SECONDS
@@ -266,34 +270,34 @@ while read oldrev newrev refname; do
         git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/queen/api/pheromone-sdk 2>/dev/null || true
         docker compose -f docker-compose.prod.yml build --no-cache queen-api
         docker compose -f docker-compose.prod.yml up -d queen-api
-        echo "  -> queen-api rebuilt (Server C)" | tee -a "$LOG"
+        echo "  -> queen-api rebuilt (Server C)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/swarm/"; then
         docker compose -f docker-compose.prod.yml build --no-cache swarm
         docker compose -f docker-compose.prod.yml up -d swarm
-        echo "  -> queen-swarm rebuilt (Server C)" | tee -a "$LOG"
+        echo "  -> queen-swarm rebuilt (Server C)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/web/"; then
         docker compose -f docker-compose.prod.yml build --no-cache queen-web
         docker compose -f docker-compose.prod.yml up -d queen-web
-        echo "  -> queen-web rebuilt (Server C)" | tee -a "$LOG"
+        echo "  -> queen-web rebuilt (Server C)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^queen/core/"; then
         docker compose -f docker-compose.prod.yml build --no-cache queen-core
         docker compose -f docker-compose.prod.yml up -d queen-core
-        echo "  -> queen-core rebuilt (Server C)" | tee -a "$LOG"
+        echo "  -> queen-core rebuilt (Server C)" | cat >> "$LOG"
       fi
 
       # Deploy queen/site to Server A (starclaw.me — nginx root: /opt/starclaw/queen/site)
       if echo "$CHANGED" | grep -q "^queen/site/"; then
-        echo "  -> deploying queen-site to starclaw.me (Server A)..." | tee -a "$LOG"
+        echo "  -> deploying queen-site to starclaw.me (Server A)..." | cat >> "$LOG"
         # 1. Ship source to a build directory on Server A
         git --git-dir="$REPO" archive HEAD:queen/site | ssh $SSH_OPTS "$SERVER_A" "rm -rf /tmp/queen-site-build && mkdir -p /tmp/queen-site-build && cd /tmp/queen-site-build && tar xf -"
         # 2. Build with Docker (node:20-alpine), output goes to /tmp/queen-site-build/dist
         ssh $SSH_OPTS "$SERVER_A" "cd /tmp/queen-site-build && docker run --rm -v \$(pwd):/app -w /app node:20-alpine sh -c 'npm ci --registry=https://registry.npmmirror.com && npm run build'"
         # 3. Atomic swap: replace nginx root with fresh dist
         ssh $SSH_OPTS "$SERVER_A" "rm -rf /opt/starclaw/queen/site-old && mv /opt/starclaw/queen/site /opt/starclaw/queen/site-old 2>/dev/null; mv /tmp/queen-site-build/dist /opt/starclaw/queen/site && rm -rf /tmp/queen-site-build"
-        echo "  -> queen-site deployed to starclaw.me (static files updated)" | tee -a "$LOG"
+        echo "  -> queen-site deployed to starclaw.me (static files updated)" | cat >> "$LOG"
       fi
       publish_pheromone_deploy_result "queen" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "queen-server-c" "success" "deployed in $((SECONDS - _start))s"
@@ -302,16 +306,16 @@ while read oldrev newrev refname; do
 
   # --- Claw (Server A — starclaw.me) ---
   if echo "$CHANGED" | grep -q "^claw/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Claw changed — deploying to starclaw.me..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Claw changed — deploying to starclaw.me..." | cat >> "$LOG"
     publish_pheromone_deploy "claw" "$branch" "$newrev"
     (
       _start=$SECONDS
       git --git-dir="$REPO" archive HEAD:claw | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
-      echo "  -> claw deployed to starclaw.me (starclaw-api:latest rebuilt)" | tee -a "$LOG"
+      echo "  -> claw deployed to starclaw.me (starclaw-api:latest rebuilt)" | cat >> "$LOG"
       # Upgrade all Hive instances to use the new starclaw-api:latest image
       ssh $SSH_OPTS "$SERVER_A" 'curl -sf -X POST http://localhost:9090/hive/admin/upgrade-instances -H "Authorization: Bearer $HIVE_ADMIN_TOKEN"' >> "$LOG" 2>&1 || true
-      echo "  -> hive instances upgrade triggered" | tee -a "$LOG"
+      echo "  -> hive instances upgrade triggered" | cat >> "$LOG"
       publish_pheromone_deploy_result "claw" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "claw-starclaw-me" "success" "deployed in $((SECONDS - _start))s"
     ) </dev/null >> "$LOG" 2>&1 &
@@ -319,7 +323,7 @@ while read oldrev newrev refname; do
 
   # --- Hive controller (Server A) ---
   if echo "$CHANGED" | grep -q "^hive/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Hive changed — rebuilding on starclaw.me..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Hive changed — rebuilding on starclaw.me..." | cat >> "$LOG"
     publish_pheromone_deploy "hive" "$branch" "$newrev"
     (
       _start=$SECONDS
@@ -327,7 +331,7 @@ while read oldrev newrev refname; do
       git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/carapace && cd /opt/carapace && tar xf -"
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/pheromone/sdk && cd /opt/pheromone/sdk && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
-      echo "  -> hive-controller rebuilt on Server A" | tee -a "$LOG"
+      echo "  -> hive-controller rebuilt on Server A" | cat >> "$LOG"
       publish_pheromone_deploy_result "hive" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "hive-server-a" "success" "deployed in $((SECONDS - _start))s"
     ) </dev/null >> "$LOG" 2>&1 &
@@ -335,7 +339,7 @@ while read oldrev newrev refname; do
 
   # --- Synapse (Server B — star-ai.net) ---
   if echo "$CHANGED" | grep -q "^synapse/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Synapse changed — deploying to server B..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Synapse changed — deploying to server B..." | cat >> "$LOG"
     publish_pheromone_deploy "synapse" "$branch" "$newrev"
     (
       _start=$SECONDS
@@ -345,23 +349,23 @@ while read oldrev newrev refname; do
         # Copy pheromone/sdk into api/ for Docker build context
         git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_B" "mkdir -p /opt/starclaw/synapse/api/pheromone-sdk && cd /opt/starclaw/synapse/api/pheromone-sdk && tar xf -"
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache api && docker compose up -d api"
-        echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | tee -a "$LOG"
+        echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/web/"; then
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache web && docker compose up -d web"
-        echo "  -> synapse-web rebuilt on B (star-ai-web :3096)" | tee -a "$LOG"
+        echo "  -> synapse-web rebuilt on B (star-ai-web :3096)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/core/"; then
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache core && docker compose up -d core"
-        echo "  -> synapse-core rebuilt on B (star-ai-core :3097 → core.star-ai.net)" | tee -a "$LOG"
+        echo "  -> synapse-core rebuilt on B (star-ai-core :3097 → core.star-ai.net)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/proxy/"; then
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache proxy && docker compose up -d proxy"
-        echo "  -> synapse-proxy rebuilt on B (overseas relay)" | tee -a "$LOG"
+        echo "  -> synapse-proxy rebuilt on B (overseas relay)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/deploy/"; then
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && cp deploy/nginx-starai.conf /etc/nginx/sites-available/star-ai 2>/dev/null; nginx -t && systemctl reload nginx" || true
-        echo "  -> synapse nginx config updated on B" | tee -a "$LOG"
+        echo "  -> synapse nginx config updated on B" | cat >> "$LOG"
       fi
       publish_pheromone_deploy_result "synapse" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "synapse-server-b" "success" "deployed in $((SECONDS - _start))s"
@@ -370,7 +374,7 @@ while read oldrev newrev refname; do
 
   # --- Overlord (Server C — local) ---
   if echo "$CHANGED" | grep -q "^overlord/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Overlord changed — rebuilding on server C..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Overlord changed — rebuilding on server C..." | cat >> "$LOG"
     publish_pheromone_deploy "overlord" "$branch" "$newrev"
     (
       _start=$SECONDS
@@ -381,7 +385,7 @@ while read oldrev newrev refname; do
       mkdir -p /opt/overlord/api/pheromone-sdk
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/overlord/api/pheromone-sdk 2>/dev/null || true
       docker compose -f docker-compose.prod.yml up -d --build api console web
-      echo "  -> overlord rebuilt" | tee -a "$LOG"
+      echo "  -> overlord rebuilt" | cat >> "$LOG"
       publish_pheromone_deploy_result "overlord" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "overlord-server-c" "success" "deployed in $((SECONDS - _start))s"
     ) </dev/null >> "$LOG" 2>&1 &
@@ -389,7 +393,7 @@ while read oldrev newrev refname; do
 
   # --- Pheromone (Server C — local) ---
   if echo "$CHANGED" | grep -q "^pheromone/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Pheromone changed — rebuilding on server C..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Pheromone changed — rebuilding on server C..." | cat >> "$LOG"
     publish_pheromone_deploy "pheromone" "$branch" "$newrev"
     (
       mkdir -p /opt/pheromone
@@ -398,16 +402,16 @@ while read oldrev newrev refname; do
       export REGISTRY="${REGISTRY:-docker.1ms.run}"
       docker rm -f pheromone-api pheromone-web pheromone-nats pheromone-nats-exporter >/dev/null 2>&1 || true
       docker compose -f docker-compose.yml up -d --build
-      echo "  -> pheromone stack refreshed (Server C :8100/:3110/:4222/:7777)" | tee -a "$LOG"
+      echo "  -> pheromone stack refreshed (Server C :8100/:3110/:4222/:7777)" | cat >> "$LOG"
     ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Forge (Server C — local) ---
   if echo "$CHANGED" | grep -q "^forge/"; then
     if [ "$ENABLE_REMOTE_FORGE_DEPLOY" != "1" ]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — skipped (remote Forge disabled, using local Forge)" | tee -a "$LOG"
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — skipped (remote Forge disabled, using local Forge)" | cat >> "$LOG"
     else
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — rebuilding on server C..." | tee -a "$LOG"
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Forge changed — rebuilding on server C..." | cat >> "$LOG"
       publish_pheromone_deploy "forge" "$branch" "$newrev"
       (
         mkdir -p /opt/forge
@@ -420,16 +424,16 @@ while read oldrev newrev refname; do
         if echo "$CHANGED" | grep -q "^forge/api/"; then
           docker compose build --no-cache forge-api
           docker compose up -d forge-api
-          echo "  -> forge-api rebuilt (Server C :8099)" | tee -a "$LOG"
+          echo "  -> forge-api rebuilt (Server C :8099)" | cat >> "$LOG"
         fi
         if echo "$CHANGED" | grep -q "^forge/web/"; then
           docker compose build --no-cache forge-web
           docker compose up -d forge-web
-          echo "  -> forge-web rebuilt (Server C :3099)" | tee -a "$LOG"
+          echo "  -> forge-web rebuilt (Server C :3099)" | cat >> "$LOG"
         fi
         if echo "$CHANGED" | grep -q "^forge/docker-compose"; then
           docker compose up -d
-          echo "  -> forge compose refreshed" | tee -a "$LOG"
+          echo "  -> forge compose refreshed" | cat >> "$LOG"
         fi
       ) </dev/null >> "$LOG" 2>&1 &
     fi
@@ -437,7 +441,7 @@ while read oldrev newrev refname; do
 
   # --- Nydus config (reload if changed) ---
   if echo "$CHANGED" | grep -q "^nydus/"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Nydus config changed — syncing..." | tee -a "$LOG"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Nydus config changed — syncing..." | cat >> "$LOG"
     publish_pheromone_deploy "nydus" "$branch" "$newrev"
     (
       cd /opt/nydus
@@ -446,7 +450,7 @@ while read oldrev newrev refname; do
       mkdir -p /opt/nydus/api/pheromone-sdk
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/nydus/api/pheromone-sdk 2>/dev/null || true
       docker compose up -d --build api
-      echo "  -> nydus config synced & api rebuilt" | tee -a "$LOG"
+      echo "  -> nydus config synced & api rebuilt" | cat >> "$LOG"
     ) </dev/null >> "$LOG" 2>&1 &
   fi
 
@@ -473,5 +477,5 @@ while read oldrev newrev refname; do
     fi
   ) </dev/null >> "$LOG" 2>&1 &
 
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED" | tee -a "$LOG"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED" | cat >> "$LOG"
 done
