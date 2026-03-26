@@ -16,11 +16,12 @@ const DefaultUSDToCNY = 7.2
 
 // Meter calculates costs for API calls and manages balance deductions
 type Meter struct {
-	db          *gorm.DB
-	registry    *provider.Registry
-	queenCredit *QueenCreditClient
-	rate        float64 // USD to CNY
-	markup      float64 // markup multiplier (e.g. 1.3 = 30% margin)
+	db              *gorm.DB
+	registry        *provider.Registry
+	queenCredit     *QueenCreditClient
+	pheromoneCredit *PheromoneCredit
+	rate            float64 // USD to CNY
+	markup          float64 // markup multiplier (e.g. 1.3 = 30% margin)
 }
 
 func NewMeter(db *gorm.DB, registry *provider.Registry) *Meter {
@@ -37,6 +38,11 @@ func (m *Meter) SetQueenCredit(qc *QueenCreditClient) {
 	m.queenCredit = qc
 }
 
+// SetPheromoneCredit sets the Pheromone RPC credit client (RPC-first, HTTP-fallback).
+func (m *Meter) SetPheromoneCredit(pc *PheromoneCredit) {
+	m.pheromoneCredit = pc
+}
+
 // QueenCredit returns the Queen credit client (may be nil if not configured).
 func (m *Meter) QueenCredit() *QueenCreditClient {
 	return m.queenCredit
@@ -50,12 +56,20 @@ func (m *Meter) CheckBalance(userID string) error {
 		return fmt.Errorf("user not found: %w", err)
 	}
 
-	// If user has ClawID, check Queen star energy as primary source
-	if user.ClawID != "" && m.queenCredit != nil && m.queenCredit.Enabled() {
-		if err := m.queenCredit.CheckBalance(user.ClawID); err == nil {
-			return nil
+	// If user has ClawID, check Queen star energy via RPC (primary) or HTTP (fallback)
+	if user.ClawID != "" {
+		// Try Pheromone RPC first (faster, no HTTP overhead)
+		if m.pheromoneCredit != nil {
+			if _, ok, err := m.pheromoneCredit.CheckBalance(userID); err == nil && ok {
+				return nil
+			}
 		}
-		// Fall through to check local balance as fallback
+		// HTTP fallback to Queen credit API
+		if m.queenCredit != nil && m.queenCredit.Enabled() {
+			if err := m.queenCredit.CheckBalance(user.ClawID); err == nil {
+				return nil
+			}
+		}
 	}
 
 	// Allow if user has balance OR free quota remaining

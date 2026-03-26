@@ -244,6 +244,7 @@ while read oldrev newrev refname; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Queen changed — rebuilding..." | tee -a "$LOG"
     publish_pheromone_deploy "queen" "$branch" "$newrev"
     (
+      _start=$SECONDS
       cd /opt/queen
       git --git-dir="$REPO" archive HEAD:queen | tar xf - 2>/dev/null || true
 
@@ -282,6 +283,7 @@ while read oldrev newrev refname; do
         ssh $SSH_OPTS "$SERVER_A" "rm -rf /opt/starclaw/queen/site-old && mv /opt/starclaw/queen/site /opt/starclaw/queen/site-old 2>/dev/null; mv /tmp/queen-site-build/dist /opt/starclaw/queen/site && rm -rf /tmp/queen-site-build"
         echo "  -> queen-site deployed to starclaw.me (static files updated)" | tee -a "$LOG"
       fi
+      publish_pheromone_deploy_result "queen" "completed" "$((SECONDS - _start))s" ""
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -290,12 +292,14 @@ while read oldrev newrev refname; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Claw changed — deploying to starclaw.me..." | tee -a "$LOG"
     publish_pheromone_deploy "claw" "$branch" "$newrev"
     (
+      _start=$SECONDS
       git --git-dir="$REPO" archive HEAD:claw | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
       echo "  -> claw deployed to starclaw.me (starclaw-api:latest rebuilt)" | tee -a "$LOG"
       # Upgrade all Hive instances to use the new starclaw-api:latest image
       ssh $SSH_OPTS "$SERVER_A" 'curl -sf -X POST http://localhost:9090/hive/admin/upgrade-instances -H "Authorization: Bearer $HIVE_ADMIN_TOKEN"' >> "$LOG" 2>&1 || true
       echo "  -> hive instances upgrade triggered" | tee -a "$LOG"
+      publish_pheromone_deploy_result "claw" "completed" "$((SECONDS - _start))s" ""
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -304,11 +308,13 @@ while read oldrev newrev refname; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Hive changed — rebuilding on starclaw.me..." | tee -a "$LOG"
     publish_pheromone_deploy "hive" "$branch" "$newrev"
     (
+      _start=$SECONDS
       git --git-dir="$REPO" archive HEAD:hive | ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && tar xf -"
       git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/carapace && cd /opt/carapace && tar xf -"
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/pheromone/sdk && cd /opt/pheromone/sdk && tar xf -"
       ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
       echo "  -> hive-controller rebuilt on Server A" | tee -a "$LOG"
+      publish_pheromone_deploy_result "hive" "completed" "$((SECONDS - _start))s" ""
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -317,6 +323,7 @@ while read oldrev newrev refname; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Synapse changed — deploying to server B..." | tee -a "$LOG"
     publish_pheromone_deploy "synapse" "$branch" "$newrev"
     (
+      _start=$SECONDS
       git --git-dir="$REPO" archive HEAD:synapse | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && tar xf -"
 
       if echo "$CHANGED" | grep -q "^synapse/api/\|^synapse/docker-compose\|^pheromone/sdk/"; then
@@ -341,6 +348,7 @@ while read oldrev newrev refname; do
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && cp deploy/nginx-starai.conf /etc/nginx/sites-available/star-ai 2>/dev/null; nginx -t && systemctl reload nginx" || true
         echo "  -> synapse nginx config updated on B" | tee -a "$LOG"
       fi
+      publish_pheromone_deploy_result "synapse" "completed" "$((SECONDS - _start))s" ""
     ) >> "$LOG" 2>&1 &
   fi
 
@@ -349,6 +357,7 @@ while read oldrev newrev refname; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Overlord changed — rebuilding on server C..." | tee -a "$LOG"
     publish_pheromone_deploy "overlord" "$branch" "$newrev"
     (
+      _start=$SECONDS
       mkdir -p /opt/overlord
       cd /opt/overlord
       git --git-dir="$REPO" archive HEAD:overlord | tar xf - 2>/dev/null || true
@@ -357,6 +366,7 @@ while read oldrev newrev refname; do
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/overlord/api/pheromone-sdk 2>/dev/null || true
       docker compose -f docker-compose.prod.yml up -d --build api console web
       echo "  -> overlord rebuilt" | tee -a "$LOG"
+      publish_pheromone_deploy_result "overlord" "completed" "$((SECONDS - _start))s" ""
     ) >> "$LOG" 2>&1 &
   fi
 

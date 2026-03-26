@@ -239,7 +239,8 @@ func main() {
 	} else {
 		ph.StartHeartbeat(30 * time.Second)
 		defer ph.Close()
-		log.Printf("[star-ai] pheromone ESB connected (%s)", natsURL)
+		meter.SetPheromoneCredit(billing.NewPheromoneCredit(ph, queenCredit))
+		log.Printf("[star-ai] pheromone ESB connected (%s), RPC credit check enabled", natsURL)
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

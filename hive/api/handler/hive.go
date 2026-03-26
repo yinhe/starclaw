@@ -324,6 +324,7 @@ func (h *HiveHandler) provisionHive(inst *model.ClawInstance, order *model.Order
 
 	// Done — confirm billing
 	h.confirmOrder(inst, order)
+	NotifyInstanceCreated(inst.ID, inst.OwnerID, inst.Slug, fmt.Sprintf("%s.%s", inst.Slug, h.cfg.Domain), "hive")
 	log.Printf("[hive] instance %s ready at https://%s.%s", inst.Slug, inst.Slug, h.cfg.Domain)
 }
 
@@ -394,6 +395,7 @@ func (h *HiveHandler) provisionLite(inst *model.ClawInstance, order *model.Order
 
 	// Done — no billing for free tier
 	h.confirmOrder(inst, order)
+	NotifyInstanceCreated(inst.ID, inst.OwnerID, inst.Slug, fmt.Sprintf("%s.%s", inst.Slug, h.cfg.Domain), "lite")
 	log.Printf("[hive] lite instance %s ready at https://%s.%s (3s deploy)", inst.Slug, inst.Slug, h.cfg.Domain)
 }
 
@@ -473,6 +475,7 @@ func (h *HiveHandler) provisionECS(inst *model.ClawInstance, order *model.Order,
 
 	// Done — confirm billing
 	h.confirmOrder(inst, order)
+	NotifyInstanceCreated(inst.ID, inst.OwnerID, inst.Slug, fmt.Sprintf("%s.%s", inst.Slug, h.cfg.Domain), "ecs")
 	log.Printf("[hive] ECS instance %s ready at https://%s.%s (IP: %s)", inst.Slug, inst.Slug, h.cfg.Domain, ip)
 }
 
@@ -569,6 +572,7 @@ func (h *HiveHandler) StopInstance(c *gin.Context) {
 		return
 	}
 	h.db.Model(&inst).Update("status", "stopped")
+	NotifyInstanceStopped(inst.ID, inst.Slug)
 	c.JSON(http.StatusOK, gin.H{"message": "已停止", "slug": inst.Slug})
 }
 
@@ -586,6 +590,7 @@ func (h *HiveHandler) StartInstance(c *gin.Context) {
 		return
 	}
 	h.db.Model(&inst).Update("status", "running")
+	NotifyInstanceStarted(inst.ID, inst.Slug)
 	c.JSON(http.StatusOK, gin.H{"message": "已启动", "slug": inst.Slug})
 }
 
@@ -633,6 +638,7 @@ func (h *HiveHandler) DestroyInstance(c *gin.Context) {
 		os.RemoveAll(dataDir)
 		// Soft delete record
 		h.db.Delete(&inst)
+		NotifyInstanceDeleted(inst.ID, inst.Slug)
 		log.Printf("[hive] 🗑️ instance %s destroyed", inst.Slug)
 	}()
 
