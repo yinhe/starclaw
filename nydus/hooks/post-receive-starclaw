@@ -30,6 +30,65 @@ publish_pheromone_deploy() {
   ) >/dev/null 2>&1 &
 }
 
+# ========== Polyrepo Sync (monorepo subdir → individual bare repos) ==========
+# Each push to master auto-syncs changed subdirectories to their polyrepo on Nydus
+POLYREPO_SERVICES="queen claw hive synapse overlord pheromone forge nydus carapace cerebrate larva spore"
+
+sync_to_polyrepo() {
+  local subdir="$1"
+  local polyrepo="/data/nydus/repos/${subdir}.git"
+  local msg="$2"
+
+  [ ! -d "$polyrepo" ] && return 0
+
+  local tmpdir=$(mktemp -d)
+
+  # Export subdirectory tree from monorepo
+  git --git-dir="$REPO" archive "${newrev}:${subdir}" 2>/dev/null | tar xf - -C "$tmpdir" 2>/dev/null || true
+  if [ -z "$(ls -A "$tmpdir" 2>/dev/null)" ]; then
+    rm -rf "$tmpdir"
+    return 0
+  fi
+
+  # Use separate index to avoid conflicts with concurrent operations
+  local idx=$(mktemp)
+
+  export GIT_DIR="$polyrepo"
+  export GIT_WORK_TREE="$tmpdir"
+  export GIT_INDEX_FILE="$idx"
+  export GIT_AUTHOR_NAME="Nydus Sync"
+  export GIT_AUTHOR_EMAIL="nydus@starclaw.net"
+  export GIT_COMMITTER_NAME="Nydus Sync"
+  export GIT_COMMITTER_EMAIL="nydus@starclaw.net"
+
+  # Stage all files
+  git add -A 2>/dev/null
+
+  # Skip if polyrepo HEAD tree is already identical
+  if git diff --cached --quiet HEAD 2>/dev/null; then
+    rm -f "$idx"; rm -rf "$tmpdir"
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+    return 0
+  fi
+
+  # Create tree → commit → update ref (pure git plumbing, no working copy needed)
+  local tree=$(git write-tree)
+  local parent=""
+  parent=$(git rev-parse refs/heads/master 2>/dev/null) || true
+  local new_commit
+  if [ -n "$parent" ]; then
+    new_commit=$(echo "$msg" | git commit-tree "$tree" -p "$parent")
+  else
+    new_commit=$(echo "$msg" | git commit-tree "$tree")
+  fi
+  git update-ref refs/heads/master "$new_commit"
+
+  rm -f "$idx"; rm -rf "$tmpdir"
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] ${subdir}.git updated (${new_commit:0:7})" | tee -a "$LOG"
+}
+
 while read oldrev newrev refname; do
   # Sync tags to claw.git (for Molt release detection)
   case "$refname" in
@@ -265,6 +324,24 @@ while read oldrev newrev refname; do
       echo "  -> nydus config synced & api restarted" | tee -a "$LOG"
     ) >> "$LOG" 2>&1 &
   fi
+
+  # ========== Sync changed subdirectories to polyrepos ==========
+  (
+    short_rev=$(echo "$newrev" | head -c 7)
+    commit_msg=$(git --git-dir="$REPO" log -1 --format='%s' "$newrev" 2>/dev/null || echo "sync from starclaw")
+    sync_msg="sync: ${commit_msg} (${short_rev})"
+
+    synced=""
+    for svc in $POLYREPO_SERVICES; do
+      if echo "$CHANGED" | grep -q "^${svc}/"; then
+        sync_to_polyrepo "$svc" "$sync_msg" && synced="$synced $svc"
+      fi
+    done
+
+    if [ -n "$synced" ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] polyrepo sync done:$synced" | tee -a "$LOG"
+    fi
+  ) >> "$LOG" 2>&1 &
 
   echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED" | tee -a "$LOG"
 done
