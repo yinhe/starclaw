@@ -33,7 +33,7 @@ if [ -z "$TOKEN" ]; then
   NEW_HASH=$(docker exec starclaw-queen-api sh -c "echo -n 'starclaw2026' | sha256sum | cut -d' ' -f1" 2>/dev/null || echo "")
   if [ -z "$NEW_HASH" ]; then
     echo "Cannot reset password via container. Testing with node token instead..."
-    NODE_TOKEN=$(grep NODE_TOKEN /opt/starclaw-queen/.env 2>/dev/null || echo "")
+    NODE_TOKEN=$(grep NODE_TOKEN /opt/queen/.env 2>/dev/null || echo "")
     echo "Node token: $NODE_TOKEN"
     exit 1
   fi

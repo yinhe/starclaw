@@ -38,7 +38,7 @@
 
 | 本地 monorepo 子目录 | 部署到 | 服务器路径 |
 |---------------------|--------|-----------|
-| `queen/` | Server C | `/opt/starclaw-queen` |
+| `queen/` | Server C | `/opt/queen` |
 | `queen/api/` | Server B | `/opt/starclaw/gateway` |
 | `claw/` | Server A | `/opt/starclaw` |
 | `claw/` | 客户 Claw | `/opt/starclaw` |
@@ -198,7 +198,7 @@ make update    # git pull + docker rebuild
 
 ```bash
 ssh -i ~/.ssh/queen_deploy root@43.106.158.26
-cd /opt/starclaw-queen
+cd /opt/queen
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```

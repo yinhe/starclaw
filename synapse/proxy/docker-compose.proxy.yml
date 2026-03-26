@@ -1,4 +1,4 @@
-# Append to /opt/starclaw-queen/docker-compose.prod.yml
+# Append to /opt/queen/docker-compose.prod.yml
 # Add before the volumes: section
 
   redis-proxy:

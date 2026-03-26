@@ -7,7 +7,7 @@
 #   3. verify — post-deploy smoke test
 
 pipeline:
-  name: starclaw-overlord
+  name: /opt/overlord
   repo: starclaw
   subdir: overlord
   branch: master

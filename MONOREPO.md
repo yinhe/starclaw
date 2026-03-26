@@ -205,9 +205,9 @@ starclaw/                          # 私有 monorepo
 
 | monorepo 子目录 | 部署目标 | 服务器路径 | 方式 |
 |:---------------|:---------|:----------|:-----|
-| `queen/` | Server C (本地) | `/opt/starclaw-queen/` | Nydus Worm |
-| `cerebrate/` | Server C (本地) | `/opt/starclaw-queen/` | Nydus Worm (随 queen 一起构建) |
-| `overlord/` | Server C (本地) | `/opt/starclaw-overlord/` | Nydus Worm |
+| `queen/` | Server C (本地) | `/opt/queen/` | Nydus Worm |
+| `cerebrate/` | Server C (本地) | `/opt/queen/` | Nydus Worm (随 queen 一起构建) |
+| `overlord/` | Server C (本地) | `/opt/overlord/` | Nydus Worm |
 | `queen/api/` | Server B (Gateway) | `/opt/starclaw/gateway/` | SSH + Worm |
 | `synapse/` | Server B | `/opt/starclaw/synapse/` | SSH + Worm |
 | `claw/` | Server A | `/opt/starclaw/` | SSH direct |

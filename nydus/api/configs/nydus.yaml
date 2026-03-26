@@ -14,7 +14,7 @@ repos:
 
       - name: "queen-server-c"
         worm_url: "http://nydus-worm:8096"
-        deploy_path: "/opt/starclaw-queen"
+        deploy_path: "/opt/queen"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build"
         subdir: "queen"
         branch: "master"
@@ -52,7 +52,7 @@ repos:
 
       - name: "overlord-server-c"
         worm_url: "http://nydus-worm:8096"
-        deploy_path: "/opt/starclaw-overlord"
+        deploy_path: "/opt/overlord"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api console web"
         subdir: "overlord"
         branch: "master"

@@ -225,7 +225,7 @@ repos:
       # 本地 target：直接调用同网络的 Worm
       - name: "queen-server-c"
         worm_url: "http://nydus-worm:8096"
-        deploy_path: "/opt/starclaw-queen"
+        deploy_path: "/opt/queen"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build"
         subdir: "queen"
         branch: "master"
@@ -233,7 +233,7 @@ repos:
       # Overlord：企业 AI 管控平台（本地 Worm）
       - name: "overlord-server-c"
         worm_url: "http://nydus-worm:8096"
-        deploy_path: "/opt/starclaw-overlord"
+        deploy_path: "/opt/overlord"
         deploy_cmd: "docker compose -f docker-compose.prod.yml up -d --build api console web"
         subdir: "overlord"
         branch: "master"
@@ -261,7 +261,7 @@ repos:
 port: "8096"          # Server C: 8096, Server B: 8097
 secret: "same-secret-as-server"
 deploy_dirs:
-  starclaw: /opt/starclaw-queen
+  starclaw: /opt/queen
 ```
 
 ## 虫族命名体系

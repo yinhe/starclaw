@@ -107,7 +107,7 @@ ph.StartHeartbeat(30 * time.Second)
 
 ## Deployment
 
-Deployed at `/opt/starclaw-pheromone/` via `docker compose`.
+Deployed at `/opt/pheromone/` via `docker compose`.
 
 ```bash
 docker compose up -d

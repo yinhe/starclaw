@@ -157,7 +157,7 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 | Prometheus | starclaw-queen-prometheus | 9090 | — | 监控指标 (内网) |
 
 **代码目录：** `queen/` (含 `queen/proxy/`) + `nydus/`
-**部署路径：** `/opt/starclaw-queen/` (Queen+Proxy) + `/opt/nydus/` (Nydus)
+**部署路径：** `/opt/queen/` (Queen+Proxy) + `/opt/nydus/` (Nydus)
 **部署：** `docker-compose.prod.yml` (Queen+Proxy+Redis) + Nydus (裸进程)
 **nginx：** `/etc/nginx/sites-enabled/queen` — 单文件统一管理所有子域名
 **SSL：** Let's Encrypt 通配符证书 `*.starclaw.net`（DNS-01 验证）

@@ -90,7 +90,7 @@ starclaw.me 服务器
 ### 3.2 数据持久化策略
 
 ```
-/opt/starclaw-hive/
+/opt/hive/
 ├── shared/
 │   ├── mysql/          # 共享 MySQL 数据
 │   └── redis/          # 共享 Redis 数据
@@ -140,7 +140,7 @@ starclaw.me 服务器
     │     GRANT ALL ON claw_{slug}.* TO 'claw_{slug}'@'%'
     │
     ├─ 4. 创建数据目录
-    │     mkdir -p /opt/starclaw-hive/instances/{slug}/{identity,uploads,...}
+    │     mkdir -p /opt/hive/instances/{slug}/{identity,uploads,...}
     │
     ├─ 5. 生成 Ed25519 密钥对（节点身份）
     │     → 得到 claw:{hex_pubkey} 地址
@@ -153,8 +153,8 @@ starclaw.me 服务器
     │       -e STARCLAW_NODE_ADDRESS=https://{slug}.starclaw.me \
     │       -e STARCLAW_OVERLORD_ENABLED=true \
     │       -e STARCLAW_OVERLORD_OVERLORD_URL=https://overlord.starclaw.net \
-    │       -v /opt/starclaw-hive/instances/{slug}/identity:/app/data/identity \
-    │       -v /opt/starclaw-hive/instances/{slug}/uploads:/app/uploads \
+    │       -v /opt/hive/instances/{slug}/identity:/app/data/identity \
+    │       -v /opt/hive/instances/{slug}/uploads:/app/uploads \
     │       -p 127.0.0.1:{port}:8080 \
     │       starclaw-api:latest
     │
@@ -504,7 +504,7 @@ server {
 
     # 动态解析 upstream 端口
     # 方案 A: 包含独立配置文件（Hive Controller 动态生成）
-    include /opt/starclaw-hive/nginx/conf.d/$slug.conf;
+    include /opt/hive/nginx/conf.d/$slug.conf;
 }
 ```
 

@@ -69,7 +69,7 @@ Queen auto-deploys via Nydus hook on git push. Manual fallback:
 
 8. Queen (if auto-deploy failed) — **must clean api/ first** to remove stale files:
 ```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/starclaw-queen && rm -rf api/ && git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/ | tar xf - && mkdir -p api/certs && docker compose -f docker-compose.prod.yml build --no-cache queen-api 2>&1 | tail -5 && docker compose -f docker-compose.prod.yml up -d queen-api 2>&1"
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/queen && rm -rf api/ && git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:queen/ | tar xf - && mkdir -p api/certs && docker compose -f docker-compose.prod.yml build --no-cache queen-api 2>&1 | tail -5 && docker compose -f docker-compose.prod.yml up -d queen-api 2>&1"
 ```
 
 9. Gateway on Server B (queen/api code):

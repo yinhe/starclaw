@@ -1,10 +1,10 @@
 #!/bin/bash
 # First-time deployment of Forge on Server C
-# Run this on the server: bash /opt/starclaw-forge/deploy/first-deploy.sh
+# Run this on the server: bash /opt/forge/deploy/first-deploy.sh
 set -e
 
 REPO=/data/nydus/repos/starclaw.git
-FORGE_DIR=/opt/starclaw-forge
+FORGE_DIR=/opt/forge
 
 echo "=== Forge First Deploy ==="
 

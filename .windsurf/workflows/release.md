@@ -148,7 +148,7 @@ Nydus hook should handle both, but if it misses them, manually deploy:
 
 12. Deploy queen/site on Server C (starclaw.net landing page):
 ```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/starclaw-queen && docker compose -f docker-compose.prod.yml build --no-cache queen-site && docker compose -f docker-compose.prod.yml up -d queen-site"
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/queen && docker compose -f docker-compose.prod.yml build --no-cache queen-site && docker compose -f docker-compose.prod.yml up -d queen-site"
 ```
 
 13. Deploy synapse/web to Server B (star-ai.net/download):

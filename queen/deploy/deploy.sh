@@ -3,9 +3,9 @@
 # StarClaw Queen — One-command production deployment
 #
 # Usage:
-#   scp -r queen/ root@your-server:/opt/starclaw-queen/
+#   scp -r queen/ root@your-server:/opt/queen/
 #   ssh root@your-server
-#   cd /opt/starclaw-queen && bash deploy/deploy.sh
+#   cd /opt/queen && bash deploy/deploy.sh
 #
 # Prerequisites:
 #   - Docker + Docker Compose installed

@@ -88,7 +88,7 @@ services:
     environment:
       HIVE_PORT: 9090
       HIVE_DOMAIN: ${HIVE_DOMAIN:-starclaw.me}
-      HIVE_DATA_DIR: /opt/starclaw-hive
+      HIVE_DATA_DIR: /opt/hive
       HIVE_NGINX_CONF_DIR: /etc/nginx/hive.d
       HIVE_SSL_CERT: /etc/letsencrypt/live/starclaw.me/fullchain.pem
       HIVE_SSL_KEY: /etc/letsencrypt/live/starclaw.me/privkey.pem
@@ -121,7 +121,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/run/nginx.pid:/var/run/nginx.pid:ro
-      - ./instances:/opt/starclaw-hive/instances
+      - ./instances:/opt/hive/instances
       - /etc/nginx/hive.d:/etc/nginx/hive.d
       - /etc/letsencrypt:/etc/letsencrypt:ro
     ports:

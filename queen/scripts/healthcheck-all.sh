@@ -4,7 +4,7 @@
 #   --fix: auto-restart unhealthy containers
 #
 # Recommended cron (every 5 min):
-#   */5 * * * * /opt/starclaw-queen/scripts/healthcheck-all.sh --fix >> /var/log/starclaw-health.log 2>&1
+#   */5 * * * * /opt/queen/scripts/healthcheck-all.sh --fix >> /var/log/starclaw-health.log 2>&1
 
 set -euo pipefail
 
@@ -80,7 +80,7 @@ else
     echo "Attempting auto-recovery..."
 
     # Auto-restart unhealthy containers
-    for dir in /opt/starclaw /opt/starclaw-queen /opt/starclaw-overlord; do
+    for dir in /opt/starclaw /opt/queen /opt/overlord; do
       if [[ -d "$dir" ]]; then
         cd "$dir"
         unhealthy=$(docker compose ps --format json 2>/dev/null | python3 -c "
