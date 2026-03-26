@@ -196,10 +196,10 @@ function App() {
                 )}
                 <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
                   <input
-                    type="email"
+                    type="text"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="邮箱（可选，用于找回）"
+                    placeholder="邮箱或手机号（可选，用于找回）"
                     className="bg-zinc-900/80 border border-zinc-700 rounded-lg px-4 py-3 text-white text-sm w-full outline-none focus:border-purple-500 transition-colors placeholder:text-zinc-600"
                     disabled={status === 'creating'}
                   />
