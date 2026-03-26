@@ -20,6 +20,137 @@ type Event struct {
 	Timestamp time.Time       `json:"timestamp"`
 }
 
+// ========== Service Registry ==========
+
+type ServiceEntry struct {
+	Name       string    `json:"name"`
+	Version    string    `json:"version,omitempty"`
+	Host       string    `json:"host,omitempty"`
+	Port       int       `json:"port,omitempty"`
+	Tags       []string  `json:"tags,omitempty"`
+	PID        int       `json:"pid,omitempty"`
+	Status     string    `json:"status"`
+	Uptime     string    `json:"uptime,omitempty"`
+	Goroutines int       `json:"goroutines,omitempty"`
+	LastSeen   time.Time `json:"last_seen"`
+	Registered time.Time `json:"registered"`
+}
+
+type ServiceRegistry struct {
+	mu       sync.RWMutex
+	services map[string]*ServiceEntry
+	ttl      time.Duration
+}
+
+func NewServiceRegistry(ttl time.Duration) *ServiceRegistry {
+	r := &ServiceRegistry{
+		services: make(map[string]*ServiceEntry),
+		ttl:      ttl,
+	}
+	go r.reaper()
+	return r
+}
+
+func (r *ServiceRegistry) Update(name string, data json.RawMessage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var info struct {
+		Service struct {
+			Name    string   `json:"name"`
+			Version string   `json:"version"`
+			Host    string   `json:"host"`
+			Port    int      `json:"port"`
+			Tags    []string `json:"tags"`
+			PID     int      `json:"pid"`
+		} `json:"service"`
+		Uptime     string `json:"uptime"`
+		Goroutines int    `json:"goroutines"`
+		Status     string `json:"status"`
+	}
+	_ = json.Unmarshal(data, &info)
+
+	svcName := info.Service.Name
+	if svcName == "" {
+		svcName = name
+	}
+
+	entry, exists := r.services[svcName]
+	if !exists {
+		entry = &ServiceEntry{
+			Name:       svcName,
+			Registered: time.Now().UTC(),
+		}
+		r.services[svcName] = entry
+		log.Printf("[registry] new service: %s", svcName)
+	}
+
+	entry.LastSeen = time.Now().UTC()
+	entry.Status = "online"
+	if info.Service.Version != "" {
+		entry.Version = info.Service.Version
+	}
+	if info.Service.Host != "" {
+		entry.Host = info.Service.Host
+	}
+	if info.Service.Port > 0 {
+		entry.Port = info.Service.Port
+	}
+	if info.Service.PID > 0 {
+		entry.PID = info.Service.PID
+	}
+	if len(info.Service.Tags) > 0 {
+		entry.Tags = info.Service.Tags
+	}
+	if info.Uptime != "" {
+		entry.Uptime = info.Uptime
+	}
+	if info.Goroutines > 0 {
+		entry.Goroutines = info.Goroutines
+	}
+	if info.Status == "offline" {
+		entry.Status = "offline"
+	}
+}
+
+func (r *ServiceRegistry) List() []ServiceEntry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]ServiceEntry, 0, len(r.services))
+	for _, e := range r.services {
+		out = append(out, *e)
+	}
+	return out
+}
+
+func (r *ServiceRegistry) Get(name string) *ServiceEntry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if e, ok := r.services[name]; ok {
+		copy := *e
+		return &copy
+	}
+	return nil
+}
+
+// reaper marks services as stale if no heartbeat within TTL
+func (r *ServiceRegistry) reaper() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		r.mu.Lock()
+		now := time.Now()
+		for _, e := range r.services {
+			if e.Status == "online" && now.Sub(e.LastSeen) > r.ttl {
+				e.Status = "stale"
+				log.Printf("[registry] %s marked stale (no heartbeat for %s)", e.Name, r.ttl)
+			}
+		}
+		r.mu.Unlock()
+	}
+}
+
 type EventHub struct {
 	mu     sync.RWMutex
 	recent []Event
@@ -85,6 +216,8 @@ func main() {
 	natsURL := envOr("PHEROMONE_NATS_URL", "nats://pheromone-nats:4222")
 	hub := NewEventHub(300)
 
+	registry := NewServiceRegistry(90 * time.Second)
+
 	nc, err := nats.Connect(natsURL,
 		nats.Name("pheromone-api"),
 		nats.Timeout(5*time.Second),
@@ -104,6 +237,36 @@ func main() {
 		log.Fatalf("subscribe events: %v", err)
 	}
 
+	// Service registry: heartbeats
+	_, err = nc.Subscribe("pheromone.heartbeat.>", func(msg *nats.Msg) {
+		parts := strings.SplitN(msg.Subject, ".", 3)
+		name := "unknown"
+		if len(parts) >= 3 {
+			name = parts[2]
+		}
+		registry.Update(name, msg.Data)
+	})
+	if err != nil {
+		log.Fatalf("subscribe heartbeat: %v", err)
+	}
+
+	// Service registry: announcements (online/offline)
+	_, err = nc.Subscribe("pheromone.registry.>", func(msg *nats.Msg) {
+		var ann struct {
+			Service struct{ Name string } `json:"service"`
+		}
+		_ = json.Unmarshal(msg.Data, &ann)
+		name := ann.Service.Name
+		if name == "" {
+			name = "unknown"
+		}
+		registry.Update(name, msg.Data)
+		hub.Add(Event{Subject: msg.Subject, Payload: msg.Data, Timestamp: time.Now().UTC()})
+	})
+	if err != nil {
+		log.Fatalf("subscribe registry: %v", err)
+	}
+
 	http.HandleFunc("/health", withCORS(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":         "ok",
@@ -111,6 +274,25 @@ func main() {
 			"nats_url":       natsURL,
 			"nats_connected": nc.IsConnected(),
 		})
+	}))
+
+	// Service registry API
+	http.HandleFunc("/api/services", withCORS(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"services": registry.List()})
+	}))
+
+	http.HandleFunc("/api/services/", withCORS(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/api/services/")
+		if name == "" {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"services": registry.List()})
+			return
+		}
+		entry := registry.Get(name)
+		if entry == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "service not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, entry)
 	}))
 
 	http.HandleFunc("/api/events/recent", withCORS(func(w http.ResponseWriter, r *http.Request) {
