@@ -235,7 +235,7 @@ while read oldrev newrev refname; do
         rm -rf "$BUILD_DIR"
         echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Binaries for $tag ready in $RELEASE_DIR" | tee -a "$LOG"
         ls -lh "$RELEASE_DIR/" 2>/dev/null || true
-      ) >> "$LOG" 2>&1 &
+      ) </dev/null >> "$LOG" 2>&1 &
 
       continue
       ;;
@@ -297,7 +297,7 @@ while read oldrev newrev refname; do
       fi
       publish_pheromone_deploy_result "queen" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "queen-server-c" "success" "deployed in $((SECONDS - _start))s"
-    ) >> "$LOG" 2>&1 &
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Claw (Server A — starclaw.me) ---
@@ -314,7 +314,7 @@ while read oldrev newrev refname; do
       echo "  -> hive instances upgrade triggered" | tee -a "$LOG"
       publish_pheromone_deploy_result "claw" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "claw-starclaw-me" "success" "deployed in $((SECONDS - _start))s"
-    ) >> "$LOG" 2>&1 &
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Hive controller (Server A) ---
@@ -330,7 +330,7 @@ while read oldrev newrev refname; do
       echo "  -> hive-controller rebuilt on Server A" | tee -a "$LOG"
       publish_pheromone_deploy_result "hive" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "hive-server-a" "success" "deployed in $((SECONDS - _start))s"
-    ) >> "$LOG" 2>&1 &
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Synapse (Server B — star-ai.net) ---
@@ -365,7 +365,7 @@ while read oldrev newrev refname; do
       fi
       publish_pheromone_deploy_result "synapse" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "synapse-server-b" "success" "deployed in $((SECONDS - _start))s"
-    ) >> "$LOG" 2>&1 &
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Overlord (Server C — local) ---
@@ -384,7 +384,7 @@ while read oldrev newrev refname; do
       echo "  -> overlord rebuilt" | tee -a "$LOG"
       publish_pheromone_deploy_result "overlord" "completed" "$((SECONDS - _start))s" ""
       report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "overlord-server-c" "success" "deployed in $((SECONDS - _start))s"
-    ) >> "$LOG" 2>&1 &
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Pheromone (Server C — local) ---
@@ -399,7 +399,7 @@ while read oldrev newrev refname; do
       docker rm -f pheromone-api pheromone-web pheromone-nats pheromone-nats-exporter >/dev/null 2>&1 || true
       docker compose -f docker-compose.yml up -d --build
       echo "  -> pheromone stack refreshed (Server C :8100/:3110/:4222/:7777)" | tee -a "$LOG"
-    ) >> "$LOG" 2>&1 &
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Forge (Server C — local) ---
@@ -431,7 +431,7 @@ while read oldrev newrev refname; do
           docker compose up -d
           echo "  -> forge compose refreshed" | tee -a "$LOG"
         fi
-      ) >> "$LOG" 2>&1 &
+      ) </dev/null >> "$LOG" 2>&1 &
     fi
   fi
 
@@ -447,7 +447,7 @@ while read oldrev newrev refname; do
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/nydus/api/pheromone-sdk 2>/dev/null || true
       docker compose up -d --build api
       echo "  -> nydus config synced & api rebuilt" | tee -a "$LOG"
-    ) >> "$LOG" 2>&1 &
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # ========== Sync changed subdirectories to polyrepos ==========
@@ -471,7 +471,7 @@ while read oldrev newrev refname; do
     if [ -n "$synced" ]; then
       echo "$(date '+%Y-%m-%d %H:%M:%S') [sync] polyrepo sync done:$synced"
     fi
-  ) >> "$LOG" 2>&1 &
+  ) </dev/null >> "$LOG" 2>&1 &
 
   echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED" | tee -a "$LOG"
 done
