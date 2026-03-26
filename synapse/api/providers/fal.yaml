@@ -2,309 +2,330 @@ name: "fal.ai"
 type: "compute"
 enabled: true
 endpoint: "https://queue.fal.run"
+description: "fal.ai serverless GPU platform — latest models only. Prices from fal.ai/pricing (2026-03-26 scrape)."
 auth:
   type: "key"
   key_env: "FAL_API_KEY"
 models:
-  # Image Generation
-  - name: "fal/flux-pro"
-    type: "image"
-    price_per_call: 0.05
-    description: "FLUX.1 Pro - 高质量文生图"
-  - name: "fal/flux-dev"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.1 Dev - 开发者版文生图"
-  - name: "fal/flux-schnell"
-    type: "image"
-    price_per_call: 0.003
-    description: "FLUX.1 Schnell - 快速文生图"
-  - name: "fal/stable-diffusion-xl"
-    type: "image"
-    price_per_call: 0.01
-  # Video Generation
-  - name: "fal/veo3"
-    type: "video"
-    price_per_call: 0.50
-    description: "Google Veo 3 - 电影级文生视频 (8s, 原生音频)"
+  # ══════════════════════════════════════════════════
+  # VIDEO GENERATION (per-second or per-video pricing)
+  # ══════════════════════════════════════════════════
+
+  # ── Google Veo 3.1 (最新最强) ──
   - name: "fal/veo3.1"
     type: "video"
     price_per_call: 0.50
-    description: "Google Veo 3.1 - 最新最强文生视频 (4-8s, 原生音频)"
-  - name: "fal/sora2"
+    description: "Veo 3.1 文生视频 (原生音频, 4-8s)"
+  - name: "fal/veo3.1/image-to-video"
     type: "video"
-    price_per_call: 0.40
-    description: "OpenAI Sora 2 Pro - 文生视频 (5-20s, 原生音频)"
+    price_per_call: 0.50
+    description: "Veo 3.1 图生视频"
+  - name: "fal/veo3.1/fast"
+    type: "video"
+    price_per_call: 0.25
+    description: "Veo 3.1 Fast 快速版"
+  - name: "fal/veo3.1/fast/image-to-video"
+    type: "video"
+    price_per_call: 0.25
+    description: "Veo 3.1 Fast 图生视频"
+  - name: "fal/veo3.1/first-last-frame-to-video"
+    type: "video"
+    price_per_call: 0.50
+    description: "Veo 3.1 首尾帧生视频"
+  - name: "fal/veo3.1/reference-to-video"
+    type: "video"
+    price_per_call: 0.50
+    description: "Veo 3.1 参考图生视频"
+
+  # ── Kling O3 (最新) ──
+  - name: "fal/kling-video/o3/standard/image-to-video"
+    type: "video"
+    price_per_call: 0.10
+    description: "Kling O3 Standard 图生视频"
+  - name: "fal/kling-video/o3/pro/image-to-video"
+    type: "video"
+    price_per_call: 0.15
+    description: "Kling O3 Pro 图生视频"
+
+  # ── Kling V3 ──
   - name: "fal/kling-video/v3/pro/text-to-video"
     type: "video"
     price_per_call: 0.10
-    description: "Kling V3 Pro - 文生视频 (3-15s, 原生音频)"
+    description: "Kling V3 Pro 文生视频 (原生音频)"
   - name: "fal/kling-video/v3/pro/image-to-video"
     type: "video"
     price_per_call: 0.12
-    description: "Kling V3 Pro - 图生视频 (3-15s, 原生音频)"
+    description: "Kling V3 Pro 图生视频 (原生音频)"
   - name: "fal/kling-video/v3/standard/text-to-video"
     type: "video"
     price_per_call: 0.05
-    description: "Kling V3 Standard - 文生视频 (3-15s)"
+    description: "Kling V3 Standard 文生视频"
   - name: "fal/kling-video/v3/standard/image-to-video"
     type: "video"
     price_per_call: 0.06
-    description: "Kling V3 Standard - 图生视频 (3-15s)"
-  - name: "fal/minimax-video"
+    description: "Kling V3 Standard 图生视频"
+
+  # ── Kling V2.6 / V2.5 ──
+  - name: "fal/kling-video/v2.6/pro/image-to-video"
     type: "video"
     price_per_call: 0.10
-    description: "MiniMax Hailuo - 视频生成"
-  - name: "fal/luma-dream-machine"
+    description: "Kling V2.6 Pro 图生视频"
+  - name: "fal/kling-video/v2.5-turbo/pro/image-to-video"
     type: "video"
-    price_per_call: 0.10
-    description: "Luma Dream Machine Ray-2 - 视频生成"
-  # Music Generation
-  - name: "fal/ace-step"
-    type: "music"
-    price_per_call: 0.10
-    description: "ACE-Step 歌词转歌曲 (5-240s, 支持 verse/chorus/bridge)"
-  - name: "fal/minimax-music-v2"
-    type: "music"
-    price_per_call: 0.10
-    description: "MiniMax Music V2 高质量音乐生成"
-  - name: "fal/diffrhythm"
-    type: "music"
+    price_per_call: 0.07
+    description: "Kling 2.5 Turbo Pro 图生视频 ($0.07/sec)"
+
+  # ── Wan 2.5 (阿里万象) ──
+  - name: "fal/wan-25-preview/text-to-video"
+    type: "video"
+    price_per_call: 0.25
+    description: "Wan 2.5 文生视频 ($0.05/sec × 5s)"
+
+  # ── Sora 2 ──
+  - name: "fal/sora-2"
+    type: "video"
+    price_per_call: 0.40
+    description: "Sora 2 文生视频 (原生音频)"
+  - name: "fal/sora-2/characters"
+    type: "video"
+    price_per_call: 0.40
+    description: "Sora 2 角色一致性视频"
+
+  # ── Ovi ──
+  - name: "fal/ovi/image-to-video"
+    type: "video"
+    price_per_call: 0.20
+    description: "Ovi 图生视频"
+
+  # ── LTX-2.3 / LTX-2 19B ──
+  - name: "fal/ltx-2.3/text-to-video"
+    type: "video"
     price_per_call: 0.05
-    description: "DiffRhythm 歌词转歌曲 (带时间戳, 95s/285s)"
-  - name: "fal/stable-audio"
-    type: "music"
+    description: "LTX-2.3 文生视频 (Pro)"
+  - name: "fal/ltx-2.3/image-to-video"
+    type: "video"
     price_per_call: 0.05
-    description: "Stable Audio 纯音乐/音效生成 (≤47s)"
-  # Audio / TTS
-  - name: "fal/f5-tts"
-    type: "tts"
-    price_per_call: 0.01
-    description: "F5-TTS 语音合成"
-  # Image Generation (additional)
-  - name: "fal/flux-realism"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX Realism - 写实风格文生图"
-  - name: "fal/stable-diffusion-v35-large"
-    type: "image"
+    description: "LTX-2.3 图生视频 (Pro)"
+  - name: "fal/ltx-2.3/text-to-video/fast"
+    type: "video"
     price_per_call: 0.02
-    description: "Stable Diffusion 3.5 Large"
-  # ── FLUX.2 Image Generation (text-to-image) ──
-  - name: "fal/flux-2"
+    description: "LTX-2.3 Fast 文生视频"
+  - name: "fal/ltx-2.3/image-to-video/fast"
+    type: "video"
+    price_per_call: 0.02
+    description: "LTX-2.3 Fast 图生视频"
+  - name: "fal/ltx-2-19b/image-to-video"
+    type: "video"
+    price_per_call: 0.05
+    description: "LTX-2 19B 图生视频 (含音频)"
+
+  # ── Grok Imagine Video ──
+  - name: "fal/xai/grok-imagine-video/reference-to-video"
+    type: "video"
+    price_per_call: 0.30
+    description: "Grok Imagine 参考图生视频"
+
+  # ══════════════════════════════════════════════════
+  # IMAGE GENERATION (per-image pricing)
+  # ══════════════════════════════════════════════════
+
+  # ── Nano Banana 2 (Google, 最新) ──
+  - name: "fal/nano-banana-2"
     type: "image"
+    price_per_call: 0.04
+    description: "Nano Banana 2 (Google) SOTA 快速文生图"
+  - name: "fal/nano-banana-2/edit"
+    type: "image_edit"
+    price_per_call: 0.04
+    description: "Nano Banana 2 图片编辑"
+  - name: "fal/nano-banana-pro"
+    type: "image"
+    price_per_call: 0.04
+    description: "Nano Banana Pro 文生图"
+  - name: "fal/nano-banana-pro/edit"
+    type: "image_edit"
+    price_per_call: 0.04
+    description: "Nano Banana Pro 图片编辑"
+
+  # ── Seedream (ByteDance) ──
+  - name: "fal/bytedance/seedream/v5/lite/edit"
+    type: "image_edit"
+    price_per_call: 0.02
+    description: "Seedream V5 Lite 图片编辑"
+  - name: "fal/bytedance/seedream/v4.5/edit"
+    type: "image_edit"
+    price_per_call: 0.03
+    description: "Seedream V4.5 图片编辑"
+  - name: "fal/bytedance/seedream/v4/text-to-image"
+    type: "image"
+    price_per_call: 0.03
+    description: "Seedream V4 文生图 ($0.03/image)"
+  - name: "fal/bytedance/seedream/v4/edit"
+    type: "image_edit"
+    price_per_call: 0.03
+    description: "Seedream V4 图片编辑"
+
+  # ── FLUX Kontext (编辑/一致性) ──
+  - name: "fal/flux-pro/kontext"
+    type: "image_edit"
+    price_per_call: 0.04
+    description: "Flux Kontext Pro 文本+参考图编辑 ($0.04/image)"
+  - name: "fal/flux-kontext-lora"
+    type: "image_edit"
     price_per_call: 0.025
-    description: "FLUX.2 [dev] - 增强真实感、更清晰文字生成、原生编辑能力"
+    description: "Flux Kontext LoRA 自定义风格编辑"
+
+  # ── FLUX.2 系列 ──
   - name: "fal/flux-2-pro"
     type: "image"
     price_per_call: 0.05
-    description: "FLUX.2 [pro] - 最高质量，超级写实与艺术图片"
-  - name: "fal/flux-2-max"
-    type: "image"
-    price_per_call: 0.08
-    description: "FLUX.2 [max] - SOTA 图片生成，极致真实与精度"
-  - name: "fal/flux-2-flex"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.2 [flex] - 可调推理步数与引导比例，增强排版"
-  - name: "fal/flux-2/turbo"
-    type: "image"
-    price_per_call: 0.015
-    description: "FLUX.2 [dev] Turbo - 增强真实感，极速生成"
-  - name: "fal/flux-2/flash"
-    type: "image"
-    price_per_call: 0.01
-    description: "FLUX.2 [dev] Flash - 闪电级速度"
-  # ── FLUX.2 Image Editing (image-to-image) ──
-  - name: "fal/flux-2/edit"
-    type: "image_edit"
-    price_per_call: 0.025
-    description: "FLUX.2 [dev] Edit - 自然语言精确修改图片"
+    description: "FLUX.2 [pro] 最高质量"
   - name: "fal/flux-2-pro/edit"
     type: "image_edit"
     price_per_call: 0.05
-    description: "FLUX.2 [pro] Edit - 高质量图片编辑、风格迁移"
-  - name: "fal/flux-2-max/edit"
-    type: "image_edit"
-    price_per_call: 0.08
-    description: "FLUX.2 [max] Edit - SOTA 图片编辑，极致精度"
+    description: "FLUX.2 [pro] 图片编辑"
+  - name: "fal/flux-2-flex"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 [flex] 可调参数，增强排版"
   - name: "fal/flux-2-flex/edit"
     type: "image_edit"
     price_per_call: 0.025
-    description: "FLUX.2 [flex] Edit - 多参考图编辑，可调推理步数"
-  - name: "fal/flux-2/turbo/edit"
-    type: "image_edit"
-    price_per_call: 0.015
-    description: "FLUX.2 [dev] Turbo Edit - 极速图片编辑"
-  - name: "fal/flux-2/flash/edit"
-    type: "image_edit"
-    price_per_call: 0.01
-    description: "FLUX.2 [dev] Flash Edit - 闪电级图片编辑"
-  # ── FLUX.2 LoRA variants ──
-  - name: "fal/flux-2/lora"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.2 [dev] LoRA - 自定义风格文生图"
-  - name: "fal/flux-2/lora/edit"
-    type: "image_edit"
-    price_per_call: 0.025
-    description: "FLUX.2 [dev] LoRA Edit - 自定义风格图片编辑"
-  # ── FLUX.2 Klein (轻量模型) ──
-  - name: "fal/flux-2/klein/4b"
-    type: "image"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B - 轻量高速文生图"
-  - name: "fal/flux-2/klein/4b/base"
-    type: "image"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B Base - 基础轻量文生图"
-  - name: "fal/flux-2/klein/4b/edit"
-    type: "image_edit"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B Edit - 轻量图片编辑"
-  - name: "fal/flux-2/klein/4b/lora"
-    type: "image"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B LoRA - 轻量自定义风格"
-  - name: "fal/flux-2/klein/4b/base/edit"
-    type: "image_edit"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B Base Edit"
-  - name: "fal/flux-2/klein/4b/base/lora"
-    type: "image"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B Base LoRA"
-  - name: "fal/flux-2/klein/4b/base/edit/lora"
-    type: "image_edit"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B Base Edit + LoRA"
-  - name: "fal/flux-2/klein/4b/edit/lora"
-    type: "image_edit"
-    price_per_call: 0.005
-    description: "FLUX.2 [klein] 4B Edit + LoRA"
+    description: "FLUX.2 [flex] 图片编辑"
   - name: "fal/flux-2/klein/9b"
     type: "image"
     price_per_call: 0.01
-    description: "FLUX.2 [klein] 9B - 中等轻量文生图"
-  - name: "fal/flux-2/klein/9b/base"
-    type: "image"
-    price_per_call: 0.01
-    description: "FLUX.2 [klein] 9B Base - 基础中等文生图"
+    description: "FLUX.2 [klein] 9B 轻量文生图"
   - name: "fal/flux-2/klein/9b/edit"
     type: "image_edit"
     price_per_call: 0.01
-    description: "FLUX.2 [klein] 9B Edit"
+    description: "FLUX.2 [klein] 9B 图片编辑"
   - name: "fal/flux-2/klein/9b/lora"
     type: "image"
     price_per_call: 0.01
     description: "FLUX.2 [klein] 9B LoRA"
-  - name: "fal/flux-2/klein/9b/base/edit"
-    type: "image_edit"
-    price_per_call: 0.01
-    description: "FLUX.2 [klein] 9B Base Edit"
-  - name: "fal/flux-2/klein/9b/base/lora"
+  - name: "fal/flux-2/klein/4b"
     type: "image"
-    price_per_call: 0.01
-    description: "FLUX.2 [klein] 9B Base LoRA"
-  - name: "fal/flux-2/klein/9b/base/edit/lora"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B 超轻量文生图"
+  - name: "fal/flux-2/klein/4b/edit"
     type: "image_edit"
-    price_per_call: 0.01
-    description: "FLUX.2 [klein] 9B Base Edit + LoRA"
-  - name: "fal/flux-2/klein/9b/edit/lora"
-    type: "image_edit"
-    price_per_call: 0.01
-    description: "FLUX.2 [klein] 9B Edit + LoRA"
-  - name: "fal/flux-2/klein/realtime"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B 图片编辑"
+  - name: "fal/flux-2/klein/4b/lora"
+    type: "image"
+    price_per_call: 0.005
+    description: "FLUX.2 [klein] 4B LoRA"
+
+  # ── FLUX.1 (经典) ──
+  - name: "fal/flux-pro/v1.1"
+    type: "image"
+    price_per_call: 0.04
+    description: "FLUX 1.1 [pro] 增强版"
+  - name: "fal/flux/schnell"
     type: "image"
     price_per_call: 0.003
-    description: "FLUX.2 [klein] Realtime - 实时生成"
-  # ── FLUX.2 LoRA Gallery (预训练风格) ──
-  - name: "fal/flux-2-lora-gallery/realism"
+    description: "FLUX.1 [schnell] 极速文生图"
+  - name: "fal/flux/dev"
     type: "image"
     price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 写实增强"
-  - name: "fal/flux-2-lora-gallery/multiple-angles"
+    description: "FLUX.1 [dev] 开发者版"
+  - name: "fal/flux-lora"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.1 [dev] LoRA 自定义风格"
+
+  # ── Qwen Image ──
+  - name: "fal/qwen-image"
+    type: "image"
+    price_per_call: 0.02
+    description: "Qwen Image 文生图 ($0.02/MP)"
+  - name: "fal/qwen-image-2/pro/text-to-image"
+    type: "image"
+    price_per_call: 0.03
+    description: "Qwen Image 2 Pro 文生图"
+
+  # ── GPT Image ──
+  - name: "fal/gpt-image-1.5/edit"
     type: "image_edit"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 多角度生成"
-  - name: "fal/flux-2-lora-gallery/apartment-staging"
+    price_per_call: 0.04
+    description: "GPT Image 1.5 图片编辑"
+
+  # ── Reve ──
+  - name: "fal/reve/edit"
     type: "image_edit"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 虚拟家居布置"
-  - name: "fal/flux-2-lora-gallery/virtual-tryon"
-    type: "image_edit"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 虚拟试衣"
-  - name: "fal/flux-2-lora-gallery/face-to-full-portrait"
-    type: "image_edit"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 面部扩展为全身像"
-  - name: "fal/flux-2-lora-gallery/add-background"
-    type: "image_edit"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 添加背景"
-  - name: "fal/flux-2-lora-gallery/digital-comic-art"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 数字漫画风格"
-  - name: "fal/flux-2-lora-gallery/ballpoint-pen-sketch"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 圆珠笔素描风格"
-  - name: "fal/flux-2-lora-gallery/sepia-vintage"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 复古怀旧风格"
-  - name: "fal/flux-2-lora-gallery/satellite-view-style"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - 卫星/鸟瞰视角"
-  - name: "fal/flux-2-lora-gallery/hdr-style"
-    type: "image"
-    price_per_call: 0.025
-    description: "FLUX.2 LoRA Gallery - HDR 超现实色彩"
-  # ── FLUX.2 Training (模型微调) ──
-  - name: "fal/flux-2-trainer"
-    type: "training"
-    price_per_call: 1.00
-    description: "FLUX.2 [dev] 微调训练 - 自定义 LoRA"
-  - name: "fal/flux-2-trainer-v2"
-    type: "training"
-    price_per_call: 1.00
-    description: "FLUX.2 [dev] 微调训练 V2"
-  - name: "fal/flux-2-trainer/edit"
-    type: "training"
-    price_per_call: 1.00
-    description: "FLUX.2 [dev] 编辑模型微调"
-  - name: "fal/flux-2-trainer-v2/edit"
-    type: "training"
-    price_per_call: 1.00
-    description: "FLUX.2 [dev] 编辑模型微调 V2"
-  - name: "fal/flux-2-klein-9b-base-trainer"
-    type: "training"
-    price_per_call: 0.50
-    description: "FLUX.2 [klein] 9B 微调训练"
-  - name: "fal/flux-2-klein-9b-base-trainer/edit"
-    type: "training"
-    price_per_call: 0.50
-    description: "FLUX.2 [klein] 9B 编辑模型微调"
-  - name: "fal/flux-2-klein-4b-base-trainer"
-    type: "training"
-    price_per_call: 0.30
-    description: "FLUX.2 [klein] 4B 微调训练"
-  - name: "fal/flux-2-klein-4b-base-trainer/edit"
-    type: "training"
-    price_per_call: 0.30
-    description: "FLUX.2 [klein] 4B 编辑模型微调"
-  # Image Editing (legacy)
-  - name: "fal/inpaint"
+    price_per_call: 0.03
+    description: "Reve 图片编辑"
+
+  # ── 图片工具 ──
+  - name: "fal/seedvr/upscale/image"
     type: "image_edit"
     price_per_call: 0.02
+    description: "SeedVR2 图片超分"
   - name: "fal/remove-bg"
     type: "image_edit"
     price_per_call: 0.01
-  - name: "fal/upscale"
-    type: "image_edit"
-    price_per_call: 0.02
+    description: "背景去除"
+
+  # ══════════════════════════════════════════════════
+  # MUSIC GENERATION
+  # ══════════════════════════════════════════════════
+  - name: "fal/ace-step"
+    type: "music"
+    price_per_call: 0.10
+    description: "ACE-Step 歌词转歌曲 (5-240s)"
+  - name: "fal/minimax-music-v2"
+    type: "music"
+    price_per_call: 0.10
+    description: "MiniMax Music V2 高质量音乐"
+  - name: "fal/diffrhythm"
+    type: "music"
+    price_per_call: 0.05
+    description: "DiffRhythm 歌词转歌曲"
+  - name: "fal/stable-audio"
+    type: "music"
+    price_per_call: 0.05
+    description: "Stable Audio 纯音乐/音效 (≤47s)"
+
+  # ══════════════════════════════════════════════════
+  # TTS / AUDIO
+  # ══════════════════════════════════════════════════
+  - name: "fal/gemini-tts"
+    type: "tts"
+    price_per_call: 0.01
+    description: "Gemini TTS 高质量语音合成"
+  - name: "fal/f5-tts"
+    type: "tts"
+    price_per_call: 0.01
+    description: "F5-TTS 语音克隆合成"
+  - name: "fal/lux-tts"
+    type: "tts"
+    price_per_call: 0.01
+    description: "Lux TTS 48kHz 高品质语音"
+  - name: "fal/xai/tts/v1"
+    type: "tts"
+    price_per_call: 0.01
+    description: "xAI TTS 语音合成"
+
+  # ══════════════════════════════════════════════════
+  # TRAINING (模型微调)
+  # ══════════════════════════════════════════════════
+  - name: "fal/flux-kontext-trainer"
+    type: "training"
+    price_per_call: 1.00
+    description: "Flux Kontext LoRA 训练"
+  - name: "fal/flux-2-trainer-v2"
+    type: "training"
+    price_per_call: 1.00
+    description: "FLUX.2 LoRA 微调训练"
+  - name: "fal/wan-22-image-trainer"
+    type: "training"
+    price_per_call: 0.50
+    description: "Wan 2.2 图像 LoRA 训练"
+  - name: "fal/flux-lora-fast-training"
+    type: "training"
+    price_per_call: 0.50
+    description: "FLUX LoRA 快速训练"
+
 regions: ["us", "eu"]
-execution_mode: "async"       # 异步任务模式（提交 → 轮询 → 获取结果）
+execution_mode: "async"
