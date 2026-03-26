@@ -8,6 +8,35 @@
 | B | star-ai.net | 47.103.51.32 | Synapse — AI 算力平台 (国内) | `ssh -i ~/.ssh/starai_deploy root@47.103.51.32` |
 | C | starclaw.net | 43.106.158.26 | Queen + Nydus + Proxy — 中央控制 (新加坡) | `ssh -i ~/.ssh/queen_deploy root@43.106.158.26` |
 
+## Docker 网络命名约定
+
+容器名命名约定:`starclaw-{service}-{component}`，网络名命名约定:`starclaw-{service}`。
+
+| 服务 | Docker 网络 | 包含容器 | 说明 |
+|--------|--------------|----------|------|
+| C | `starclaw-queen` | queen-*, nydus-*, proxy | Queen 主网络，Nydus/Proxy 通过此网络访问 Queen |
+| C | `starclaw-overlord` | overlord-* | Overlord 专用网络 |
+| C | `starclaw-pheromone` | pheromone-*, forge-*, overlord-api | ESB 网络，包含 NATS 通信 |
+| A | `starclaw-net` | starclaw-* (claw) | Claw 产品网络 |
+| A | `starclaw-hive` | hive-* | Hive 多租户网络 |
+| A | `starclaw-overlord` | overlord-* | Overlord 客户端网络 |
+| B | `starclaw-synapse` | synapse-*, gateway | Synapse 主网络 |
+
+### 跨网络访问
+
+- `starclaw-pheromone` 是外部网络，`overlord-api`、`forge-api`、`nydus-api` 通过此网络访问 NATS (`starclaw-pheromone-nats:4222`)
+- `starclaw-queen` 是外部网络，`nydus` 服务通过此网络访问 Queen API
+- Server B 的 `starclaw-synapse-gateway` **必须** 与 `starclaw-synapse-mysql` 在同一网络 (`starclaw-synapse`)
+
+### 问题已知点
+
+1. **Gateway 网络隔离**：Server B 的 gateway 容器连接外部网络 `router_default` 而无法解析 MySQL，导致持续重启。解决：确保 gateway 的 `docker-compose.gateway.yml` 中的网络与 synapse 服务一致（当前为 `synapse_default`，新部署后为 `starclaw-synapse`）。
+2. **重启必须先建立网络**：外部网络（`external: true`）必须在服务启动前存在。启动顺序：
+   - Server C：queen → pheromone → overlord/nydus/forge
+   - Server B：synapse → gateway
+   - Server A：claw → hive
+3. **容器名必须与 compose 一致**：gateway DSN 中的主机名使用的是 compose 服务名（如 `mysql`）或容器名（如 `starclaw-synapse-mysql`），必须与实际运行的容器名匹配。
+
 ## 架构全景
 
 ```
@@ -18,10 +47,10 @@
  │    └── api.starclaw.me    → claw-api (:8080)
  │
  ├── star-ai.net ─────────── Server B (Synapse)
- │    ├── star-ai.net        → star-ai-web (:3096)
- │    ├── api.star-ai.net    → star-ai-api (:8096)
- │    ├── star-ai.net/v1/*   → star-ai-gateway (:8085)  ← API Gateway
- │    └── core.star-ai.net   → star-ai-core (:3097)
+ │    ├── star-ai.net        → starclaw-synapse-web (:3096)
+ │    ├── api.star-ai.net    → starclaw-synapse-api (:8096)
+ │    ├── star-ai.net/v1/*   → starclaw-synapse-gateway (:8085)  ← API Gateway
+ │    └── core.star-ai.net   → starclaw-synapse-core (:3097)
  │
  └── starclaw.net ─────────── Server C (Queen + Nydus + Proxy)
       ├── starclaw.net         → queen-web (:8086)
@@ -56,10 +85,10 @@
 | Claw API | starclaw-api | 8080 | api.starclaw.me | Go 后端 |
 | MySQL | starclaw-mysql | 3306 | — | Claw 数据库 |
 | Redis | starclaw-redis | 6379 | — | 缓存 |
-| **Hive Web** | **hive-web** | **8082** | — | **多租户控制面板前端** |
-| **Hive Controller** | **hive-controller** | **9090** | — | **Hive API (实例管理)** |
-| **Hive MySQL** | **hive-mysql** | **3307** | — | **Hive 数据库** |
-| **Hive Redis** | **hive-redis** | **6380** | — | **Hive 缓存** |
+| **Hive Web** | **starclaw-hive-web** | **8082** | — | **多租户控制面板前端** |
+| **Hive Controller** | **starclaw-hive-controller** | **9090** | — | **Hive API (实例管理)** |
+| **Hive MySQL** | **starclaw-hive-mysql** | **3307** | — | **Hive 数据库** |
+| **Hive Redis** | **starclaw-hive-redis** | **6380** | — | **Hive 缓存** |
 | Overlord API | starclaw-overlord-api | — | — | Overlord 客户端 (连 Server C 管控) |
 | Overlord Console | starclaw-overlord-console | 3095 | — | 管理控制台 |
 | Overlord Web | starclaw-overlord-web | 3096 | — | 员工工作台 |
@@ -100,12 +129,13 @@ AI 算力平台 + API Gateway，面向付费用户和开发者。
 
 | 服务 | 容器名 | 端口 | 说明 |
 |------|--------|------|------|
-| Star-AI API | star-ai-api | 8096 | Go 后端（计费/路由/LLM 直连） |
-| Star-AI Web | star-ai-web | 3096 | React 前端 |
-| Star-AI Core | star-ai-core | 3097 | Admin 管理面板 |
-| **Gateway** | **star-ai-gateway** | **8085** | **OpenAI 兼容 API 网关 (queen-api)** |
-| MySQL | star-ai-mysql | 3306 | 数据库 (star_ai + starclaw_queen) |
-| Redis | star-ai-redis | 6379 | 缓存 |
+| Synapse API | starclaw-synapse-api | 8096 | Go 后端（计费/路由/LLM 直连） |
+| Synapse Web | starclaw-synapse-web | 3096 | React 前端 |
+| Synapse Core | starclaw-synapse-core | 3097 | Admin 管理面板 |
+| Synapse Proxy | starclaw-synapse-proxy | (expose 8000) | 海外 LLM 中转 (内网) |
+| **Gateway** | **starclaw-synapse-gateway** | **8085** | **OpenAI 兼容 API 网关 (queen-api)** |
+| MySQL | starclaw-synapse-mysql | 3306 | 数据库 (star_ai + starclaw_queen) |
+| Redis | starclaw-synapse-redis | 6379 | 缓存 |
 | nginx | nginx | 80/443 | 反向代理 |
 | **Nydus Worm** | **systemd** | **8097** | **部署执行 Agent（本地监听）** |
 
@@ -165,13 +195,13 @@ ssh -i ~/.ssh/starai_deploy root@47.103.51.32 'cd /opt/starclaw/gateway && docke
 | **Overlord Console** | **starclaw-overlord-console** | **3095** | **overlord.starclaw.net** | **管理控制台 (12 页)** |
 | **Overlord Web** | **starclaw-overlord-web** | **3096** | **overlord.starclaw.net/app** | **员工工作台 (5 页)** |
 | Overlord MySQL | starclaw-overlord-mysql | 3306 | — | Overlord 独立数据库 (内网) |
-| Nydus API | nydus-api | 8098 | nydus.starclaw.net | Git 仓库 + 部署调度 + Claw 更新备源 |
-| Nydus Web | nydus-web | 8101 | nydus.starclaw.net | Nydus Dashboard 前端 |
-| Nydus Worm | nydus-worm | — | — | 部署执行 Agent (Docker 内网) |
-| **Forge API** | **forge-api** | **8099** | — | **CI/CD 构建系统** |
-| **Pheromone API** | **pheromone-api** | **8100** | — | **ESB 事件总线** |
-| **Pheromone Web** | **pheromone-web** | **3110** | — | **ESB Dashboard** |
-| **Pheromone NATS** | **pheromone-nats** | **4222/8880** | **nats.starclaw.net** | **消息队列 (TCP + WebSocket)** |
+| Nydus API | starclaw-nydus-api | 8098 | nydus.starclaw.net | Git 仓库 + 部署调度 + Claw 更新备源 |
+| Nydus Web | starclaw-nydus-web | 8101 | nydus.starclaw.net | Nydus Dashboard 前端 |
+| Nydus Worm | starclaw-nydus-worm | — | — | 部署执行 Agent (Docker 内网) |
+| **Forge API** | **starclaw-forge-api** | **8099** | — | **CI/CD 构建系统** |
+| **Pheromone API** | **starclaw-pheromone-api** | **8100** | — | **ESB 事件总线** |
+| **Pheromone Web** | **starclaw-pheromone-web** | **3110** | — | **ESB Dashboard** |
+| **Pheromone NATS** | **starclaw-pheromone-nats** | **4222/8880** | **nats.starclaw.net** | **消息队列 (TCP + WebSocket)** |
 | MySQL | starclaw-queen-mysql | 3306 | — | 数据库 (starclaw_queen) |
 | Prometheus | starclaw-queen-prometheus | 9090 | — | 监控指标 (内网) |
 
