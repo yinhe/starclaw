@@ -399,6 +399,20 @@ echo "$REFS" | while read oldrev newrev refname; do
     ) </dev/null >> "$LOG" 2>&1 &
   fi
 
+  # --- Synapse Scraper (Server C — local, needs external network) ---
+  if echo "$CHANGED" | grep -q "^synapse/scraper/\|^synapse/api/providers/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Synapse scraper changed — rebuilding on server C..." | cat >> "$LOG"
+    (
+      mkdir -p /opt/synapse-scraper
+      cd /opt/synapse-scraper
+      git --git-dir="$REPO" archive HEAD:synapse/scraper | tar xf - 2>/dev/null || true
+      mkdir -p providers
+      git --git-dir="$REPO" archive HEAD:synapse/api/providers | tar xf - -C providers 2>/dev/null || true
+      docker compose up -d --build
+      echo "  -> synapse-scraper rebuilt (Server C)" | cat >> "$LOG"
+    ) </dev/null >> "$LOG" 2>&1 &
+  fi
+
   # --- Pheromone (Server C — local) ---
   if echo "$CHANGED" | grep -q "^pheromone/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Pheromone changed — rebuilding on server C..." | cat >> "$LOG"

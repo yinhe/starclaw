@@ -1,0 +1,26 @@
+# Synapse Price Scraper — deployed on Server C (Singapore) for external network access
+# Connects to Pheromone NATS for event publishing
+#
+# Deploy: docker compose up -d --build
+
+services:
+  scraper:
+    build: .
+    container_name: starclaw-synapse-scraper
+    environment:
+      - PROVIDERS_DIR=/providers
+      - SNAPSHOT_DIR=/data/pricing-snapshots
+      - PHEROMONE_NATS_URL=nats://starclaw-pheromone-nats:4222
+      - SCRAPE_INTERVAL_HOURS=6
+    volumes:
+      - ./providers:/providers:ro
+      - scraper_data:/data/pricing-snapshots
+    restart: unless-stopped
+
+volumes:
+  scraper_data:
+
+networks:
+  default:
+    external: true
+    name: starclaw-pheromone
