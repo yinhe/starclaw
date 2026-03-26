@@ -6,17 +6,44 @@ auth:
   type: "bearer"
   key_env: "DASHSCOPE_API_KEY"
 models:
-  # ── 通用对话 ──
+  # Prices from https://help.aliyun.com/zh/model-studio/models (scraped 2026-03-26)
+  # NOTE: Qwen uses tiered pricing for long context. Prices below are the base tier (≤32K or ≤128K).
+  # Longer inputs cost 1.6-2.8x more. Current billing uses base tier only (MVP).
+
+  # ── Qwen3 Max (阶梯计价: ≤32K=2.5/10, 32-128K=4/16, 128-252K=7/28) ──
+  - name: "qwen/qwen3-max"
+    type: "chat"
+    context_length: 262144
+    input_price_cny: 0.0025   # ¥2.5/百万tokens (≤32K基础档)
+    output_price_cny: 0.01     # ¥10/百万tokens (思考模式同价)
+
+  # ── Qwen3.5 Plus (阶梯计价: ≤128K=0.8/4.8, 128-256K=2/12, 256K-1M=4/24) ──
+  - name: "qwen/qwen3.5-plus"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.0008   # ¥0.8/百万tokens (≤128K基础档)
+    output_price_cny: 0.0048   # ¥4.8/百万tokens (思考模式同价)
+  - name: "qwen/qwen3.5-flash"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.0
+    output_price_cny: 0.0
+
+  # ── Qwen Plus (思考模式输出¥8/M, 非思考¥2/M) ──
+  - name: "qwen/qwen-plus"
+    type: "chat"
+    context_length: 1000000
+    input_price_cny: 0.0008   # ¥0.8/百万tokens
+    output_price_cny: 0.002    # ¥2/百万tokens (非思考模式)
+
+  # ── Qwen Max (旧版, 稳定版) ──
   - name: "qwen/qwen-max"
     type: "chat"
     context_length: 32768
-    input_price_cny: 0.0025   # 2.5 元/百万 tokens
-    output_price_cny: 0.01     # 10 元/百万 tokens
-  - name: "qwen/qwen-plus"
-    type: "chat"
-    context_length: 131072
-    input_price_cny: 0.0008
-    output_price_cny: 0.002
+    input_price_cny: 0.0024   # ¥2.4/百万tokens
+    output_price_cny: 0.0096   # ¥9.6/百万tokens
+
+  # ── Qwen Turbo / Flash / Long ──
   - name: "qwen/qwen-turbo"
     type: "chat"
     context_length: 1000000
@@ -32,22 +59,6 @@ models:
     context_length: 10000000
     input_price_cny: 0.0005
     output_price_cny: 0.002
-  # ── Qwen3 / 3.5 ──
-  - name: "qwen/qwen3.5-plus"
-    type: "chat"
-    context_length: 131072
-    input_price_cny: 0.0008   # 0.8 元/百万 tokens
-    output_price_cny: 0.0048   # 4.8 元/百万 tokens
-  - name: "qwen/qwen3.5-flash"
-    type: "chat"
-    context_length: 131072
-    input_price_cny: 0.0
-    output_price_cny: 0.0
-  - name: "qwen/qwen3-max"
-    type: "chat"
-    context_length: 32768
-    input_price_cny: 0.0025   # 2.5 元/百万 tokens
-    output_price_cny: 0.01     # 10 元/百万 tokens
   # ── QwQ (推理) ──
   - name: "qwen/qwq-plus"
     type: "reasoning"

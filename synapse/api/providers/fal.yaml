@@ -176,6 +176,22 @@ models:
     description: "Flux Kontext LoRA 自定义风格编辑"
 
   # ── FLUX.2 系列 ──
+  - name: "fal/flux-2"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] 文生图 (增强真实感+文字)"
+  - name: "fal/flux-2/edit"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] 自然语言图片编辑"
+  - name: "fal/flux-2-max"
+    type: "image"
+    price_per_call: 0.08
+    description: "FLUX.2 [max] SOTA 极致真实"
+  - name: "fal/flux-2-max/edit"
+    type: "image_edit"
+    price_per_call: 0.08
+    description: "FLUX.2 [max] 极致图片编辑"
   - name: "fal/flux-2-pro"
     type: "image"
     price_per_call: 0.05
@@ -216,6 +232,31 @@ models:
     type: "image"
     price_per_call: 0.005
     description: "FLUX.2 [klein] 4B LoRA"
+
+  - name: "fal/flux-2/turbo"
+    type: "image"
+    price_per_call: 0.015
+    description: "FLUX.2 [dev] Turbo 极速文生图"
+  - name: "fal/flux-2/turbo/edit"
+    type: "image_edit"
+    price_per_call: 0.015
+    description: "FLUX.2 [dev] Turbo 极速编辑"
+  - name: "fal/flux-2/flash"
+    type: "image"
+    price_per_call: 0.01
+    description: "FLUX.2 [dev] Flash 闪电文生图"
+  - name: "fal/flux-2/flash/edit"
+    type: "image_edit"
+    price_per_call: 0.01
+    description: "FLUX.2 [dev] Flash 闪电编辑"
+  - name: "fal/flux-2/lora"
+    type: "image"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] LoRA 自定义风格"
+  - name: "fal/flux-2/lora/edit"
+    type: "image_edit"
+    price_per_call: 0.025
+    description: "FLUX.2 [dev] LoRA 风格编辑"
 
   # ── FLUX.1 (经典) ──
   - name: "fal/flux-pro/v1.1"
