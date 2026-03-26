@@ -96,11 +96,11 @@ services:
       HIVE_NETWORK: starclaw-hive
       HIVE_PORT_START: 9001
       HIVE_PORT_END: 9999
-      HIVE_MYSQL_HOST: hive-mysql
+      HIVE_MYSQL_HOST: mysql
       HIVE_MYSQL_PORT: 3306
       HIVE_MYSQL_ROOT_USER: root
       HIVE_MYSQL_ROOT_PASS: ${HIVE_MYSQL_ROOT_PASS:-hive_prod_2026}
-      HIVE_REDIS_HOST: hive-redis
+      HIVE_REDIS_HOST: redis
       HIVE_REDIS_PORT: 6379
       HIVE_REDIS_PASSWORD: ${HIVE_REDIS_PASSWORD:-hive_redis_2026}
       HIVE_OVERLORD_URL: ${HIVE_OVERLORD_URL:-https://overlord.starclaw.net}
