@@ -51,7 +51,7 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 		if err := h.meter.CheckClawBalance(clawID); err != nil {
 			errMsg := err.Error()
 			if strings.Contains(errMsg, "insufficient") || strings.Contains(errMsg, "hibernated") {
-				c.JSON(http.StatusPaymentRequired, openAIError("insufficient star energy (⚡)", "billing_error"))
+				c.JSON(http.StatusPaymentRequired, openAIError("星能不足 (⚡)", "billing_error"))
 				return
 			}
 			// Queen unreachable — allow request through (graceful degradation)

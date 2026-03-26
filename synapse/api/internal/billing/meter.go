@@ -175,7 +175,7 @@ func (m *Meter) calculateCallCost(mc provider.ModelConfig) (costCents, upstreamC
 	return costCents, upstreamCents
 }
 
-// ── Star Energy billing (Claw signature auth) ──
+// ── 星能 (Star Energy) billing (Claw signature auth) ──
 
 // CnyFenToStarUnits is the conversion rate: 1分(¥0.01) = 1 Star = 10000 internal units
 const CnyFenToStarUnits = 10000

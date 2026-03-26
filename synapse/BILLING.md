@@ -4,7 +4,7 @@
 
 ```
 用户充值 (Queen starclaw.net)
-  │  ¥人民币 → 星力 (1分 = 1 Star = 10,000 内部单位)
+  │  ¥人民币 → 星能 (1分 = 1 Star = 10,000 内部单位)
   ▼
 Synapse API 请求 (star-ai.net)
   │
@@ -242,7 +242,7 @@ Synapse API 请求 (star-ai.net)
 
 1. **Claw 用户** (有 ClawID): Queen RPC `check-credit` → `deduct-credit`
 2. **本地用户** (无 ClawID): Synapse DB `balance` / `free_quota` 扣减
-3. **星力换算**: 1分(¥0.01) = 1 Star = 10,000 内部单位
+3. **星能换算**: 1分(¥0.01) = 1 Star = 10,000 内部单位
 
 ## 文件结构
 
