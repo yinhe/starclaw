@@ -38,37 +38,28 @@ func GetDashScopeAPIKey(db *gorm.DB, userID string) (string, string) {
 	return cfg.APIKey, "dashscope.aliyuncs.com"
 }
 
-// GetDashScopeAPIKeyCtx checks for StarAI provider first, falls back to direct key.
+// GetDashScopeAPIKeyCtx checks user's own key first, falls back to StarAI proxy.
+// If user configured their own DashScope key, use it directly (free, no 星能 deduction).
+// Otherwise route through StarAI proxy (deducts 星能).
 func GetDashScopeAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) (string, string) {
-	if IsStarAIProvider(ctx) {
-		if client, _ := GetStarAIClient(); client != nil {
-			return "starai://qwen", "starai-proxy"
-		}
+	// User's own key takes priority (no 星能 cost)
+	if key, host := GetDashScopeAPIKey(db, userID); key != "" {
+		return key, host
 	}
-	return GetDashScopeAPIKey(db, userID)
+	// Fallback to StarAI proxy (deducts 星能)
+	if client, _ := GetStarAIClient(); client != nil {
+		return "starai://qwen", "starai-proxy"
+	}
+	return "", ""
 }
 
-// GetFalAPIKey retrieves the fal.ai API key from user's model config.
-func GetFalAPIKey(db *gorm.DB, userID string) string {
-	if userID == "" {
-		return ""
-	}
-	var cfg model.ModelConfig
-	if err := db.Where("user_id = ? AND provider = ? AND api_key != ''", userID, "fal").First(&cfg).Error; err != nil {
-		// Fallback to platform key
-		if err := db.Where("is_platform = ? AND provider = ? AND api_key != ''", true, "fal").First(&cfg).Error; err != nil {
-			return ""
-		}
-	}
-	return cfg.APIKey
-}
-
-// GetFalAPIKeyCtx prefers StarAI proxy when available, falls back to direct key.
+// GetFalAPIKeyCtx always routes fal.ai calls through StarAI proxy.
+// fal.ai is not available as a direct provider on Claw — must go through StarAI (deducts 星能).
 func GetFalAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) string {
 	if client, _ := GetStarAIClient(); client != nil {
 		return "starai://fal"
 	}
-	return GetFalAPIKey(db, userID)
+	return "" // fal.ai not available without StarAI connection
 }
 
 // ── Generation Audit Log ──
