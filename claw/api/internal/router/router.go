@@ -1121,6 +1121,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/update", systemHandler.TriggerUpdate)
 			protected.POST("/system/update/check", systemHandler.ForceCheck)
 			protected.GET("/system/update-log", systemHandler.GetUpdateLog)
+			protected.GET("/system/identity/export", systemHandler.ExportIdentity)
+			protected.POST("/system/identity/import", systemHandler.ImportIdentity)
 			protected.GET("/system/bridge", systemHandler.GetBridgeStatus)
 			protected.POST("/system/bridge/stop", systemHandler.StopBridge)
 			protected.GET("/system/overlord", systemHandler.GetOverlordStatus)

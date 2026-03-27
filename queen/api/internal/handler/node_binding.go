@@ -188,6 +188,87 @@ func (h *NodeBindingHandler) InternalResolve(c *gin.Context) {
 	})
 }
 
+// POST /internal/identity/migrate — migrate all data from old claw address to new one
+// Called when a Claw node's Ed25519 key changes (reinstall, Hive recreate, etc.)
+// The same Queen user must own the old address (verified via NodeBinding).
+func (h *NodeBindingHandler) InternalMigrateIdentity(c *gin.Context) {
+	var req struct {
+		OldClawID   string `json:"old_claw_id" binding:"required"`
+		NewClawID   string `json:"new_claw_id" binding:"required"`
+		QueenUserID string `json:"queen_user_id"` // optional: verify ownership
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "old_claw_id and new_claw_id required"})
+		return
+	}
+
+	if req.OldClawID == req.NewClawID {
+		c.JSON(http.StatusOK, gin.H{"message": "same address, no migration needed"})
+		return
+	}
+
+	// Verify old address exists in NodeBinding
+	var oldBinding model.NodeBinding
+	if err := database.DB.Where("node_id = ? AND status = ?", req.OldClawID, "active").First(&oldBinding).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "old claw address not found in bindings"})
+		return
+	}
+
+	// If queen_user_id provided, verify ownership
+	if req.QueenUserID != "" && oldBinding.QueenUserID != req.QueenUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "old address belongs to a different user"})
+		return
+	}
+
+	migrated := []string{}
+
+	// 1. Migrate CreditAccount: update claw_id
+	var oldAccount model.CreditAccount
+	if err := database.DB.Where("claw_id = ?", req.OldClawID).First(&oldAccount).Error; err == nil {
+		// Check if new address already has an account
+		var newAccount model.CreditAccount
+		if err := database.DB.Where("claw_id = ?", req.NewClawID).First(&newAccount).Error; err == nil {
+			// Merge: add old balance to new, deactivate old
+			database.DB.Model(&newAccount).Updates(map[string]interface{}{
+				"balance":   newAccount.Balance + oldAccount.Balance,
+				"frozen":    newAccount.Frozen + oldAccount.Frozen,
+				"total_in":  newAccount.TotalIn + oldAccount.TotalIn,
+				"total_out": newAccount.TotalOut + oldAccount.TotalOut,
+			})
+			database.DB.Model(&oldAccount).Update("status", "migrated")
+			migrated = append(migrated, "credit_account(merged)")
+		} else {
+			// Simply update the claw_id
+			database.DB.Model(&oldAccount).Update("claw_id", req.NewClawID)
+			migrated = append(migrated, "credit_account")
+		}
+	}
+
+	// 2. Migrate NodeBinding: update node_id to new address
+	database.DB.Model(&model.NodeBinding{}).Where("node_id = ?", req.OldClawID).
+		Updates(map[string]interface{}{"node_id": req.NewClawID, "status": "active", "last_seen": time.Now()})
+	migrated = append(migrated, "node_binding")
+
+	// 3. Migrate CreditTransaction references (for audit trail)
+	database.DB.Model(&model.CreditTransaction{}).Where("from_claw = ?", req.OldClawID).Update("from_claw", req.NewClawID)
+	database.DB.Model(&model.CreditTransaction{}).Where("to_claw = ?", req.OldClawID).Update("to_claw", req.NewClawID)
+	migrated = append(migrated, "credit_transactions")
+
+	// 4. Migrate CreditFreeze records
+	database.DB.Model(&model.CreditFreeze{}).Where("claw_id = ?", req.OldClawID).Update("claw_id", req.NewClawID)
+	migrated = append(migrated, "credit_freezes")
+
+	log.Printf("[identity-migrate] %s → %s (user=%s, migrated=%v)", req.OldClawID, req.NewClawID, oldBinding.QueenUserID, migrated)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "identity migrated",
+		"old_claw_id":   req.OldClawID,
+		"new_claw_id":   req.NewClawID,
+		"queen_user_id": oldBinding.QueenUserID,
+		"migrated":      migrated,
+	})
+}
+
 // POST /internal/user/heartbeat — Claw node sends heartbeat to update last_seen
 func (h *NodeBindingHandler) InternalHeartbeat(c *gin.Context) {
 	var req struct {

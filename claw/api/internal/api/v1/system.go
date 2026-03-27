@@ -454,6 +454,52 @@ func (h *SystemHandler) StopBridge(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "stopped", "message": "Bridge shutdown signal sent"})
 }
 
+// --- Identity (Key Export/Import) ---
+
+// ExportIdentity returns the node's Ed25519 key as a downloadable backup.
+// The key is base64-encoded for safe transport. User should store securely.
+func (h *SystemHandler) ExportIdentity(c *gin.Context) {
+	if h.identity == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "identity not initialized"})
+		return
+	}
+	keyData, err := h.identity.ExportKey()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "export failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"node_id":     h.identity.NodeID,
+		"fingerprint": h.identity.Fingerprint(),
+		"key_backup":  string(keyData),
+	})
+}
+
+// ImportIdentity replaces the current node identity with a backup key.
+// After import, the server must be restarted for the new identity to take effect.
+func (h *SystemHandler) ImportIdentity(c *gin.Context) {
+	var req struct {
+		KeyBackup string `json:"key_backup" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "key_backup required"})
+		return
+	}
+
+	newID, err := node.ImportKey([]byte(req.KeyBackup))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":          "密钥已导入，请重启服务生效",
+		"new_node_id":      newID.NodeID,
+		"new_fingerprint":  newID.Fingerprint(),
+		"restart_required": true,
+	})
+}
+
 // --- Overlord ---
 
 // GetOverlordStatus returns overlord connection state

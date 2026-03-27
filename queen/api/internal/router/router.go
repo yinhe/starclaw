@@ -379,6 +379,7 @@ func Setup() *gin.Engine {
 		internal.POST("/user/bind", nbInternal.InternalBind)
 		internal.GET("/user/resolve/:node_id", nbInternal.InternalResolve)
 		internal.POST("/user/heartbeat", nbInternal.InternalHeartbeat)
+		internal.POST("/identity/migrate", nbInternal.InternalMigrateIdentity)
 
 		// Investor pool (internal — for Billing Gateway profit deposit)
 		internal.POST("/investor/deposit", investor.InternalDeposit)

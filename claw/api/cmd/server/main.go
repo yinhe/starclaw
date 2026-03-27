@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -135,6 +136,14 @@ func main() {
 
 	// Report pending molt update result from previous restart (if any)
 	go swarmClient.ReportPendingMolt()
+
+	// Auto-detect identity change and migrate data from old address
+	if prevID := identity.PreviousNodeID(); prevID != "" {
+		log.Printf("[identity] ⚠️ address changed: %s → %s", prevID, identity.NodeID)
+		if cfg.Swarm.QueenURL != "" {
+			go migrateIdentity(cfg.Swarm.QueenURL, cfg.JWT.Secret, prevID, identity.NodeID)
+		}
+	}
 
 	// Initialize Queen billing client (for hosted mode centralized billing)
 	billingClient := swarm.NewBillingClient(cfg.Swarm.QueenURL, cfg.JWT.Secret)
@@ -400,6 +409,32 @@ func cmdRejectDevice() {
 	device := devices[0]
 	db.Model(&device).Updates(map[string]interface{}{"approved": false, "revoked": true})
 	fmt.Printf("✓ Device rejected: %s (%s)\n", device.ID[:8], device.DeviceName)
+}
+
+// migrateIdentity calls Queen's identity migration API to transfer balance/bindings
+// from an old claw address to a new one. Runs async, non-fatal on failure.
+func migrateIdentity(queenURL, token, oldClawID, newClawID string) {
+	body := fmt.Sprintf(`{"old_claw_id":"%s","new_claw_id":"%s"}`, oldClawID, newClawID)
+	url := strings.TrimSuffix(queenURL, "/swarm") + "/internal/identity/migrate"
+
+	req, _ := http.NewRequest("POST", url, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Node-Token", token)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[identity] migration request failed (non-fatal): %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("[identity] ✅ migration successful: %s → %s: %s", oldClawID, newClawID, string(respBody))
+	} else {
+		log.Printf("[identity] migration returned %d: %s (non-fatal)", resp.StatusCode, string(respBody))
+	}
 }
 
 // cmdExportKey exports the node identity as a 24-word BIP-39 mnemonic.

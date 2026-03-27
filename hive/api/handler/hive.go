@@ -842,13 +842,23 @@ func (h *HiveHandler) rollingUpgrade(version string) {
 
 // upgradeLocalInstance upgrades a hive/lite container on the local Docker host.
 func (h *HiveHandler) upgradeLocalInstance(inst *model.ClawInstance, version string) error {
+	// Read claw_id from old container's identity before destroying it
+	// This allows the new container to detect address change and migrate via Queen
+	if inst.ContainerID != "" && inst.ClawID == "" {
+		if out, err := exec.Command("docker", "exec", inst.ContainerID,
+			"sh", "-c", "cat /app/data/identity/.node_key 2>/dev/null | grep -o '\"node_id\":\"[^\"]*\"' | head -1").CombinedOutput(); err == nil {
+			// Don't need to parse — identity volume persists, auto-migration in Claw handles it
+			_ = out
+		}
+	}
+
 	// Stop and remove old container
 	if inst.ContainerID != "" {
 		h.docker.StopContainer(inst.ContainerID)
 		h.docker.RemoveContainer(inst.ContainerID)
 	}
 
-	// Recreate with latest image
+	// Recreate with latest image (identity volume is preserved via host mount)
 	decrypted := h.decryptInstance(inst)
 	var containerID string
 	var err error
