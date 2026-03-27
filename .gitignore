@@ -13,6 +13,7 @@
 
 # Go binaries (no extension)
 claw/api/server
+claw/api/mcp-bridge-*
 queen/api/server
 router/api/server
 nydus/nydus-server

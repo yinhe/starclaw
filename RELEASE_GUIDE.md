@@ -307,9 +307,9 @@ cp claw-v*.spore spore/cmd/setup/embed/claw.spore
 
 ### 6.4 Version Display on Download Page
 
-The download page (`queen/site/src/pages/DownloadPage.tsx`) fetches the latest version
-from `https://nydus.starclaw.net/releases/latest` and displays it next to the Spore title.
-This endpoint reads the latest git tag from `claw.git` bare repo on the Nydus server.
+Both download pages (`queen/site/` and `synapse/web/`) fetch the latest version from
+`https://nydus.starclaw.net/releases/spore/latest` (spore-latest.json, tracks actual built installers),
+with fallback to `https://nydus.starclaw.net/releases/latest` (git tags from claw.git).
 CORS is enabled via nginx `location /releases/` block.
 
 ---

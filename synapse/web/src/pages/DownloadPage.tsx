@@ -4,9 +4,9 @@ import { Monitor, Terminal, Apple, Download, ExternalLink, Zap } from 'lucide-re
 import { isLoggedIn } from '../lib/api';
 
 const STARAI_BASE = 'https://star-ai.net/downloads';
-const NYDUS_BASE = 'https://nydus.starclaw.net/releases/download';
+const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases';
 
-const V_FALLBACK = 'v2026.0325.0436';
+const V_FALLBACK = 'v2026.0327.0134';
 
 function getPackages(v: string) {
   return [

@@ -7,7 +7,7 @@ import { useI18n } from '../i18n'
 
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases'
 const STARAI_BASE = 'https://star-ai.net/downloads'
-const V_FALLBACK = 'v2026.0325.0436'
+const V_FALLBACK = 'v2026.0327.0134'
 
 function getPackages(v: string) {
   return [
@@ -76,13 +76,21 @@ export function DownloadPage() {
   const [version, setVersion] = useState(V_FALLBACK)
 
   useEffect(() => {
-    fetch('https://nydus.starclaw.net/releases/latest')
+    fetch('https://nydus.starclaw.net/releases/spore/latest')
       .then(r => r.json())
       .then(d => {
         const v = d.tag_name || ''
         if (v) setVersion(v.startsWith('v') ? v : 'v' + v)
       })
-      .catch(() => {})
+      .catch(() => {
+        fetch('https://nydus.starclaw.net/releases/latest')
+          .then(r => r.json())
+          .then(d => {
+            const v = d.tag_name || ''
+            if (v) setVersion(v.startsWith('v') ? v : 'v' + v)
+          })
+          .catch(() => {})
+      })
   }, [])
 
   const packages = getPackages(version)
