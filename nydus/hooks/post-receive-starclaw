@@ -467,6 +467,25 @@ echo "$REFS" | while read oldrev newrev refname; do
     fi
   fi
 
+  # --- Drone (Server C — local) ---
+  if echo "$CHANGED" | grep -q "^drone/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Drone changed — rebuilding on server C..." | cat >> "$LOG"
+    publish_pheromone_deploy "drone" "$branch" "$newrev"
+    (
+      _start=$SECONDS
+      mkdir -p /opt/drone
+      cd /opt/drone
+      git --git-dir="$REPO" archive HEAD:drone | tar xf - 2>/dev/null || true
+      # Copy pheromone/sdk into api/ for Docker build context
+      mkdir -p /opt/drone/api/pheromone-sdk
+      git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/drone/api/pheromone-sdk 2>/dev/null || true
+      docker compose up -d --build
+      echo "  -> drone rebuilt (Server C :8110)" | cat >> "$LOG"
+      publish_pheromone_deploy_result "drone" "completed" "$((SECONDS - _start))s" ""
+      report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "drone-server-c" "success" "deployed in $((SECONDS - _start))s"
+    ) </dev/null >> "$LOG" 2>&1 &
+  fi
+
   # --- Nydus config (reload if changed) ---
   if echo "$CHANGED" | grep -q "^nydus/"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Nydus config changed — syncing..." | cat >> "$LOG"
