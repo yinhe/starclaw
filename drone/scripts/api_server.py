@@ -116,21 +116,23 @@ class DroneHandler(BaseHTTPRequestHandler):
             output = result.stdout + result.stderr
             rec["duration"] = f"{time.time() - start:.1f}s"
 
-            # Parse output for numbers
+            # Parse output for numbers — worker outputs lines like:
+            # [worker] ✅ gpt_prompts: 281 collected → 226 morphed → 226 imported (132.2s)
+            # [worker] L1 auto-morph: 96 → 5 templates
+            import re
             for line in output.split("\n"):
-                if "collected" in line and "→" in line:
-                    parts = line.split("→")
-                    for p in parts:
-                        p = p.strip()
-                        if "collected" in p:
-                            try: rec["collected"] = int(p.split()[0])
-                            except: pass
-                        elif "morphed" in p:
-                            try: rec["morphed"] = int(p.split()[0])
-                            except: pass
-                        elif "imported" in p:
-                            try: rec["imported"] = int(p.split()[0])
-                            except: pass
+                # Match: N collected ... N morphed ... N imported
+                m = re.search(r'(\d+)\s+collected.*?(\d+)\s+morphed.*?(\d+)\s+imported', line)
+                if m:
+                    rec["collected"] = int(m.group(1))
+                    rec["morphed"] = int(m.group(2))
+                    rec["imported"] = int(m.group(3))
+                    break
+                # Fallback: match "L1 auto-morph: N → M templates"
+                m2 = re.search(r'auto-morph:\s*(\d+)\s*.*?(\d+)\s+templates', line)
+                if m2:
+                    rec["collected"] = int(m2.group(1))
+                    rec["morphed"] = int(m2.group(2))
 
             if result.returncode == 0:
                 rec["status"] = "completed"
