@@ -35,6 +35,16 @@ func (h *MarketplaceHandler) AdminBulkImport(c *gin.Context) {
 	}
 
 	imported, skipped := 0, 0
+	authorID := ""
+	var adminUser model.User
+	if err := database.DB.Where("role = ?", "admin").First(&adminUser).Error; err == nil {
+		authorID = adminUser.ID
+	}
+	if authorID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "no admin user found for marketplace import"})
+		return
+	}
+
 	for _, t := range req.Templates {
 		if t.Name == "" || t.SystemPrompt == "" {
 			skipped++
@@ -66,26 +76,23 @@ func (h *MarketplaceHandler) AdminBulkImport(c *gin.Context) {
 			icon = "🤖"
 		}
 
-		// Find a real admin user for FK constraint (cached after first lookup)
-		authorID := ""
-		var adminUser model.User
-		if err := database.DB.Where("role = ?", "admin").First(&adminUser).Error; err == nil {
-			authorID = adminUser.ID
-		}
-
 		now := time.Now()
 		item := model.MarketplaceItem{
-			ID:          uuid.New().String(),
-			UserID:      authorID,
-			Type:        "agent",
-			Name:        t.Name,
-			Description: t.Description,
-			Icon:        icon,
-			Tags:        t.Tags,
-			Config:      config,
-			Status:      model.ItemStatusPublished,
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			ID:           uuid.New().String(),
+			UserID:       authorID,
+			Type:         "agent",
+			Name:         t.Name,
+			Description:  t.Description,
+			Icon:         icon,
+			Tags:         t.Tags,
+			Config:       config,
+			Status:       model.ItemStatusPublished,
+			ReviewStatus: "approved",
+			ReviewerID:   authorID,
+			ReviewedAt:   &now,
+			SubmittedAt:  &now,
+			CreatedAt:    now,
+			UpdatedAt:    now,
 		}
 
 		if err := database.DB.Create(&item).Error; err != nil {
