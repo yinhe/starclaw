@@ -71,9 +71,13 @@ func (d *DockerService) CreateContainer(inst *model.ClawInstance) (string, error
 		"-e", "STARCLAW_OVERLORD_REGION=cn-east",
 		"-e", "NODE_KEY_PATH=/app/data/identity/.node_key",
 		"-e", fmt.Sprintf("STARCLAW_HIVE_URL=http://host.docker.internal:%d", d.cfg.HivePort),
-		// Image
-		d.cfg.ClawImage,
 	}
+	// Inject identity seed for deterministic claw address (same seed = same address across recreations)
+	if inst.IdentitySeed != "" {
+		args = append(args, "-e", fmt.Sprintf("STARCLAW_IDENTITY_SEED=%s", inst.IdentitySeed))
+	}
+	// Image
+	args = append(args, d.cfg.ClawImage)
 
 	out, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
@@ -123,9 +127,13 @@ func (d *DockerService) CreateLiteContainer(inst *model.ClawInstance) (string, e
 		"-e", "NODE_KEY_PATH=/app/data/identity/.node_key",
 		"-e", fmt.Sprintf("STARCLAW_HIVE_URL=http://host.docker.internal:%d", d.cfg.HivePort),
 		"-e", "GIN_MODE=release",
-		// Image (lite)
-		d.cfg.ClawLiteImage,
 	}
+	// Inject identity seed for deterministic claw address
+	if inst.IdentitySeed != "" {
+		args = append(args, "-e", fmt.Sprintf("STARCLAW_IDENTITY_SEED=%s", inst.IdentitySeed))
+	}
+	// Image (lite)
+	args = append(args, d.cfg.ClawLiteImage)
 
 	out, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {

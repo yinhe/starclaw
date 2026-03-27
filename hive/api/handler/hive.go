@@ -153,19 +153,31 @@ func (h *HiveHandler) CreateInstance(c *gin.Context) {
 		}
 	}
 
+	// Generate deterministic identity seed (32 bytes = 64 hex chars).
+	// Same seed always produces the same Ed25519 key → same claw address.
+	// Encrypted via Carapace vault and stored in DB — survives container recreation.
+	identitySeed := randomHex(32) // 32 bytes = 64 hex chars = Ed25519 seed size
+	encryptedSeed := identitySeed
+	if h.vault != nil {
+		if sealed, err := h.vault.Seal("identity_seed", identitySeed); err == nil {
+			encryptedSeed = sealed
+		}
+	}
+
 	// Build instance record from plan
 	inst := model.ClawInstance{
-		ID:          uuid.New().String(),
-		Slug:        slug,
-		DisplayName: req.DisplayName,
-		OwnerEmail:  req.OwnerEmail,
-		OwnerID:     req.ClawID,
-		DeployMode:  plan.DeployMode,
-		Status:      "creating",
-		CPULimit:    plan.CPU,
-		MemoryLimit: int64(plan.MemoryMB) * 1024 * 1024,
-		StorageMax:  int64(plan.StorageGB) * 1024 * 1024 * 1024,
-		JWTSecret:   randomHex(32),
+		ID:           uuid.New().String(),
+		Slug:         slug,
+		DisplayName:  req.DisplayName,
+		OwnerEmail:   req.OwnerEmail,
+		OwnerID:      req.ClawID,
+		DeployMode:   plan.DeployMode,
+		Status:       "creating",
+		CPULimit:     plan.CPU,
+		MemoryLimit:  int64(plan.MemoryMB) * 1024 * 1024,
+		StorageMax:   int64(plan.StorageGB) * 1024 * 1024 * 1024,
+		JWTSecret:    randomHex(32),
+		IdentitySeed: encryptedSeed,
 	}
 
 	// Hive/Lite mode: allocate local port (both run on this server)
@@ -1107,6 +1119,9 @@ func (h *HiveHandler) decryptInstance(inst *model.ClawInstance) *model.ClawInsta
 	}
 	if dec, err := h.vault.Unseal("jwt_secret", copy.JWTSecret); err == nil {
 		copy.JWTSecret = dec
+	}
+	if dec, err := h.vault.Unseal("identity_seed", copy.IdentitySeed); err == nil {
+		copy.IdentitySeed = dec
 	}
 	return &copy
 }

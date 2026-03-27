@@ -22,8 +22,9 @@ type ClawInstance struct {
 	PublicIP    string `gorm:"size:45" json:"public_ip"`
 
 	// Identity
-	ClawID string `gorm:"size:100" json:"claw_id"` // claw:{hex} address
-	NodeID string `gorm:"size:36" json:"node_id"`  // Overlord-assigned node ID
+	ClawID       string `gorm:"size:100" json:"claw_id"` // claw:{hex} address
+	NodeID       string `gorm:"size:36" json:"node_id"`  // Overlord-assigned node ID
+	IdentitySeed string `gorm:"size:255" json:"-"`       // encrypted Ed25519 seed (deterministic: same seed = same claw address)
 
 	// Status
 	Status      string `gorm:"size:20;default:creating" json:"status"` // creating, running, stopped, error, destroying
