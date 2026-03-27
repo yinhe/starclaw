@@ -128,6 +128,12 @@ func (h *HiveHandler) healthCheck() {
 			continue
 		}
 
+		if !containerExists(inst.ContainerID) {
+			log.Printf("[hive] health: stale container id for %s (%s) — marking stopped", inst.Slug, inst.ContainerID)
+			h.db.Model(&inst).Updates(map[string]interface{}{"status": "stopped", "container_id": ""})
+			continue
+		}
+
 		running := isContainerRunning(inst.ContainerID)
 		now := time.Now()
 
@@ -163,6 +169,14 @@ func isContainerRunning(containerID string) bool {
 		return false
 	}
 	return strings.TrimSpace(string(out)) == "true"
+}
+
+func containerExists(containerID string) bool {
+	out, err := exec.Command("docker", "inspect", "-f", "{{.Id}}", containerID).CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) != ""
 }
 
 // destroyInstanceBackground handles async instance destruction (reused by cleanup + API).
