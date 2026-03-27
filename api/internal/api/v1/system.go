@@ -443,15 +443,27 @@ func (h *SystemHandler) StopBridge(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "not_running", "message": "Bridge is not running"})
 		return
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	req, _ := http.NewRequest("POST", bridgeURL+"/shutdown", nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"status": "stopped", "message": "Bridge shutdown signal sent"})
-		return
+
+	// Kill the bridge process directly (more reliable than JSON-RPC shutdown)
+	var killErr error
+	if runtime.GOOS == "windows" {
+		killErr = exec.Command("taskkill", "/F", "/IM", "mcp-bridge.exe").Run()
+	} else {
+		killErr = exec.Command("pkill", "-f", "mcp-bridge").Run()
 	}
-	resp.Body.Close()
-	c.JSON(http.StatusOK, gin.H{"status": "stopped", "message": "Bridge shutdown signal sent"})
+
+	if killErr != nil {
+		log.Printf("[bridge] kill failed: %v, trying HTTP shutdown", killErr)
+		// Fallback: try HTTP
+		client := &http.Client{Timeout: 3 * time.Second}
+		req, _ := http.NewRequest("POST", bridgeURL+"/shutdown", nil)
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "stopped", "message": "MCP Bridge 已断开"})
 }
 
 // --- Identity (Key Export/Import) ---
