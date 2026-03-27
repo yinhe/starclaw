@@ -32,21 +32,28 @@ func (t *DesktopTool) Name() string { return "desktop" }
 
 func (t *DesktopTool) Description() string {
 	return `桌面操控工具 — 让AI直接操作用户的电脑桌面。
-操作：
-- screenshot: 截取屏幕截图（全屏或指定区域），返回图片URL供视觉模型分析
-- mouse_click: 在指定坐标点击鼠标（左键/右键/双击）
-- mouse_move: 移动鼠标到指定坐标
-- mouse_drag: 从一个坐标拖拽到另一个坐标
-- keyboard_type: 输入文字（模拟键盘打字）
-- keyboard_hotkey: 按下组合键（如 ctrl+c, alt+tab, win+d）
-- keyboard_key: 按下单个特殊键（如 enter, tab, escape, backspace, delete, up, down, left, right, f1-f12）
-- list_windows: 列出当前打开的所有窗口
-- focus_window: 将指定窗口切到前台
-- launch_app: 启动一个应用程序（如 剪映、WPS、微信）
-- wait: 等待指定秒数（用于等待应用加载）
 
-典型工作流：先 screenshot 看屏幕 → 分析内容 → mouse_click/keyboard_type 操作 → 再 screenshot 确认结果。
-适用于操控剪映做视频、WPS写文档、微信聊天、浏览器操作等任何桌面软件。`
+★ 推荐工作流（高效模式）：ui_tree 获取元素 → ui_click/ui_type 按名称操作 → ui_tree 确认结果
+★ 备用工作流（视觉模式）：screenshot → 视觉模型分析 → mouse_click 坐标操作
+
+UI自动化操作（精确、快速、首选）：
+- ui_tree: 获取前台窗口的UI元素树（按钮、输入框、菜单等），返回结构化列表，每个元素有 id、name、type、坐标
+- ui_click: 按元素名称点击（title="保存" 会精确找到并点击"保存"按钮）
+- ui_type: 向指定输入框填入文本（title="搜索" text="关键词"）
+- ui_select: 在下拉框中选择选项（title="分辨率" text="1080P"）
+- ui_scroll: 滚动页面（button="down/up/left/right" seconds=滚动量1-10）
+- ui_wait: 等待某个元素出现（title="导出完成" seconds=超时秒数）
+
+像素级操作（兜底）：
+- screenshot: 截取屏幕截图，返回图片URL
+- mouse_click/mouse_move/mouse_drag: 坐标级鼠标操作
+- keyboard_type/keyboard_hotkey/keyboard_key: 键盘操作
+
+窗口管理：
+- list_windows: 列出所有窗口
+- focus_window: 切换窗口到前台
+- launch_app: 启动应用（如 剪映、WPS、微信、Chrome）
+- wait: 等待指定秒数`
 }
 
 func (t *DesktopTool) Parameters() interface{} {
@@ -56,7 +63,7 @@ func (t *DesktopTool) Parameters() interface{} {
 			"action": {
 				Type:        "string",
 				Description: "Desktop action to perform",
-				Enum:        []string{"screenshot", "mouse_click", "mouse_move", "mouse_drag", "keyboard_type", "keyboard_hotkey", "keyboard_key", "list_windows", "focus_window", "launch_app", "wait"},
+				Enum:        []string{"ui_tree", "ui_click", "ui_type", "ui_select", "ui_scroll", "ui_wait", "screenshot", "mouse_click", "mouse_move", "mouse_drag", "keyboard_type", "keyboard_hotkey", "keyboard_key", "list_windows", "focus_window", "launch_app", "wait"},
 			},
 			"x":          {Type: "integer", Description: "X coordinate (pixels from left). For mouse_click, mouse_move, mouse_drag (start)."},
 			"y":          {Type: "integer", Description: "Y coordinate (pixels from top). For mouse_click, mouse_move, mouse_drag (start)."},
@@ -103,6 +110,20 @@ func (t *DesktopTool) Execute(ctx context.Context, args string) (string, error) 
 	}
 
 	switch a.Action {
+	// UI Automation (precise, fast — preferred)
+	case "ui_tree":
+		return t.uiTree(ctx, a)
+	case "ui_click":
+		return t.uiClick(ctx, a)
+	case "ui_type":
+		return t.uiType(ctx, a)
+	case "ui_select":
+		return t.uiSelect(ctx, a)
+	case "ui_scroll":
+		return t.uiScroll(ctx, a)
+	case "ui_wait":
+		return t.uiWait(ctx, a)
+	// Pixel-level (fallback)
 	case "screenshot":
 		return t.screenshot(ctx, a)
 	case "mouse_click":
@@ -117,6 +138,7 @@ func (t *DesktopTool) Execute(ctx context.Context, args string) (string, error) 
 		return t.keyboardHotkey(ctx, a)
 	case "keyboard_key":
 		return t.keyboardKey(ctx, a)
+	// Window management
 	case "list_windows":
 		return t.listWindows(ctx)
 	case "focus_window":
@@ -191,12 +213,12 @@ Write-Output "$w x $h"
 	log.Printf("[DesktopTool] Screenshot saved: %s (%.1f MB)", localURL, sizeMB)
 
 	return toJSON(map[string]interface{}{
-		"action":    "screenshot",
-		"status":    "success",
-		"image_url": localURL,
-		"size_mb":   fmt.Sprintf("%.1f", sizeMB),
+		"action":     "screenshot",
+		"status":     "success",
+		"image_url":  localURL,
+		"size_mb":    fmt.Sprintf("%.1f", sizeMB),
 		"resolution": strings.TrimSpace(out),
-		"message":   fmt.Sprintf("屏幕截图已保存。请用视觉模型分析图片内容来决定下一步操作。图片URL: %s", localURL),
+		"message":    fmt.Sprintf("屏幕截图已保存。请用视觉模型分析图片内容来决定下一步操作。图片URL: %s", localURL),
 	}), nil
 }
 
@@ -516,28 +538,28 @@ func (t *DesktopTool) launchApp(ctx context.Context, a desktopArgs) (string, err
 
 	// Common app shortcuts (Chinese app names → executable paths)
 	appAliases := map[string]string{
-		"剪映":       `C:\Program Files\JianyingPro\JianyingPro.exe`,
-		"剪映专业版":    `C:\Program Files\JianyingPro\JianyingPro.exe`,
-		"capcut":    `C:\Program Files\JianyingPro\JianyingPro.exe`,
-		"wps":       `C:\Users\` + os.Getenv("USERNAME") + `\AppData\Local\Kingsoft\WPS Office\ksolaunch.exe`,
-		"微信":       `C:\Program Files\Tencent\WeChat\WeChat.exe`,
-		"wechat":    `C:\Program Files\Tencent\WeChat\WeChat.exe`,
-		"qq":        `C:\Program Files\Tencent\QQ\Bin\QQ.exe`,
-		"钉钉":       `C:\Program Files\DingDing\DingtalkLauncher.exe`,
-		"飞书":       `C:\Program Files\Lark\Lark.exe`,
-		"chrome":    `C:\Program Files\Google\Chrome\Application\chrome.exe`,
-		"edge":      `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
-		"firefox":   `C:\Program Files\Mozilla Firefox\firefox.exe`,
-		"vscode":    `C:\Users\` + os.Getenv("USERNAME") + `\AppData\Local\Programs\Microsoft VS Code\Code.exe`,
-		"记事本":      `notepad.exe`,
-		"notepad":   `notepad.exe`,
-		"计算器":      `calc.exe`,
-		"画图":       `mspaint.exe`,
-		"资源管理器":    `explorer.exe`,
-		"explorer":  `explorer.exe`,
-		"cmd":       `cmd.exe`,
+		"剪映":         `C:\Program Files\JianyingPro\JianyingPro.exe`,
+		"剪映专业版":      `C:\Program Files\JianyingPro\JianyingPro.exe`,
+		"capcut":     `C:\Program Files\JianyingPro\JianyingPro.exe`,
+		"wps":        `C:\Users\` + os.Getenv("USERNAME") + `\AppData\Local\Kingsoft\WPS Office\ksolaunch.exe`,
+		"微信":         `C:\Program Files\Tencent\WeChat\WeChat.exe`,
+		"wechat":     `C:\Program Files\Tencent\WeChat\WeChat.exe`,
+		"qq":         `C:\Program Files\Tencent\QQ\Bin\QQ.exe`,
+		"钉钉":         `C:\Program Files\DingDing\DingtalkLauncher.exe`,
+		"飞书":         `C:\Program Files\Lark\Lark.exe`,
+		"chrome":     `C:\Program Files\Google\Chrome\Application\chrome.exe`,
+		"edge":       `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
+		"firefox":    `C:\Program Files\Mozilla Firefox\firefox.exe`,
+		"vscode":     `C:\Users\` + os.Getenv("USERNAME") + `\AppData\Local\Programs\Microsoft VS Code\Code.exe`,
+		"记事本":        `notepad.exe`,
+		"notepad":    `notepad.exe`,
+		"计算器":        `calc.exe`,
+		"画图":         `mspaint.exe`,
+		"资源管理器":      `explorer.exe`,
+		"explorer":   `explorer.exe`,
+		"cmd":        `cmd.exe`,
 		"powershell": `powershell.exe`,
-		"terminal":  `wt.exe`,
+		"terminal":   `wt.exe`,
 	}
 
 	lower := strings.ToLower(appPath)
@@ -657,36 +679,36 @@ func hotkeyToSendKeys(hotkey string) string {
 // specialKeyToSendKeys converts a key name to SendKeys format
 func specialKeyToSendKeys(key string) string {
 	keyMap := map[string]string{
-		"enter":     "{ENTER}",
-		"return":    "{ENTER}",
-		"tab":       "{TAB}",
-		"escape":    "{ESC}",
-		"esc":       "{ESC}",
-		"backspace": "{BACKSPACE}",
-		"delete":    "{DELETE}",
-		"del":       "{DELETE}",
-		"home":      "{HOME}",
-		"end":       "{END}",
-		"pageup":    "{PGUP}",
-		"pagedown":  "{PGDN}",
-		"up":        "{UP}",
-		"down":      "{DOWN}",
-		"left":      "{LEFT}",
-		"right":     "{RIGHT}",
-		"space":     " ",
-		"f1":        "{F1}",
-		"f2":        "{F2}",
-		"f3":        "{F3}",
-		"f4":        "{F4}",
-		"f5":        "{F5}",
-		"f6":        "{F6}",
-		"f7":        "{F7}",
-		"f8":        "{F8}",
-		"f9":        "{F9}",
-		"f10":       "{F10}",
-		"f11":       "{F11}",
-		"f12":       "{F12}",
-		"insert":    "{INSERT}",
+		"enter":       "{ENTER}",
+		"return":      "{ENTER}",
+		"tab":         "{TAB}",
+		"escape":      "{ESC}",
+		"esc":         "{ESC}",
+		"backspace":   "{BACKSPACE}",
+		"delete":      "{DELETE}",
+		"del":         "{DELETE}",
+		"home":        "{HOME}",
+		"end":         "{END}",
+		"pageup":      "{PGUP}",
+		"pagedown":    "{PGDN}",
+		"up":          "{UP}",
+		"down":        "{DOWN}",
+		"left":        "{LEFT}",
+		"right":       "{RIGHT}",
+		"space":       " ",
+		"f1":          "{F1}",
+		"f2":          "{F2}",
+		"f3":          "{F3}",
+		"f4":          "{F4}",
+		"f5":          "{F5}",
+		"f6":          "{F6}",
+		"f7":          "{F7}",
+		"f8":          "{F8}",
+		"f9":          "{F9}",
+		"f10":         "{F10}",
+		"f11":         "{F11}",
+		"f12":         "{F12}",
+		"insert":      "{INSERT}",
 		"printscreen": "{PRTSC}",
 	}
 
