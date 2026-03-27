@@ -104,10 +104,11 @@ def import_to_marketplace(templates: list, claw_api: str) -> int:
             clean.append(item)
 
         try:
+            drone_secret = os.getenv("DRONE_SECRET", "")
             resp = requests.post(
-                f"{claw_api}/v1/admin/marketplace/import",
+                f"{claw_api}/v1/marketplace/import",
                 json={"templates": clean, "source": clean[0].get("_source", "drone")},
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", "X-Drone-Secret": drone_secret},
                 timeout=30,
             )
             if resp.status_code in (200, 201):
