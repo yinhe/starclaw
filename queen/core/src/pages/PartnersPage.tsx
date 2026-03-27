@@ -223,17 +223,40 @@ export default function PartnersPage() {
                         <Pencil size={14} />
                       </button>
                       {p.status === 'active' || p.status === 'approved' ? (
-                        <button onClick={async () => { if (!confirm(`确定暂停 ${p.name} 吗？`)) return; try { await api.put(`/admin/partners/${p.id}/suspend`); loadPartners() } catch {} }}
+                        <button onClick={async () => {
+                          if (!confirm(`确定暂停 ${p.name} 吗？`)) return
+                          try {
+                            await api.put(`/v1/admin/partners/${p.id}/suspend`)
+                            loadPartners()
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : '暂停失败')
+                          }
+                        }}
                           className="p-1.5 rounded-lg text-gray-500 hover:text-amber-400 hover:bg-amber-500/10 transition" title="暂停">
                           <Pause size={14} />
                         </button>
                       ) : p.status === 'suspended' ? (
-                        <button onClick={async () => { try { await api.put(`/admin/partners/${p.id}/activate`); loadPartners() } catch {} }}
+                        <button onClick={async () => {
+                          try {
+                            await api.put(`/v1/admin/partners/${p.id}/activate`)
+                            loadPartners()
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : '激活失败')
+                          }
+                        }}
                           className="p-1.5 rounded-lg text-gray-500 hover:text-green-400 hover:bg-green-500/10 transition" title="激活">
                           <Play size={14} />
                         </button>
                       ) : null}
-                      <button onClick={async () => { if (!confirm(`确定删除 ${p.name} 吗？此操作不可恢复。`)) return; try { await api.delete(`/admin/partners/${p.id}`); loadPartners() } catch {} }}
+                      <button onClick={async () => {
+                        if (!confirm(`确定删除 ${p.name} 吗？此操作不可恢复。`)) return
+                        try {
+                          await api.delete(`/v1/admin/partners/${p.id}`)
+                          loadPartners()
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : '删除失败')
+                        }
+                      }}
                         className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition" title="删除">
                         <Trash2 size={14} />
                       </button>

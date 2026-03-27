@@ -575,13 +575,15 @@ func (h *PartnerHandler) AdminDeletePartner(c *gin.Context) {
 	partnerID := c.Param("id")
 
 	// Try team partner first
-	if err := database.DB.Where("id = ?", partnerID).Delete(&model.TeamPartner{}).Error; err == nil {
+	teamRes := database.DB.Where("id = ?", partnerID).Delete(&model.TeamPartner{})
+	if teamRes.Error == nil && teamRes.RowsAffected > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 		return
 	}
 
 	// Try city partner
-	if err := database.DB.Where("id = ?", partnerID).Delete(&model.CityPartner{}).Error; err == nil {
+	cityRes := database.DB.Where("id = ?", partnerID).Delete(&model.CityPartner{})
+	if cityRes.Error == nil && cityRes.RowsAffected > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 		return
 	}
@@ -594,11 +596,13 @@ func (h *PartnerHandler) AdminSuspendPartner(c *gin.Context) {
 	partnerID := c.Param("id")
 	db := database.DB
 
-	if err := db.Model(&model.TeamPartner{}).Where("id = ?", partnerID).Update("status", "suspended").Error; err == nil {
+	teamRes := db.Model(&model.TeamPartner{}).Where("id = ?", partnerID).Update("status", "suspended")
+	if teamRes.Error == nil && teamRes.RowsAffected > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "suspended"})
 		return
 	}
-	if err := db.Model(&model.CityPartner{}).Where("id = ?", partnerID).Update("status", "suspended").Error; err == nil {
+	cityRes := db.Model(&model.CityPartner{}).Where("id = ?", partnerID).Update("status", "suspended")
+	if cityRes.Error == nil && cityRes.RowsAffected > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "suspended"})
 		return
 	}
@@ -610,11 +614,13 @@ func (h *PartnerHandler) AdminActivatePartner(c *gin.Context) {
 	partnerID := c.Param("id")
 	db := database.DB
 
-	if err := db.Model(&model.TeamPartner{}).Where("id = ?", partnerID).Update("status", "active").Error; err == nil {
+	teamRes := db.Model(&model.TeamPartner{}).Where("id = ?", partnerID).Update("status", "active")
+	if teamRes.Error == nil && teamRes.RowsAffected > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "activated"})
 		return
 	}
-	if err := db.Model(&model.CityPartner{}).Where("id = ?", partnerID).Update("status", "approved").Error; err == nil {
+	cityRes := db.Model(&model.CityPartner{}).Where("id = ?", partnerID).Update("status", "approved")
+	if cityRes.Error == nil && cityRes.RowsAffected > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "activated"})
 		return
 	}
