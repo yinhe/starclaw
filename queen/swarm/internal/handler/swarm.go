@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"starclaw.net/queen/swarm/internal/model"
 	"gorm.io/gorm"
+	"starclaw.net/queen/swarm/internal/model"
 )
 
 type SwarmHandler struct {
@@ -52,6 +52,47 @@ func fetchCreditBalance(clawID string) map[string]interface{} {
 		return data
 	}
 	return nil
+}
+
+// pushBindingHeartbeat notifies Queen API internal endpoint to refresh node_bindings.last_seen.
+// Best-effort only: heartbeat success in Swarm should not depend on Queen internal sync.
+func pushBindingHeartbeat(clawID, version, addr string) {
+	if clawID == "" {
+		return
+	}
+
+	queenAPI := os.Getenv("QUEEN_API_URL")
+	if queenAPI == "" {
+		queenAPI = "http://queen-api:8085"
+	}
+	secret := os.Getenv("QUEEN_JWT_SECRET")
+	if secret == "" {
+		return
+	}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"node_id":      clawID,
+		"node_version": version,
+		"node_addr":    addr,
+	})
+
+	req, err := http.NewRequest("POST", queenAPI+"/internal/user/heartbeat", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Node-Token", secret)
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		log.Printf("[swarm] internal heartbeat sync returned %d for %s", resp.StatusCode, clawID)
+	}
 }
 
 // grantWelcomeBonus calls Queen API to grant 100 ⚡ to a new claw node
@@ -255,6 +296,15 @@ func (h *SwarmHandler) Heartbeat(c *gin.Context) {
 	}
 
 	h.db.Model(&node).Updates(updates)
+
+	// Sync Queen node_bindings heartbeat (best-effort)
+	clawIDForBinding := req.ClawID
+	if clawIDForBinding == "" {
+		clawIDForBinding = node.ClawID
+	}
+	if clawIDForBinding != "" {
+		go pushBindingHeartbeat(clawIDForBinding, req.Version, req.Address)
+	}
 
 	// Fetch credit balance from Queen API and include in response
 	resp := gin.H{
