@@ -121,7 +121,7 @@ func (h *HiveHandler) BackgroundHealthLoop(interval time.Duration) {
 
 func (h *HiveHandler) healthCheck() {
 	var instances []model.ClawInstance
-	h.db.Where("status = 'running' AND deploy_mode IN ('hive','lite')").Find(&instances)
+	h.db.Where("status IN ('running','error') AND deploy_mode IN ('hive','lite')").Find(&instances)
 
 	for _, inst := range instances {
 		if inst.ContainerID == "" {
@@ -129,20 +129,30 @@ func (h *HiveHandler) healthCheck() {
 		}
 
 		running := isContainerRunning(inst.ContainerID)
+		now := time.Now()
 
-		if !running {
-			log.Printf("[hive] health: container %s (%s) is NOT running — restarting", inst.Slug, inst.ContainerID)
-
-			if err := h.docker.StartContainer(inst.ContainerID); err != nil {
-				log.Printf("[hive] health: restart failed for %s: %v — marking error", inst.Slug, err)
-				h.db.Model(&inst).Update("status", "error")
-				NotifyInstanceError(inst.ID, inst.Slug, "container_crashed: restart failed")
+		// Auto-recover: if a previously error instance is actually running, mark it back to running.
+		if running {
+			if inst.Status == "error" {
+				log.Printf("[hive] health: recovered %s (%s) — status error -> running", inst.Slug, inst.ContainerID)
+				h.db.Model(&inst).Updates(map[string]interface{}{"status": "running", "last_active_at": now})
 			} else {
-				log.Printf("[hive] health: restarted %s successfully", inst.Slug)
-				now := time.Now()
 				h.db.Model(&inst).Update("last_active_at", now)
 			}
+			continue
 		}
+
+		log.Printf("[hive] health: container %s (%s) is NOT running — restarting", inst.Slug, inst.ContainerID)
+
+		if err := h.docker.StartContainer(inst.ContainerID); err != nil {
+			log.Printf("[hive] health: restart failed for %s: %v — marking error", inst.Slug, err)
+			h.db.Model(&inst).Update("status", "error")
+			NotifyInstanceError(inst.ID, inst.Slug, "container_crashed: restart failed")
+			continue
+		}
+
+		log.Printf("[hive] health: restarted %s successfully", inst.Slug)
+		h.db.Model(&inst).Updates(map[string]interface{}{"status": "running", "last_active_at": now})
 	}
 }
 
