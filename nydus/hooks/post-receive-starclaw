@@ -360,23 +360,21 @@ echo "$REFS" | while read oldrev newrev refname; do
       _start=$SECONDS
       git --git-dir="$REPO" archive HEAD:synapse | ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && tar xf -"
 
+      # Build commands run async on Server B (nohup) to avoid blocking git push.
+      # Code is already synced above (fast). Docker builds are slow (5-15 min).
+      SERVICES_TO_BUILD=""
       if echo "$CHANGED" | grep -q "^synapse/api/\|^synapse/docker-compose\|^pheromone/sdk/"; then
-        # Copy pheromone/sdk into api/ for Docker build context
         git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_B" "mkdir -p /opt/starclaw/synapse/api/pheromone-sdk && cd /opt/starclaw/synapse/api/pheromone-sdk && tar xf -"
-        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache api && docker compose up -d api"
-        echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | cat >> "$LOG"
+        SERVICES_TO_BUILD="$SERVICES_TO_BUILD api"
       fi
-      if echo "$CHANGED" | grep -q "^synapse/web/"; then
-        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache web && docker compose up -d web"
-        echo "  -> synapse-web rebuilt on B (star-ai-web :3096)" | cat >> "$LOG"
-      fi
-      if echo "$CHANGED" | grep -q "^synapse/core/"; then
-        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache core && docker compose up -d core"
-        echo "  -> synapse-core rebuilt on B (star-ai-core :3097 → core.star-ai.net)" | cat >> "$LOG"
-      fi
-      if echo "$CHANGED" | grep -q "^synapse/proxy/"; then
-        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache proxy && docker compose up -d proxy"
-        echo "  -> synapse-proxy rebuilt on B (overseas relay)" | cat >> "$LOG"
+      echo "$CHANGED" | grep -q "^synapse/web/" && SERVICES_TO_BUILD="$SERVICES_TO_BUILD web"
+      echo "$CHANGED" | grep -q "^synapse/core/" && SERVICES_TO_BUILD="$SERVICES_TO_BUILD core"
+      echo "$CHANGED" | grep -q "^synapse/proxy/" && SERVICES_TO_BUILD="$SERVICES_TO_BUILD proxy"
+
+      if [ -n "$SERVICES_TO_BUILD" ]; then
+        # Fire-and-forget: build+restart runs on Server B, doesn't block hook
+        ssh $SSH_OPTS "$SERVER_B" "nohup bash -c 'cd /opt/starclaw/synapse && docker compose build --no-cache $SERVICES_TO_BUILD && docker compose up -d $SERVICES_TO_BUILD' >> /var/log/synapse-deploy.log 2>&1 &"
+        echo "  -> synapse build triggered on B (async):$SERVICES_TO_BUILD" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/deploy/"; then
         ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && cp deploy/nginx-starai.conf /etc/nginx/sites-available/star-ai 2>/dev/null; nginx -t && systemctl reload nginx" || true
