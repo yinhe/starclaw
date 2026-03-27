@@ -52,7 +52,32 @@ func LoadOrCreateIdentity() *Identity {
 		}
 	}
 
-	// Generate new Ed25519 keypair
+	// If STARCLAW_IDENTITY_SEED is set, derive key deterministically (Hive injects this).
+	// Same seed always produces the same claw address — no identity loss on container recreation.
+	if seedHex := os.Getenv("STARCLAW_IDENTITY_SEED"); seedHex != "" {
+		seed, err := hex.DecodeString(seedHex)
+		if err == nil && len(seed) == ed25519.SeedSize {
+			priv := ed25519.NewKeyFromSeed(seed)
+			pub := priv.Public().(ed25519.PublicKey)
+			id.PrivateKey = priv
+			id.PublicKey = pub
+			id.NodeID = deriveNodeID(pub)
+
+			// Persist so subsequent restarts (without env) still work
+			stored := struct {
+				PrivateKey []byte `json:"private_key"`
+				PublicKey  []byte `json:"public_key"`
+			}{priv, pub}
+			data, _ := json.Marshal(stored)
+			os.WriteFile(keyFile, data, 0600)
+
+			log.Printf("[node] identity from seed: %s (fingerprint: %s)", id.NodeID, id.Fingerprint())
+			return id
+		}
+		log.Printf("[node] warning: STARCLAW_IDENTITY_SEED invalid (need 64 hex chars), generating random key")
+	}
+
+	// Generate new Ed25519 keypair (only on truly fresh installs)
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		log.Fatalf("[node] failed to generate keypair: %v", err)

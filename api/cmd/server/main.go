@@ -137,14 +137,6 @@ func main() {
 	// Report pending molt update result from previous restart (if any)
 	go swarmClient.ReportPendingMolt()
 
-	// Auto-detect identity change and migrate data from old address
-	if prevID := identity.PreviousNodeID(); prevID != "" {
-		log.Printf("[identity] ⚠️ address changed: %s → %s", prevID, identity.NodeID)
-		if cfg.Swarm.QueenURL != "" {
-			go migrateIdentity(cfg.Swarm.QueenURL, cfg.JWT.Secret, prevID, identity.NodeID)
-		}
-	}
-
 	// Initialize Queen billing client (for hosted mode centralized billing)
 	billingClient := swarm.NewBillingClient(cfg.Swarm.QueenURL, cfg.JWT.Secret)
 	v1.SetQueenBilling(billingClient)
