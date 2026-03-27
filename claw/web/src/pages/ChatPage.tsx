@@ -61,7 +61,7 @@ export default function ChatPage() {
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const silenceStartRef = useRef<number>(0)
+  // silenceStartRef removed — auto-send now handled by SpeechRecognition onresult timer
   const [attachedFiles, setAttachedFiles] = useState<{ id: string; filename: string; url: string; size: number; mime: string; category: string; stored: string }[]>([])
   const [fileUploading, setFileUploading] = useState(false)
   const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string; document_count: number }[]>([])
@@ -332,6 +332,14 @@ export default function ChatPage() {
 
   const speechRecognitionRef = useRef<any>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
+  const voiceInputRef = useRef<string>('')         // tracks current voice input for auto-send
+  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Check browser Speech Recognition support
+  const getSpeechRecognition = () => {
+    const w = window as any
+    return w.SpeechRecognition || w.webkitSpeechRecognition || null
+  }
 
   const stopAudioVisualization = () => {
     if (animFrameRef.current) {
@@ -360,34 +368,21 @@ export default function ChatPage() {
       analyserRef.current = analyser
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount)
-      const start = Date.now()
-      silenceStartRef.current = 0
       const updateLevels = () => {
         if (!analyserRef.current) return
         analyserRef.current.getByteFrequencyData(dataArray)
-        const levels = Array.from(dataArray).slice(0, 32).map(v => v / 255)
-
-        // Silence detection: auto-stop after 2s of silence (skip first 1s to let user start)
-        const avgLevel = levels.reduce((a, b) => a + b, 0) / levels.length
-        const now = Date.now()
-        if (avgLevel < 0.05 && now - start > 1000) {
-          if (silenceStartRef.current === 0) silenceStartRef.current = now
-          else if (now - silenceStartRef.current > 2000) {
-            stopRecording()
-            return
-          }
-        } else {
-          silenceStartRef.current = 0
-        }
-
         animFrameRef.current = requestAnimationFrame(updateLevels)
       }
       updateLevels()
-
     } catch { /* AudioContext not supported */ }
   }
 
   const stopRecording = () => {
+    // Clear auto-send timer
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current)
+      autoSendTimerRef.current = null
+    }
     // Stop Speech Recognition
     if (speechRecognitionRef.current) {
       speechRecognitionRef.current.stop()
@@ -404,11 +399,85 @@ export default function ChatPage() {
     }
     setIsRecording(false)
     stopAudioVisualization()
+
+    // Auto-send the voice input if we got text
+    const voiceText = voiceInputRef.current.trim()
+    if (voiceText) {
+      voiceInputRef.current = ''
+      // Small delay to ensure state is updated
+      setTimeout(() => {
+        const sendBtn = document.querySelector('[title="发送"]') as HTMLButtonElement
+        if (sendBtn && !sendBtn.disabled) sendBtn.click()
+      }, 200)
+    }
     setTimeout(() => textareaRef.current?.focus(), 100)
   }
 
-  const startWithBackendSTT = async (stream: MediaStream) => {
-    // Fallback: record audio and send to backend STT
+  // Primary path: Browser native SpeechRecognition (real-time, zero cost)
+  const startBrowserSTT = (_stream: MediaStream) => {
+    const SpeechRecognition = getSpeechRecognition()
+    if (!SpeechRecognition) return false
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true        // keep listening until manual stop
+    recognition.interimResults = true     // show partial results in real-time
+    recognition.lang = 'zh-CN'           // Chinese primary
+    recognition.maxAlternatives = 1
+
+    let finalTranscript = ''
+    const inputBefore = input
+
+    recognition.onresult = (event: any) => {
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript
+        } else {
+          interim = transcript
+        }
+      }
+
+      // Real-time display: show final + interim text
+      const display = inputBefore + (inputBefore ? ' ' : '') + finalTranscript + interim
+      setInput(display)
+      voiceInputRef.current = finalTranscript + interim
+
+      // Reset auto-send timer on every new result (send 2s after last speech)
+      if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current)
+      if (finalTranscript.trim()) {
+        autoSendTimerRef.current = setTimeout(() => {
+          stopRecording()
+        }, 2000) // 2s silence → auto stop & send
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      console.warn('[voice] SpeechRecognition error:', event.error)
+      if (event.error === 'no-speech') {
+        // No speech detected — stop silently
+        stopRecording()
+      } else if (event.error === 'not-allowed') {
+        alert('浏览器麦克风权限被拒绝')
+        stopRecording()
+      }
+      // For other errors (network, etc), let it continue or fallback
+    }
+
+    recognition.onend = () => {
+      // If still in recording mode, it was an unexpected end — restart
+      if (speechRecognitionRef.current === recognition && micStreamRef.current) {
+        try { recognition.start() } catch { /* ignore */ }
+      }
+    }
+
+    speechRecognitionRef.current = recognition
+    recognition.start()
+    return true
+  }
+
+  // Fallback path: Record audio and send to backend Whisper API
+  const startBackendSTT = async (stream: MediaStream) => {
     const recorder = new MediaRecorder(stream)
     const chunks: Blob[] = []
     recorder.ondataavailable = (e) => chunks.push(e.data)
@@ -422,7 +491,6 @@ export default function ChatPage() {
         if (res.data.text) {
           setInput(prev => {
             const next = prev ? prev + ' ' + res.data.text : res.data.text
-            // Auto-send if input was empty before recording (voice-only message)
             if (wasEmpty) {
               setTimeout(() => {
                 const sendBtn = document.querySelector('[title="发送"]') as HTMLButtonElement
@@ -433,9 +501,9 @@ export default function ChatPage() {
           })
         }
       } catch (err: any) {
-        console.error('STT failed:', err)
-        const msg = err?.response?.data?.error || '语音识别失败'
-        setInput(prev => prev || `[语音识别错误: ${msg}]`)
+        console.error('[voice] Backend STT failed:', err)
+        const msg = err?.response?.data?.error || '语音识别失败，请配置 Qwen 或 OpenAI 模型'
+        setInput(prev => prev || `[${msg}]`)
       } finally {
         setIsTranscribing(false)
       }
@@ -453,12 +521,18 @@ export default function ChatPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       micStreamRef.current = stream
       setIsRecording(true)
+      voiceInputRef.current = ''
       startAudioVisualization(stream)
 
-      // Use backend STT (Qwen > OpenAI) for reliable transcription
-      await startWithBackendSTT(stream)
+      // Try browser-native STT first (real-time, free)
+      const usedNative = startBrowserSTT(stream)
+      if (!usedNative) {
+        // Fallback to backend Whisper (needs API key)
+        console.log('[voice] Browser STT not available, using backend Whisper')
+        await startBackendSTT(stream)
+      }
     } catch (err) {
-      console.error('Mic access denied:', err)
+      console.error('[voice] Mic access denied:', err)
       alert('无法访问麦克风，请允许浏览器使用麦克风权限')
     }
   }
@@ -2023,7 +2097,7 @@ export default function ChatPage() {
                 onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files) }}
                 onDragOver={(e) => e.preventDefault()}
                 rows={1}
-                placeholder={isRecording ? '录音中，说完自动识别...' : isTranscribing ? '语音识别中...' : '询问任何内容，@ 可指定 Agent...'}
+                placeholder={isRecording ? '🎤 语音输入中，说完自动发送...' : isTranscribing ? '语音识别中...' : '询问任何内容，@ 可指定 Agent...'}
                 className="w-full bg-transparent resize-none py-3 outline-none text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400"
                 style={{ minHeight: '24px', maxHeight: '120px' }}
               />
