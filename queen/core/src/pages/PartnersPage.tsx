@@ -44,12 +44,41 @@ export default function PartnersPage() {
   const [addForm, setAddForm] = useState({ claw_id: '', name: '', region: '', email: '', phone: '' })
   const [addError, setAddError] = useState('')
   const [addLoading, setAddLoading] = useState(false)
+  const [viewPartner, setViewPartner] = useState<PartnerPerf | null>(null)
+  const [editForm, setEditForm] = useState<PartnerPerf | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
 
   const loadPartners = () => {
     api.get<{ partners: PartnerPerf[] }>('/v1/admin/partners/performance')
       .then(r => setPartners(r.partners || []))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editForm) return
+    setEditLoading(true)
+    try {
+      if (editForm.type === 'city') {
+        await api.put(`/v1/admin/city/partners/${editForm.id}`, {
+          status: editForm.status,
+          comm_rate: editForm.comm_rate,
+        })
+      } else {
+        await api.put(`/v1/admin/partners/${editForm.id}`, {
+          level: editForm.level,
+          status: editForm.status,
+          region: editForm.region,
+          direct_comm_rate: editForm.comm_rate,
+        })
+      }
+      setEditForm(null)
+      loadPartners()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '更新失败')
+    } finally {
+      setEditLoading(false)
+    }
   }
 
   useEffect(() => { loadPartners() }, [])
@@ -137,6 +166,88 @@ export default function PartnersPage() {
         </div>
       )}
 
+      {/* View Modal */}
+      {viewPartner && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => setViewPartner(null)}>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">合伙人详情</h3>
+              <button onClick={() => setViewPartner(null)} className="text-gray-500 hover:text-gray-300"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><span className="text-gray-500">姓名：</span><span className="text-white">{viewPartner.name}</span></div>
+              <div><span className="text-gray-500">类型：</span><span className="text-white">{viewPartner.type === 'core' ? '团队合伙人' : '城市合伙人'}</span></div>
+              <div><span className="text-gray-500">状态：</span><span className="text-white">{(STATUS_MAP[viewPartner.status] || STATUS_MAP.active).label}</span></div>
+              <div><span className="text-gray-500">等级：</span><span className="text-white">{(LEVEL_MAP[viewPartner.level] || { label: viewPartner.level || '-' }).label}</span></div>
+              <div><span className="text-gray-500">区域：</span><span className="text-white">{viewPartner.region || '-'}</span></div>
+              <div><span className="text-gray-500">佣金率：</span><span className="text-white">{(viewPartner.comm_rate * 100).toFixed(0)}%</span></div>
+              <div><span className="text-gray-500">GMV：</span><span className="text-white">{viewPartner.total_revenue > 0 ? fen2yuan(viewPartner.total_revenue) : '-'}</span></div>
+              <div><span className="text-gray-500">累计佣金：</span><span className="text-green-400">{fen2yuan(viewPartner.total_commission)}</span></div>
+              <div><span className="text-gray-500">活跃客户：</span><span className="text-white">{viewPartner.active_clients}</span></div>
+              <div><span className="text-gray-500">成交数：</span><span className="text-white">{viewPartner.deal_count}</span></div>
+              <div className="col-span-2"><span className="text-gray-500">Claw 地址：</span><span className="text-gray-300 font-mono text-xs">{viewPartner.claw_id || '-'}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editForm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => setEditForm(null)}>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">编辑合伙人</h3>
+              <button onClick={() => setEditForm(null)} className="text-gray-500 hover:text-gray-300"><X size={18} /></button>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">姓名</label>
+              <input value={editForm.name} disabled className="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">状态</label>
+                <select value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+                  <option value="active">活跃</option>
+                  <option value="approved">已审批</option>
+                  <option value="suspended">暂停</option>
+                  <option value="rejected">已拒绝</option>
+                </select>
+              </div>
+              {editForm.type === 'core' && (
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">等级</label>
+                  <select value={editForm.level || 'partner'} onChange={e => setEditForm({ ...editForm, level: e.target.value })}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+                    <option value="partner">合伙人</option>
+                    <option value="senior">高级合伙人</option>
+                    <option value="director">合伙人总监</option>
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">区域</label>
+                <input value={editForm.region || ''} onChange={e => setEditForm({ ...editForm, region: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">佣金率(%)</label>
+                <input type="number" min={0} max={100} step={1}
+                  value={Math.round((editForm.comm_rate || 0) * 100)}
+                  onChange={e => setEditForm({ ...editForm, comm_rate: Number(e.target.value || 0) / 100 })}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500" />
+              </div>
+            </div>
+            <button onClick={handleSaveEdit} disabled={editLoading}
+              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              {editLoading ? '保存中...' : '保存修改'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -214,11 +325,11 @@ export default function PartnersPage() {
                   <td className="px-4 py-3 text-right text-gray-400">{(p.comm_rate * 100).toFixed(0)}%</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => alert('TODO: 查看 ' + p.name + ' 详情')}
+                      <button onClick={() => setViewPartner(p)}
                         className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition" title="查看详情">
                         <Eye size={14} />
                       </button>
-                      <button onClick={() => alert('TODO: 编辑 ' + p.name)}
+                      <button onClick={() => setEditForm({ ...p })}
                         className="p-1.5 rounded-lg text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 transition" title="编辑">
                         <Pencil size={14} />
                       </button>
