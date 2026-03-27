@@ -192,11 +192,16 @@ while read oldrev newrev refname; do
 "
 done
 
+# Close git's file descriptors in the parent BEFORE forking.
+# This is critical: prevents any child process from inheriting git's pipe fds,
+# which would cause git push to block waiting for pipe EOF.
+exec </dev/null >/dev/null 2>/dev/null
+
 # Fork entire processing into background so git push returns immediately
 (
 exec >>"$LOG" 2>&1
 
-echo "$REFS" | while read oldrev newrev refname; do
+while read oldrev newrev refname; do
   [ -z "$oldrev" ] && continue
   # Sync tags to claw.git (for Molt release detection)
   case "$refname" in
@@ -530,7 +535,7 @@ echo "$REFS" | while read oldrev newrev refname; do
   ) </dev/null >> "$LOG" 2>&1 &
 
   echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED"
-done
+done <<< "$REFS"
 
 # Wait for background deploy jobs (with safety-net timeout of 15 min)
 # If any single job hangs past SSH_BUILD_TIMEOUT, this prevents infinite wait
@@ -541,4 +546,4 @@ wait $(jobs -p | grep -v $TIMEOUT_PID) 2>/dev/null
 kill $TIMEOUT_PID 2>/dev/null; wait $TIMEOUT_PID 2>/dev/null
 echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] All background jobs completed"
 
-) </dev/null >>/var/log/nydus-deploy.log 2>&1 &
+) &
