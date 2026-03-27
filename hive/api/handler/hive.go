@@ -787,16 +787,19 @@ func (h *HiveHandler) rollingUpgrade(version string) {
 		upgradeMu.Unlock()
 	}()
 
-	// Step 1: Pull latest images for local (hive/lite) instances
-	log.Printf("[hive] pulling latest images...")
+	// Step 1: Try pulling latest images (non-fatal — local images built by Nydus hook are fine)
+	log.Printf("[hive] attempting to pull latest images (non-fatal if local-only)...")
 	for _, img := range []string{h.cfg.ClawImage, h.cfg.ClawLiteImage} {
 		out, err := exec.Command("docker", "pull", img).CombinedOutput()
 		if err != nil {
-			log.Printf("[hive] docker pull %s failed: %s", img, strings.TrimSpace(string(out)))
+			log.Printf("[hive] docker pull %s skipped (local image will be used): %s", img, strings.TrimSpace(string(out)))
 		} else {
 			log.Printf("[hive] pulled %s", img)
 		}
 	}
+
+	// Step 1.5: Discover orphaned containers not tracked in DB
+	h.discoverOrphanedContainers()
 
 	// Step 2: Find ALL running instances (hive, lite, AND ecs)
 	var instances []model.ClawInstance
@@ -881,6 +884,9 @@ func (h *HiveHandler) upgradeECSInstance(inst *model.ClawInstance, version strin
 // ──── Admin: Upgrade all instances to latest starclaw-api image ────
 
 func (h *HiveHandler) UpgradeInstances(c *gin.Context) {
+	// Discover orphaned containers first
+	h.discoverOrphanedContainers()
+
 	var instances []model.ClawInstance
 	h.db.Where("status = 'running' AND deploy_mode IN ('hive','lite')").Find(&instances)
 
@@ -941,6 +947,91 @@ func (h *HiveHandler) UpgradeInstances(c *gin.Context) {
 		"upgraded": len(instances),
 		"results":  results,
 	})
+}
+
+// ──── Container Discovery ────
+
+// discoverOrphanedContainers scans Docker for running claw-* containers that are not tracked
+// in the database. This happens when the DB is reset/recreated but containers survive.
+// Discovered containers are registered with status=running so upgrades can find them.
+func (h *HiveHandler) discoverOrphanedContainers() {
+	out, err := exec.Command("docker", "ps", "--filter", "name=claw-", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}").CombinedOutput()
+	if err != nil {
+		log.Printf("[hive] container discovery failed: %v", err)
+		return
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	discovered := 0
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+		containerID, containerName, image := parts[0], parts[1], parts[2]
+
+		// Extract slug from container name: claw-{slug}-api or claw-{slug}-lite
+		slug := containerName
+		slug = strings.TrimPrefix(slug, "claw-")
+		slug = strings.TrimSuffix(slug, "-api")
+		slug = strings.TrimSuffix(slug, "-lite")
+		if slug == "" || slug == containerName {
+			continue
+		}
+
+		// Check if already tracked in DB
+		var count int64
+		h.db.Model(&model.ClawInstance{}).Where("slug = ?", slug).Count(&count)
+		if count > 0 {
+			continue
+		}
+
+		// Determine deploy mode from container name/image
+		deployMode := "hive"
+		if strings.HasSuffix(containerName, "-lite") || strings.Contains(image, "lite") {
+			deployMode = "lite"
+		}
+
+		// Parse port from docker ps output (e.g., "127.0.0.1:9001->8080/tcp")
+		port := 0
+		if len(parts) >= 4 {
+			portStr := parts[3]
+			if idx := strings.Index(portStr, ":"); idx >= 0 {
+				portStr = portStr[idx+1:]
+			}
+			if idx := strings.Index(portStr, "->"); idx >= 0 {
+				portStr = portStr[:idx]
+			}
+			fmt.Sscanf(portStr, "%d", &port)
+		}
+
+		inst := model.ClawInstance{
+			ID:          uuid.New().String(),
+			Slug:        slug,
+			DisplayName: slug,
+			DeployMode:  deployMode,
+			Port:        port,
+			ContainerID: containerID,
+			Status:      "running",
+			CPULimit:    0.25,
+			MemoryLimit: 268435456,
+			StorageMax:  1073741824,
+			JWTSecret:   randomHex(32),
+		}
+		if err := h.db.Create(&inst).Error; err != nil {
+			log.Printf("[hive] failed to register orphan %s: %v", slug, err)
+			continue
+		}
+		discovered++
+		log.Printf("[hive] discovered orphan container: %s (mode=%s, port=%d, id=%s)", slug, deployMode, port, containerID[:12])
+	}
+
+	if discovered > 0 {
+		log.Printf("[hive] 🔍 discovered %d orphaned containers", discovered)
+	}
 }
 
 // ──── Health ────

@@ -246,6 +246,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		c.JSON(200, gin.H{
 			"status":    "ok",
 			"service":   "starclaw",
+			"version":   molt.Version,
 			"uptime_s":  int(time.Since(startTime).Seconds()),
 			"db_status": dbOk,
 		})
