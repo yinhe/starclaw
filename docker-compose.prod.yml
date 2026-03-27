@@ -48,7 +48,7 @@ services:
     restart: always
     environment:
       STARCLAW_SERVER_MODE: release
-      STARCLAW_SERVER_DEPLOY_MODE: ${DEPLOY_MODE:-hosted}
+      STARCLAW_SERVER_DEPLOY_MODE: ${DEPLOY_MODE:-opensource}
       STARCLAW_DATABASE_HOST: mysql
       STARCLAW_DATABASE_PORT: 3306
       STARCLAW_DATABASE_USER: root
