@@ -18,11 +18,13 @@ from collectors.skillhub import SkillHubCollector
 from collectors.awesome_gpts import AwesomeGPTsCollector
 from collectors.coze import CozeCollector
 from collectors.dify import DifyCollector
+from collectors.gpt_prompts import GPTPromptsCollector
 from cocoon.auto_morph import morph_batch
 from cocoon.llm_evolve import evolve_batch
 
 # Collector registry
 COLLECTORS = {
+    "gpt_prompts": GPTPromptsCollector,
     "clawhub": ClawHubCollector,
     "skillhub": SkillHubCollector,
     "awesome_gpts": AwesomeGPTsCollector,
