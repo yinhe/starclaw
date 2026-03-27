@@ -1948,6 +1948,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				// P8: Marketplace admin review
 				admin.GET("/admin/marketplace/pending", marketplaceHandler.AdminListPending)
 				admin.POST("/admin/marketplace/listings/:id/review", marketplaceHandler.AdminReviewListing)
+				admin.POST("/admin/marketplace/import", marketplaceHandler.AdminBulkImport)
 
 				// P9: Plugin admin review
 				admin.GET("/admin/plugins/pending", devHandler.AdminListPendingPlugins)
