@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,6 +13,87 @@ import (
 )
 
 type MarketplaceHandler struct{}
+
+// POST /admin/marketplace/import — Drone batch import into Queen community marketplace
+func (h *MarketplaceHandler) AdminBulkImport(c *gin.Context) {
+	var req struct {
+		Templates []struct {
+			Name         string `json:"name"`
+			Description  string `json:"description"`
+			Category     string `json:"category"`
+			Tags         string `json:"tags"`
+			SystemPrompt string `json:"system_prompt"`
+			Tools        string `json:"tools"`
+			Config       string `json:"config"`
+			Icon         string `json:"icon"`
+		} `json:"templates"`
+		Source string `json:"source"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	imported, skipped := 0, 0
+	for _, t := range req.Templates {
+		if t.Name == "" || t.SystemPrompt == "" {
+			skipped++
+			continue
+		}
+
+		// Dedup by name
+		var existing model.MarketplaceItem
+		if err := database.DB.Where("name = ? AND type = ?", t.Name, "agent").First(&existing).Error; err == nil {
+			skipped++
+			continue
+		}
+
+		// Build config JSON containing the system_prompt and tools
+		config := t.Config
+		if config == "" || config == "{}" {
+			configMap := map[string]interface{}{
+				"system_prompt": t.SystemPrompt,
+				"tools":         t.Tools,
+				"category":      t.Category,
+				"source":        req.Source,
+			}
+			configBytes, _ := json.Marshal(configMap)
+			config = string(configBytes)
+		}
+
+		icon := t.Icon
+		if icon == "" {
+			icon = "🤖"
+		}
+
+		now := time.Now()
+		item := model.MarketplaceItem{
+			ID:          uuid.New().String(),
+			UserID:      "system",
+			Type:        "agent",
+			Name:        t.Name,
+			Description: t.Description,
+			Icon:        icon,
+			Tags:        t.Tags,
+			Config:      config,
+			Status:      model.ItemStatusPublished,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		if err := database.DB.Create(&item).Error; err != nil {
+			skipped++
+			continue
+		}
+		imported++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"imported": imported,
+		"skipped":  skipped,
+		"source":   req.Source,
+	})
+}
 
 // GET /marketplace/items?type=agent&q=keyword&page=1&size=20
 func (h *MarketplaceHandler) List(c *gin.Context) {

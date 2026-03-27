@@ -87,9 +87,12 @@ def harvest_source(source_name: str, source_config: dict, global_config: dict):
 
 
 def import_to_marketplace(templates: list, claw_api: str) -> int:
-    """批量导入 AgentTemplate 到 Claw 市场。"""
+    """批量导入到 Queen 社区市场（MarketplaceItem 表）。"""
     if not templates:
         return 0
+
+    queen_api = os.getenv("DRONE_QUEEN_API", "https://api.starclaw.net")
+    queen_token = os.getenv("DRONE_QUEEN_TOKEN", os.getenv("DRONE_SECRET", ""))
 
     batch_size = 50
     imported = 0
@@ -101,25 +104,27 @@ def import_to_marketplace(templates: list, claw_api: str) -> int:
         clean = []
         for t in batch:
             item = {k: v for k, v in t.items() if not k.startswith("_")}
-            item["is_builtin"] = False
-            item["author_id"] = "system"
             clean.append(item)
 
+        source = batch[0].get("_source", "drone") if batch else "drone"
+
         try:
-            drone_secret = os.getenv("DRONE_SECRET", "")
             resp = requests.post(
-                f"{claw_api}/v1/marketplace/import",
-                json={"templates": clean, "source": clean[0].get("_source", "drone")},
-                headers={"Content-Type": "application/json", "X-Drone-Secret": drone_secret},
+                f"{queen_api}/v1/admin/marketplace/import",
+                json={"templates": clean, "source": source},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {queen_token}",
+                },
                 timeout=30,
             )
             if resp.status_code in (200, 201):
                 result = resp.json()
                 imported += result.get("imported", len(clean))
             else:
-                print(f"[worker] import batch failed: HTTP {resp.status_code} - {resp.text[:200]}")
+                print(f"[worker] Queen import failed: HTTP {resp.status_code} - {resp.text[:200]}")
         except requests.RequestException as e:
-            print(f"[worker] import request failed: {e}")
+            print(f"[worker] Queen import request failed: {e}")
 
     return imported
 

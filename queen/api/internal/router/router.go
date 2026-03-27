@@ -173,6 +173,7 @@ func Setup() *gin.Engine {
 		admin.PUT("/marketplace/items/:id/approve", mp.AdminApprove)
 		admin.PUT("/marketplace/items/:id/reject", mp.AdminReject)
 		admin.PUT("/marketplace/items/:id/remove", mp.AdminRemove)
+		admin.POST("/marketplace/import", mp.AdminBulkImport)
 
 		// Service proxies (bounty / forum / arena)
 		proxy := handler.NewAdminProxyHandler()
