@@ -1,6 +1,8 @@
 package router
 
 import (
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -350,6 +352,43 @@ func Setup() *gin.Engine {
 	admin.GET("/investor/deposits", investor.ListDeposits)
 	admin.POST("/investor/round/open", investor.OpenRound)
 	admin.GET("/investor/rounds", investor.ListRounds)
+
+	// ---- Drone proxy (forwards to local drone-api on :8110) ----
+	drone := r.Group("/drone")
+	drone.Use(middleware.AuthRequired(), middleware.AdminRequired())
+	{
+		drone.Any("/*path", func(c *gin.Context) {
+			droneURL := os.Getenv("DRONE_API_URL")
+			if droneURL == "" {
+				droneURL = "http://127.0.0.1:8110"
+			}
+			target := droneURL + c.Param("path")
+			if c.Request.URL.RawQuery != "" {
+				target += "?" + c.Request.URL.RawQuery
+			}
+
+			req, err := http.NewRequest(c.Request.Method, target, c.Request.Body)
+			if err != nil {
+				c.JSON(502, gin.H{"error": "drone proxy error"})
+				return
+			}
+			req.Header.Set("Content-Type", c.GetHeader("Content-Type"))
+
+			client := &http.Client{Timeout: 300 * time.Second}
+			resp, err := client.Do(req)
+			if err != nil {
+				c.JSON(502, gin.H{"error": "drone unreachable: " + err.Error()})
+				return
+			}
+			defer resp.Body.Close()
+
+			// Copy response
+			c.Status(resp.StatusCode)
+			c.Header("Content-Type", resp.Header.Get("Content-Type"))
+			body, _ := io.ReadAll(resp.Body)
+			c.Writer.Write(body)
+		})
+	}
 
 	// ---- Internal API (for Claw nodes, authenticated via X-Node-Token header) ----
 	internal := r.Group("/internal")

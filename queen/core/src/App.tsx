@@ -16,6 +16,7 @@ import PartnersPage from './pages/PartnersPage'
 import ClientsPage from './pages/ClientsPage'
 import SettlementPage from './pages/SettlementPage'
 import OverseerPage from './pages/OverseerPage'
+import DronePage from './pages/DronePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isLoggedIn()) return <Navigate to="/login" replace />
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="clients" element={<ClientsPage />} />
         <Route path="settlement" element={<SettlementPage />} />
         <Route path="overseer" element={<OverseerPage />} />
+        <Route path="drone" element={<DronePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

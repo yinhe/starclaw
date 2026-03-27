@@ -17,6 +17,7 @@ import {
   Calculator,
   Activity,
   ExternalLink,
+  Bug,
 } from 'lucide-react'
 
 const navItems = [
@@ -33,6 +34,7 @@ const navItems = [
   { to: '/partners', icon: Handshake, label: '合伙人管理' },
   { to: '/clients', icon: Building2, label: '客户总览' },
   { to: '/settlement', icon: Calculator, label: '结算管理' },
+  { to: '/drone', icon: Bug, label: '工蜂采集' },
 ]
 
 export default function Layout() {
