@@ -140,8 +140,13 @@ def run_one(source_name: str, config: dict):
     """运行单个采集源。"""
     src_config = config.get("sources", {}).get(source_name)
     if not src_config:
-        print(f"[worker] source '{source_name}' not found in config")
-        return
+        # Auto-create minimal config for known collectors
+        if source_name in COLLECTORS:
+            src_config = {"name": source_name, "mode": "full", "priority": 1, "cocoon_level": 1}
+            print(f"[worker] source '{source_name}' not in config, using defaults")
+        else:
+            print(f"[worker] unknown source: '{source_name}'")
+            return
     harvest_source(source_name, src_config, config)
 
 
