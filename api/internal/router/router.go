@@ -303,6 +303,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			c.JSON(200, molt.GetVersionInfo())
 		})
 
+		// Drone marketplace import (internal, secret-protected)
+		droneImportHandler := v1.NewMarketplaceHandler(db)
+		apiV1.POST("/marketplace/import", func(c *gin.Context) {
+			secret := c.GetHeader("X-Drone-Secret")
+			if secret == "" {
+				secret = c.Query("secret")
+			}
+			expected := cfg.JWT.Secret
+			if secret != expected {
+				c.JSON(401, gin.H{"error": "unauthorized"})
+				c.Abort()
+				return
+			}
+			droneImportHandler.AdminBulkImport(c)
+		})
+
 		// P9: Developer portal (public — OpenAPI + Swagger UI)
 		devHandler := v1.NewDeveloperHandler(db)
 		apiV1.GET("/developer/openapi.json", devHandler.GetOpenAPISpec)
@@ -1948,6 +1964,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				// P8: Marketplace admin review
 				admin.GET("/admin/marketplace/pending", marketplaceHandler.AdminListPending)
 				admin.POST("/admin/marketplace/listings/:id/review", marketplaceHandler.AdminReviewListing)
+				admin.POST("/admin/marketplace/import", marketplaceHandler.AdminBulkImport)
 
 				// P9: Plugin admin review
 				admin.GET("/admin/plugins/pending", devHandler.AdminListPendingPlugins)
