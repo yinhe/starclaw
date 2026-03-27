@@ -147,6 +147,80 @@ func DeriveNodeIDFromPubKey(publicKeyHex string) (string, error) {
 	return deriveNodeID(pubKey), nil
 }
 
+// ── Identity Migration ──
+
+// PreviousNodeID returns the previously known node ID (if address changed).
+// Stores current node ID to a tracking file on each call.
+// Returns "" if this is the first run or address hasn't changed.
+func (id *Identity) PreviousNodeID() string {
+	trackFile := getKeyFile() + ".prev"
+
+	// Read previous node ID
+	prevData, err := os.ReadFile(trackFile)
+	prevID := ""
+	if err == nil {
+		prevID = strings.TrimSpace(string(prevData))
+	}
+
+	// Always write current node ID for next comparison
+	os.WriteFile(trackFile, []byte(id.NodeID), 0600)
+
+	// Return previous only if different from current
+	if prevID != "" && prevID != id.NodeID {
+		return prevID
+	}
+	return ""
+}
+
+// ExportKey returns the Ed25519 private key as a JSON backup string.
+// The caller should encrypt this before showing to the user.
+func (id *Identity) ExportKey() ([]byte, error) {
+	stored := struct {
+		PrivateKey []byte `json:"private_key"`
+		PublicKey  []byte `json:"public_key"`
+		NodeID     string `json:"node_id"`
+	}{
+		PrivateKey: id.PrivateKey,
+		PublicKey:  id.PublicKey,
+		NodeID:     id.NodeID,
+	}
+	return json.Marshal(stored)
+}
+
+// ImportKey replaces the current identity with the provided key backup.
+// Returns the new Identity. Caller must restart the server for full effect.
+func ImportKey(keyJSON []byte) (*Identity, error) {
+	var stored struct {
+		PrivateKey []byte `json:"private_key"`
+		PublicKey  []byte `json:"public_key"`
+	}
+	if err := json.Unmarshal(keyJSON, &stored); err != nil {
+		return nil, fmt.Errorf("invalid key format: %w", err)
+	}
+	if len(stored.PrivateKey) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("invalid private key size: %d", len(stored.PrivateKey))
+	}
+
+	id := &Identity{
+		PrivateKey: stored.PrivateKey,
+		PublicKey:  stored.PublicKey,
+		NodeID:     deriveNodeID(stored.PublicKey),
+	}
+
+	// Persist to disk
+	keyFile := getKeyFile()
+	data, _ := json.Marshal(struct {
+		PrivateKey []byte `json:"private_key"`
+		PublicKey  []byte `json:"public_key"`
+	}{stored.PrivateKey, stored.PublicKey})
+	if err := os.WriteFile(keyFile, data, 0600); err != nil {
+		return nil, fmt.Errorf("failed to persist imported key: %w", err)
+	}
+
+	log.Printf("[node] imported identity: %s (fingerprint: %s)", id.NodeID, id.Fingerprint())
+	return id, nil
+}
+
 // ── API Token (HMAC-SHA256, server-bound, compact) ──
 //
 // Format: base64url(uid[16] + iat[4] + hmac[16]) = 36 bytes → 48 chars
