@@ -40,7 +40,7 @@ class AutoMorph:
     def __init__(self, config: dict = None):
         self.config = config or {}
         self.quality_config = self.config.get("quality", {})
-        self.min_prompt_len = self.quality_config.get("min_prompt_length", 50)
+        self.min_prompt_len = self.quality_config.get("min_prompt_length", 10)
         self.min_desc_len = self.quality_config.get("min_description_length", 20)
         self.skip_keywords = self.quality_config.get("skip_keywords", [])
 
@@ -61,6 +61,13 @@ class AutoMorph:
         system_prompt = self._extract_prompt(raw, source)
         raw_tools = self._extract_tools(raw, source)
         raw_tags = self._extract_tags(raw, source)
+
+        # Clean HTML tags from name
+        name = re.sub(r'<[^>]+>', '', name).strip()
+
+        # If no prompt but has description, use description as prompt
+        if not system_prompt and description:
+            system_prompt = description
 
         if not name or not system_prompt:
             return None
