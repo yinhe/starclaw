@@ -317,13 +317,14 @@ $ShortcutPath = "$StartupDir\MCP Bridge.lnk"
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $BinaryPath
+$Shortcut.Arguments = "-port 9101"
 $Shortcut.WorkingDirectory = $InstallDir
 $Shortcut.WindowStyle = 7  # minimized
 $Shortcut.Save()
 Write-Host "Auto-start shortcut created" -ForegroundColor Green
 
 # Start as background process
-Start-Process -FilePath $BinaryPath -WorkingDirectory $InstallDir -WindowStyle Hidden
+Start-Process -FilePath $BinaryPath -ArgumentList "-port","9101" -WorkingDirectory $InstallDir -WindowStyle Hidden
 
 Write-Host ""
 Write-Host "Done! MCP Bridge is running in the background." -ForegroundColor Green
