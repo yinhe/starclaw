@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # Go API — 调度中心 + 导入 + HTTP 端点
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: starclaw-drone-api
+    restart: always
+    environment:
+      DRONE_PORT: 8110
+      DRONE_DATA_DIR: /data/harvest
+      DRONE_CLAW_API: ${CLAW_API:-http://host.docker.internal:8080}
+      DRONE_QUEEN_API: ${QUEEN_API:-https://api.starclaw.net}
+      DRONE_STARAI_API: ${STARAI_API:-https://api.star-ai.net/v1}
+      DRONE_STARAI_KEY: ${STARAI_KEY:-}
+      PHEROMONE_NATS_URL: ${PHEROMONE_NATS_URL:-nats://pheromone-nats:4222}
+    volumes:
+      - ./data:/data/harvest
+    ports:
+      - "127.0.0.1:8110:8110"
+    networks:
+      - drone-net
+      - starclaw-pheromone
+
+  # Python Worker — 采集器 + 虫茧同化
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: starclaw-drone-worker
+    restart: always
+    environment:
+      DRONE_API: http://api:8110
+      DRONE_DATA_DIR: /data/harvest
+      DRONE_STARAI_API: ${STARAI_API:-https://api.star-ai.net/v1}
+      DRONE_STARAI_KEY: ${STARAI_KEY:-}
+    volumes:
+      - ./data:/data/harvest
+      - ./configs:/app/configs
+    networks:
+      - drone-net
+
+networks:
+  drone-net:
+    driver: bridge
+  starclaw-pheromone:
+    external: true

@@ -1,0 +1,67 @@
+# 工具映射表 — 外部平台工具名 → StarClaw 内置工具
+# 虫茧同化引擎在 L1 自动变态阶段使用此映射
+
+# 搜索类
+web_browser: web_search
+browsing: web_search
+bing_search: web_search
+google_search: web_search
+web_search: web_search
+search: web_search
+internet: web_search
+web_browsing: web_search
+browser: web_search
+
+# 代码类
+code_interpreter: code
+python: code
+javascript: code
+terminal: code
+sandbox: code
+code_execution: code
+run_code: code
+repl: code
+jupyter: code
+
+# 图像类
+dalle: image_generation
+dall-e: image_generation
+dall-e-3: image_generation
+image_gen: image_generation
+image_generation: image_generation
+midjourney: image_generation
+stable_diffusion: image_generation
+flux: image_generation
+generate_image: image_generation
+
+# 视频类
+video_generation: video
+sora: video
+runway: video
+kling: video
+generate_video: video
+
+# 音频类
+tts: tts
+text_to_speech: tts
+speech: tts
+voice: tts
+music_generation: music
+music: music
+suno: music
+generate_music: music
+
+# 知识库类
+retrieval: knowledge_base
+file_search: knowledge_base
+rag: knowledge_base
+knowledge: knowledge_base
+document_search: knowledge_base
+vector_search: knowledge_base
+
+# 桌面类 (仅 Spore 模式)
+computer_use: desktop
+browser_use: desktop
+
+# 以下工具无对应 → 降级为纯 prompt（记录日志但不报错）
+# _unmapped 开头的会被自动忽略

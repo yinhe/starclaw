@@ -18,6 +18,7 @@ starclaw/                          # 私有 monorepo
 ├── forge/      🔥 熔炉              # 研发管控 + 可视化大屏（forge.starclaw.net）
 ├── nydus/      🕳️ 虫道              # 部署管道 + CI/CD
 ├── spore/      🍄 孢子              # 桌面一键安装器
+├── drone/      🐝 工蜂              # 数据采集 + 虫茧同化（Agent/Skill 市场填充）
 │
 ├── docker-compose.yml             # Claw 本地开发
 ├── docker-compose.prod.yml        # Claw 生产部署
