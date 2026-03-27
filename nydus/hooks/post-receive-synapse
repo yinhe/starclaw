@@ -11,7 +11,8 @@ PHEROMONE_NATS_HOST="127.0.0.1"
 PHEROMONE_NATS_PORT="4222"
 
 SERVER_B="root@47.103.51.32"
-SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=10"
+SSH_BUILD_TIMEOUT=600  # 10 min max for remote docker build commands
 
 publish_pheromone_deploy() {
   local svc="$1" branch="$2" commit="$3"
@@ -56,19 +57,19 @@ while read oldrev newrev refname; do
     git --git-dir="$REPO" archive HEAD | ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && tar xf -"
 
     if echo "$CHANGED" | grep -q "^api/\|^docker-compose"; then
-      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache api && docker compose up -d api"
+      timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache api && docker compose up -d api"
       echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | tee -a "$LOG"
     fi
     if echo "$CHANGED" | grep -q "^web/"; then
-      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache web && docker compose up -d web"
+      timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache web && docker compose up -d web"
       echo "  -> synapse-web rebuilt on B (star-ai-web :3096)" | tee -a "$LOG"
     fi
     if echo "$CHANGED" | grep -q "^core/"; then
-      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache core && docker compose up -d core"
+      timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache core && docker compose up -d core"
       echo "  -> synapse-core rebuilt on B (star-ai-core :3097)" | tee -a "$LOG"
     fi
     if echo "$CHANGED" | grep -q "^proxy/"; then
-      ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache proxy && docker compose up -d proxy"
+      timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd $DEPLOY_DIR && docker compose build --no-cache proxy && docker compose up -d proxy"
       echo "  -> synapse-proxy rebuilt on B (overseas relay)" | tee -a "$LOG"
     fi
     if echo "$CHANGED" | grep -q "^deploy/"; then

@@ -8,7 +8,8 @@ LOG=/var/log/nydus-deploy.log
 SERVER_A="root@starclaw.me"
 SERVER_B="root@47.103.51.32"
 SSH_KEY="/home/git/.ssh/id_ed25519"
-SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=10"
+SSH_BUILD_TIMEOUT=600  # 10 min max for remote docker build commands
 PHEROMONE_NATS_HOST="127.0.0.1"
 PHEROMONE_NATS_PORT="4222"
 NYDUS_API="http://127.0.0.1:8098"
@@ -302,7 +303,7 @@ echo "$REFS" | while read oldrev newrev refname; do
         # 1. Ship source to a build directory on Server A
         git --git-dir="$REPO" archive HEAD:queen/site | ssh $SSH_OPTS "$SERVER_A" "rm -rf /tmp/queen-site-build && mkdir -p /tmp/queen-site-build && cd /tmp/queen-site-build && tar xf -"
         # 2. Build with Docker (node:20-alpine), output goes to /tmp/queen-site-build/dist
-        ssh $SSH_OPTS "$SERVER_A" "cd /tmp/queen-site-build && docker run --rm -v \$(pwd):/app -w /app node:20-alpine sh -c 'npm ci --registry=https://registry.npmmirror.com && npm run build'"
+        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_A" "cd /tmp/queen-site-build && docker run --rm -v \$(pwd):/app -w /app node:20-alpine sh -c 'npm ci --registry=https://registry.npmmirror.com && npm run build'"
         # 3. Atomic swap: replace nginx root with fresh dist
         ssh $SSH_OPTS "$SERVER_A" "rm -rf /opt/starclaw/queen/site-old && mv /opt/starclaw/queen/site /opt/starclaw/queen/site-old 2>/dev/null; mv /tmp/queen-site-build/dist /opt/starclaw/queen/site && rm -rf /tmp/queen-site-build"
         echo "  -> queen-site deployed to starclaw.me (static files updated)" | cat >> "$LOG"
@@ -319,7 +320,7 @@ echo "$REFS" | while read oldrev newrev refname; do
     (
       _start=$SECONDS
       git --git-dir="$REPO" archive HEAD:claw | ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && tar xf -"
-      ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
+      timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_A" "cd /opt/starclaw && bash scripts/server-deploy-update.sh all --no-pull"
       echo "  -> claw deployed to starclaw.me (starclaw-api:latest rebuilt)" | cat >> "$LOG"
       # Upgrade all Hive instances to use the new starclaw-api:latest image
       ssh $SSH_OPTS "$SERVER_A" 'curl -sf -X POST http://localhost:9090/hive/admin/upgrade-instances -H "Authorization: Bearer $HIVE_ADMIN_TOKEN"' >> "$LOG" 2>&1 || true
@@ -339,11 +340,11 @@ echo "$REFS" | while read oldrev newrev refname; do
       git --git-dir="$REPO" archive HEAD:carapace | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/carapace && cd /opt/carapace && tar xf -"
       git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_A" "mkdir -p /opt/pheromone/sdk && cd /opt/pheromone/sdk && tar xf -"
       # Rebuild controller (always when hive/ changes)
-      ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
+      timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache controller && docker compose -f docker-compose.hive.yml up -d controller"
       echo "  -> hive-controller rebuilt on Server A" | cat >> "$LOG"
       # Rebuild web if hive/web/ changed
       if echo "$CHANGED" | grep -q "^hive/web/"; then
-        ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache web && docker compose -f docker-compose.hive.yml up -d web"
+        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_A" "cd /opt/hive && docker compose -f docker-compose.hive.yml build --no-cache web && docker compose -f docker-compose.hive.yml up -d web"
         echo "  -> hive-web rebuilt on Server A" | cat >> "$LOG"
       fi
       publish_pheromone_deploy_result "hive" "completed" "$((SECONDS - _start))s" ""
@@ -362,19 +363,19 @@ echo "$REFS" | while read oldrev newrev refname; do
       if echo "$CHANGED" | grep -q "^synapse/api/\|^synapse/docker-compose\|^pheromone/sdk/"; then
         # Copy pheromone/sdk into api/ for Docker build context
         git --git-dir="$REPO" archive HEAD:pheromone/sdk | ssh $SSH_OPTS "$SERVER_B" "mkdir -p /opt/starclaw/synapse/api/pheromone-sdk && cd /opt/starclaw/synapse/api/pheromone-sdk && tar xf -"
-        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache api && docker compose up -d api"
+        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache api && docker compose up -d api"
         echo "  -> synapse-api rebuilt on B (star-ai-api :8096)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/web/"; then
-        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache web && docker compose up -d web"
+        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache web && docker compose up -d web"
         echo "  -> synapse-web rebuilt on B (star-ai-web :3096)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/core/"; then
-        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache core && docker compose up -d core"
+        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache core && docker compose up -d core"
         echo "  -> synapse-core rebuilt on B (star-ai-core :3097 → core.star-ai.net)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/proxy/"; then
-        ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache proxy && docker compose up -d proxy"
+        timeout $SSH_BUILD_TIMEOUT ssh $SSH_OPTS "$SERVER_B" "cd /opt/starclaw/synapse && docker compose build --no-cache proxy && docker compose up -d proxy"
         echo "  -> synapse-proxy rebuilt on B (overseas relay)" | cat >> "$LOG"
       fi
       if echo "$CHANGED" | grep -q "^synapse/deploy/"; then
@@ -533,8 +534,13 @@ echo "$REFS" | while read oldrev newrev refname; do
   echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Background deploy started for: $CHANGED"
 done
 
-# Wait for all background deploy jobs to finish before exiting
-wait
+# Wait for background deploy jobs (with safety-net timeout of 15 min)
+# If any single job hangs past SSH_BUILD_TIMEOUT, this prevents infinite wait
+TIMEOUT_PID=""
+( sleep 900; echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] WARNING: safety-net timeout reached (900s), killing remaining jobs"; kill 0 ) &
+TIMEOUT_PID=$!
+wait $(jobs -p | grep -v $TIMEOUT_PID) 2>/dev/null
+kill $TIMEOUT_PID 2>/dev/null; wait $TIMEOUT_PID 2>/dev/null
 echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] All background jobs completed"
 
-) </dev/null &
+) </dev/null >>/var/log/nydus-deploy.log 2>&1 &
