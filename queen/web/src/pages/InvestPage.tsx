@@ -471,7 +471,7 @@ export function InvestPage() {
                     <div className="text-xs text-gray-500 mb-2">
                       {orderResult.shares} 份 × {fmt(orderResult.price_yuan)} = {fmt(orderResult.amount_yuan)}
                     </div>
-                    {orderResult.code_url && (
+                    {orderResult.code_url && !wxQr && (
                       <div className="flex flex-col items-center gap-2 py-3">
                         <img
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(orderResult.code_url)}`}
