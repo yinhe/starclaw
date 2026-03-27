@@ -173,7 +173,7 @@ func Setup() *gin.Engine {
 		admin.PUT("/marketplace/items/:id/approve", mp.AdminApprove)
 		admin.PUT("/marketplace/items/:id/reject", mp.AdminReject)
 		admin.PUT("/marketplace/items/:id/remove", mp.AdminRemove)
-		admin.POST("/marketplace/import", mp.AdminBulkImport)
+		// admin.POST("/marketplace/import", mp.AdminBulkImport) — moved to internal group
 
 		// Service proxies (bounty / forum / arena)
 		proxy := handler.NewAdminProxyHandler()
@@ -420,6 +420,9 @@ func Setup() *gin.Engine {
 		internal.GET("/user/resolve/:node_id", nbInternal.InternalResolve)
 		internal.POST("/user/heartbeat", nbInternal.InternalHeartbeat)
 		internal.POST("/identity/migrate", nbInternal.InternalMigrateIdentity)
+
+		// Drone marketplace import (internal)
+		internal.POST("/marketplace/import", mp.AdminBulkImport)
 
 		// Investor pool (internal — for Billing Gateway profit deposit)
 		internal.POST("/investor/deposit", investor.InternalDeposit)

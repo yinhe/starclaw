@@ -110,11 +110,11 @@ def import_to_marketplace(templates: list, claw_api: str) -> int:
 
         try:
             resp = requests.post(
-                f"{queen_api}/v1/admin/marketplace/import",
+                f"{queen_api}/internal/marketplace/import",
                 json={"templates": clean, "source": source},
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {queen_token}",
+                    "X-Node-Token": queen_token,
                 },
                 timeout=30,
             )
