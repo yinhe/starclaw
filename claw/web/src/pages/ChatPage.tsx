@@ -334,6 +334,7 @@ export default function ChatPage() {
   const micStreamRef = useRef<MediaStream | null>(null)
   const voiceInputRef = useRef<string>('')         // tracks current voice input for auto-send
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stoppingRef = useRef(false)                // guard against double auto-send
 
   // Check browser Speech Recognition support
   const getSpeechRecognition = () => {
@@ -378,15 +379,20 @@ export default function ChatPage() {
   }
 
   const stopRecording = () => {
+    // Guard against double invocation
+    if (stoppingRef.current) return
+    stoppingRef.current = true
+
     // Clear auto-send timer
     if (autoSendTimerRef.current) {
       clearTimeout(autoSendTimerRef.current)
       autoSendTimerRef.current = null
     }
-    // Stop Speech Recognition
-    if (speechRecognitionRef.current) {
-      speechRecognitionRef.current.stop()
-      speechRecognitionRef.current = null
+    // Stop Speech Recognition (set null BEFORE .stop() so onend doesn't restart)
+    const recog = speechRecognitionRef.current
+    speechRecognitionRef.current = null
+    if (recog) {
+      try { recog.stop() } catch { /* ignore */ }
     }
     // Stop MediaRecorder (fallback path)
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -400,15 +406,17 @@ export default function ChatPage() {
     setIsRecording(false)
     stopAudioVisualization()
 
-    // Auto-send the voice input if we got text
+    // Auto-send the voice input if we got text (only once due to stoppingRef guard)
     const voiceText = voiceInputRef.current.trim()
+    voiceInputRef.current = ''
     if (voiceText) {
-      voiceInputRef.current = ''
-      // Small delay to ensure state is updated
       setTimeout(() => {
         const sendBtn = document.querySelector('[title="发送"]') as HTMLButtonElement
         if (sendBtn && !sendBtn.disabled) sendBtn.click()
+        stoppingRef.current = false
       }, 200)
+    } else {
+      stoppingRef.current = false
     }
     setTimeout(() => textareaRef.current?.focus(), 100)
   }
@@ -522,6 +530,7 @@ export default function ChatPage() {
       micStreamRef.current = stream
       setIsRecording(true)
       voiceInputRef.current = ''
+      stoppingRef.current = false
       startAudioVisualization(stream)
 
       // Try browser-native STT first (real-time, free)
