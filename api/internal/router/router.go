@@ -934,7 +934,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 					})
 				}
 
-				// MCP server tools
+				// MCP server tools (user-configured)
 				userID := c.GetString("user_id")
 				var mcpServers []model.MCPServer
 				db.Where("user_id = ?", userID).Find(&mcpServers)
@@ -945,6 +945,21 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 						Type:        "mcp",
 						Status:      srv.Status,
 					})
+				}
+
+				// MCP Bridge tools (host bridge — auto-detected)
+				bridgeStatus := mcp.BridgeStatus()
+				if connected, ok := bridgeStatus["connected"].(bool); ok && connected {
+					if toolNames, ok := bridgeStatus["tool_names"].([]string); ok {
+						for _, tn := range toolNames {
+							skills = append(skills, SkillInfo{
+								Name:        "host." + tn,
+								Description: fmt.Sprintf("宿主机工具: %s (MCP Bridge)", tn),
+								Type:        "mcp",
+								Status:      "active",
+							})
+						}
+					}
 				}
 
 				// Count by type
