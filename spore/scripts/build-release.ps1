@@ -91,11 +91,31 @@ foreach ($p in $platforms) {
     $sz = '{0:N1}' -f ((Get-Item $clawBin).Length / 1MB)
     Write-Host "  -> claw-api ($sz MB)"
 
+    # 2b. Cross-compile MCP Bridge
+    $bridgeName = "mcp-bridge-$($p.GOOS)-$($p.GOARCH)$($p.Ext)"
+    $bridgeBin = Join-Path $Dist $bridgeName
+    Write-Host "  [2b/5] Cross-compiling MCP Bridge..."
+    Push-Location $ClawDir
+    go build -ldflags="-s -w" -o $bridgeBin ./cmd/mcp-bridge
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "  WARN: MCP Bridge build failed, skipping" }
+    Pop-Location
+    if (Test-Path $bridgeBin) {
+        $sz = '{0:N1}' -f ((Get-Item $bridgeBin).Length / 1MB)
+        Write-Host "  -> mcp-bridge ($sz MB)"
+    }
+
     # 3. Create platform-specific claw.spore
     Write-Host "  [3/5] Creating claw.spore [$($p.GOOS)/$($p.GOARCH)]..."
     $pkgDir = Join-Path $Dist "_claw-pkg-$label"
     New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
     Copy-Item $clawBin (Join-Path $pkgDir $clawBinName)
+
+    # Include MCP Bridge binary in claw.spore
+    if (Test-Path $bridgeBin) {
+        $bridgeDir = Join-Path $pkgDir "mcp-bridge"
+        New-Item -ItemType Directory -Path $bridgeDir -Force | Out-Null
+        Copy-Item $bridgeBin (Join-Path $bridgeDir $bridgeName)
+    }
 
     $manifest = @{
         name = "claw"; version = $gitVersion; description = "StarClaw AI Agent Node"
