@@ -66,10 +66,17 @@ func (h *MarketplaceHandler) AdminBulkImport(c *gin.Context) {
 			icon = "🤖"
 		}
 
+		// Find a real admin user for FK constraint (cached after first lookup)
+		authorID := ""
+		var adminUser model.User
+		if err := database.DB.Where("role = ?", "admin").First(&adminUser).Error; err == nil {
+			authorID = adminUser.ID
+		}
+
 		now := time.Now()
 		item := model.MarketplaceItem{
 			ID:          uuid.New().String(),
-			UserID:      "system",
+			UserID:      authorID,
 			Type:        "agent",
 			Name:        t.Name,
 			Description: t.Description,
