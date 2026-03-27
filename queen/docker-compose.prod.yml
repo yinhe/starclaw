@@ -107,6 +107,8 @@ services:
       context: ./api
     container_name: starclaw-queen-api
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       QUEEN_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
       QUEEN_PORT: "8085"
@@ -118,6 +120,7 @@ services:
       STARAI_URL: "${STARAI_URL:-https://api.star-ai.net}"
       STARAI_TOKEN: "${STARAI_TOKEN:-}"
       STARAI_CALLBACK_BASE: "${STARAI_CALLBACK_BASE:-}"
+      DRONE_API_URL: "http://host.docker.internal:8110"
       PHEROMONE_NATS_URL: nats://starclaw-pheromone-nats:4222
       GIN_MODE: release
     ports:

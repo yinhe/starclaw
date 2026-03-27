@@ -497,16 +497,16 @@ while read oldrev newrev refname; do
     (
       cd /opt/nydus
       git --git-dir="$REPO" archive HEAD:nydus | tar xf - 2>/dev/null || true
-      # Copy pheromone/sdk into api/ for Docker build context (go.mod replace ./pheromone-sdk)
-      mkdir -p /opt/nydus/api/pheromone-sdk
-      git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/nydus/api/pheromone-sdk 2>/dev/null || true
-      docker compose up -d --build api
-      # Auto-install the smart hook (this file) into the bare repo
+      # Auto-install hook FIRST (before slow docker build) so next push uses new hook immediately
       if [ -f /opt/nydus/hooks/post-receive-starclaw ]; then
         cp /opt/nydus/hooks/post-receive-starclaw "$REPO/hooks/post-receive"
         chmod +x "$REPO/hooks/post-receive"
         echo "  -> hook auto-installed from post-receive-starclaw"
       fi
+      # Copy pheromone/sdk into api/ for Docker build context (go.mod replace ./pheromone-sdk)
+      mkdir -p /opt/nydus/api/pheromone-sdk
+      git --git-dir="$REPO" archive HEAD:pheromone/sdk | tar xf - -C /opt/nydus/api/pheromone-sdk 2>/dev/null || true
+      docker compose up -d --build api
       echo "  -> nydus config synced & api rebuilt" | cat >> "$LOG"
     ) </dev/null >> "$LOG" 2>&1 &
   fi
