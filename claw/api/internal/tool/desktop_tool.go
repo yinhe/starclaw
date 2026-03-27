@@ -44,6 +44,27 @@ UI自动化操作（精确、快速、首选）：
 - ui_scroll: 滚动页面（button="down/up/left/right" seconds=滚动量1-10）
 - ui_wait: 等待某个元素出现（title="导出完成" seconds=超时秒数）
 
+浏览器操作（网页场景首选，通过 Chrome DevTools Protocol）：
+- browser_navigate: 打开网页（text="https://example.com"）
+- browser_click: 按CSS选择器或按钮文字点击（text="button.submit" 或 text="登录"）
+- browser_type: 在输入框输入（title="input#search" text="关键词"）
+- browser_read: 读取页面内容（text="text/links/inputs" 或 CSS选择器）
+- browser_js: 执行JavaScript代码
+- browser_tabs: 列出/切换标签页
+
+Office 直连（Excel/Word，通过 COM Automation，无需截图）：
+- excel_read: 读取 Excel 单元格（text="A1:D20" 或 "Sheet2!A1:C10"）
+- excel_write: 写入单元格（title="A1" text="值" 或 title="A1" text='[["a","b"],["c","d"]]' 批量写入）
+- excel_formula: 设置公式（title="C1" text="=SUM(A1:B1)"）
+- word_read: 读取 Word 文档内容
+- word_write: 写入 Word（button="append/replace/insert" text="内容"）
+- word_format: 格式化 Word 选中内容（text="bold,fontsize:16,heading:1"）
+
+文件操作：
+- file_list: 列出目录文件（text="C:\\Users\\xxx\\Desktop"）
+- file_read: 读取文件内容（text="路径"）
+- file_write: 写入文件（title="路径" text="内容"）
+
 像素级操作（兜底）：
 - screenshot: 截取屏幕截图，返回图片URL
 - mouse_click/mouse_move/mouse_drag: 坐标级鼠标操作
@@ -63,7 +84,7 @@ func (t *DesktopTool) Parameters() interface{} {
 			"action": {
 				Type:        "string",
 				Description: "Desktop action to perform",
-				Enum:        []string{"ui_tree", "ui_click", "ui_type", "ui_select", "ui_scroll", "ui_wait", "screenshot", "mouse_click", "mouse_move", "mouse_drag", "keyboard_type", "keyboard_hotkey", "keyboard_key", "list_windows", "focus_window", "launch_app", "wait"},
+				Enum:        []string{"ui_tree", "ui_click", "ui_type", "ui_select", "ui_scroll", "ui_wait", "browser_navigate", "browser_click", "browser_type", "browser_read", "browser_js", "browser_tabs", "excel_read", "excel_write", "excel_formula", "word_read", "word_write", "word_format", "file_list", "file_read", "file_write", "screenshot", "mouse_click", "mouse_move", "mouse_drag", "keyboard_type", "keyboard_hotkey", "keyboard_key", "list_windows", "focus_window", "launch_app", "wait"},
 			},
 			"x":          {Type: "integer", Description: "X coordinate (pixels from left). For mouse_click, mouse_move, mouse_drag (start)."},
 			"y":          {Type: "integer", Description: "Y coordinate (pixels from top). For mouse_click, mouse_move, mouse_drag (start)."},
@@ -123,6 +144,39 @@ func (t *DesktopTool) Execute(ctx context.Context, args string) (string, error) 
 		return t.uiScroll(ctx, a)
 	case "ui_wait":
 		return t.uiWait(ctx, a)
+	// Browser CDP (web pages)
+	case "browser_navigate":
+		return t.browserNavigate(ctx, a)
+	case "browser_click":
+		return t.browserClick(ctx, a)
+	case "browser_type":
+		return t.browserType(ctx, a)
+	case "browser_read":
+		return t.browserRead(ctx, a)
+	case "browser_js":
+		return t.browserJS(ctx, a)
+	case "browser_tabs":
+		return t.browserTabs(ctx, a)
+	// Office COM Automation
+	case "excel_read":
+		return t.excelRead(ctx, a)
+	case "excel_write":
+		return t.excelWrite(ctx, a)
+	case "excel_formula":
+		return t.excelFormula(ctx, a)
+	case "word_read":
+		return t.wordRead(ctx, a)
+	case "word_write":
+		return t.wordWrite(ctx, a)
+	case "word_format":
+		return t.wordFormat(ctx, a)
+	// File system
+	case "file_list":
+		return t.fileList(ctx, a)
+	case "file_read":
+		return t.fileRead(ctx, a)
+	case "file_write":
+		return t.fileWrite(ctx, a)
 	// Pixel-level (fallback)
 	case "screenshot":
 		return t.screenshot(ctx, a)
