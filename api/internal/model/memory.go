@@ -36,6 +36,7 @@ type Memory struct {
 	ConversationID string    `json:"conversation_id,omitempty" gorm:"type:varchar(36);index"` // 来源会话
 	Tags           string    `json:"tags,omitempty" gorm:"type:json"`                         // JSON array
 	Importance     float64   `json:"importance" gorm:"default:0.5"`                           // 0.0 - 1.0
+	Embedding      []byte    `json:"-" gorm:"type:longblob"`                                  // P4: vector embedding for semantic recall
 	AccessCount    int       `json:"access_count" gorm:"default:0"`
 	LastAccessAt   time.Time `json:"last_access_at"`
 	CreatedAt      time.Time `json:"created_at"`

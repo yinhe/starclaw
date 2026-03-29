@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, Users, BarChart3, Receipt, Plus, Trash2, Shield, ArrowUpRight, ArrowDownRight, Zap, Snowflake, Copy, Check, TrendingUp, Award, RefreshCw, WifiOff } from 'lucide-react'
+import { CreditCard, BarChart3, Receipt, Plus, Trash2, Shield, ArrowUpRight, ArrowDownRight, Zap, Snowflake, Copy, Check, TrendingUp, Award, RefreshCw, WifiOff } from 'lucide-react'
 import { billingAPI, tenantAPI, systemAPI, nodeAPI } from '../lib/api'
 
 interface Tenant {

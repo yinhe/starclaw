@@ -196,10 +196,10 @@ func (h *MarketplaceHandler) ListPublished(c *gin.Context) {
 	query.Offset((page - 1) * pageSize).Limit(pageSize).Find(&listings)
 
 	c.JSON(http.StatusOK, gin.H{
-		"items":      listings,
-		"total":      total,
-		"page":       page,
-		"page_size":  pageSize,
+		"items":       listings,
+		"total":       total,
+		"page":        page,
+		"page_size":   pageSize,
 		"total_pages": int(math.Ceil(float64(total) / float64(pageSize))),
 	})
 }
@@ -509,10 +509,10 @@ func (h *MarketplaceHandler) CreatorRevenueList(c *gin.Context) {
 		Offset((page - 1) * pageSize).Limit(pageSize).Find(&records)
 
 	c.JSON(http.StatusOK, gin.H{
-		"items":      records,
-		"total":      total,
-		"page":       page,
-		"page_size":  pageSize,
+		"items":     records,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
@@ -714,6 +714,92 @@ func (h *MarketplaceHandler) AdminReviewListing(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": listing.Status})
 }
 
+// AdminBulkImport batch-imports AgentTemplates from the Drone harvester.
+// POST /v1/admin/marketplace/import
+func (h *MarketplaceHandler) AdminBulkImport(c *gin.Context) {
+	var req struct {
+		Templates []struct {
+			Name         string `json:"name"`
+			Description  string `json:"description"`
+			Category     string `json:"category"`
+			Tags         string `json:"tags"`
+			SystemPrompt string `json:"system_prompt"`
+			Tools        string `json:"tools"`
+			Config       string `json:"config"`
+			Icon         string `json:"icon"`
+			AuthorID     string `json:"author_id"`
+			IsBuiltin    bool   `json:"is_builtin"`
+		} `json:"templates"`
+		Source string `json:"source"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	imported, skipped := 0, 0
+	for _, t := range req.Templates {
+		if t.Name == "" || t.SystemPrompt == "" {
+			skipped++
+			continue
+		}
+
+		// Dedup by name + source (check config for source_id)
+		var existing model.AgentTemplate
+		if err := h.db.Where("name = ? AND is_builtin = ?", t.Name, false).First(&existing).Error; err == nil {
+			skipped++
+			continue
+		}
+
+		authorID := t.AuthorID
+		if authorID == "" || authorID == "system" {
+			// Use first admin user as author
+			var admin model.User
+			if err := h.db.Where("role = ?", "owner").First(&admin).Error; err == nil {
+				authorID = admin.ID
+			} else {
+				authorID = "00000000-0000-0000-0000-000000000000"
+			}
+		}
+
+		template := model.AgentTemplate{
+			AuthorID:     authorID,
+			Name:         t.Name,
+			Description:  t.Description,
+			Category:     t.Category,
+			Tags:         t.Tags,
+			SystemPrompt: t.SystemPrompt,
+			Tools:        t.Tools,
+			Config:       t.Config,
+			Icon:         t.Icon,
+			IsBuiltin:    false,
+		}
+
+		if template.Tags == "" {
+			template.Tags = "[]"
+		}
+		if template.Tools == "" {
+			template.Tools = "[]"
+		}
+		if template.Config == "" {
+			template.Config = "{}"
+		}
+
+		if err := h.db.Create(&template).Error; err != nil {
+			skipped++
+			continue
+		}
+		imported++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"imported": imported,
+		"skipped":  skipped,
+		"source":   req.Source,
+		"message":  "batch import completed",
+	})
+}
+
 // Trending returns top agents by various signals.
 func (h *MarketplaceHandler) Trending(c *gin.Context) {
 	period := c.DefaultQuery("period", "week") // week, month, all
@@ -749,9 +835,9 @@ func (h *MarketplaceHandler) Trending(c *gin.Context) {
 		Limit(6).Find(&featured)
 
 	c.JSON(http.StatusOK, gin.H{
-		"top_sales":  topSales,
-		"top_rated":  topRated,
-		"featured":   featured,
-		"period":     period,
+		"top_sales": topSales,
+		"top_rated": topRated,
+		"featured":  featured,
+		"period":    period,
 	})
 }

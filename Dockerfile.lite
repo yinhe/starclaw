@@ -16,8 +16,15 @@ RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
 COPY claw/api/ ./
 COPY --from=build-web /web/dist ./internal/web/dist
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o /claw-api ./cmd/server
+ARG BUILD_VERSION=
+RUN VERSION="$BUILD_VERSION" && \
+    if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then [ -f .version ] && VERSION=$(cat .version | tr -d '\n\r '); fi && \
+    if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then VERSION=$(wget -qO- -T 5 "https://nydus.starclaw.net/releases/latest" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true); fi && \
+    if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then VERSION=$(wget -qO- -T 8 "https://api.github.com/repos/yinhe/starclaw/releases/latest" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true); fi && \
+    if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then VERSION=$(date -u +"%Y.%m%d.%H%M"); fi && \
+    echo "Building claw-api with version: $VERSION" && \
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w -X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" -o /claw-api ./cmd/server
 
 # Stage 2: Build spore binary
 FROM golang:1.24-alpine AS build-spore

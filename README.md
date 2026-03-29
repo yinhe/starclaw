@@ -202,3 +202,5 @@ docker compose up -d
 ```
 
 访问 `http://localhost` 开始使用。详细文档见 [docs/](docs/) 目录。
+
+<!-- synced from monorepo via Nydus -->

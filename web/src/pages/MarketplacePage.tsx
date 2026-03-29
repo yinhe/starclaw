@@ -1,7 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bot, Download, Search, Check, Trash2, Loader2, Store } from 'lucide-react'
 import { agentAPI, queenMarketplaceAPI } from '../lib/api'
+
+const CATEGORIES = [
+  { id: 'all', label: '全部' },
+  { id: 'creative', label: '创意内容', match: ['创作','creative','mv','music','video','漫剧','短剧','导演'] },
+  { id: 'coding', label: '编程开发', match: ['编程','coding','code','fullstack','Python','Java','前端','React','数据库','API','小程序','算法','测试'] },
+  { id: 'business', label: '商业办公', match: ['商业','business','产品','办公','BP'] },
+  { id: 'education', label: '教育培训', match: ['教育','高考','考研','雅思','辅导','编程导师','公务员','留学','早教','职业资格'] },
+  { id: 'finance', label: '金融财经', match: ['股票','基金','财报','理财','税务','保险','量化','风控','区块链','估值','财经','外汇','金融'] },
+  { id: 'healthcare', label: '医疗健康', match: ['健康','中医','心理','营养','健身','医学','药物','育儿','慢性病','急救','医疗'] },
+  { id: 'legal', label: '法律合规', match: ['合同','劳动法','知识产权','公司法','婚姻','刑事','房产','隐私','法律','维权','法务'] },
+  { id: 'marketing', label: '营销推广', match: ['小红书','抖音','品牌','SEO','广告','社群','公关','活动','内容营销','私域','KOL','增长','营销'] },
+  { id: 'ecommerce', label: '电商零售', match: ['淘宝','天猫','拼多多','跨境','直播','详情页','客服话术','供应链','定价','选品','电商'] },
+  { id: 'hr', label: '人力资源', match: ['简历筛选','面试','薪酬','绩效','培训','招聘','组织架构','员工','HRBP','劳动合同','HR','人力'] },
+  { id: 'support', label: '客户服务', match: ['客服','投诉','FAQ','工单','满意度','话术','VIP','退换货','客户成功','服务'] },
+  { id: 'translation', label: '翻译语言', match: ['翻译','中英','日语','韩语','商务英语','技术文档','字幕','本地化','学术论文翻译'] },
+  { id: 'writing', label: '写作创作', match: ['公众号','网文','新闻稿','简历','广告文案','影评','SEO文章','演讲','PPT','邮件','写作'] },
+  { id: 'data', label: '数据分析', match: ['数据','分析','research','研究','web_search'] },
+  { id: 'assistant', label: '通用助手', match: ['日程','会议','读书','旅行','美食','生活','情感','政策','Excel','AI工具','通用','assistant','英语口语'] },
+]
 
 interface MarketplaceItem {
   id: string
@@ -17,9 +36,10 @@ interface MarketplaceItem {
 
 export default function MarketplacePage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState<MarketplaceItem[]>([])
+  const [allItems, setAllItems] = useState<MarketplaceItem[]>([])
   const [installedIDs, setInstalledIDs] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('all')
   const [installing, setInstalling] = useState<string | null>(null)
   const [toast, setToast] = useState('')
   const [loading, setLoading] = useState(true)
@@ -29,12 +49,12 @@ export default function MarketplacePage() {
     loadInstalled()
   }, [])
 
-  const loadMarketplace = async (q?: string) => {
+  const loadMarketplace = async () => {
     setLoading(true)
     try {
-      const res = await queenMarketplaceAPI.list({ q: q || undefined })
-      setItems(res.data.items || [])
-    } catch { setItems([]) }
+      const res = await queenMarketplaceAPI.list({})
+      setAllItems(res.data.items || [])
+    } catch { setAllItems([]) }
     setLoading(false)
   }
 
@@ -45,10 +65,26 @@ export default function MarketplacePage() {
     } catch { /* ignore */ }
   }
 
-  const handleSearch = (val: string) => {
-    setSearch(val)
-    loadMarketplace(val)
-  }
+  const items = useMemo(() => {
+    let filtered = allItems
+    if (category !== 'all') {
+      const cat = CATEGORIES.find(c => c.id === category)
+      if (cat?.match) {
+        filtered = filtered.filter(item => {
+          const text = `${item.name} ${item.description} ${item.tags}`.toLowerCase()
+          return cat.match!.some(kw => text.includes(kw.toLowerCase()))
+        })
+      }
+    }
+    if (search) {
+      const q = search.toLowerCase()
+      filtered = filtered.filter(item => {
+        const text = `${item.name} ${item.description} ${item.tags}`.toLowerCase()
+        return text.includes(q)
+      })
+    }
+    return filtered
+  }, [allItems, category, search])
 
   const handleInstall = async (item: MarketplaceItem) => {
     setInstalling(item.id)
@@ -106,16 +142,33 @@ export default function MarketplacePage() {
         </div>
 
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               value={search}
-              onChange={(e) => handleSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索智能体..."
               className="w-full pl-10 pr-4 py-2.5 border dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
+        </div>
+
+        {/* Category Tabs */}
+        <div className="mb-6 flex gap-1.5 flex-wrap">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setCategory(cat.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                category === cat.id
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
         </div>
 
         {/* Toast */}
@@ -142,7 +195,7 @@ export default function MarketplacePage() {
         ) : items.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Store className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>{search ? '没有找到匹配的智能体' : '暂无社区智能体'}</p>
+            <p>{search || category !== 'all' ? '没有找到匹配的智能体' : '暂无社区智能体'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

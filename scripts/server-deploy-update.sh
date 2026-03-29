@@ -35,10 +35,19 @@ else
 fi
 
 # Capture version (must match YYYY.MMDD.HHMM format for Molt comparison)
+# Priority: --rev flag > .version file (from git commit) > git tag > Nydus API > UTC timestamp
 if [ -n "$REV" ]; then
   BUILD_VER="$REV"
-elif [ -f .git/HEAD ]; then
-  # Prefer latest git tag (release version format)
+fi
+# Read .version file first (set during release commit, most reliable in Nydus deploy mode)
+if [ -z "$BUILD_VER" ] && [ -f api/.version ]; then
+  FILE_VER=$(cat api/.version | tr -d '\n\r ')
+  if echo "$FILE_VER" | grep -qE '^[0-9]{4}\.[0-9]{4}\.[0-9]{4}$'; then
+    BUILD_VER="$FILE_VER"
+  fi
+fi
+# Git tag (only if .git exists — not present in Nydus archive deploys)
+if [ -z "$BUILD_VER" ] && [ -f .git/HEAD ]; then
   BUILD_VER=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
 fi
 # Fallback: query Nydus release API

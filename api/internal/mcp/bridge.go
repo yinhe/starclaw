@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -316,13 +317,14 @@ $ShortcutPath = "$StartupDir\MCP Bridge.lnk"
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $BinaryPath
+$Shortcut.Arguments = "-port 9101"
 $Shortcut.WorkingDirectory = $InstallDir
 $Shortcut.WindowStyle = 7  # minimized
 $Shortcut.Save()
 Write-Host "Auto-start shortcut created" -ForegroundColor Green
 
 # Start as background process
-Start-Process -FilePath $BinaryPath -WorkingDirectory $InstallDir -WindowStyle Hidden
+Start-Process -FilePath $BinaryPath -ArgumentList "-port","9101" -WorkingDirectory $InstallDir -WindowStyle Hidden
 
 Write-Host ""
 Write-Host "Done! MCP Bridge is running in the background." -ForegroundColor Green
@@ -332,6 +334,7 @@ Write-Host "Go back to your Claw settings page - it should show Connected."
 }
 
 // BridgeBinaryPath returns the local file path for a given platform binary.
+// Searches multiple directories to work in both Docker and Spore/local modes.
 func BridgeBinaryPath(platform string) (string, string) {
 	m := map[string]string{
 		"windows_amd64": "mcp-bridge-windows-amd64.exe",
@@ -343,5 +346,38 @@ func BridgeBinaryPath(platform string) (string, string) {
 	if !ok {
 		return "", ""
 	}
+
+	// Search order: Docker path → executable dir → working dir → SPORE_DATA_DIR
+	candidates := []string{
+		"/app/mcp-bridge/" + filename,
+	}
+
+	// Spore/local mode: look relative to the running executable
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(dir, "mcp-bridge", filename),
+			filepath.Join(dir, filename),
+		)
+	}
+
+	// Working directory
+	candidates = append(candidates,
+		filepath.Join("mcp-bridge", filename),
+		filename,
+	)
+
+	// SPORE_DATA_DIR
+	if sporeDir := os.Getenv("SPORE_DATA_DIR"); sporeDir != "" {
+		candidates = append(candidates, filepath.Join(sporeDir, "mcp-bridge", filename))
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path, filename
+		}
+	}
+
+	// Not found — return the Docker path (will trigger 404 with helpful message)
 	return "/app/mcp-bridge/" + filename, filename
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -82,7 +84,7 @@ type toolDef struct {
 }
 
 func getTools() []toolDef {
-	return []toolDef{
+	tools := []toolDef{
 		{
 			Name:        "shell_exec",
 			Description: "在宿主机上执行 Shell 命令（Windows: PowerShell, Mac/Linux: bash）",
@@ -319,7 +321,23 @@ func getTools() []toolDef {
 				"properties": map[string]interface{}{},
 			},
 		},
+		{
+			Name:        "screen_inspect",
+			Description: "获取当前活动窗口中所有可交互 UI 元素的列表（按钮、输入框、菜单项等），包含名称、类型和屏幕坐标。返回纯文本，不需要视觉模型即可理解屏幕内容。用于定位 mouse_click 的目标坐标。",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"max_depth": map[string]interface{}{
+						"type":        "integer",
+						"description": "UI 树遍历深度（默认8，越大越详细但越慢）",
+					},
+				},
+			},
+		},
 	}
+	// Append Playwright browser tools
+	tools = append(tools, getBrowserTools()...)
+	return tools
 }
 
 // --- Tool implementations ---
@@ -553,20 +571,282 @@ func execOpenApp(args map[string]interface{}) mcpToolResult {
 		return errResult("target is required")
 	}
 
-	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", target)
+		return openAppWindows(target)
 	case "darwin":
-		cmd = exec.Command("open", "-a", target)
+		cmd := exec.Command("open", "-a", target)
+		if err := cmd.Start(); err != nil {
+			return errResult("open app error: " + err.Error())
+		}
+		return textResult("opened: " + target)
 	default:
-		cmd = exec.Command("xdg-open", target)
+		cmd := exec.Command("xdg-open", target)
+		if err := cmd.Start(); err != nil {
+			return errResult("open app error: " + err.Error())
+		}
+		return textResult("opened: " + target)
+	}
+}
+
+// openAppWindows tries multiple strategies to find and launch an app on Windows:
+// 1. Direct "start" command (works for apps in PATH or Start Menu)
+// 2. Known app alias map (WeChat, DingTalk, etc.)
+// 3. Registry App Paths lookup
+// 4. Search common install directories (Program Files, AppData)
+func openAppWindows(target string) mcpToolResult {
+	// Strategy 0: check if the app is already running — if so, activate its window instead of launching a new instance
+	if activated, info := activateRunningApp(target); activated {
+		return textResult("activated existing window: " + target + " — " + info)
 	}
 
-	if err := cmd.Start(); err != nil {
-		return errResult("open app error: " + err.Error())
+	// Strategy 1: try Start-Process directly (handles .exe paths and PATH apps)
+	if strings.HasSuffix(strings.ToLower(target), ".exe") || filepath.IsAbs(target) {
+		if launchWindows(target) == nil {
+			return textResult("opened: " + target)
+		}
+	}
+
+	// Strategy 2: known app alias map (Chinese name → exe patterns)
+	knownApps := map[string][]string{
+		// WeChat
+		"wechat": {"Weixin.exe"},
+		"weixin": {"Weixin.exe"},
+		"微信":     {"Weixin.exe"},
+		// DingTalk
+		"dingtalk": {"DingTalk.exe", "DingtalkLauncher.exe"},
+		"钉钉":       {"DingTalk.exe", "DingtalkLauncher.exe"},
+		// Feishu / Lark
+		"feishu": {"Feishu.exe", "Lark.exe"},
+		"飞书":     {"Feishu.exe", "Lark.exe"},
+		"lark":   {"Lark.exe", "Feishu.exe"},
+		// QQ
+		"qq": {"QQ.exe"},
+		// WPS
+		"wps": {"wps.exe", "WPS Office.exe"},
+		// Chrome
+		"chrome": {"chrome.exe"},
+		"谷歌浏览器":  {"chrome.exe"},
+		// Edge
+		"edge": {"msedge.exe"},
+		// Notepad++
+		"notepad++": {"notepad++.exe"},
+		// VS Code
+		"vscode": {"Code.exe"},
+		"code":   {"Code.exe"},
+		// 剪映
+		"剪映":       {"JianyingPro.exe"},
+		"jianying": {"JianyingPro.exe"},
+	}
+
+	targetLower := strings.ToLower(target)
+	var exeNames []string
+	for alias, names := range knownApps {
+		if strings.ToLower(alias) == targetLower || strings.EqualFold(alias, target) {
+			exeNames = names
+			break
+		}
+	}
+	// If not in alias map, treat target as potential exe name
+	if len(exeNames) == 0 {
+		if !strings.HasSuffix(targetLower, ".exe") {
+			exeNames = []string{target + ".exe", target}
+		} else {
+			exeNames = []string{target}
+		}
+	}
+
+	// Strategy 3: search Registry App Paths
+	for _, exe := range exeNames {
+		regCmd := exec.Command("reg", "query",
+			`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\`+exe,
+			"/ve")
+		if out, err := regCmd.CombinedOutput(); err == nil {
+			outStr := string(out)
+			// Parse REG_SZ value from output
+			for _, line := range strings.Split(outStr, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.Contains(line, "REG_SZ") {
+					parts := strings.SplitN(line, "REG_SZ", 2)
+					if len(parts) == 2 {
+						exePath := strings.TrimSpace(parts[1])
+						exePath = strings.Trim(exePath, `"`)
+						if _, err := os.Stat(exePath); err == nil {
+							if launchWindows(exePath) == nil {
+								return textResult("opened: " + target + " (found at " + exePath + ")")
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Strategy 4: search common install directories
+	searchDirs := []string{
+		os.Getenv("ProgramFiles"),
+		os.Getenv("ProgramFiles(x86)"),
+		os.Getenv("LOCALAPPDATA"),
+		filepath.Join(os.Getenv("APPDATA")),
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs"),
+	}
+
+	for _, dir := range searchDirs {
+		if dir == "" {
+			continue
+		}
+		for _, exe := range exeNames {
+			found := searchFileRecursive(dir, exe, 3)
+			if found != "" {
+				if launchWindows(found) == nil {
+					return textResult("opened: " + target + " (found at " + found + ")")
+				}
+			}
+		}
+	}
+
+	// Strategy 5: last resort — try Start-Process with the original target name
+	if err := launchWindows(target); err != nil {
+		return errResult(fmt.Sprintf("could not find app '%s'. Searched registry and common install dirs. Error: %s",
+			target, err.Error()))
 	}
 	return textResult("opened: " + target)
+}
+
+// activateRunningApp checks if an app matching the target name is already running.
+// If found, it brings the window to the foreground instead of launching a new instance.
+// Returns (true, windowTitle) if activated, (false, "") if not found.
+func activateRunningApp(target string) (bool, string) {
+	if runtime.GOOS != "windows" {
+		return false, ""
+	}
+
+	// Build a list of process names to look for
+	targetLower := strings.ToLower(target)
+	// Map aliases to process names (without .exe)
+	processNames := map[string][]string{
+		"wechat":   {"Weixin", "WeChat"},
+		"weixin":   {"Weixin", "WeChat"},
+		"微信":       {"Weixin", "WeChat"},
+		"dingtalk": {"DingTalk", "DingtalkLauncher"},
+		"钉钉":       {"DingTalk"},
+		"feishu":   {"Feishu", "Lark"},
+		"飞书":       {"Feishu", "Lark"},
+		"qq":       {"QQ"},
+		"chrome":   {"chrome"},
+		"edge":     {"msedge"},
+		"vscode":   {"Code"},
+		"code":     {"Code"},
+	}
+
+	var names []string
+	for alias, pnames := range processNames {
+		if strings.ToLower(alias) == targetLower {
+			names = pnames
+			break
+		}
+	}
+	if len(names) == 0 {
+		// Use target itself as process name guess
+		n := strings.TrimSuffix(target, ".exe")
+		n = strings.TrimSuffix(n, ".EXE")
+		names = []string{n}
+	}
+
+	// PowerShell: find process and activate its main window (or detect tray apps)
+	for _, pname := range names {
+		escaped := strings.ReplaceAll(pname, "'", "''")
+
+		// Step 1: check if process with visible window exists
+		psCheck := fmt.Sprintf(
+			`$p = Get-Process -Name '%s' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1; if ($p) { Write-Output "VISIBLE:$($p.Id):$($p.MainWindowTitle)" } else { $a = Get-Process -Name '%s' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($a) { Write-Output "TRAY:$($a.ProcessName)" } else { Write-Output "NONE" } }`,
+			escaped, escaped)
+		cmd := exec.Command("powershell", "-NoProfile", "-Command", psCheck)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			continue
+		}
+		result := strings.TrimSpace(string(out))
+
+		if strings.HasPrefix(result, "VISIBLE:") {
+			parts := strings.SplitN(strings.TrimPrefix(result, "VISIBLE:"), ":", 2)
+			title := ""
+			if len(parts) == 2 {
+				title = parts[1]
+			}
+			// Try to bring the window to foreground
+			bringWindowToFront(escaped)
+			log.Printf("[mcp-bridge] App %s already running, activated window: %s", pname, title)
+			return true, title + " — window brought to foreground. NEXT: call mcp_host_screen_capture to see the screen and proceed."
+		}
+
+		if strings.HasPrefix(result, "TRAY:") {
+			proc := strings.TrimPrefix(result, "TRAY:")
+			bringWindowToFront(escaped)
+			log.Printf("[mcp-bridge] App %s was in tray, attempting to restore", proc)
+			return true, proc + " — restored from tray. NEXT: call mcp_host_screen_capture to see the screen and proceed."
+		}
+	}
+	return false, ""
+}
+
+// bringWindowToFront uses WScript.Shell AppActivate to bring a window to foreground.
+// This is the most reliable method on Windows — works with tray apps and minimized windows.
+func bringWindowToFront(processName string) {
+	// Method 1: AppActivate by window title (works for most apps)
+	titles := map[string]string{
+		"weixin": "微信", "wechat": "微信",
+		"dingtalk": "钉钉", "qq": "QQ",
+		"chrome": "Chrome", "msedge": "Edge",
+		"code": "Visual Studio Code",
+	}
+	title := processName
+	if t, ok := titles[strings.ToLower(processName)]; ok {
+		title = t
+	}
+
+	ps := fmt.Sprintf(`(New-Object -ComObject WScript.Shell).AppActivate('%s')`, strings.ReplaceAll(title, "'", "''"))
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+	cmd.Run()
+	time.Sleep(800 * time.Millisecond)
+}
+
+// launchWindows uses PowerShell Start-Process to launch an app (handles Unicode properly).
+func launchWindows(path string) error {
+	// Escape single quotes for PowerShell
+	escaped := strings.ReplaceAll(path, "'", "''")
+	ps := fmt.Sprintf(`Start-Process -FilePath '%s'`, escaped)
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+	return cmd.Start()
+}
+
+// searchFileRecursive searches for a filename in a directory up to maxDepth levels deep.
+// Returns the full path of the first match, or "" if not found.
+func searchFileRecursive(dir, filename string, maxDepth int) string {
+	if maxDepth < 0 {
+		return ""
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	filenameLower := strings.ToLower(filename)
+	// Check files first
+	for _, e := range entries {
+		if !e.IsDir() && strings.ToLower(e.Name()) == filenameLower {
+			return filepath.Join(dir, e.Name())
+		}
+	}
+	// Then recurse into subdirs
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			found := searchFileRecursive(filepath.Join(dir, e.Name()), filename, maxDepth-1)
+			if found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }
 
 func execClipboardRead() mcpToolResult {
@@ -612,6 +892,234 @@ func execClipboardWrite(args map[string]interface{}) mcpToolResult {
 }
 
 // --- GUI Automation implementations ---
+
+func execScreenInspect(args map[string]interface{}) mcpToolResult {
+	maxDepthF, _ := args["max_depth"].(float64)
+	maxDepth := 8
+	if maxDepthF > 0 {
+		maxDepth = int(maxDepthF)
+	}
+
+	if runtime.GOOS != "windows" {
+		return errResult("screen_inspect is only supported on Windows (requires UI Automation)")
+	}
+
+	// PowerShell script using Windows UI Automation to enumerate all interactive elements
+	// Returns: Type | Name | ScreenX,ScreenY | Size
+	ps := fmt.Sprintf(`
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+
+$auto = [System.Windows.Automation.AutomationElement]
+$root = $auto::FocusedElement
+$walker0 = [System.Windows.Automation.TreeWalker]::RawViewWalker
+while ($root -ne $null -and $root.Current.ControlType -ne [System.Windows.Automation.ControlType]::Window) {
+    $p = $walker0.GetParent($root)
+    if ($p -eq $null -or $p -eq $auto::RootElement) { break }
+    $root = $p
+}
+
+$wr = $root.Current.BoundingRectangle
+$wTitle = $root.Current.Name
+$ww = [int]$wr.Width
+$wh = [int]$wr.Height
+Write-Output "Window: $wTitle"
+Write-Output "Bounds: $([int]$wr.X),$([int]$wr.Y) ${ww}x${wh}"
+Write-Output "---"
+
+$iTypes = @('Button','Edit','ComboBox','CheckBox','RadioButton','Hyperlink','MenuItem','Tab','TabItem','ListItem','TreeItem')
+
+function WalkEl($el, $d) {
+    if ($d -gt %d) { return }
+    try {
+        $cur = $el.Current
+        $ct = $cur.ControlType
+        $nm = $cur.Name
+        $rc = $cur.BoundingRectangle
+        if ($cur.IsOffscreen) { return }
+        if ([double]::IsInfinity($rc.X) -or $rc.Width -le 0) { return }
+
+        $cx = [int]($rc.X + $rc.Width / 2)
+        $cy = [int]($rc.Y + $rc.Height / 2)
+        $tn = ($ct.ProgrammaticName -replace 'ControlType\.','')
+        $pad = '  ' * $d
+        $isI = $iTypes -contains $tn
+
+        if ($isI) {
+            $lbl = if ($nm) { """$($nm.Substring(0,[Math]::Min($nm.Length,60)))""" } else { '[unnamed]' }
+            Write-Output "${pad}> ${tn} ${lbl} @ (${cx},${cy})"
+        } elseif ($nm -and $tn -eq 'Text') {
+            Write-Output "${pad}  Text ""$($nm.Substring(0,[Math]::Min($nm.Length,80)))"""
+        }
+    } catch { return }
+
+    $w = [System.Windows.Automation.TreeWalker]::RawViewWalker
+    $ch = $w.GetFirstChild($el)
+    while ($ch -ne $null) {
+        WalkEl $ch ($d+1)
+        $ch = $w.GetNextSibling($ch)
+    }
+}
+
+WalkEl $root 0
+	`, maxDepth)
+
+	inspectCtx, inspectCancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer inspectCancel()
+	cmd := exec.CommandContext(inspectCtx, "powershell", "-NoProfile", "-Command", ps)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[mcp-bridge] screen_inspect UIA pass failed/timed out: %v — %s", err, string(out))
+		result := "[UI Automation unavailable or timed out]"
+		ocrResult := runWindowsOCR(nil)
+		if ocrResult != "" {
+			result += "\n\n[Fallback OCR text extraction]\n\n" + ocrResult
+			if len(result) > 40000 {
+				result = result[:40000] + "\n...[truncated]"
+			}
+			return textResult(result + "\n\nUse OCR text as an approximate reading of the active window.")
+		}
+		return errResult(fmt.Sprintf("screen_inspect failed: %s", err.Error()))
+	}
+
+	result := decodeText(out)
+	bounds := extractInspectBounds(result)
+
+	// Check if UI Automation found any interactive elements (lines with ">")
+	hasElements := strings.Contains(result, "> ")
+	if !hasElements {
+		// Fallback: use Windows OCR to extract text from the active window screenshot
+		log.Println("[mcp-bridge] UI Automation found no elements, falling back to Windows OCR")
+		ocrResult := runWindowsOCR(bounds)
+		if ocrResult != "" {
+			result += "\n[UI Automation found no elements — using OCR text extraction]\n\n" + ocrResult
+		} else {
+			result += "\n[UI Automation and OCR both found no elements. The app may use a custom framework. Try using keyboard shortcuts like Ctrl+F to interact.]"
+		}
+	}
+
+	if len(result) > 40000 {
+		result = result[:40000] + "\n...[truncated]"
+	}
+	return textResult(result + "\n\nUse > marked elements with mouse_click(x, y) to interact. For OCR text, coordinates are approximate center of text.")
+}
+
+type inspectBounds struct {
+	X int
+	Y int
+	W int
+	H int
+}
+
+var inspectBoundsPattern = regexp.MustCompile(`Bounds:\s*(-?\d+),(-?\d+)\s+(\d+)x(\d+)`)
+
+func extractInspectBounds(result string) *inspectBounds {
+	m := inspectBoundsPattern.FindStringSubmatch(result)
+	if len(m) != 5 {
+		return nil
+	}
+	x, err1 := strconv.Atoi(m[1])
+	y, err2 := strconv.Atoi(m[2])
+	w, err3 := strconv.Atoi(m[3])
+	h, err4 := strconv.Atoi(m[4])
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil || w <= 0 || h <= 0 {
+		return nil
+	}
+	return &inspectBounds{X: x, Y: y, W: w, H: h}
+}
+
+// runWindowsOCR takes a full-screen screenshot first, then runs OCR on the saved file.
+// Two-step approach avoids focus-stealing issues.
+func runWindowsOCR(bounds *inspectBounds) string {
+	// Step 1: capture full screen to temp file (fast, no focus change)
+	tmpPNG := filepath.Join(os.TempDir(), fmt.Sprintf("mcp_ocr_%d.png", time.Now().UnixNano()))
+	defer os.Remove(tmpPNG)
+
+	escapedPath := strings.ReplaceAll(tmpPNG, `\`, `\\`)
+	capturePS := fmt.Sprintf(`
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$rect = New-Object System.Drawing.Rectangle(%d, %d, %d, %d)
+$bmp = New-Object System.Drawing.Bitmap($rect.Width, $rect.Height)
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($rect.Location, [System.Drawing.Point]::Empty, $rect.Size)
+	$g.Dispose()
+	$bmp.Save('%s', [System.Drawing.Imaging.ImageFormat]::Png)
+	$bmp.Dispose()`, func() int {
+		if bounds != nil {
+			return bounds.X
+		}
+		return 0
+	}(), func() int {
+		if bounds != nil {
+			return bounds.Y
+		}
+		return 0
+	}(), func() int {
+		if bounds != nil {
+			return bounds.W
+		}
+		return 1920
+	}(), func() int {
+		if bounds != nil {
+			return bounds.H
+		}
+		return 1080
+	}(), escapedPath)
+	capCtx, capCancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer capCancel()
+	capCmd := exec.CommandContext(capCtx, "powershell", "-NoProfile", "-Command", capturePS)
+	if out, err := capCmd.CombinedOutput(); err != nil {
+		log.Printf("[mcp-bridge] OCR screenshot failed: %v — %s", err, string(out))
+		return ""
+	}
+
+	// Step 2: run OCR on the saved file
+	ocrScript := "Add-Type -AssemblyName 'System.Runtime.WindowsRuntime' -ErrorAction SilentlyContinue\n" +
+		"[Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime] | Out-Null\n" +
+		"[Windows.Graphics.Imaging.BitmapDecoder,Windows.Foundation,ContentType=WindowsRuntime] | Out-Null\n" +
+		"$code = @\"\n" +
+		"using System;\n" +
+		"using System.Runtime.InteropServices.WindowsRuntime;\n" +
+		"using Windows.Foundation;\n" +
+		"using Windows.Graphics.Imaging;\n" +
+		"using Windows.Media.Ocr;\n" +
+		"public static class WinRTHelper {\n" +
+		"  public static BitmapDecoder AwaitBitmapDecoder(IAsyncOperation<BitmapDecoder> op) { return op.AsTask().GetAwaiter().GetResult(); }\n" +
+		"  public static SoftwareBitmap AwaitSoftwareBitmap(IAsyncOperation<SoftwareBitmap> op) { return op.AsTask().GetAwaiter().GetResult(); }\n" +
+		"  public static OcrResult AwaitOcrResult(IAsyncOperation<OcrResult> op) { return op.AsTask().GetAwaiter().GetResult(); }\n" +
+		"}\n" +
+		"\"@\n" +
+		"Add-Type -TypeDefinition $code -Language CSharp -ReferencedAssemblies 'System.Runtime.WindowsRuntime' -ErrorAction SilentlyContinue\n" +
+		fmt.Sprintf("$fs = [System.IO.File]::OpenRead('%s')\n", escapedPath) +
+		"$ras = [System.IO.WindowsRuntimeStreamExtensions]::AsRandomAccessStream($fs)\n" +
+		"$dec = [WinRTHelper]::AwaitBitmapDecoder([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($ras))\n" +
+		"$sbmp = [WinRTHelper]::AwaitSoftwareBitmap($dec.GetSoftwareBitmapAsync())\n" +
+		"$eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()\n" +
+		"$res = [WinRTHelper]::AwaitOcrResult($eng.RecognizeAsync($sbmp))\n" +
+		"$fs.Close()\n" +
+		"foreach($ln in $res.Lines){\n" +
+		"  $t=($ln.Words|%%{$_.Text})-join ''\n" +
+		"  $b=$ln.Words[0].BoundingRect\n" +
+		"  $cx=[int]($b.X+$b.Width/2)\n" +
+		"  $cy=[int]($b.Y+$b.Height/2)\n" +
+		"  Write-Output('OCR \"'+$t+'\" @ ('+$cx+','+$cy+')')\n" +
+		"}\n"
+
+	ocrPath := filepath.Join(os.TempDir(), "mcp_ocr_run.ps1")
+	os.WriteFile(ocrPath, []byte(ocrScript), 0644)
+	defer os.Remove(ocrPath)
+
+	ocrCtx, ocrCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer ocrCancel()
+	ocrCmd := exec.CommandContext(ocrCtx, "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ocrPath)
+	out, err := ocrCmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[mcp-bridge] OCR processing failed: %v — %s", err, string(out))
+		return ""
+	}
+	return decodeText(out)
+}
 
 func execScreenCapture(args map[string]interface{}) mcpToolResult {
 	region, _ := args["region"].(string)
@@ -682,12 +1190,17 @@ func execKeyboardType(args map[string]interface{}) mcpToolResult {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		// Use PowerShell SendKeys; handle special chars
-		escaped := strings.ReplaceAll(text, "'", "''")
+		// Use clipboard + Ctrl+V to paste text (works with WeChat and other custom input controls)
+		// SendKeys doesn't work for apps with custom input frameworks like WeChat
+		textB64 := base64.StdEncoding.EncodeToString([]byte(text))
 		ps := fmt.Sprintf(`
 Add-Type -AssemblyName System.Windows.Forms
-Start-Sleep -Milliseconds 100
-[System.Windows.Forms.SendKeys]::SendWait('%s')`, escaped)
+$bytes = [System.Convert]::FromBase64String('%s')
+$text = [System.Text.Encoding]::UTF8.GetString($bytes)
+[System.Windows.Forms.Clipboard]::SetText($text)
+Start-Sleep -Milliseconds 150
+[System.Windows.Forms.SendKeys]::SendWait('^v')
+Start-Sleep -Milliseconds 100`, textB64)
 		cmd = exec.Command("powershell", "-NoProfile", "-Command", ps)
 	case "darwin":
 		escaped := strings.ReplaceAll(text, `\`, `\\`)
@@ -1016,6 +1529,25 @@ func callTool(name string, args map[string]interface{}) mcpToolResult {
 		return execMouseMove(args)
 	case "active_window":
 		return execActiveWindow()
+	case "screen_inspect":
+		return execScreenInspect(args)
+	// Playwright browser tools
+	case "browser_navigate":
+		return execBrowserNavigate(args)
+	case "browser_snapshot":
+		return execBrowserSnapshot(args)
+	case "browser_click":
+		return execBrowserClick(args)
+	case "browser_type":
+		return execBrowserType(args)
+	case "browser_screenshot":
+		return execBrowserScreenshot(args)
+	case "browser_back":
+		return execBrowserBack()
+	case "browser_press_key":
+		return execBrowserPressKey(args)
+	case "browser_close":
+		return execBrowserClose()
 	default:
 		return errResult("unknown tool: " + name)
 	}

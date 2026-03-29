@@ -21,6 +21,7 @@ import (
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
 	"github.com/yinhe/starclaw/internal/tool"
+	"github.com/yinhe/starclaw/internal/ws"
 	"gorm.io/gorm"
 )
 
@@ -33,9 +34,18 @@ type ChatHandler struct {
 }
 
 func NewChatHandler(db *gorm.DB, pr *provider.Registry, tr *tool.Registry, emb rag.EmbeddingProvider) *ChatHandler {
+	c := memory.NewCerebrate(db, pr)
+	// O4: Wire WS hub for memory extraction toast notifications
+	c.SetNotifyFunc(func(userID string, event string, data interface{}) {
+		ws.GetHub().SendToUser(userID, event, data)
+	})
+	// P4: Wire embedder for vector semantic recall
+	if emb != nil {
+		c.SetEmbedder(emb)
+	}
 	return &ChatHandler{
 		db: db, providerRegistry: pr, toolRegistry: tr, embedder: emb,
-		cerebrate: memory.NewCerebrate(db, pr),
+		cerebrate: c,
 	}
 }
 
@@ -211,6 +221,11 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			req.Images = append(req.Images, visionURLs...)
 			log.Printf("[vision] injected %d image/video-frame URLs from %d file attachments", len(visionURLs), len(filesToExtract))
 		}
+	}
+
+	// O3: Check for instant memory triggers ("记住这个" / "remember this")
+	if h.cerebrate != nil {
+		h.cerebrate.CheckInstantMemory(userID, agent.ID, req.Message)
 	}
 
 	// Cerebrate: inject cross-session memories into system prompt

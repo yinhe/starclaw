@@ -146,6 +146,15 @@ func (h *TemplateHandler) Install(c *gin.Context) {
 	// Increment install count
 	h.db.Model(&tpl).UpdateColumn("install_count", gorm.Expr("install_count + 1"))
 
+	// A2: Creator notification — notify template author about installation
+	if tpl.AuthorID != "" && tpl.AuthorID != userID {
+		h.db.Create(&model.Notification{
+			UserID: tpl.AuthorID,
+			Type:   model.NotifySuccess,
+			Title:  fmt.Sprintf("你的「%s」又被 1 人安装了！(累计 %d 次)", tpl.Name, tpl.InstallCount+1),
+		})
+	}
+
 	c.JSON(http.StatusCreated, gin.H{"agent": agent})
 }
 
@@ -187,7 +196,7 @@ func (h *TemplateHandler) InstallRemote(c *gin.Context) {
 // CommunityList proxies the Queen marketplace API to avoid CORS issues
 func (h *TemplateHandler) CommunityList(c *gin.Context) {
 	q := c.Query("q")
-	url := fmt.Sprintf("%s/items?type=agent", queenMarketplaceURL)
+	url := fmt.Sprintf("%s/items?type=agent&size=500", queenMarketplaceURL)
 	if q != "" {
 		url += "&q=" + q
 	}
@@ -268,6 +277,16 @@ func (h *TemplateHandler) Rate(c *gin.Context) {
 		"rating":       newRating,
 		"rating_count": newCount,
 	})
+
+	// A2: Creator notification — notify on good ratings (≥4)
+	userID := c.GetString("user_id")
+	if tpl.AuthorID != "" && tpl.AuthorID != userID && req.Rating >= 4 {
+		h.db.Create(&model.Notification{
+			UserID: tpl.AuthorID,
+			Type:   model.NotifySuccess,
+			Title:  fmt.Sprintf("你的「%s」收到了 %.0f 星好评！(均分 %.1f)", tpl.Name, req.Rating, newRating),
+		})
+	}
 
 	c.JSON(http.StatusOK, gin.H{"rating": newRating, "rating_count": newCount})
 }

@@ -141,6 +141,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewSlackTool(db))
 	toolRegistry.Register(tool.NewDiscordTool(db))
 	toolRegistry.Register(tool.NewTelegramTool(db))
+	toolRegistry.Register(tool.NewWeChatCSTool(db))
 	toolRegistry.Register(tool.NewDesktopTool())
 
 	// Generate thumbnails for existing videos on startup
@@ -195,7 +196,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	}
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &billing.ToolUsageRecord{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &model.WeChatWatch{}, &billing.ToolUsageRecord{}, &model.NodeGrowth{}, &model.Milestone{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
@@ -210,6 +211,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
 	taskWorker.Start()
+	wechatWatcher := worker.NewWeChatWatcher(db)
+	wechatWatcher.Start()
 
 	// Start Instinct engine (proactive behavior system)
 	instinctEngine := instinct.NewEngine(db)
@@ -246,6 +249,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		c.JSON(200, gin.H{
 			"status":    "ok",
 			"service":   "starclaw",
+			"version":   molt.Version,
 			"uptime_s":  int(time.Since(startTime).Seconds()),
 			"db_status": dbOk,
 		})
@@ -285,6 +289,15 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			})
 		})
 
+		// Recovery (public endpoints — needed on fresh installs before auth exists)
+		recoveryQueenURL := ""
+		if cfg.Swarm.QueenURL != "" {
+			recoveryQueenURL = strings.TrimSuffix(cfg.Swarm.QueenURL, "/api") + "/api"
+		}
+		recoveryHandler := v1.NewRecoveryHandler(db, identity, recoveryQueenURL)
+		apiV1.POST("/recovery/verify-mnemonic", recoveryHandler.VerifyMnemonic)
+		apiV1.POST("/recovery/restore", recoveryHandler.Restore)
+
 		// Auth request endpoints (MetaMask-style: public create+poll, protected approve)
 		authReqHandler := v1.NewAuthRequestHandler(identity)
 		apiV1.POST("/identity/auth-request", authReqHandler.Create)
@@ -300,6 +313,22 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Version info (public, includes Molt update check)
 		apiV1.GET("/version", func(c *gin.Context) {
 			c.JSON(200, molt.GetVersionInfo())
+		})
+
+		// Drone marketplace import (internal, secret-protected)
+		droneImportHandler := v1.NewMarketplaceHandler(db)
+		apiV1.POST("/marketplace/import", func(c *gin.Context) {
+			secret := c.GetHeader("X-Drone-Secret")
+			if secret == "" {
+				secret = c.Query("secret")
+			}
+			expected := cfg.JWT.Secret
+			if secret != expected {
+				c.JSON(401, gin.H{"error": "unauthorized"})
+				c.Abort()
+				return
+			}
+			droneImportHandler.AdminBulkImport(c)
 		})
 
 		// P9: Developer portal (public — OpenAPI + Swagger UI)
@@ -917,7 +946,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 					})
 				}
 
-				// MCP server tools
+				// MCP server tools (user-configured)
 				userID := c.GetString("user_id")
 				var mcpServers []model.MCPServer
 				db.Where("user_id = ?", userID).Find(&mcpServers)
@@ -928,6 +957,21 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 						Type:        "mcp",
 						Status:      srv.Status,
 					})
+				}
+
+				// MCP Bridge tools (host bridge — auto-detected)
+				bridgeStatus := mcp.BridgeStatus()
+				if connected, ok := bridgeStatus["connected"].(bool); ok && connected {
+					if toolNames, ok := bridgeStatus["tool_names"].([]string); ok {
+						for _, tn := range toolNames {
+							skills = append(skills, SkillInfo{
+								Name:        "host." + tn,
+								Description: fmt.Sprintf("宿主机工具: %s (MCP Bridge)", tn),
+								Type:        "mcp",
+								Status:      "active",
+							})
+						}
+					}
 				}
 
 				// Count by type
@@ -1055,6 +1099,30 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
 
+			// Node Growth System (one pet per Claw node)
+			growthHandler := v1.NewGrowthHandler(db, providerRegistry, identity)
+			protected.GET("/growth", growthHandler.GetGrowth)
+			protected.GET("/growth/milestones", growthHandler.GetMilestones)
+			protected.GET("/growth/milestones/new", growthHandler.GetNewMilestones)
+			protected.GET("/growth/daily-report", growthHandler.GetDailyReport)
+			protected.GET("/growth/curve", growthHandler.GetGrowthCurve)
+			protected.GET("/assets/overview", growthHandler.GetAssets)
+
+			// Identity Recovery (protected — requires auth)
+			protected.GET("/recovery/status", recoveryHandler.Status)
+			protected.GET("/recovery/mnemonic", recoveryHandler.GetMnemonic)
+			protected.POST("/recovery/confirm-mnemonic", recoveryHandler.ConfirmMnemonic)
+			protected.POST("/recovery/bind-phone", recoveryHandler.BindPhone)
+			protected.POST("/recovery/verify-phone", recoveryHandler.VerifyPhone)
+			protected.POST("/recovery/backup", recoveryHandler.Backup)
+			protected.GET("/recovery/address", recoveryHandler.Address)
+
+			// Arena PK (proxy to Queen → Arena service)
+			if cfg.Swarm.QueenURL != "" {
+				log.Printf("[router] arena PK proxy → %s", cfg.Swarm.QueenURL)
+				protected.Any("/arena/*path", arenaProxy(cfg.Swarm.QueenURL))
+			}
+
 			// Auth request management (protected — user approves/rejects on their Claw UI)
 			protected.GET("/identity/auth-requests", authReqHandler.List)
 			protected.POST("/identity/auth-request/:id/approve", authReqHandler.Approve)
@@ -1120,6 +1188,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/update", systemHandler.TriggerUpdate)
 			protected.POST("/system/update/check", systemHandler.ForceCheck)
 			protected.GET("/system/update-log", systemHandler.GetUpdateLog)
+			protected.GET("/system/identity/export", systemHandler.ExportIdentity)
+			protected.POST("/system/identity/import", systemHandler.ImportIdentity)
 			protected.GET("/system/bridge", systemHandler.GetBridgeStatus)
 			protected.POST("/system/bridge/stop", systemHandler.StopBridge)
 			protected.GET("/system/overlord", systemHandler.GetOverlordStatus)
@@ -1945,6 +2015,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				// P8: Marketplace admin review
 				admin.GET("/admin/marketplace/pending", marketplaceHandler.AdminListPending)
 				admin.POST("/admin/marketplace/listings/:id/review", marketplaceHandler.AdminReviewListing)
+				admin.POST("/admin/marketplace/import", marketplaceHandler.AdminBulkImport)
 
 				// P9: Plugin admin review
 				admin.GET("/admin/plugins/pending", devHandler.AdminListPendingPlugins)
@@ -1957,6 +2028,29 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	web.RegisterRoutes(r)
 
 	return r
+}
+
+// arenaProxy returns a Gin handler that reverse-proxies /v1/arena/* to Queen API's /v1/arena/* endpoint.
+// Path mapping: /v1/arena/pk/leaderboard → queen /v1/arena/pk/leaderboard
+func arenaProxy(queenURL string) gin.HandlerFunc {
+	target, err := url.Parse(queenURL)
+	if err != nil {
+		log.Printf("[arena-proxy] invalid queen URL %q: %v", queenURL, err)
+		return func(c *gin.Context) {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "arena proxy misconfigured"})
+		}
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(`{"error":"arena service unreachable"}`))
+	}
+	return func(c *gin.Context) {
+		subPath := c.Param("path")
+		c.Request.URL.Path = "/v1/arena" + subPath
+		c.Request.Host = target.Host
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
 }
 
 // forgeProxy returns a Gin handler that reverse-proxies /v1/forge/* to the standalone forge-api.

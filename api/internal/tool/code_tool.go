@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -97,6 +98,11 @@ type codeArgs struct {
 	Command     string `json:"command"`
 }
 
+// isHostedMode checks if running in Hive hosted mode (restricted sandbox)
+func isHostedMode() bool {
+	return os.Getenv("STARCLAW_SERVER_DEPLOY_MODE") == "hosted"
+}
+
 func (t *CodeTool) Execute(ctx context.Context, args string) (string, error) {
 	var a codeArgs
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
@@ -121,6 +127,17 @@ func (t *CodeTool) Execute(ctx context.Context, args string) (string, error) {
 	effectiveWS := origWorkspaceID
 	if convID != "" {
 		effectiveWS = filepath.Join(origWorkspaceID, convID)
+	}
+
+	// Block dangerous actions in hosted mode (Hive containers)
+	if isHostedMode() {
+		switch a.Action {
+		case "execute", "run_command", "start_app", "stop_app":
+			return toJSON(map[string]interface{}{
+				"action": a.Action,
+				"error":  "此操作在托管模式下不可用。代码执行和命令运行仅限自托管 Claw 使用。",
+			}), nil
+		}
 	}
 
 	switch a.Action {
