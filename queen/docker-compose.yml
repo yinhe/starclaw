@@ -83,12 +83,30 @@ services:
     restart: unless-stopped
     environment:
       ARENA_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
-      ARENA_PORT: "8094"
+      ARENA_PORT: "8095"
+      GIN_MODE: release
+    ports:
+      - "8095:8095"
+    depends_on:
+      - mysql-queen
+    networks:
+      - starclaw-queen
+
+  chrysalis:
+    build:
+      context: ../chrysalis
+    container_name: starclaw-chrysalis
+    restart: unless-stopped
+    environment:
+      CHRYSALIS_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      CHRYSALIS_PORT: "8094"
+      QUEEN_INTERNAL_URL: "http://queen-api:8085"
       GIN_MODE: release
     ports:
       - "8094:8094"
     depends_on:
       - mysql-queen
+      - queen-api
     networks:
       - starclaw-queen
 
@@ -104,7 +122,11 @@ services:
       SWARM_URL: "http://swarm:8090"
       BOUNTY_URL: "http://bounty:8092"
       FORUM_URL: "http://forum:8093"
-      ARENA_URL: "http://arena:8094"
+      ARENA_URL: "http://arena:8095"
+      CHRYSALIS_URL: "http://chrysalis:8094"
+      HIVE_URL: "http://hive:9090"
+      HIVE_ADMIN_TOKEN: "${HIVE_ADMIN_TOKEN:-hive-admin-secret-change-me}"
+      PHEROMONE_NATS_URL: "nats://starclaw-pheromone-nats:4222"
       GIN_MODE: release
     ports:
       - "8085:8085"
@@ -113,6 +135,7 @@ services:
       - swarm
     networks:
       - starclaw-queen
+      - starclaw-pheromone
 
   queen-web:
     build:
@@ -153,7 +176,48 @@ services:
     networks:
       - starclaw-queen
 
+  hive:
+    build:
+      context: ..
+      dockerfile: hive/api/Dockerfile
+    container_name: starclaw-hive
+    restart: unless-stopped
+    environment:
+      HIVE_DSN: "root:starclaw@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      HIVE_PORT: "9090"
+      HIVE_QUEEN_URL: "http://queen-api:8085"
+      HIVE_QUEEN_TOKEN: "${JWT_SECRET:-queen-jwt-secret-change-me}"
+      HIVE_ADMIN_TOKEN: "${HIVE_ADMIN_TOKEN:-hive-admin-secret-change-me}"
+      HIVE_DOMAIN: "starclaw.me"
+      PHEROMONE_NATS_URL: "nats://starclaw-pheromone-nats:4222"
+      GIN_MODE: release
+    ports:
+      - "9090:9090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - mysql-queen
+      - queen-api
+    networks:
+      - starclaw-queen
+      - starclaw-pheromone
+
+  overseer:
+    build:
+      context: ./overseer
+    container_name: starclaw-queen-overseer
+    restart: unless-stopped
+    ports:
+      - "8089:80"
+    depends_on:
+      - queen-api
+    networks:
+      - starclaw-queen
+
 networks:
   starclaw-queen:
     name: starclaw-queen
     driver: bridge
+  starclaw-pheromone:
+    name: starclaw-pheromone
+    external: true

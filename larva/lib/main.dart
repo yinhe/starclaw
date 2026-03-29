@@ -5,10 +5,10 @@ import 'theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
-import 'screens/agents_screen.dart';
-import 'screens/workflow_screen.dart';
-import 'screens/billing_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/growth_screen.dart';
+import 'screens/arena_screen.dart';
+import 'screens/cloud_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,9 +57,9 @@ class _MainShellState extends State<MainShell> {
   final List<Widget> _screens = const [
     HomeScreen(),
     ChatScreen(),
-    AgentsScreen(),
-    WorkflowScreen(),
-    BillingScreen(),
+    GrowthScreen(),
+    ArenaScreen(),
+    CloudScreen(),
     ProfileScreen(),
   ];
 
@@ -76,17 +76,14 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.auto_awesome),
             label: 'AI 对话',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.pets_rounded), label: '成长'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.smart_toy_rounded),
-            label: 'Agent',
+            icon: Icon(Icons.sports_mma_rounded),
+            label: '竞技场',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.account_tree_rounded),
-            label: '工作流',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet_rounded),
-            label: '钱包',
+            icon: Icon(Icons.cloud_rounded),
+            label: '云船队',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),

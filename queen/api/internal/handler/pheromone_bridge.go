@@ -154,6 +154,83 @@ type getUserResponse struct {
 	Avatar   string `json:"avatar"`
 }
 
+// RegisterPheromoneSubscriptions subscribes Queen to cross-service events on the ESB.
+// This makes Queen a true event consumer — not just a publisher.
+func RegisterPheromoneSubscriptions(ph *pheromone.Client) {
+	// Growth events from Claw nodes
+	if err := ph.Subscribe("growth.>", handleGrowthEvent); err != nil {
+		log.Printf("[queen] pheromone subscribe growth.> failed: %v", err)
+	}
+
+	// Chrysalis battle/mutation/season events
+	if err := ph.Subscribe("chrysalis.>", handleChrysalisEvent); err != nil {
+		log.Printf("[queen] pheromone subscribe chrysalis.> failed: %v", err)
+	}
+
+	// Hive instance lifecycle events
+	if err := ph.Subscribe("instance.>", handleInstanceEvent); err != nil {
+		log.Printf("[queen] pheromone subscribe instance.> failed: %v", err)
+	}
+
+	log.Printf("[queen] pheromone subscriptions registered: growth.>, chrysalis.>, instance.>")
+}
+
+func handleGrowthEvent(subject string, data []byte) {
+	var evt map[string]interface{}
+	if err := json.Unmarshal(data, &evt); err != nil {
+		return
+	}
+	clawID, _ := evt["claw_id"].(string)
+
+	switch {
+	case subject == "pheromone.events.growth.level_up":
+		newLevel, _ := evt["new_level"].(float64)
+		log.Printf("[queen-esb] growth.level_up: claw=%s level=%.0f", clawID, newLevel)
+		// Update node binding metadata
+		if clawID != "" {
+			database.DB.Model(&model.NodeBinding{}).Where("node_id = ?", clawID).
+				Update("node_version", fmt.Sprintf("lv%.0f", newLevel))
+		}
+
+	case subject == "pheromone.events.growth.evolution":
+		newPath, _ := evt["new_path"].(string)
+		log.Printf("[queen-esb] growth.evolution: claw=%s path=%s", clawID, newPath)
+	}
+}
+
+func handleChrysalisEvent(subject string, data []byte) {
+	var evt map[string]interface{}
+	if err := json.Unmarshal(data, &evt); err != nil {
+		return
+	}
+
+	switch {
+	case subject == "pheromone.events.chrysalis.battle_complete":
+		winner, _ := evt["winner_id"].(string)
+		loser, _ := evt["loser_id"].(string)
+		log.Printf("[queen-esb] battle_complete: winner=%s loser=%s", winner, loser)
+
+	case subject == "pheromone.events.chrysalis.mutation":
+		clawID, _ := evt["claw_id"].(string)
+		name, _ := evt["mutation_name"].(string)
+		log.Printf("[queen-esb] mutation: claw=%s mutation=%s", clawID, name)
+
+	case subject == "pheromone.events.chrysalis.season_end":
+		seasonName, _ := evt["season_name"].(string)
+		log.Printf("[queen-esb] season_end: %s", seasonName)
+	}
+}
+
+func handleInstanceEvent(subject string, data []byte) {
+	var evt map[string]interface{}
+	if err := json.Unmarshal(data, &evt); err != nil {
+		return
+	}
+	instanceID, _ := evt["instance_id"].(string)
+	status, _ := evt["status"].(string)
+	log.Printf("[queen-esb] instance event %s: id=%s status=%s", subject, instanceID, status)
+}
+
 func handleGetUser(data []byte) (interface{}, error) {
 	var req getUserRequest
 	if err := json.Unmarshal(data, &req); err != nil {

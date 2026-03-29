@@ -10,10 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"starclaw.net/queen/api/internal/database"
 	"starclaw.net/queen/api/internal/middleware"
 	"starclaw.net/queen/api/internal/model"
-	"gorm.io/gorm"
 )
 
 type CityHandler struct{}
@@ -608,7 +608,9 @@ func CityPartnerRequired() gin.HandlerFunc {
 	}
 }
 
-// ── Commission auto-generation (called from billing.completeOrder) ──
+// ── Commission auto-generation (DEPRECATED — kept for reference) ──
+// Commissions are now generated solely at consumption time via InternalProfitSplit.
+// This function is no longer called from completeOrder to avoid double-counting.
 
 func generateCityCommission(tx *gorm.DB, userID, orderNo string, amount int64) {
 	// Find if this user was referred by a city partner (prefer user_id lookup, fallback to contact_info)

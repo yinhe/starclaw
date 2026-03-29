@@ -126,6 +126,7 @@ func main() {
 		defer ph.Close()
 		handler.SetPheromone(ph)
 		handler.RegisterPheromoneRPC(ph)
+		handler.RegisterPheromoneSubscriptions(ph)
 		log.Printf("[queen] pheromone ESB connected (%s)", natsURL)
 	}
 

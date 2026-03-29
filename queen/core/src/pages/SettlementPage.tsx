@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { Calculator, CheckCircle, XCircle, Banknote, FileText, ArrowLeft } from 'lucide-react'
+import { Calculator, CheckCircle, XCircle, Banknote, FileText, ArrowLeft, Settings, Save } from 'lucide-react'
+
+interface ProfitConfig {
+  city_comm_rate: number
+  team_direct_rate: number
+  team_mgmt_rate: number
+  investor_pool_rate: number
+  upstream_cost_pct: number
+}
 
 interface SettlementBill {
   id: string
@@ -65,8 +73,30 @@ export default function SettlementPage() {
   })
   const [detail, setDetail] = useState<{ bill: SettlementBill; items: LineItem[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showConfig, setShowConfig] = useState(false)
+  const [profitCfg, setProfitCfg] = useState<ProfitConfig | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [cfgMsg, setCfgMsg] = useState('')
 
-  useEffect(() => { loadStats(); loadBills() }, [monthFilter, statusFilter])
+  useEffect(() => { loadStats(); loadBills(); loadProfitConfig() }, [monthFilter, statusFilter])
+
+  const loadProfitConfig = () => {
+    api.get<ProfitConfig>('/v1/admin/settlement/profit-config').then(setProfitCfg).catch(() => {})
+  }
+
+  const saveProfitConfig = async () => {
+    if (!profitCfg) return
+    setSaving(true)
+    setCfgMsg('')
+    try {
+      await api.put('/v1/admin/settlement/profit-config', profitCfg)
+      setCfgMsg('已保存')
+      setTimeout(() => setCfgMsg(''), 2000)
+    } catch (e: any) {
+      setCfgMsg(e.message || '保存失败')
+    }
+    setSaving(false)
+  }
 
   const loadStats = () => {
     api.get<SettlementStats>('/v1/admin/settlement/stats').then(setStats).catch(() => {})
@@ -241,7 +271,62 @@ export default function SettlementPage() {
 
   return (
     <div>
-      <h2 className="text-xl font-bold mb-6">结算管理</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-bold">结算管理</h2>
+        <button onClick={() => setShowConfig(!showConfig)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${showConfig ? 'bg-purple-600/20 text-purple-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+          <Settings size={14} /> 利润分配配置
+        </button>
+      </div>
+
+      {/* Profit Config Panel */}
+      {showConfig && profitCfg && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-white">利润分配比例</h3>
+            <div className="flex items-center gap-2">
+              {cfgMsg && <span className={`text-xs ${cfgMsg === '已保存' ? 'text-green-400' : 'text-red-400'}`}>{cfgMsg}</span>}
+              <button onClick={saveProfitConfig} disabled={saving}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-500 disabled:opacity-50">
+                <Save size={13} /> {saving ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mb-4">调整全局默认比例。个别合伙人如有自定义费率，将优先使用自定义值。</p>
+          <div className="grid grid-cols-5 gap-4">
+            {([
+              { key: 'city_comm_rate' as const, label: '城市合伙人佣金', desc: '消费利润 × 比例', color: 'text-blue-400' },
+              { key: 'team_direct_rate' as const, label: '团队直签佣金', desc: '消费利润 × 比例', color: 'text-green-400' },
+              { key: 'team_mgmt_rate' as const, label: '团队管理费', desc: '城市佣金 × 比例', color: 'text-purple-400' },
+              { key: 'investor_pool_rate' as const, label: '投资人池', desc: '消费利润 × 比例', color: 'text-amber-400' },
+              { key: 'upstream_cost_pct' as const, label: '上游成本估算', desc: '充值额 × 比例', color: 'text-gray-400' },
+            ]).map(item => (
+              <div key={item.key} className="bg-gray-800/50 rounded-lg p-3">
+                <div className={`text-xs font-medium mb-1 ${item.color}`}>{item.label}</div>
+                <div className="text-[10px] text-gray-500 mb-2">{item.desc}</div>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number" min="0" max="100" step="1"
+                    value={Math.round(profitCfg[item.key] * 100)}
+                    onChange={e => setProfitCfg({ ...profitCfg, [item.key]: Number(e.target.value) / 100 })}
+                    className="w-16 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white text-right"
+                  />
+                  <span className="text-xs text-gray-500">%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 p-3 bg-gray-800/30 rounded-lg">
+            <div className="text-[10px] text-gray-500 mb-1">利润分配示例（假设消费利润 ¥100）</div>
+            <div className="flex gap-4 text-xs">
+              <span className="text-blue-400">城市佣金 ¥{(profitCfg.city_comm_rate * 100).toFixed(0)}</span>
+              <span className="text-green-400">直签佣金 ¥{(profitCfg.team_direct_rate * 100).toFixed(0)}</span>
+              <span className="text-purple-400">管理费 ¥{(profitCfg.city_comm_rate * profitCfg.team_mgmt_rate * 100).toFixed(1)}</span>
+              <span className="text-amber-400">投资池 ¥{(profitCfg.investor_pool_rate * 100).toFixed(0)}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats cards */}
       {stats && (

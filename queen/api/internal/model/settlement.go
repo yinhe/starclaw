@@ -52,35 +52,41 @@ type SettlementConfig struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// Commission rate tiers for the settlement engine
-// Bronze: first-year 40% / renewal 25%
-// Silver: first-year 45% / renewal 30%
-// Gold:   first-year 50% / renewal 35%
-// Diamond: first-year 55% / renewal 40%
+// Commission rate tiers for the settlement engine.
+// Tiers are based on cumulative actual consumption margin (from profit-split),
+// NOT on CRM deal values or recharge amounts.
+//
+// DirectRate:  applied to margin from directly-signed clients (Team Partner)
+// MgmtFeeRate: applied to city partner commissions under this team partner
+//
+// Bronze:  direct 10% / mgmt 3%
+// Silver:  direct 15% / mgmt 5%  (cumulative margin ≥ ¥50,000)
+// Gold:    direct 20% / mgmt 8%  (cumulative margin ≥ ¥200,000)
+// Diamond: direct 25% / mgmt 10% (cumulative margin ≥ ¥500,000)
 
 type CommissionTier struct {
-	Name          string
-	MinRevenue    int64 // minimum lifetime revenue to qualify (分)
-	FirstYearRate float64
-	RenewalRate   float64
+	Name        string
+	MinMargin   int64   // minimum cumulative actual margin to qualify (分)
+	DirectRate  float64 // commission rate on margin for directly-signed clients
+	MgmtFeeRate float64 // management fee rate on city partner commissions
 }
 
 // DefaultCommissionTiers returns the tiered commission rate schedule
 func DefaultCommissionTiers() []CommissionTier {
 	return []CommissionTier{
-		{Name: "bronze", MinRevenue: 0, FirstYearRate: 0.40, RenewalRate: 0.25},
-		{Name: "silver", MinRevenue: 50000_00, FirstYearRate: 0.45, RenewalRate: 0.30},   // ¥50,000+
-		{Name: "gold", MinRevenue: 200000_00, FirstYearRate: 0.50, RenewalRate: 0.35},    // ¥200,000+
-		{Name: "diamond", MinRevenue: 500000_00, FirstYearRate: 0.55, RenewalRate: 0.40}, // ¥500,000+
+		{Name: "bronze", MinMargin: 0, DirectRate: 0.10, MgmtFeeRate: 0.03},
+		{Name: "silver", MinMargin: 50000_00, DirectRate: 0.15, MgmtFeeRate: 0.05},   // ¥50,000+
+		{Name: "gold", MinMargin: 200000_00, DirectRate: 0.20, MgmtFeeRate: 0.08},    // ¥200,000+
+		{Name: "diamond", MinMargin: 500000_00, DirectRate: 0.25, MgmtFeeRate: 0.10}, // ¥500,000+
 	}
 }
 
-// GetCommissionTier returns the applicable tier for a given lifetime revenue
-func GetCommissionTier(lifetimeRevenue int64) CommissionTier {
+// GetCommissionTier returns the applicable tier for a given cumulative margin
+func GetCommissionTier(cumulativeMargin int64) CommissionTier {
 	tiers := DefaultCommissionTiers()
 	result := tiers[0]
 	for _, t := range tiers {
-		if lifetimeRevenue >= t.MinRevenue {
+		if cumulativeMargin >= t.MinMargin {
 			result = t
 		}
 	}

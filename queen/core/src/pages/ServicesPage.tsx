@@ -1,23 +1,29 @@
 import { useEffect, useState } from 'react'
 import { api, type ServiceStats } from '../api'
-import { Trophy, MessageSquare, Swords, RefreshCw } from 'lucide-react'
+import { Trophy, MessageSquare, Swords, RefreshCw, Bug, Server } from 'lucide-react'
 
 export default function ServicesPage() {
   const [bounty, setBounty] = useState<ServiceStats | null>(null)
   const [forum, setForum] = useState<ServiceStats | null>(null)
   const [arena, setArena] = useState<ServiceStats | null>(null)
+  const [chrysalis, setChrysalis] = useState<ServiceStats | null>(null)
+  const [hive, setHive] = useState<ServiceStats | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = async () => {
     setLoading(true)
-    const [b, f, a] = await Promise.all([
+    const [b, f, a, ch, hv] = await Promise.all([
       api.get<ServiceStats>('/v1/admin/bounty/stats').catch(() => null),
       api.get<ServiceStats>('/v1/admin/forum/stats').catch(() => null),
       api.get<ServiceStats>('/v1/admin/arena/stats').catch(() => null),
+      api.get<ServiceStats>('/v1/admin/chrysalis/stats').catch(() => null),
+      api.get<ServiceStats>('/v1/admin/hive/stats').catch(() => null),
     ])
     setBounty(b)
     setForum(f)
     setArena(a)
+    setChrysalis(ch)
+    setHive(hv)
     setLoading(false)
   }
 
@@ -34,7 +40,7 @@ export default function ServicesPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Bounty */}
         <ServiceCard
           title="赏金系统"
@@ -77,6 +83,36 @@ export default function ServicesPage() {
             { key: 'total_replies', label: '回复数' },
           ]}
         />
+
+        {/* Chrysalis */}
+        <ServiceCard
+          title="化蛹 · PK 对战"
+          subtitle="Chrysalis"
+          icon={Bug}
+          color="emerald"
+          stats={chrysalis}
+          fields={[
+            { key: 'total_fighters', label: '注册战士' },
+            { key: 'total_battles', label: '总对战数' },
+            { key: 'active_fighters', label: '7日活跃' },
+            { key: 'season_name', label: '当前赛季', format: 'text' },
+          ]}
+        />
+
+        {/* Hive */}
+        <ServiceCard
+          title="云船队"
+          subtitle="Hive"
+          icon={Server}
+          color="cyan"
+          stats={hive}
+          fields={[
+            { key: 'total_instances', label: '总实例' },
+            { key: 'running_instances', label: '运行中' },
+            { key: 'total_orders', label: '订单数' },
+            { key: 'revenue', label: '收入(星能)', format: 'text' },
+          ]}
+        />
       </div>
     </div>
   )
@@ -94,6 +130,8 @@ function ServiceCard({ title, subtitle, icon: Icon, color, stats, fields }: {
     amber: 'text-amber-400 bg-amber-600/10',
     blue: 'text-blue-400 bg-blue-600/10',
     purple: 'text-purple-400 bg-purple-600/10',
+    emerald: 'text-emerald-400 bg-emerald-600/10',
+    cyan: 'text-cyan-400 bg-cyan-600/10',
   }
   const cc = colorMap[color] || colorMap.purple
 
@@ -116,7 +154,7 @@ function ServiceCard({ title, subtitle, icon: Icon, color, stats, fields }: {
         <div className="space-y-2.5">
           {fields.map(f => {
             let val = stats[f.key]
-            if (val === undefined || val === null) val = 0
+            if (val === undefined || val === null) val = f.format === 'text' ? '-' : 0
             if (f.format === 'fen' && typeof val === 'number') val = `¥${(val / 100).toFixed(2)}`
             return (
               <div key={f.key} className="flex items-center justify-between">

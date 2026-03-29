@@ -207,6 +207,50 @@ class ApiService {
     },
   );
 
+  // ── Growth (Pet) ──
+  Future<Response> getGrowthProfile() => dio.get('/arena/pk/fighter/me');
+  Future<Response> getArenaLeaderboard() => dio.get('/arena/pk/leaderboard');
+  Future<Response> getArenaHistory(String clawId) =>
+      dio.get('/arena/pk/history/$clawId');
+  Future<Response> challengeFighter(String challengerId, String opponentId) =>
+      dio.post(
+        '/arena/pk/challenge',
+        data: {
+          'challenger_claw_id': challengerId,
+          'opponent_claw_id': opponentId,
+        },
+      );
+  Future<Response> getArenaSeason() => dio.get('/arena/pk/season');
+  Future<Response> getArenaShop() => dio.get('/arena/pk/shop');
+  Future<Response> getArenaInventory(String clawId) =>
+      dio.get('/arena/pk/inventory/$clawId');
+  Future<Response> getArenaMutations(String clawId) =>
+      dio.get('/arena/pk/mutations/$clawId');
+
+  // ── Cloud (Hive) ──
+  Future<Response> getCloudPlans() => dio.get('/cloud/plans');
+  Future<Response> getCloudInstances() => dio.get('/cloud/claws');
+  Future<Response> createCloudInstance({
+    required String slug,
+    String? displayName,
+    String? planId,
+    String? clawId,
+  }) => dio.post(
+    '/cloud/claws',
+    data: {
+      'slug': slug,
+      if (displayName != null) 'display_name': displayName,
+      if (planId != null) 'plan_id': planId,
+      if (clawId != null) 'claw_id': clawId,
+    },
+  );
+  Future<Response> stopCloudInstance(String slug) =>
+      dio.post('/cloud/claws/$slug/stop');
+  Future<Response> startCloudInstance(String slug) =>
+      dio.post('/cloud/claws/$slug/start');
+  Future<Response> destroyCloudInstance(String slug) =>
+      dio.delete('/cloud/claws/$slug');
+
   // Helper: resolve full URL
   String resolveUrl(String url) {
     if (url.startsWith('http')) return url;

@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/provider"
+	"github.com/yinhe/starclaw/internal/rag"
 	"gorm.io/gorm"
 )
 
@@ -18,11 +20,27 @@ import (
 type Cerebrate struct {
 	db               *gorm.DB
 	providerRegistry *provider.Registry
+	// O4: callback to send toast notifications to user after memory extraction.
+	// Set via SetNotifyFunc to avoid import cycle with ws package.
+	notifyFunc func(userID string, event string, data interface{})
+	// P4: embedding provider for vector semantic recall
+	embedder rag.EmbeddingProvider
 }
 
 // NewCerebrate creates a new Cerebrate memory engine.
 func NewCerebrate(db *gorm.DB, pr *provider.Registry) *Cerebrate {
 	return &Cerebrate{db: db, providerRegistry: pr}
+}
+
+// SetNotifyFunc sets the callback used to push real-time notifications to the user.
+// Typically wired to ws.GetHub().SendToUser.
+func (c *Cerebrate) SetNotifyFunc(fn func(userID string, event string, data interface{})) {
+	c.notifyFunc = fn
+}
+
+// SetEmbedder sets the embedding provider for P4 vector semantic recall.
+func (c *Cerebrate) SetEmbedder(e rag.EmbeddingProvider) {
+	c.embedder = e
 }
 
 // ─── Memory Retrieval (injection before conversation) ───
@@ -61,36 +79,45 @@ func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]m
 		Order("importance DESC, updated_at DESC").Limit(5).Find(&globals)
 	addUnique(globals)
 
-	// 3. Agent-specific keyword-matched memories
+	// 3. P4: Vector semantic recall (if embedder available)
 	remaining := maxResults - len(result)
 	if remaining <= 0 {
 		remaining = 3
 	}
 
-	keywords := extractKeywords(query)
-	tx := c.db.Where("user_id = ? AND agent_id = ? AND category NOT IN ?",
-		userID, agentID, []string{model.MemCatInstruct})
-
-	if len(keywords) > 0 {
-		var conditions []string
-		var args []interface{}
-		for _, kw := range keywords {
-			if len(kw) < 2 {
-				continue
-			}
-			conditions = append(conditions, "(`key` LIKE ? OR content LIKE ?)")
-			args = append(args, "%"+kw+"%", "%"+kw+"%")
-		}
-		if len(conditions) > 0 {
-			whereClause := strings.Join(conditions, " OR ")
-			tx = tx.Where(whereClause, args...)
-		}
+	if c.embedder != nil && len(query) >= 5 {
+		semanticMems := c.vectorRecall(userID, agentID, query, remaining)
+		addUnique(semanticMems)
 	}
 
-	var agentMems []model.Memory
-	tx.Order("importance DESC, access_count DESC, updated_at DESC").
-		Limit(remaining).Find(&agentMems)
-	addUnique(agentMems)
+	// 4. Fallback: Agent-specific keyword-matched memories
+	remaining = maxResults - len(result)
+	if remaining > 0 {
+		keywords := extractKeywords(query)
+		tx := c.db.Where("user_id = ? AND agent_id = ? AND category NOT IN ?",
+			userID, agentID, []string{model.MemCatInstruct})
+
+		if len(keywords) > 0 {
+			var conditions []string
+			var args []interface{}
+			for _, kw := range keywords {
+				if len(kw) < 2 {
+					continue
+				}
+				conditions = append(conditions, "(`key` LIKE ? OR content LIKE ?)")
+				args = append(args, "%"+kw+"%", "%"+kw+"%")
+			}
+			if len(conditions) > 0 {
+				whereClause := strings.Join(conditions, " OR ")
+				tx = tx.Where(whereClause, args...)
+			}
+		}
+
+		var agentMems []model.Memory
+		tx.Order("importance DESC, access_count DESC, updated_at DESC").
+			Limit(remaining).Find(&agentMems)
+		addUnique(agentMems)
+	}
 
 	// Update access count for all retrieved memories
 	if len(result) > 0 {
@@ -106,6 +133,81 @@ func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]m
 	}
 
 	return result, nil
+}
+
+// ─── P4: Vector Semantic Recall ───
+
+// vectorRecall finds memories semantically similar to the query using embeddings.
+func (c *Cerebrate) vectorRecall(userID, agentID, query string, topK int) []model.Memory {
+	if c.embedder == nil {
+		return nil
+	}
+
+	// Embed the query
+	embeddings, err := c.embedder.Embed(context.Background(), []string{query})
+	if err != nil || len(embeddings) == 0 || len(embeddings[0]) == 0 {
+		return nil
+	}
+	queryVec := embeddings[0]
+
+	// Load all memories with embeddings for this user+agent
+	var candidates []model.Memory
+	c.db.Where("user_id = ? AND (agent_id = ? OR scope = ?) AND embedding IS NOT NULL AND LENGTH(embedding) > 0",
+		userID, agentID, model.MemScopeGlobal).
+		Find(&candidates)
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// Score by cosine similarity
+	type scored struct {
+		mem   model.Memory
+		score float32
+	}
+	var results []scored
+
+	for _, m := range candidates {
+		vec := rag.DeserializeVector(m.Embedding)
+		if len(vec) == 0 {
+			continue
+		}
+		sim := rag.CosineSimilarity(queryVec, vec)
+		if sim > 0.35 { // similarity threshold
+			results = append(results, scored{mem: m, score: sim})
+		}
+	}
+
+	// Sort by similarity descending
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].score > results[j].score
+	})
+
+	if len(results) > topK {
+		results = results[:topK]
+	}
+
+	var out []model.Memory
+	for _, r := range results {
+		out = append(out, r.mem)
+	}
+	return out
+}
+
+// embedMemory generates and stores an embedding for a memory's content.
+func (c *Cerebrate) embedMemory(mem *model.Memory) {
+	if c.embedder == nil || mem == nil || len(mem.Content) < 5 {
+		return
+	}
+
+	text := mem.Key + ": " + mem.Content
+	embeddings, err := c.embedder.Embed(context.Background(), []string{text})
+	if err != nil || len(embeddings) == 0 || len(embeddings[0]) == 0 {
+		return
+	}
+
+	mem.Embedding = rag.SerializeVector(embeddings[0])
+	c.db.Model(mem).Update("embedding", mem.Embedding)
 }
 
 // BuildPromptInjection formats retrieved memories into a system prompt supplement.
@@ -153,6 +255,60 @@ func BuildPromptInjection(memories []model.Memory) string {
 	return sb.String()
 }
 
+// ─── O3: Instant Memory ("记住这个" / "remember this") ───
+
+// instantMemoryPatterns are phrases that trigger immediate memory storage.
+var instantMemoryPatterns = []string{
+	"记住这个", "记住这一点", "请记住", "帮我记住", "记下来",
+	"remember this", "remember that", "keep this in mind", "note this",
+}
+
+// CheckInstantMemory checks if the user message contains an instant memory trigger.
+// If so, it immediately stores the content as a high-importance memory.
+// Returns true if a memory was stored.
+func (c *Cerebrate) CheckInstantMemory(userID, agentID, message string) bool {
+	lower := strings.ToLower(message)
+	triggered := false
+	for _, pat := range instantMemoryPatterns {
+		if strings.Contains(lower, pat) {
+			triggered = true
+			break
+		}
+	}
+	if !triggered {
+		return false
+	}
+
+	// Extract the actual content to remember (remove the trigger phrase)
+	content := message
+	for _, pat := range instantMemoryPatterns {
+		content = strings.ReplaceAll(content, pat, "")
+	}
+	content = strings.TrimSpace(content)
+	content = strings.Trim(content, "，。：:！!、,.")
+	content = strings.TrimSpace(content)
+	if len(content) < 3 {
+		return false
+	}
+
+	// Generate a key from content (first 30 chars, snake_case-ish)
+	key := fmt.Sprintf("instant_%d", time.Now().UnixMilli()%100000)
+
+	mem := model.Memory{
+		UserID:     userID,
+		AgentID:    agentID,
+		Key:        key,
+		Content:    content,
+		Category:   model.MemCatFact,
+		Source:     "instant",
+		Scope:      model.MemScopeGlobal,
+		Importance: 0.9,
+	}
+	c.db.Create(&mem)
+	log.Printf("[cerebrate] instant memory stored: %s", truncate(content, 60))
+	return true
+}
+
 // ─── Memory Extraction (after conversation) ───
 
 // extractionPrompt is the LLM prompt for extracting memories from conversation.
@@ -188,8 +344,8 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 		return
 	}
 
-	// Get a model provider for extraction (use the first available)
-	p := c.getExtractionProvider(userID)
+	// Get a model provider for extraction (prefer lightweight models — O1)
+	p, extractModel := c.getExtractionProvider(userID)
 	if p == nil {
 		log.Printf("[cerebrate] skipping memory extraction: no provider available (user=%s)", userID)
 		return
@@ -206,14 +362,30 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 		{Role: "user", Content: "对话内容：\n\n" + convText},
 	}
 
-	result, err := p.ChatSync(ctx, &provider.ChatRequest{
-		Model:       "", // use provider default
-		Messages:    extractMessages,
-		Temperature: 0.1,
-		MaxTokens:   1000,
-	})
+	// O2: Retry extraction up to 2 times with 30s delay on failure
+	var result *provider.ChatChunk
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err = p.ChatSync(ctx, &provider.ChatRequest{
+			Model:       extractModel, // O1: use lightweight model when available
+			Messages:    extractMessages,
+			Temperature: 0.1,
+			MaxTokens:   1000,
+		})
+		if err == nil {
+			break
+		}
+		log.Printf("[cerebrate] extraction LLM call failed (attempt %d/3): %v", attempt+1, err)
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+			}
+		}
+	}
 	if err != nil {
-		log.Printf("[cerebrate] extraction LLM call failed: %v", err)
+		log.Printf("[cerebrate] extraction LLM call failed after 3 attempts: %v", err)
 		return
 	}
 
@@ -282,6 +454,10 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 				updates["conversation_id"] = convID
 			}
 			c.db.Model(&existing).Updates(updates)
+			// P4: re-embed on content change
+			existing.Content = e.Content
+			existing.Key = e.Key
+			go c.embedMemory(&existing)
 			log.Printf("[cerebrate] updated memory: %s = %s", e.Key, truncate(e.Content, 60))
 		} else {
 			// Create new memory
@@ -297,6 +473,8 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 				Importance:     e.Importance,
 			}
 			c.db.Create(&mem)
+			// P4: embed new memory
+			go c.embedMemory(&mem)
 			log.Printf("[cerebrate] new memory: [%s/%s] %s = %s", e.Category, scope, e.Key, truncate(e.Content, 60))
 		}
 		stored++
@@ -304,6 +482,13 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 
 	if stored > 0 {
 		log.Printf("[cerebrate] extracted %d memories from conversation (user=%s)", stored, userID)
+		// O4: Push toast notification via WebSocket
+		if c.notifyFunc != nil {
+			c.notifyFunc(userID, "memory_extracted", map[string]interface{}{
+				"count":   stored,
+				"message": fmt.Sprintf("🧠 已从对话中提取 %d 条新记忆", stored),
+			})
+		}
 	}
 }
 
@@ -330,7 +515,7 @@ func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conver
 		return
 	}
 
-	p := c.getExtractionProvider(userID)
+	p, summaryModel := c.getExtractionProvider(userID)
 	if p == nil {
 		return
 	}
@@ -341,7 +526,7 @@ func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conver
 	}
 
 	result, err := p.ChatSync(ctx, &provider.ChatRequest{
-		Model: "",
+		Model: summaryModel, // O1: use lightweight model for summary generation
 		Messages: []provider.ChatMessage{
 			{Role: "system", Content: summaryPrompt},
 			{Role: "user", Content: convText},
@@ -391,31 +576,56 @@ func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conver
 
 // ─── Helpers ───
 
-func (c *Cerebrate) getExtractionProvider(userID string) provider.ModelProvider {
+func (c *Cerebrate) getExtractionProvider(userID string) (provider.ModelProvider, string) {
 	var cfg model.ModelConfig
+	// O1: Prefer lightweight models for extraction to save compute.
+	// Priority: star-ai → ollama (local, free) → cheapest user model → platform model.
+	// Returns (provider, modelOverride) — modelOverride selects a cheap model when available.
+
 	// 1. Prefer star-ai (no API key needed, always works in swarm mode)
 	if err := c.db.Where("user_id = ? AND provider = ? AND is_enabled = ?",
 		userID, "star-ai", true).First(&cfg).Error; err == nil {
-		return provider.CreateFromConfig(c.providerRegistry, cfg)
+		return provider.CreateFromConfig(c.providerRegistry, cfg), ""
 	}
-	// 2. User model with API key configured
+	// 2. Prefer local ollama (free, no API cost)
+	if err := c.db.Where("user_id = ? AND provider = ? AND is_enabled = ?",
+		userID, "ollama", true).First(&cfg).Error; err == nil {
+		log.Printf("[cerebrate] using ollama (free) for extraction, user %s", userID)
+		return provider.CreateFromConfig(c.providerRegistry, cfg), ""
+	}
+	// 3. User model with API key configured (use lightweight model override)
 	if err := c.db.Where("user_id = ? AND is_enabled = ? AND api_key != ''",
 		userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
-		return provider.CreateFromConfig(c.providerRegistry, cfg)
+		return provider.CreateFromConfig(c.providerRegistry, cfg), extractionModelOverride(cfg.Provider)
 	}
-	// 3. Any user model (e.g. ollama, no key needed)
+	// 4. Any user model (e.g. lm-studio, no key needed)
 	if err := c.db.Where("user_id = ? AND is_enabled = ?", userID, true).
 		Order("created_at ASC").First(&cfg).Error; err == nil {
-		return provider.CreateFromConfig(c.providerRegistry, cfg)
+		return provider.CreateFromConfig(c.providerRegistry, cfg), ""
 	}
-	// 4. Platform model
+	// 5. Platform model
 	if err := c.db.Where("is_platform = ? AND is_enabled = ?", true, true).
 		Order("created_at ASC").First(&cfg).Error; err == nil {
 		log.Printf("[cerebrate] using platform model (%s) for user %s", cfg.Provider, userID)
-		return provider.CreateFromConfig(c.providerRegistry, cfg)
+		return provider.CreateFromConfig(c.providerRegistry, cfg), extractionModelOverride(cfg.Provider)
 	}
 	log.Printf("[cerebrate] no extraction provider found for user %s", userID)
-	return nil
+	return nil, ""
+}
+
+// extractionModelOverride returns a lighter model name for extraction tasks.
+// Falls back to empty string (provider default) if no lightweight option is available.
+func extractionModelOverride(providerName string) string {
+	switch providerName {
+	case "openai":
+		return "gpt-4o-mini"
+	case "openrouter":
+		return "openai/gpt-4o-mini"
+	case "anthropic":
+		return "claude-3-haiku-20240307"
+	default:
+		return "" // use provider default
+	}
 }
 
 func buildConversationText(messages []provider.ChatMessage, maxChars int) string {

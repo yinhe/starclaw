@@ -52,6 +52,7 @@ export const marketplaceAPI = {
     const sp = new URLSearchParams();
     if (params?.type) sp.set('type', params.type);
     if (params?.q) sp.set('q', params.q);
+    sp.set('size', '500');
     return request<{ items: MarketplaceItem[]; total: number }>(`/marketplace/items?${sp}`);
   },
   get: (id: string) => request<{ item: MarketplaceItem }>(`/marketplace/items/${id}`),
@@ -488,6 +489,136 @@ export const investorAPI = {
   dailyEarnings: () =>
     request<{ investor: any; share_ratio: number; share_percent: string; today_earning: number; last_30d_total: number; daily_earnings: DailyEarning[] }>('/investor/earnings'),
   equity: () => request<{ grants: EquityGrant[] }>('/partner/equity'),
+};
+
+// ─── Cloud / Hive ───
+
+export interface HivePlan {
+  id: string;
+  display_name: string;
+  deploy_mode: string;
+  price_monthly: number;
+  cpu: number;
+  memory_mb: number;
+  storage_gb: number;
+  bandwidth_mb: number;
+  max_teams: number;
+  expire_days: number;
+  is_active: boolean;
+}
+
+export interface ClawInstance {
+  id: string;
+  slug: string;
+  display_name: string;
+  owner_id: string;
+  deploy_mode: string;
+  status: string;
+  port: number;
+  public_ip: string;
+  cpu_limit: number;
+  memory_limit: number;
+  storage_max: number;
+  expires_at: string | null;
+  last_active_at: string | null;
+  created_at: string;
+}
+
+export const cloudAPI = {
+  plans: () => request<{ plans: HivePlan[] }>('/cloud/plans'),
+  balance: (clawId: string) => request<{ claw_id: string; balance: number }>(`/cloud/balance?claw_id=${clawId}`),
+  create: (body: { slug: string; display_name?: string; plan_id?: string; claw_id?: string }) =>
+    request<{ id: string; slug: string; url: string; status: string; plan: string; message: string }>('/cloud/claws', { method: 'POST', body: JSON.stringify(body) }),
+  list: () => request<{ instances: ClawInstance[] }>('/cloud/claws'),
+  get: (slug: string) => request<{ instance: ClawInstance }>(`/cloud/claws/${slug}`),
+  stop: (slug: string) => request<{ message: string }>(`/cloud/claws/${slug}/stop`, { method: 'POST' }),
+  start: (slug: string) => request<{ message: string }>(`/cloud/claws/${slug}/start`, { method: 'POST' }),
+  restart: (slug: string) => request<{ message: string }>(`/cloud/claws/${slug}/restart`, { method: 'POST' }),
+  destroy: (slug: string) => request<{ message: string }>(`/cloud/claws/${slug}`, { method: 'DELETE' }),
+};
+
+// ─── Growth (Pet System) ───
+
+export interface Fighter {
+  id: string;
+  claw_id: string;
+  name: string;
+  level: number;
+  xp: number;
+  elo: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  hp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  evolution_path: string;
+  created_at: string;
+}
+
+export interface BattleRecord {
+  id: string;
+  challenger_id: string;
+  challenger_name: string;
+  opponent_id: string;
+  opponent_name: string;
+  winner_id: string;
+  challenger_hp_left: number;
+  opponent_hp_left: number;
+  rounds: number;
+  xp_gained: number;
+  created_at: string;
+}
+
+export interface Season {
+  id: string;
+  name: string;
+  environment: string;
+  active: boolean;
+  start_at: string;
+  end_at: string;
+}
+
+export interface ShopItem {
+  id: string;
+  name: string;
+  slot: string;
+  rarity: string;
+  price: number;
+  attack_bonus: number;
+  defense_bonus: number;
+  speed_bonus: number;
+  hp_bonus: number;
+}
+
+export interface Mutation {
+  id: string;
+  claw_id: string;
+  name: string;
+  rarity: string;
+  effect: string;
+  attack_mod: number;
+  defense_mod: number;
+  speed_mod: number;
+  hp_mod: number;
+  created_at: string;
+}
+
+export const growthAPI = {
+  fighter: () => request<{ fighter: Fighter }>('/arena/pk/fighter/me'),
+  leaderboard: () => request<{ fighters: Fighter[] }>('/arena/pk/leaderboard'),
+  history: (clawId: string) => request<{ battles: BattleRecord[] }>(`/arena/pk/history/${clawId}`),
+  challenge: (challengerId: string, opponentId: string) =>
+    request<{ battle: BattleRecord }>('/arena/pk/challenge', {
+      method: 'POST',
+      body: JSON.stringify({ challenger_claw_id: challengerId, opponent_claw_id: opponentId }),
+    }),
+  season: () => request<{ season: Season }>('/arena/pk/season'),
+  shop: () => request<{ items: ShopItem[] }>('/arena/pk/shop'),
+  inventory: (clawId: string) => request<{ items: ShopItem[] }>(`/arena/pk/inventory/${clawId}`),
+  mutations: (clawId: string) => request<{ mutations: Mutation[] }>(`/arena/pk/mutations/${clawId}`),
+  stardust: (clawId: string) => request<{ balance: number; transactions: any[] }>(`/arena/pk/stardust/${clawId}`),
 };
 
 export const billingAPI = {

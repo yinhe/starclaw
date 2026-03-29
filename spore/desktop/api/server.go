@@ -57,6 +57,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/update/check", s.corsWrap(s.handleUpdateCheck))
 	s.mux.HandleFunc("/api/logs/", s.handleLogStream) // SSE, no CORS wrap needed
 
+	s.mux.HandleFunc("/api/queen/bind", s.corsWrap(s.handleQueenBind))
+	s.mux.HandleFunc("/api/queen/status", s.corsWrap(s.handleQueenStatus))
+
 	// Serve embedded frontend (SPA)
 	if s.webFS != nil {
 		fileServer := http.FileServer(http.FS(s.webFS))
@@ -524,4 +527,165 @@ func tailFile(path string, n int) ([]string, error) {
 func (s *Server) ListenAndServe(addr string) error {
 	log.Printf("[spore-desktop] Starting on %s", addr)
 	return http.ListenAndServe(addr, s)
+}
+
+// ── Queen Account Binding ──
+
+func queenConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".spore", "queen.json")
+}
+
+type QueenConfig struct {
+	QueenURL string `json:"queen_url"`
+	Token    string `json:"token"`
+	UserID   string `json:"user_id"`
+	Nickname string `json:"nickname"`
+	NodeID   string `json:"node_id"`
+	BoundAt  string `json:"bound_at"`
+}
+
+func loadQueenConfig() *QueenConfig {
+	data, err := os.ReadFile(queenConfigPath())
+	if err != nil {
+		return nil
+	}
+	var cfg QueenConfig
+	if json.Unmarshal(data, &cfg) != nil {
+		return nil
+	}
+	return &cfg
+}
+
+func saveQueenConfig(cfg *QueenConfig) error {
+	dir := filepath.Dir(queenConfigPath())
+	os.MkdirAll(dir, 0755)
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	return os.WriteFile(queenConfigPath(), data, 0600)
+}
+
+func (s *Server) handleQueenStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		jsonErr(w, 405, "method not allowed")
+		return
+	}
+	cfg := loadQueenConfig()
+	if cfg == nil {
+		jsonResp(w, map[string]interface{}{"bound": false})
+		return
+	}
+	jsonResp(w, map[string]interface{}{
+		"bound":     true,
+		"queen_url": cfg.QueenURL,
+		"user_id":   cfg.UserID,
+		"nickname":  cfg.Nickname,
+		"node_id":   cfg.NodeID,
+		"bound_at":  cfg.BoundAt,
+	})
+}
+
+func (s *Server) handleQueenBind(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "DELETE" {
+		os.Remove(queenConfigPath())
+		jsonResp(w, map[string]string{"status": "unbound"})
+		return
+	}
+	if r.Method != "POST" {
+		jsonErr(w, 405, "method not allowed")
+		return
+	}
+
+	var body struct {
+		QueenURL string `json:"queen_url"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonErr(w, 400, "invalid JSON")
+		return
+	}
+	if body.QueenURL == "" {
+		body.QueenURL = "https://queen.starclaw.me/api"
+	}
+
+	// Step 1: Login to Queen
+	loginPayload, _ := json.Marshal(map[string]string{"email": body.Email, "password": body.Password})
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Post(body.QueenURL+"/v1/auth/login", "application/json", strings.NewReader(string(loginPayload)))
+	if err != nil {
+		jsonErr(w, 502, "cannot reach Queen: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	var loginResult struct {
+		Token string `json:"token"`
+		User  struct {
+			ID       string `json:"id"`
+			Nickname string `json:"nickname"`
+		} `json:"user"`
+		Error string `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&loginResult)
+	if resp.StatusCode != 200 || loginResult.Token == "" {
+		msg := loginResult.Error
+		if msg == "" {
+			msg = "login failed"
+		}
+		jsonErr(w, resp.StatusCode, msg)
+		return
+	}
+
+	// Step 2: Get node ID from running Claw instance
+	nodeID := ""
+	instances, _ := s.mgr.List()
+	for _, inst := range instances {
+		if inst.Status == "running" {
+			for _, p := range inst.Manifest.Network.Ports {
+				healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", p.Port)
+				if hResp, err := client.Get(healthURL); err == nil {
+					var hResult map[string]interface{}
+					json.NewDecoder(hResp.Body).Decode(&hResult)
+					hResp.Body.Close()
+					if id, ok := hResult["node_id"].(string); ok && id != "" {
+						nodeID = id
+						break
+					}
+				}
+			}
+			if nodeID != "" {
+				break
+			}
+		}
+	}
+
+	// Step 3: Bind node to Queen account
+	if nodeID != "" {
+		bindPayload, _ := json.Marshal(map[string]string{"node_id": nodeID})
+		req, _ := http.NewRequest("POST", body.QueenURL+"/v1/user/nodes", strings.NewReader(string(bindPayload)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+loginResult.Token)
+		client.Do(req) // best-effort, may already be bound
+	}
+
+	// Step 4: Save config
+	cfg := &QueenConfig{
+		QueenURL: body.QueenURL,
+		Token:    loginResult.Token,
+		UserID:   loginResult.User.ID,
+		Nickname: loginResult.User.Nickname,
+		NodeID:   nodeID,
+		BoundAt:  time.Now().Format(time.RFC3339),
+	}
+	if err := saveQueenConfig(cfg); err != nil {
+		jsonErr(w, 500, "save config failed: "+err.Error())
+		return
+	}
+
+	jsonResp(w, map[string]interface{}{
+		"status":   "bound",
+		"user_id":  cfg.UserID,
+		"nickname": cfg.Nickname,
+		"node_id":  cfg.NodeID,
+	})
 }

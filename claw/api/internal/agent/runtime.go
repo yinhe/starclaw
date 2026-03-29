@@ -203,9 +203,10 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 		log.Printf("[Agent] Tool result: %s (%.100s...)", result.Tool.Function.Name, toolResult)
 
 		// Add tool result message
+		llmResult := stripLargeData(toolResult)
 		messages = append(messages, provider.ChatMessage{
 			Role:       "tool",
-			Content:    toolResult,
+			Content:    llmResult,
 			ToolCallID: result.Tool.ID,
 		})
 	}
@@ -315,8 +316,16 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 					return
 				}
 
+				streamedAny := false
 				for chunk := range streamCh {
 					if chunk.Done {
+						// If streaming produced no content but sync had content, use sync result as fallback
+						// This handles the case where the model returns tool calls in the streaming re-call
+						// (due to non-determinism) even though sync determined no more tool calls
+						if !streamedAny && result.Content != "" {
+							log.Printf("[Agent/Stream] Streaming produced no content, falling back to sync result (%d chars)", len(result.Content))
+							ch <- &StreamChunk{Content: result.Content}
+						}
 						ch <- &StreamChunk{Done: true, Usage: &totalUsage}
 						return
 					}
@@ -326,10 +335,17 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 					}
 					if sc.Content != "" || sc.Reasoning != "" || sc.Meta != nil {
 						ch <- sc
+						if sc.Content != "" || sc.Reasoning != "" {
+							streamedAny = true
+						}
 					}
 				}
 				// Stream closed without explicit Done — ensure Done is sent
 				// (required for cerebrate memory extraction in chat handler)
+				if !streamedAny && result.Content != "" {
+					log.Printf("[Agent/Stream] Stream closed without content, falling back to sync result (%d chars)", len(result.Content))
+					ch <- &StreamChunk{Content: result.Content}
+				}
 				ch <- &StreamChunk{Done: true, Usage: &totalUsage}
 				return
 			}
@@ -466,13 +482,58 @@ func ensureToolCall(tc *provider.ToolCall) {
 func stripLargeData(result string) string {
 	var parsed map[string]interface{}
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
-		return result
+		return sanitizeLargeString(result)
 	}
-	if _, ok := parsed["screenshot"]; ok {
-		parsed["screenshot"] = "[screenshot captured]"
-	}
+	parsed = sanitizeLargeValue(parsed).(map[string]interface{})
 	out, _ := json.Marshal(parsed)
-	return string(out)
+	return sanitizeLargeString(string(out))
+}
+
+func sanitizeLargeValue(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(x))
+		for k, val := range x {
+			lk := strings.ToLower(k)
+			switch {
+			case lk == "screenshot":
+				out[k] = "[screenshot captured]"
+			case strings.Contains(lk, "image") && isLargeStringValue(val):
+				out[k] = "[image data omitted]"
+			default:
+				out[k] = sanitizeLargeValue(val)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(x))
+		for i, val := range x {
+			out[i] = sanitizeLargeValue(val)
+		}
+		return out
+	case string:
+		return sanitizeLargeString(x)
+	default:
+		return v
+	}
+}
+
+func isLargeStringValue(v interface{}) bool {
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	return len(s) > 400 || strings.Contains(s, "data:image/")
+}
+
+func sanitizeLargeString(s string) string {
+	if strings.Contains(s, "data:image/") {
+		return "[image data omitted]"
+	}
+	if len(s) > 12000 {
+		return s[:12000] + "...[truncated]"
+	}
+	return s
 }
 
 // StreamChunk represents a chunk of the streaming agent response

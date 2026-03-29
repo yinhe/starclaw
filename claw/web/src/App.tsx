@@ -43,6 +43,8 @@ import SecurityPage from './pages/SecurityPage'
 import GoalsPage from './pages/GoalsPage'
 import FineTunePage from './pages/FineTunePage'
 import HiveMindPage from './pages/HiveMindPage'
+import GrowthPage from './pages/GrowthPage'
+import ArenaPage from './pages/ArenaPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -133,6 +135,8 @@ export default function App() {
         <Route path="security" element={<SecurityPage />} />
         <Route path="goals" element={<GoalsPage />} />
         <Route path="finetune" element={<FineTunePage />} />
+        <Route path="growth" element={<GrowthPage />} />
+        <Route path="arena" element={<ArenaPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

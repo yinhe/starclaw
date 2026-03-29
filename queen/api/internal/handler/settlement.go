@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -76,8 +77,6 @@ func (h *SettlementHandler) generateTeamPartnerBill(cp model.TeamPartner, month 
 	var items []model.SettlementLineItem
 	var totalAmount, salaryAmount, directAmount, manageAmount, equityAmount int64
 
-	tier := model.GetCommissionTier(cp.TotalRevenue)
-
 	// A. Base salary
 	if cp.BaseSalary > 0 {
 		salaryAmount = cp.BaseSalary
@@ -88,35 +87,23 @@ func (h *SettlementHandler) generateTeamPartnerBill(cp model.TeamPartner, month 
 		})
 	}
 
-	// B. Direct commissions from CRM deals active/signed this month
-	var deals []model.CRMDeal
-	db.Where("partner_id = ? AND stage IN ? AND updated_at >= ? AND updated_at < ?",
-		cp.ID, []string{"signed", "delivery", "active", "renewal"},
-		month+"-01", nextMonth(month)+"-01",
-	).Find(&deals)
+	// B. Direct commissions from actual consumption (profit-split records)
+	var directCommissions []model.PartnerCommission
+	db.Where("partner_id = ? AND type = ? AND month = ? AND status = ?",
+		cp.ID, "direct", month, "pending",
+	).Find(&directCommissions)
 
-	for _, d := range deals {
-		if d.DealValue <= 0 {
-			continue
+	for _, dc := range directCommissions {
+		directAmount += dc.Amount
+		remark := "直签客户消费分润"
+		if dc.Remark != "" {
+			remark = dc.Remark
 		}
-		isRenewal := d.Stage == "renewal"
-		rate := tier.FirstYearRate
-		sourceType := "direct_new"
-		if isRenewal {
-			rate = tier.RenewalRate
-			sourceType = "direct_renew"
-		}
-		// Override with partner's custom rate if set
-		if cp.DirectCommRate > 0 {
-			rate = cp.DirectCommRate
-		}
-		amt := int64(float64(d.DealValue) * rate)
-		directAmount += amt
 		items = append(items, model.SettlementLineItem{
 			ID: uuid.New().String(), BillID: billID, PartnerID: cp.ID,
-			SourceType: sourceType, SourceID: d.ID, ClientName: d.CompanyName,
-			BaseAmount: d.DealValue, Rate: rate, Amount: amt,
-			Description: fmt.Sprintf("%s - %s佣金 (%.0f%%)", d.CompanyName, map[bool]string{true: "续费", false: "首年"}[isRenewal], rate*100),
+			SourceType: "direct", SourceID: dc.DealID, BaseAmount: dc.BaseAmount,
+			Rate: dc.Rate, Amount: dc.Amount,
+			Description: fmt.Sprintf("%s (%.0f%% × ¥%.2f)", remark, dc.Rate*100, float64(dc.BaseAmount)/100),
 		})
 	}
 
@@ -137,14 +124,11 @@ func (h *SettlementHandler) generateTeamPartnerBill(cp model.TeamPartner, month 
 	}
 
 	// D. Equity profit sharing: net_income × equity_ratio
-	// net_income = total recharge - upstream API cost (approximated) - city commissions - operating cost
 	var equity model.EquityGrant
 	if err := db.Where("partner_id = ? AND status = ?", cp.ID, "active").First(&equity).Error; err == nil {
 		if equity.TotalShares > 0 {
-			// Calculate platform monthly net income
 			netIncome := h.calculateMonthlyNetIncome(month)
 			if netIncome > 0 {
-				// equity_ratio = partner's shares / total platform shares (10,000 base)
 				var totalShares int64
 				db.Model(&model.EquityGrant{}).Where("status = ?", "active").
 					Select("COALESCE(SUM(total_shares), 0)").Scan(&totalShares)
@@ -462,8 +446,9 @@ func (h *SettlementHandler) calculateMonthlyNetIncome(month string) int64 {
 		return 0
 	}
 
-	// Upstream API cost estimate (30% of recharge)
-	upstreamCost := totalRecharge * 30 / 100
+	// Upstream API cost estimate (configurable ratio)
+	profitCfg := LoadProfitConfig()
+	upstreamCost := int64(float64(totalRecharge) * profitCfg.UpstreamCostPct)
 
 	// City partner commissions this month
 	var cityCommissions int64
@@ -483,4 +468,124 @@ func nextMonth(month string) string {
 	t, _ := time.Parse("2006-01", month)
 	t = t.AddDate(0, 1, 0)
 	return t.Format("2006-01")
+}
+
+// ============================================================
+// Profit Split Configuration — globally adjustable from admin
+// ============================================================
+
+// ProfitConfig holds the global profit split ratios (all as float64 percentages, e.g. 0.20 = 20%)
+type ProfitConfig struct {
+	CityCommRate     float64 `json:"city_comm_rate"`     // default city partner commission rate on margin
+	TeamDirectRate   float64 `json:"team_direct_rate"`   // default team partner direct commission rate on margin
+	TeamMgmtRate     float64 `json:"team_mgmt_rate"`     // default team partner management fee rate
+	InvestorPoolRate float64 `json:"investor_pool_rate"` // investor pool share of margin
+	UpstreamCostPct  float64 `json:"upstream_cost_pct"`  // estimated upstream cost % for net income calc
+}
+
+var defaultProfitConfig = ProfitConfig{
+	CityCommRate:     0.20,
+	TeamDirectRate:   0.30,
+	TeamMgmtRate:     0.05,
+	InvestorPoolRate: 0.10,
+	UpstreamCostPct:  0.30,
+}
+
+// configKeys maps JSON field names to DB keys
+var configKeys = map[string]string{
+	"city_comm_rate":     "profit_split.city_comm_rate",
+	"team_direct_rate":   "profit_split.team_direct_rate",
+	"team_mgmt_rate":     "profit_split.team_mgmt_rate",
+	"investor_pool_rate": "profit_split.investor_pool_rate",
+	"upstream_cost_pct":  "profit_split.upstream_cost_pct",
+}
+
+// LoadProfitConfig reads the global profit split config from settlement_configs table.
+// Falls back to defaults for missing keys.
+func LoadProfitConfig() ProfitConfig {
+	cfg := defaultProfitConfig
+	db := database.DB
+
+	var rows []model.SettlementConfig
+	db.Where("key LIKE ?", "profit_split.%").Find(&rows)
+
+	m := make(map[string]string, len(rows))
+	for _, r := range rows {
+		m[r.Key] = r.Value
+	}
+
+	if v, err := strconv.ParseFloat(m["profit_split.city_comm_rate"], 64); err == nil && v > 0 {
+		cfg.CityCommRate = v
+	}
+	if v, err := strconv.ParseFloat(m["profit_split.team_direct_rate"], 64); err == nil && v > 0 {
+		cfg.TeamDirectRate = v
+	}
+	if v, err := strconv.ParseFloat(m["profit_split.team_mgmt_rate"], 64); err == nil && v > 0 {
+		cfg.TeamMgmtRate = v
+	}
+	if v, err := strconv.ParseFloat(m["profit_split.investor_pool_rate"], 64); err == nil && v >= 0 {
+		cfg.InvestorPoolRate = v
+	}
+	if v, err := strconv.ParseFloat(m["profit_split.upstream_cost_pct"], 64); err == nil && v > 0 {
+		cfg.UpstreamCostPct = v
+	}
+
+	return cfg
+}
+
+// GET /v1/admin/settlement/profit-config
+func (h *SettlementHandler) GetProfitConfig(c *gin.Context) {
+	cfg := LoadProfitConfig()
+	c.JSON(http.StatusOK, cfg)
+}
+
+// PUT /v1/admin/settlement/profit-config
+func (h *SettlementHandler) UpdateProfitConfig(c *gin.Context) {
+	var req ProfitConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate ranges (0–100%)
+	for label, val := range map[string]float64{
+		"city_comm_rate":     req.CityCommRate,
+		"team_direct_rate":   req.TeamDirectRate,
+		"team_mgmt_rate":     req.TeamMgmtRate,
+		"investor_pool_rate": req.InvestorPoolRate,
+		"upstream_cost_pct":  req.UpstreamCostPct,
+	} {
+		if val < 0 || val > 1.0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s 必须在 0~1 之间", label)})
+			return
+		}
+	}
+
+	db := database.DB
+	save := func(key string, value float64) {
+		dbKey := configKeys[key]
+		var row model.SettlementConfig
+		if err := db.Where("key = ?", dbKey).First(&row).Error; err != nil {
+			row = model.SettlementConfig{
+				ID:          uuid.New().String(),
+				Key:         dbKey,
+				Value:       fmt.Sprintf("%.4f", value),
+				Description: key,
+			}
+			db.Create(&row)
+		} else {
+			db.Model(&row).Updates(map[string]interface{}{
+				"value":      fmt.Sprintf("%.4f", value),
+				"updated_at": time.Now(),
+			})
+		}
+	}
+
+	save("city_comm_rate", req.CityCommRate)
+	save("team_direct_rate", req.TeamDirectRate)
+	save("team_mgmt_rate", req.TeamMgmtRate)
+	save("investor_pool_rate", req.InvestorPoolRate)
+	save("upstream_cost_pct", req.UpstreamCostPct)
+
+	c.JSON(http.StatusOK, gin.H{"message": "利润分配配置已更新", "config": req})
 }

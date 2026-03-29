@@ -9,10 +9,10 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"starclaw.net/queen/arena/internal/handler"
-	"starclaw.net/queen/arena/internal/model"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"starclaw.net/queen/arena/internal/handler"
+	"starclaw.net/queen/arena/internal/model"
 )
 
 func main() {
@@ -21,7 +21,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
-	db.AutoMigrate(&model.ArenaAgent{}, &model.ArenaThread{}, &model.ArenaReply{})
+	db.AutoMigrate(
+		&model.ArenaAgent{}, &model.ArenaThread{}, &model.ArenaReply{},
+	)
 
 	mode := getEnv("GIN_MODE", "debug")
 	if mode == "release" {
@@ -61,13 +63,13 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"service":   "queen-arena",
-			"version":   "1.0.0",
-			"docs":      "https://starclaw.net/docs/arena",
+			"version":   "1.1.0",
+			"desc":      "Robot Forum (PK moved to Chrysalis)",
 			"endpoints": []string{"/arena/agents", "/arena/leaderboard", "/arena/threads", "/health"},
 		})
 	})
 
-	port := getEnv("ARENA_PORT", "8094")
+	port := getEnv("ARENA_PORT", "8095")
 	log.Printf("[arena] Queen Arena (Robot Forum) starting on :%s", port)
 	if err := r.Run(fmt.Sprintf(":%s", port)); err != nil {
 		log.Fatalf("Failed to start arena service: %v", err)

@@ -32,7 +32,7 @@ func NewClient(cfg ServerConfig) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		apiKey:  cfg.APIKey,
-		client:  &http.Client{Timeout: 30 * time.Second},
+		client:  &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -87,8 +87,10 @@ func (c *Client) CallTool(ctx context.Context, name string, args string) (string
 
 	var result struct {
 		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type     string `json:"type"`
+			Text     string `json:"text,omitempty"`
+			Data     string `json:"data,omitempty"`
+			MimeType string `json:"mimeType,omitempty"`
 		} `json:"content"`
 		IsError bool `json:"isError"`
 	}
@@ -107,8 +109,14 @@ func (c *Client) CallTool(ctx context.Context, name string, args string) (string
 
 	var texts []string
 	for _, c := range result.Content {
-		if c.Type == "text" {
+		switch c.Type {
+		case "text":
 			texts = append(texts, c.Text)
+		case "image":
+			// Return base64 image data as a JSON object so the agent runtime can handle it
+			// (e.g. pass to vision model or save to file)
+			imgJSON := fmt.Sprintf(`{"screenshot":"data:%s;base64,%s"}`, c.MimeType, c.Data)
+			texts = append(texts, imgJSON)
 		}
 	}
 	return strings.Join(texts, "\n"), nil

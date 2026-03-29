@@ -141,6 +141,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewSlackTool(db))
 	toolRegistry.Register(tool.NewDiscordTool(db))
 	toolRegistry.Register(tool.NewTelegramTool(db))
+	toolRegistry.Register(tool.NewWeChatCSTool(db))
 	toolRegistry.Register(tool.NewDesktopTool())
 
 	// Generate thumbnails for existing videos on startup
@@ -195,7 +196,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	}
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &billing.ToolUsageRecord{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &model.WeChatWatch{}, &billing.ToolUsageRecord{}, &model.NodeGrowth{}, &model.Milestone{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
@@ -210,6 +211,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
 	taskWorker.Start()
+	wechatWatcher := worker.NewWeChatWatcher(db)
+	wechatWatcher.Start()
 
 	// Start Instinct engine (proactive behavior system)
 	instinctEngine := instinct.NewEngine(db)
@@ -1086,6 +1089,21 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
+
+			// Node Growth System (one pet per Claw node)
+			growthHandler := v1.NewGrowthHandler(db, providerRegistry, identity)
+			protected.GET("/growth", growthHandler.GetGrowth)
+			protected.GET("/growth/milestones", growthHandler.GetMilestones)
+			protected.GET("/growth/milestones/new", growthHandler.GetNewMilestones)
+			protected.GET("/growth/daily-report", growthHandler.GetDailyReport)
+			protected.GET("/growth/curve", growthHandler.GetGrowthCurve)
+			protected.GET("/assets/overview", growthHandler.GetAssets)
+
+			// Arena PK (proxy to Queen → Arena service)
+			if cfg.Swarm.QueenURL != "" {
+				log.Printf("[router] arena PK proxy → %s", cfg.Swarm.QueenURL)
+				protected.Any("/arena/*path", arenaProxy(cfg.Swarm.QueenURL))
+			}
 
 			// Auth request management (protected — user approves/rejects on their Claw UI)
 			protected.GET("/identity/auth-requests", authReqHandler.List)
@@ -1992,6 +2010,29 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	web.RegisterRoutes(r)
 
 	return r
+}
+
+// arenaProxy returns a Gin handler that reverse-proxies /v1/arena/* to Queen API's /v1/arena/* endpoint.
+// Path mapping: /v1/arena/pk/leaderboard → queen /v1/arena/pk/leaderboard
+func arenaProxy(queenURL string) gin.HandlerFunc {
+	target, err := url.Parse(queenURL)
+	if err != nil {
+		log.Printf("[arena-proxy] invalid queen URL %q: %v", queenURL, err)
+		return func(c *gin.Context) {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "arena proxy misconfigured"})
+		}
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(`{"error":"arena service unreachable"}`))
+	}
+	return func(c *gin.Context) {
+		subPath := c.Param("path")
+		c.Request.URL.Path = "/v1/arena" + subPath
+		c.Request.Host = target.Host
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
 }
 
 // forgeProxy returns a Gin handler that reverse-proxies /v1/forge/* to the standalone forge-api.

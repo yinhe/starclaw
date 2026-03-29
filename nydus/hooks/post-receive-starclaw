@@ -64,7 +64,7 @@ publish_pheromone_deploy_result() {
 # ========== Polyrepo Sync (monorepo subdir → individual bare repos) ==========
 # Each push to master auto-syncs changed subdirectories to their polyrepo on Nydus
 # claw uses sync_claw_to_oss (main branch + OSS files preserved + GitHub push)
-POLYREPO_SERVICES="queen hive synapse overlord pheromone forge nydus carapace cerebrate larva spore"
+POLYREPO_SERVICES="queen hive synapse overlord pheromone forge nydus carapace cerebrate larva spore chrysalis"
 
 # Sync monorepo claw/ → claw.git (OSS repo, main branch)
 # Preserves OSS-only files (LICENSE, .github/, CONTRIBUTING, docker-compose, etc.)
@@ -469,6 +469,33 @@ while read oldrev newrev refname; do
         fi
       ) </dev/null >> "$LOG" 2>&1 &
     fi
+  fi
+
+  # --- Chrysalis (Server C — local, pet evolution & PK) ---
+  if echo "$CHANGED" | grep -q "^chrysalis/"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [deploy] Chrysalis changed — rebuilding on server C..." | cat >> "$LOG"
+    publish_pheromone_deploy "chrysalis" "$branch" "$newrev"
+    (
+      _start=$SECONDS
+      mkdir -p /opt/chrysalis
+      cd /opt/chrysalis
+      git --git-dir="$REPO" archive HEAD:chrysalis | tar xf - 2>/dev/null || true
+      docker build -t chrysalis:latest .
+      # Stop old container and start new one on queen network
+      docker rm -f starclaw-chrysalis >/dev/null 2>&1 || true
+      docker run -d --name starclaw-chrysalis \
+        --network starclaw-queen \
+        --restart unless-stopped \
+        -e "CHRYSALIS_DSN=root:starclaw@tcp(starclaw-queen-mysql:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local" \
+        -e "CHRYSALIS_PORT=8094" \
+        -e "QUEEN_INTERNAL_URL=http://starclaw-queen-api:8085" \
+        -e "GIN_MODE=release" \
+        -p 8094:8094 \
+        chrysalis:latest
+      echo "  -> chrysalis rebuilt (Server C :8094)" | cat >> "$LOG"
+      publish_pheromone_deploy_result "chrysalis" "completed" "$((SECONDS - _start))s" ""
+      report_deploy_result "starclaw" "$branch" "${newrev:0:7}" "chrysalis-server-c" "success" "deployed in $((SECONDS - _start))s"
+    ) </dev/null >> "$LOG" 2>&1 &
   fi
 
   # --- Drone (Server C — local) ---

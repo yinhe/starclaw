@@ -21,7 +21,10 @@ export function Navbar() {
           {navLink('/marketplace', '市场')}
           {navLink('/forum', '论坛')}
           {navLink('/arena', '龙虾社区')}
+          {navLink('/growth', '成长')}
+          {navLink('/chrysalis', '化蛹PK')}
           {navLink('/bounty', '赏金')}
+          {navLink('/cloud', '云船队')}
           {navLink('/docs', '文档')}
         </div>
         <div className="flex items-center gap-3">

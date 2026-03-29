@@ -1,10 +1,20 @@
 package worker
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	"image/jpeg"
+	_ "image/png"
 	"log"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +25,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+const maxTaskImageDataURLLength = 90000
+const maxTaskImageRawBytes = 65000
 
 // TaskWorker is the 24/7 background processor that picks up tasks and runs them via Agent Runtime
 type TaskWorker struct {
@@ -198,6 +211,7 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 
 	// Inject user_id and conversation_id so sub-tools work correctly
 	ctx = context.WithValue(ctx, tool.CtxKeyUserID, task.UserID)
+	ctx = context.WithValue(ctx, tool.CtxKeyTaskExecution, true)
 	if task.ConversationID != "" {
 		ctx = context.WithValue(ctx, tool.CtxKeyConversationID, task.ConversationID)
 	}
@@ -258,15 +272,61 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 %s`, task.ID, task.Title, task.ParentTaskID, tool.DataDirSummary())
 
 	systemPrompt := agent.SystemPrompt + taskContext
+	userMessage := buildTaskUserMessage(task)
+	wechatObservation := ""
+	if shouldPreObserveWeChatTask(task) {
+		if observed, err := w.collectWeChatObservation(ctx, p, modelCfg.Provider, modelCfg.ModelName); err == nil && strings.TrimSpace(observed) != "" {
+			wechatObservation = observed
+			w.db.Model(task).Updates(map[string]interface{}{
+				"progress_note": truncate("微信窗口观测结果: "+observed, 1000),
+				"updated_at":    time.Now(),
+			})
+			userMessage.Content = strings.TrimSpace(userMessage.Content) + "\n\n以下是通过 mcp_host_open_app + mcp_host_screen_capture 并经视觉提取获得的当前微信窗口真实观测结果。你必须仅基于这些观测文本判断是否有待处理客户消息，不得编造不可见内容。若观测结果里没有明确聊天文本，就明确写无法判断。\n\n微信窗口观测结果：\n" + observed
+			userMessage.MultiContent = nil
+		} else if err != nil {
+			w.db.Model(task).Updates(map[string]interface{}{
+				"progress_note": truncate("微信窗口观测失败: "+err.Error(), 1000),
+				"updated_at":    time.Now(),
+			})
+		}
+	}
+	visionSummary := ""
+	if len(userMessage.MultiContent) > 0 {
+		if extracted, err := extractTaskVisionSummary(ctx, p, modelCfg.Provider, modelCfg.ModelName, userMessage); err == nil && strings.TrimSpace(extracted) != "" {
+			visionSummary = extracted
+			w.db.Model(task).Updates(map[string]interface{}{
+				"progress_note": truncate("截图提取结果: "+extracted, 1000),
+				"updated_at":    time.Now(),
+			})
+			userMessage = provider.ChatMessage{
+				Role:    "user",
+				Content: userMessage.Content + "\n\n以下是从截图中提取的结构化结果。你只能依据这些字段行动，不得编造监控ID、模式、系统限制、不可见消息内容或任何截图中看不到的信息。若字段为空、unknown 或无法判断，就明确写无法判断。\n\n截图提取结果：\n" + extracted,
+			}
+			log.Printf("[TaskWorker] Vision extraction completed for task %s", task.ID)
+		} else if err != nil {
+			log.Printf("[TaskWorker] Vision extraction failed for task %s: %v", task.ID, err)
+			w.db.Model(task).Updates(map[string]interface{}{
+				"progress_note": truncate("截图提取失败: "+err.Error(), 1000),
+				"updated_at":    time.Now(),
+			})
+		}
+	}
 
 	messages := []provider.ChatMessage{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: task.Goal},
+		userMessage,
+	}
+	chatModel := modelCfg.ModelName
+	if len(userMessage.MultiContent) > 0 && !isVisionTaskModel(chatModel) {
+		if vm := pickTaskVisionModel(p.Models(), modelCfg.Provider); vm != "" {
+			log.Printf("[TaskWorker] Images detected — switching from %q to vision model %q", chatModel, vm)
+			chatModel = vm
+		}
 	}
 
 	rt := agentpkg.NewRuntime(p, w.toolRegistry)
 	runReq := &agentpkg.RunRequest{
-		Model:       modelCfg.ModelName,
+		Model:       chatModel,
 		Messages:    messages,
 		Tools:       enabledTools,
 		Temperature: modelCfg.Temperature,
@@ -293,9 +353,18 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 	// Success
 	now := time.Now()
 	w.db.Model(task).Updates(map[string]interface{}{
-		"status":       model.TaskStatusCompleted,
-		"result":       result.Content,
-		"progress":     100,
+		"status":   model.TaskStatusCompleted,
+		"result":   result.Content,
+		"progress": 100,
+		"progress_note": func() string {
+			if wechatObservation != "" {
+				return truncate("已完成。微信窗口观测结果已记录。", 1000)
+			}
+			if visionSummary != "" {
+				return truncate("已完成。截图提取结果已记录。", 1000)
+			}
+			return task.ProgressNote
+		}(),
 		"completed_at": &now,
 		"updated_at":   now,
 	})
@@ -310,6 +379,63 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 	})
 
 	log.Printf("[TaskWorker] Task %s completed: %d chars", task.ID, len(result.Content))
+}
+
+func shouldPreObserveWeChatTask(task *model.Task) bool {
+	text := task.Title + "\n" + task.Description + "\n" + task.Goal
+	return strings.Contains(text, "微信") || strings.Contains(text, "mcp_host_screen_inspect") || strings.Contains(text, "mcp_host_screen_capture")
+}
+
+func (w *TaskWorker) collectWeChatObservation(ctx context.Context, p provider.ModelProvider, providerName, currentModel string) (string, error) {
+	if w.toolRegistry == nil {
+		return "", fmt.Errorf("tool registry unavailable")
+	}
+	var sections []string
+	if _, ok := w.toolRegistry.Get("mcp_host_open_app"); ok {
+		openArgs := `{"target":"微信"}`
+		if out, err := w.toolRegistry.Execute(ctx, "mcp_host_open_app", openArgs); err == nil && strings.TrimSpace(out) != "" {
+			sections = append(sections, "open_app:\n"+out)
+		}
+	}
+	if _, ok := w.toolRegistry.Get("mcp_host_screen_capture"); !ok {
+		return "", fmt.Errorf("mcp_host_screen_capture not available")
+	}
+	captureOut, err := w.toolRegistry.Execute(ctx, "mcp_host_screen_capture", `{}`)
+	if err != nil {
+		return "", err
+	}
+	imageURL := extractMCPScreenshotDataURL(captureOut)
+	if imageURL == "" {
+		return "", fmt.Errorf("screen_capture returned no screenshot data")
+	}
+	visionPrompt := "请严格读取这张当前微信窗口截图中可见的聊天内容，只输出结构化可见信息。禁止编造任何截图外的信息；如果看不清或没有聊天文本，就明确写无法判断。"
+	visionMsg := provider.ChatMessage{
+		Role:    "user",
+		Content: visionPrompt,
+		MultiContent: []provider.ContentPart{
+			{Type: "text", Text: visionPrompt},
+			{Type: "image_url", ImageURL: &provider.ImageURL{URL: imageURL, Detail: "auto"}},
+		},
+	}
+	visionOut, err := extractTaskVisionSummary(ctx, p, providerName, currentModel, visionMsg)
+	if err != nil {
+		return "", err
+	}
+	visionOut = strings.TrimSpace(visionOut)
+	if visionOut == "" {
+		return "", fmt.Errorf("vision extraction returned empty result")
+	}
+	sections = append(sections, "vision_extract:\n"+visionOut)
+	return truncate(strings.Join(sections, "\n\n"), 12000), nil
+}
+
+func extractMCPScreenshotDataURL(toolResult string) string {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(toolResult), &parsed); err != nil {
+		return ""
+	}
+	url, _ := parsed["screenshot"].(string)
+	return strings.TrimSpace(url)
 }
 
 // failTask marks a task as failed and notifies the user
@@ -485,4 +611,311 @@ func truncate(s string, maxLen int) string {
 		return s[:maxLen] + "..."
 	}
 	return s
+}
+
+var taskImageURLPattern = regexp.MustCompile(`/v1/images/[^\s"')]+`)
+
+func buildTaskUserMessage(task *model.Task) provider.ChatMessage {
+	content := strings.TrimSpace(task.Goal)
+	if desc := strings.TrimSpace(task.Description); desc != "" {
+		content = desc + "\n\n" + content
+	}
+	msg := provider.ChatMessage{
+		Role:    "user",
+		Content: content,
+	}
+	images := extractTaskImages(task)
+	if len(images) == 0 {
+		return msg
+	}
+	parts := []provider.ContentPart{{Type: "text", Text: content}}
+	for _, img := range images {
+		parts = append(parts, provider.ContentPart{
+			Type:     "image_url",
+			ImageURL: &provider.ImageURL{URL: img, Detail: "auto"},
+		})
+	}
+	msg.MultiContent = parts
+	return msg
+}
+
+func extractTaskImages(task *model.Task) []string {
+	joined := task.Description + "\n" + task.Goal
+	matches := taskImageURLPattern.FindAllString(joined, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, m := range matches {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		if dataURL, err := localImageURLToDataURL(m); err == nil {
+			out = append(out, dataURL)
+			continue
+		}
+		if strings.HasPrefix(m, "http://") || strings.HasPrefix(m, "https://") || strings.HasPrefix(m, "data:image/") {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func localImageURLToDataURL(imageURL string) (string, error) {
+	filename := filepath.Base(strings.TrimSpace(imageURL))
+	if filename == "" || filename == "." {
+		return "", fmt.Errorf("invalid image url: %s", imageURL)
+	}
+	path := filepath.Join(tool.ImagesDir(), filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if len("data:image/jpeg;base64,")+base64.StdEncoding.EncodedLen(len(data)) <= maxTaskImageDataURLLength {
+		ext := strings.ToLower(filepath.Ext(filename))
+		mime := "image/png"
+		switch ext {
+		case ".jpg", ".jpeg":
+			mime = "image/jpeg"
+		case ".gif":
+			mime = "image/gif"
+		}
+		return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	img = cropTaskRelevantRegion(img)
+	scales := []float64{0.5, 0.35, 0.25, 0.18, 0.12, 0.08}
+	qualities := []int{45, 35, 28, 22, 18}
+	for _, scale := range scales {
+		resized := resizeImageNearest(img, scale)
+		for _, quality := range qualities {
+			var buf bytes.Buffer
+			if err := jpeg.Encode(&buf, resized, &jpeg.Options{Quality: quality}); err != nil {
+				return "", err
+			}
+			if buf.Len() <= maxTaskImageRawBytes {
+				encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+				dataURL := "data:image/jpeg;base64," + encoded
+				if len(dataURL) <= maxTaskImageDataURLLength {
+					return dataURL, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("image too large after compression: %s", imageURL)
+}
+
+func cropTaskRelevantRegion(src image.Image) image.Image {
+	b := src.Bounds()
+	w := b.Dx()
+	h := b.Dy()
+	if w < 400 || h < 300 {
+		return src
+	}
+	left := b.Min.X + int(float64(w)*0.38)
+	top := b.Min.Y + int(float64(h)*0.10)
+	right := b.Max.X - int(float64(w)*0.02)
+	bottom := b.Max.Y - int(float64(h)*0.14)
+	if right-left < 200 || bottom-top < 120 {
+		return src
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, right-left, bottom-top))
+	for y := top; y < bottom; y++ {
+		for x := left; x < right; x++ {
+			dst.Set(x-left, y-top, src.At(x, y))
+		}
+	}
+	return dst
+}
+
+func isVisionTaskModel(model string) bool {
+	m := strings.ToLower(model)
+	if strings.Contains(m, "-vl") || strings.Contains(m, "vl-") || strings.Contains(m, "vision") {
+		return true
+	}
+	visionModels := []string{
+		"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+		"chatgpt-4o-latest",
+		"claude-sonnet-4", "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-opus",
+		"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash",
+		"o3", "o3-mini", "o4-mini", "o1", "o1-mini",
+	}
+	for _, vm := range visionModels {
+		if strings.HasPrefix(m, vm) {
+			return true
+		}
+	}
+	return false
+}
+
+func pickTaskVisionModel(available []string, providerName string) string {
+	preferred := map[string][]string{
+		"star-ai":   {"qwen-vl-max", "qwen-vl-plus", "gpt-4o", "gemini-2.0-flash"},
+		"qwen":      {"qwen-vl-max", "qwen-vl-plus", "qwen3-vl-plus", "qwen3-vl-flash"},
+		"openai":    {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo"},
+		"google":    {"gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"},
+		"anthropic": {"claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022"},
+	}
+	if prefs, ok := preferred[providerName]; ok {
+		for _, pref := range prefs {
+			for _, avail := range available {
+				if strings.HasPrefix(strings.ToLower(avail), strings.ToLower(pref)) {
+					return avail
+				}
+			}
+		}
+	}
+	for _, avail := range available {
+		if isVisionTaskModel(avail) {
+			return avail
+		}
+	}
+	return ""
+}
+
+func extractTaskVisionSummary(ctx context.Context, p provider.ModelProvider, providerName, currentModel string, userMessage provider.ChatMessage) (string, error) {
+	visionModel := currentModel
+	if !isVisionTaskModel(visionModel) {
+		if vm := pickTaskVisionModel(p.Models(), providerName); vm != "" {
+			visionModel = vm
+		}
+	}
+	if !isVisionTaskModel(visionModel) {
+		return "", fmt.Errorf("no vision model available for provider %s", providerName)
+	}
+	visionReq := &provider.ChatRequest{
+		Model: visionModel,
+		Messages: []provider.ChatMessage{
+			{
+				Role:    "system",
+				Content: "你是微信群客服截图解析器。你只能根据图片中真正可见的内容提取信息，绝不能编造。请只输出一个 JSON 对象，不要输出 markdown，不要输出额外解释。JSON 结构固定为：{\"conversation_name\":string,\"latest_visible_messages\":[string],\"latest_customer_message\":string,\"has_image\":boolean,\"has_voice\":boolean,\"needs_human_review\":boolean,\"confidence\":\"high|medium|low\",\"notes\":string}。如果看不清或无法判断，字符串字段填 \"unknown\"，数组填 []，布尔填 false。",
+			},
+			userMessage,
+		},
+		Temperature: 0.1,
+		MaxTokens:   800,
+		Stream:      false,
+	}
+	result, err := p.ChatSync(ctx, visionReq)
+	if err != nil {
+		return "", err
+	}
+	return normalizeTaskVisionSummary(result.Content), nil
+}
+
+type taskVisionSummary struct {
+	ConversationName      string   `json:"conversation_name"`
+	LatestVisibleMessage  []string `json:"latest_visible_messages"`
+	LatestCustomerMessage string   `json:"latest_customer_message"`
+	HasImage              bool     `json:"has_image"`
+	HasVoice              bool     `json:"has_voice"`
+	NeedsHumanReview      bool     `json:"needs_human_review"`
+	Confidence            string   `json:"confidence"`
+	Notes                 string   `json:"notes"`
+}
+
+func normalizeTaskVisionSummary(raw string) string {
+	parsed := taskVisionSummary{
+		ConversationName:      "unknown",
+		LatestVisibleMessage:  []string{},
+		LatestCustomerMessage: "unknown",
+		Confidence:            "low",
+		Notes:                 "unknown",
+	}
+	jsonText := extractJSONObject(strings.TrimSpace(raw))
+	if jsonText != "" {
+		_ = json.Unmarshal([]byte(jsonText), &parsed)
+	}
+	if strings.TrimSpace(parsed.ConversationName) == "" {
+		parsed.ConversationName = "unknown"
+	}
+	if len(parsed.LatestVisibleMessage) == 0 {
+		parsed.LatestVisibleMessage = []string{}
+	}
+	if strings.TrimSpace(parsed.LatestCustomerMessage) == "" {
+		parsed.LatestCustomerMessage = "unknown"
+	}
+	if parsed.Confidence != "high" && parsed.Confidence != "medium" && parsed.Confidence != "low" {
+		parsed.Confidence = "low"
+	}
+	if strings.TrimSpace(parsed.Notes) == "" {
+		parsed.Notes = "unknown"
+	}
+	out, _ := json.MarshalIndent(parsed, "", "  ")
+	return string(out)
+}
+
+func extractJSONObject(s string) string {
+	start := strings.IndexByte(s, '{')
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		if c == '{' {
+			depth++
+		}
+		if c == '}' {
+			depth--
+			if depth == 0 {
+				candidate := s[start : i+1]
+				if json.Valid([]byte(candidate)) {
+					return candidate
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func resizeImageNearest(src image.Image, scale float64) image.Image {
+	if scale >= 0.999 {
+		return src
+	}
+	b := src.Bounds()
+	srcW := b.Dx()
+	srcH := b.Dy()
+	if srcW <= 0 || srcH <= 0 {
+		return src
+	}
+	dstW := int(float64(srcW) * scale)
+	dstH := int(float64(srcH) * scale)
+	if dstW < 1 {
+		dstW = 1
+	}
+	if dstH < 1 {
+		dstH = 1
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
+	for y := 0; y < dstH; y++ {
+		srcY := b.Min.Y + (y * srcH / dstH)
+		for x := 0; x < dstW; x++ {
+			srcX := b.Min.X + (x * srcW / dstW)
+			dst.Set(x, y, src.At(srcX, srcY))
+		}
+	}
+	return dst
 }

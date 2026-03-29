@@ -130,6 +130,60 @@ const superAgentSystemPrompt = `你是 StarClaw 全能助手，能够自主完�
 - 静态网站：write_file → 访问 /v1/preview/{workspace_id}/index.html
 - 全栈应用：write_file → run_command → start_app(监听PORT) → /v1/app/{workspace_id}/
 
+## 桌面操控 (MCP Bridge — mcp_host_* 工具)
+当用户要求操作电脑上的应用程序（如微信、钉钉、飞书、浏览器等）时，使用 MCP Bridge 工具：
+
+### 可用工具
+- **mcp_host_open_app**: 打开应用（name 参数传应用名，如 "WeChat"、"DingTalk"）
+- **mcp_host_screen_capture**: 截取屏幕截图（返回 base64 PNG）
+- **mcp_host_active_window**: 获取当前活动窗口信息（标题、位置、大小）
+- **mcp_host_mouse_click**: 在指定坐标点击（x, y 参数）
+- **mcp_host_mouse_move**: 移动鼠标到指定坐标
+- **mcp_host_keyboard_type**: 模拟键盘输入文本（text 参数）
+- **mcp_host_key_combo**: 模拟组合键（keys 参数，如 "ctrl+a"、"Return"）
+- **mcp_host_clipboard_read**: 读取剪贴板
+- **mcp_host_clipboard_write**: 写入剪贴板
+
+### 桌面操控 — 3层架构（必须按优先级选择）
+
+**第1层：UI Automation（精确模式，首选！）** — 通过 desktop 工具的 ui_* 系列操作
+- desktop(action="ui_tree") → 获取前台窗口所有 UI 元素（名称+类型+坐标）
+- desktop(action="ui_click", title="元素名") → 按名称精确点击（如 title="搜索"、title="发送"）
+- desktop(action="ui_type", title="输入框名", text="内容") → 按名称找到输入框并填入文本
+- desktop(action="ui_wait", title="元素名", seconds=10) → 等待元素出现
+- desktop(action="ui_scroll", button="down", seconds=3) → 滚动
+- desktop(action="focus_window", title="微信") → 激活指定窗口
+
+**第2层：视觉模式（当 UI Automation 找不到元素时用）**
+- desktop(action="screenshot") → 截图 → 你能看到图片 → 估算坐标
+- desktop(action="mouse_click", x=坐标, y=坐标) → 点击
+- desktop(action="keyboard_type", text="内容") → 通过剪贴板粘贴输入
+
+**第3层：MCP Bridge（补充工具）**
+- mcp_host_open_app(target="微信") → 打开/激活应用（支持中文名搜索）
+- mcp_host_key_combo(keys="Return") → 按键操作
+- mcp_host_screen_capture() → 全屏截图
+
+### 微信操控（推荐：一键发送）
+**首选方案 — wechat_send（一步完成，不丢焦点）：**
+desktop(action="wechat_send", title="群名或联系人", text="消息内容")
+→ 自动完成：FindWindow激活微信 → 点击搜索框 → 粘贴群名 → UIA找搜索结果并点击 → 粘贴消息 → Enter发送
+
+**备选方案 — 手动分步（仅当 wechat_send 失败时用）：**
+1. desktop(action="focus_window", title="微信") → 激活微信窗口
+2. desktop(action="ui_click", title="搜索") → 点击搜索框
+3. desktop(action="ui_type", title="搜索", text="联系人或群名") → 输入搜索
+4. desktop(action="ui_wait", title="目标名", seconds=3) → 等待搜索结果
+5. desktop(action="ui_click", title="目标名") → 点击搜索结果进入聊天
+6. desktop(action="ui_type", title="输入", text="消息内容") → 输入消息
+7. mcp_host_key_combo(keys="Return") → 按回车发送
+
+⚠️ **关键规则**：
+- **微信发消息首选 wechat_send**，一步完成，避免焦点丢失
+- 分步操作时**优先用 ui_tree + ui_click + ui_type**，按元素名称操作，不猜坐标
+- **不要用 Ctrl+F 搜索微信**（会跳转到搜狗搜索）
+- 不要按 Enter 选搜索结果，必须用 UIA 按名称点击搜索结果
+
 ## 工作原则
 1. 直接执行：自己有工具就直接做
 2. 主动执行：不要反复确认
@@ -148,13 +202,14 @@ func NewAgentHandler(db *gorm.DB) *AgentHandler {
 }
 
 type CreateAgentRequest struct {
-	Name         string `json:"name" binding:"required"`
-	Description  string `json:"description"`
-	SystemPrompt string `json:"system_prompt"`
-	ModelID      string `json:"model_id"`
-	Tools        string `json:"tools"`
-	Config       string `json:"config"`
-	IsPublic     bool   `json:"is_public"`
+	Name            string `json:"name" binding:"required"`
+	Description     string `json:"description"`
+	SystemPrompt    string `json:"system_prompt"`
+	ModelID         string `json:"model_id"`
+	Tools           string `json:"tools"`
+	KnowledgeBaseID string `json:"knowledge_base_id"`
+	Config          string `json:"config"`
+	IsPublic        bool   `json:"is_public"`
 }
 
 func (h *AgentHandler) List(c *gin.Context) {
@@ -189,14 +244,15 @@ func (h *AgentHandler) Create(c *gin.Context) {
 	}
 
 	agent := model.Agent{
-		UserID:       userID,
-		Name:         req.Name,
-		Description:  req.Description,
-		SystemPrompt: req.SystemPrompt,
-		ModelID:      req.ModelID,
-		Tools:        tools,
-		Config:       config,
-		IsPublic:     req.IsPublic,
+		UserID:          userID,
+		Name:            req.Name,
+		Description:     req.Description,
+		SystemPrompt:    req.SystemPrompt,
+		ModelID:         req.ModelID,
+		Tools:           tools,
+		KnowledgeBaseID: req.KnowledgeBaseID,
+		Config:          config,
+		IsPublic:        req.IsPublic,
 	}
 
 	if err := h.db.Create(&agent).Error; err != nil {
@@ -371,13 +427,14 @@ func (h *AgentHandler) Update(c *gin.Context) {
 	}
 
 	h.db.Model(&agent).Updates(model.Agent{
-		Name:         req.Name,
-		Description:  req.Description,
-		SystemPrompt: req.SystemPrompt,
-		ModelID:      req.ModelID,
-		Tools:        req.Tools,
-		Config:       req.Config,
-		IsPublic:     req.IsPublic,
+		Name:            req.Name,
+		Description:     req.Description,
+		SystemPrompt:    req.SystemPrompt,
+		ModelID:         req.ModelID,
+		Tools:           req.Tools,
+		KnowledgeBaseID: req.KnowledgeBaseID,
+		Config:          req.Config,
+		IsPublic:        req.IsPublic,
 	})
 
 	c.JSON(http.StatusOK, agent)
@@ -395,14 +452,15 @@ func (h *AgentHandler) Export(c *gin.Context) {
 	}
 
 	export := gin.H{
-		"name":          agent.Name,
-		"description":   agent.Description,
-		"system_prompt": agent.SystemPrompt,
-		"model_id":      agent.ModelID,
-		"tools":         agent.Tools,
-		"is_public":     agent.IsPublic,
-		"version":       "1.0",
-		"platform":      "starclaw",
+		"name":              agent.Name,
+		"description":       agent.Description,
+		"system_prompt":     agent.SystemPrompt,
+		"model_id":          agent.ModelID,
+		"tools":             agent.Tools,
+		"knowledge_base_id": agent.KnowledgeBaseID,
+		"is_public":         agent.IsPublic,
+		"version":           "1.0",
+		"platform":          "starclaw",
 	}
 
 	c.Header("Content-Disposition", "attachment; filename=agent_"+agent.Name+".json")
@@ -413,12 +471,13 @@ func (h *AgentHandler) Import(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var req struct {
-		Name         string `json:"name" binding:"required"`
-		Description  string `json:"description"`
-		SystemPrompt string `json:"system_prompt"`
-		ModelID      string `json:"model_id"`
-		Tools        string `json:"tools"`
-		IsPublic     bool   `json:"is_public"`
+		Name            string `json:"name" binding:"required"`
+		Description     string `json:"description"`
+		SystemPrompt    string `json:"system_prompt"`
+		ModelID         string `json:"model_id"`
+		Tools           string `json:"tools"`
+		KnowledgeBaseID string `json:"knowledge_base_id"`
+		IsPublic        bool   `json:"is_public"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -426,13 +485,14 @@ func (h *AgentHandler) Import(c *gin.Context) {
 	}
 
 	agent := model.Agent{
-		UserID:       userID,
-		Name:         req.Name + " (导入)",
-		Description:  req.Description,
-		SystemPrompt: req.SystemPrompt,
-		ModelID:      req.ModelID,
-		Tools:        req.Tools,
-		IsPublic:     req.IsPublic,
+		UserID:          userID,
+		Name:            req.Name + " (导入)",
+		Description:     req.Description,
+		SystemPrompt:    req.SystemPrompt,
+		ModelID:         req.ModelID,
+		Tools:           req.Tools,
+		KnowledgeBaseID: req.KnowledgeBaseID,
+		IsPublic:        req.IsPublic,
 	}
 	if err := h.db.Create(&agent).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import agent"})

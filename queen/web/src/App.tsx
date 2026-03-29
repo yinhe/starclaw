@@ -12,6 +12,9 @@ import { BillingPage } from './pages/BillingPage';
 import { DeveloperPage } from './pages/DeveloperPage';
 import { ClawLoginPage } from './pages/ClawLoginPage';
 import { InvestPage } from './pages/InvestPage';
+import { CloudPage } from './pages/CloudPage';
+import { GrowthPage } from './pages/GrowthPage';
+import { ChrysalisPage } from './pages/ChrysalisPage';
 
 const isInvestDomain = window.location.hostname === 'invest.starclaw.net';
 
@@ -33,6 +36,9 @@ export default function App() {
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/developer" element={<DeveloperPage />} />
         <Route path="/invest" element={<InvestPage />} />
+        <Route path="/cloud" element={<CloudPage />} />
+        <Route path="/growth" element={<GrowthPage />} />
+        <Route path="/chrysalis" element={<ChrysalisPage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -92,15 +92,65 @@ services:
     restart: unless-stopped
     environment:
       ARENA_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
-      ARENA_PORT: "8094"
+      ARENA_PORT: "8095"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:8095:8095"
+    depends_on:
+      mysql-queen:
+        condition: service_healthy
+    networks:
+      - starclaw-queen
+
+  chrysalis:
+    build:
+      context: ../chrysalis
+    container_name: starclaw-chrysalis
+    restart: unless-stopped
+    environment:
+      CHRYSALIS_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      CHRYSALIS_PORT: "8094"
+      QUEEN_INTERNAL_URL: "http://queen-api:8085"
+      PHEROMONE_API_URL: "http://starclaw-pheromone-api:8100"
       GIN_MODE: release
     ports:
       - "127.0.0.1:8094:8094"
     depends_on:
       mysql-queen:
         condition: service_healthy
+      queen-api:
+        condition: service_started
     networks:
       - starclaw-queen
+      - starclaw-pheromone
+
+  hive:
+    build:
+      context: ..
+      dockerfile: hive/api/Dockerfile
+    container_name: starclaw-hive
+    restart: unless-stopped
+    environment:
+      HIVE_DSN: "root:${QUEEN_DB_PASSWORD:-starclaw_queen_2026}@tcp(mysql-queen:3306)/starclaw_queen?charset=utf8mb4&parseTime=True&loc=Local"
+      HIVE_PORT: "9090"
+      HIVE_QUEEN_URL: "http://queen-api:8085"
+      HIVE_QUEEN_TOKEN: "${JWT_SECRET:-queen-jwt-secret-change-me}"
+      HIVE_ADMIN_TOKEN: "${HIVE_ADMIN_TOKEN:-hive-admin-secret-change-me}"
+      HIVE_DOMAIN: "${HIVE_DOMAIN:-starclaw.me}"
+      PHEROMONE_NATS_URL: "nats://starclaw-pheromone-nats:4222"
+      GIN_MODE: release
+    ports:
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      mysql-queen:
+        condition: service_healthy
+      queen-api:
+        condition: service_started
+    networks:
+      - starclaw-queen
+      - starclaw-pheromone
 
   queen-api:
     build:
@@ -116,7 +166,10 @@ services:
       SWARM_URL: "http://swarm:8090"
       BOUNTY_URL: "http://bounty:8092"
       FORUM_URL: "http://forum:8093"
-      ARENA_URL: "http://arena:8094"
+      ARENA_URL: "http://arena:8095"
+      CHRYSALIS_URL: "http://chrysalis:8094"
+      HIVE_URL: "http://hive:9090"
+      HIVE_ADMIN_TOKEN: "${HIVE_ADMIN_TOKEN:-hive-admin-secret-change-me}"
       STARAI_URL: "${STARAI_URL:-https://api.star-ai.net}"
       STARAI_TOKEN: "${STARAI_TOKEN:-}"
       STARAI_CALLBACK_BASE: "${STARAI_CALLBACK_BASE:-}"

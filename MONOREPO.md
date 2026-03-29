@@ -18,6 +18,7 @@ starclaw/                          # 私有 monorepo
 ├── forge/      🔥 熔炉              # 研发管控 + 可视化大屏（forge.starclaw.net）
 ├── nydus/      🕳️ 虫道              # 部署管道 + CI/CD
 ├── spore/      🍄 孢子              # 桌面一键安装器
+├── chrysalis/  🦋 化蛹              # 宠物进化 & PK 对战系统
 ├── drone/      🐝 工蜂              # 数据采集 + 虫茧同化（Agent/Skill 市场填充）
 │
 ├── docker-compose.yml             # Claw 本地开发
@@ -70,6 +71,7 @@ starclaw/                          # 私有 monorepo
 | **cerebrate/** | 🧠 脑虫 | 合伙人生态 — 战略合伙人门户 + 城市合伙人门户 | React × 2 前端 | ❌ |
 | **forge/** | 🔥 熔炉 | 研发管控 — 项目/Issue/看板/Sprint + 可视化大屏 | Go + React | ❌ |
 | **nydus/** | 🕳️ 虫道 | 部署管道 — git push → 自动分发到 3 台服务器 | Go + React | ❌ |
+| **chrysalis/** | 🦋 化蛹 | 宠物进化 & PK 对战 — 成长/装备/赛季/打造/变异 | Go | ✅ (核心开源) |
 | **spore/** | 🍄 孢子 | 桌面安装器 — 一键部署 Claw（免 Docker） | Go | ❌ |
 
 ---
@@ -177,8 +179,8 @@ starclaw/                          # 私有 monorepo
 │  ├─ swarm        :8090      └─ nydus-worm  :8096                │
 │  ├─ core         :8091                                           │
 │  ├─ bounty       :8092      👁️ Overlord (3 容器)                │
-│  ├─ forum        :8093      ├─ overlord-api     :8098           │
-│  ├─ arena        :8094      ├─ overlord-console :3095           │
+│  ├─ arena        :8095      ├─ overlord-api     :8098           │
+│  ├─ chrysalis    :8094      ├─ overlord-console :3095           │
 │  ├─ overseer     :8087      └─ overlord-web     :3096           │
 │  └─ proxy        :8000                                           │
 │                             🧠 Cerebrate (2 容器)               │
@@ -364,6 +366,7 @@ Nydus 是虫群的物流系统:
 | 虫群 | Swarm | Queen 内置 | 全网节点注册网络 |
 | 虫巢 | Brood | Overlord 内置 | 企业级节点注册 |
 | 星能 | Star Energy | 跨模块 | 虫群血液 — 内部货币 |
+| 化蛹 | Chrysalis | `chrysalis/` | 蛹壳内蜕变 — 成长/进化/装备/PK |
 | 菌毯 | Creep | 规划中 | 数据同步层 — 覆盖即掌控 |
 
 ---
@@ -392,6 +395,9 @@ cd larva && flutter run
 
 # Nydus
 cd nydus && docker compose up -d
+
+# Chrysalis（宠物进化 & PK）
+cd chrysalis && go run ./cmd/server
 
 # Spore
 cd spore && go run ./cmd/spore

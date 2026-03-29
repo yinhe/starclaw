@@ -73,6 +73,14 @@ func Setup() *gin.Engine {
 	v1.GET("/marketplace/stats", mp.Stats)
 	v1.GET("/marketplace/skills/search", mp.SearchSkills)
 
+	// ---- Arena PK (public proxy to arena service) ----
+	arenaProxy := handler.NewAdminProxyHandler()
+	v1.Any("/arena/pk/*path", arenaProxy.ProxyArenaPK)
+
+	// ---- Cloud / Hive (public: plans; auth: instance management) ----
+	hiveProxy := handler.NewHiveProxyHandler()
+	v1.GET("/cloud/plans", hiveProxy.ListPlans)
+
 	// ---- Billing (init clients) ----
 	billing := handler.NewBillingHandler()
 
@@ -103,6 +111,16 @@ func Setup() *gin.Engine {
 		authed.DELETE("/marketplace/items/:id", writeRL.UserRateLimit(), mp.Delete)
 		authed.GET("/marketplace/my", mp.My)
 		authed.POST("/marketplace/items/:id/submit", writeRL.UserRateLimit(), mp.Submit)
+
+		// Cloud / Hive instance management
+		authed.POST("/cloud/claws", writeRL.UserRateLimit(), hiveProxy.CreateInstance)
+		authed.GET("/cloud/claws", hiveProxy.ListMyInstances)
+		authed.GET("/cloud/claws/:slug", hiveProxy.GetInstance)
+		authed.POST("/cloud/claws/:slug/stop", writeRL.UserRateLimit(), hiveProxy.StopInstance)
+		authed.POST("/cloud/claws/:slug/start", writeRL.UserRateLimit(), hiveProxy.StartInstance)
+		authed.POST("/cloud/claws/:slug/restart", writeRL.UserRateLimit(), hiveProxy.RestartInstance)
+		authed.DELETE("/cloud/claws/:slug", writeRL.UserRateLimit(), hiveProxy.DestroyInstance)
+		authed.GET("/cloud/balance", hiveProxy.CheckBalance)
 
 		// Node binding
 		nb := &handler.NodeBindingHandler{}
@@ -185,6 +203,9 @@ func Setup() *gin.Engine {
 		admin.GET("/arena/stats", proxy.ArenaStats)
 		admin.GET("/arena/threads", proxy.ArenaThreads)
 		admin.GET("/arena/leaderboard", proxy.ArenaLeaderboard)
+		admin.GET("/chrysalis/stats", proxy.ChrysalisStats)
+		admin.GET("/hive/stats", proxy.HiveStats)
+		admin.GET("/hive/instances", proxy.HiveInstances)
 	}
 
 	// ---- Overseer (monitoring dashboard API) ----
@@ -303,6 +324,8 @@ func Setup() *gin.Engine {
 	admin.POST("/settlement/bills/:id/pay", settle.MarkPaid)
 	admin.DELETE("/settlement/bills/:id", settle.DeleteBill)
 	admin.GET("/settlement/stats", settle.SettlementStats)
+	admin.GET("/settlement/profit-config", settle.GetProfitConfig)
+	admin.PUT("/settlement/profit-config", settle.UpdateProfitConfig)
 
 	// ---- Admin Analytics (GMV/MRR/ARR) ----
 	analytics := &handler.AdminAnalyticsHandler{}

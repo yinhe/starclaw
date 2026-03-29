@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Webhook, Code2, Shield, Target, FlaskConical, MessageCircle, Swords } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Webhook, Code2, Shield, Target, FlaskConical, MessageCircle, Swords, Sprout } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -88,6 +88,8 @@ function getNavGroups(t: (key: string) => string): NavGroup[] {
     {
       group: t('nav.group.intelligence'),
       items: [
+        { to: '/growth', icon: Sprout, label: t('nav.growth') || 'Agent 成长' },
+        { to: '/arena', icon: Swords, label: '龙虾竞技场' },
         { to: '/goals', icon: Target, label: t('nav.goals') },
         { to: '/finetune', icon: FlaskConical, label: t('nav.finetune') },
       ],

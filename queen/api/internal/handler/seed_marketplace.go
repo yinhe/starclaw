@@ -193,6 +193,10 @@ func SeedOfficialAgents() {
 		log.Println("[seed-marketplace] created system-official user")
 	}
 
+	// Append industry-specific agents (education, finance, healthcare, legal, marketing, ecommerce, hr, support, translation, writing, coding, assistant)
+	agents = append(agents, industryAgents()...)
+	agents = append(agents, industryAgents2()...)
+
 	for _, a := range agents {
 		var count int64
 		database.DB.Model(&model.MarketplaceItem{}).

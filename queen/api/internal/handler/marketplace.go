@@ -113,8 +113,14 @@ func (h *MarketplaceHandler) AdminBulkImport(c *gin.Context) {
 func (h *MarketplaceHandler) List(c *gin.Context) {
 	typ := c.Query("type")
 	q := c.Query("q")
-	page := 1
-	size := 20
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "200"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 500 {
+		size = 200
+	}
 
 	query := database.DB.Model(&model.MarketplaceItem{}).Where("status IN ?", []string{model.ItemStatusPublished, model.ItemStatusApproved})
 	if typ != "" {

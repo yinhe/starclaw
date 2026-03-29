@@ -9,20 +9,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AdminProxyHandler proxies admin requests to bounty/forum/arena services
+// AdminProxyHandler proxies admin requests to bounty/forum/arena/chrysalis/hive services
 type AdminProxyHandler struct {
-	bountyURL string
-	forumURL  string
-	arenaURL  string
-	httpC     *http.Client
+	bountyURL    string
+	forumURL     string
+	arenaURL     string // forum-only (queen/arena)
+	chrysalisURL string // PK battle system (chrysalis)
+	hiveURL      string // cloud fleet (hive)
+	hiveToken    string // hive admin token
+	httpC        *http.Client
 }
 
 func NewAdminProxyHandler() *AdminProxyHandler {
 	return &AdminProxyHandler{
-		bountyURL: envOr("BOUNTY_URL", "http://localhost:8092"),
-		forumURL:  envOr("FORUM_URL", "http://localhost:8093"),
-		arenaURL:  envOr("ARENA_URL", "http://localhost:8094"),
-		httpC:     &http.Client{Timeout: 10 * time.Second},
+		bountyURL:    envOr("BOUNTY_URL", "http://localhost:8092"),
+		forumURL:     envOr("FORUM_URL", "http://localhost:8093"),
+		arenaURL:     envOr("ARENA_URL", "http://localhost:8095"),
+		chrysalisURL: envOr("CHRYSALIS_URL", "http://localhost:8094"),
+		hiveURL:      envOr("HIVE_URL", "http://localhost:9090"),
+		hiveToken:    envOr("HIVE_ADMIN_TOKEN", ""),
+		httpC:        &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -93,6 +99,76 @@ func (h *AdminProxyHandler) ArenaThreads(c *gin.Context) {
 // GET /admin/arena/leaderboard
 func (h *AdminProxyHandler) ArenaLeaderboard(c *gin.Context) {
 	h.proxy(c, h.arenaURL+"/arena/leaderboard")
+}
+
+// GET /admin/chrysalis/stats
+func (h *AdminProxyHandler) ChrysalisStats(c *gin.Context) {
+	h.proxy(c, h.chrysalisURL+"/chrysalis/stats")
+}
+
+// GET /admin/hive/stats
+func (h *AdminProxyHandler) HiveStats(c *gin.Context) {
+	h.proxyWithToken(c, h.hiveURL+"/hive/admin/stats")
+}
+
+// GET /admin/hive/instances
+func (h *AdminProxyHandler) HiveInstances(c *gin.Context) {
+	h.proxyWithToken(c, h.hiveURL+"/hive/claws")
+}
+
+// ProxyArenaPK is a generic proxy for /arena/pk/* endpoints (any method).
+// Routes to the Chrysalis service (pet evolution & PK battle system).
+func (h *AdminProxyHandler) ProxyArenaPK(c *gin.Context) {
+	subPath := c.Param("path")
+	targetURL := h.chrysalisURL + "/arena/pk" + subPath
+
+	req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to create request"})
+		return
+	}
+	req.Header.Set("Content-Type", c.GetHeader("Content-Type"))
+
+	resp, err := h.httpC.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "chrysalis service unreachable"})
+		return
+	}
+	defer resp.Body.Close()
+
+	var result interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	c.JSON(resp.StatusCode, result)
+}
+
+// ChrysalisURL returns the chrysalis service base URL.
+func (h *AdminProxyHandler) ChrysalisURL() string {
+	return h.chrysalisURL
+}
+
+// ArenaURL returns the arena (forum) service base URL.
+func (h *AdminProxyHandler) ArenaURL() string {
+	return h.arenaURL
+}
+
+func (h *AdminProxyHandler) proxyWithToken(c *gin.Context, url string) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to create request"})
+		return
+	}
+	if h.hiveToken != "" {
+		req.Header.Set("X-Hive-Token", h.hiveToken)
+	}
+	resp, err := h.httpC.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "service unreachable"})
+		return
+	}
+	defer resp.Body.Close()
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	c.JSON(resp.StatusCode, result)
 }
 
 func (h *AdminProxyHandler) proxy(c *gin.Context, url string) {

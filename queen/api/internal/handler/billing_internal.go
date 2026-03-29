@@ -846,11 +846,14 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 	db := database.DB
 	splits := gin.H{}
 
+	// Load global profit config (admin-adjustable)
+	profitCfg := LoadProfitConfig()
+
 	// ── 1. Resolve partner chain: claw_id → user → city partner → team partner ──
 	var binding model.NodeBinding
 	if err := db.Where("node_id = ? AND status = ?", req.ClawID, "active").First(&binding).Error; err != nil {
 		// No binding — no partner chain, still deposit to investor pool
-		investDeposit := int64(math.Round(float64(marginFen) * 0.10))
+		investDeposit := int64(math.Round(float64(marginFen) * profitCfg.InvestorPoolRate))
 		if investDeposit > 0 {
 			depositToInvestorPool(db, investDeposit, marginFen, "token_usage", req.ClawID)
 			splits["investor_pool"] = investDeposit
@@ -863,34 +866,43 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 	// ── 2. City partner commission ──
 	var cityCommAmt int64
 	var cityPartnerID string
+	month := time.Now().Format("2006-01")
 
 	var cityClient model.CityClient
 	if err := db.Where("user_id = ?", userID).First(&cityClient).Error; err == nil {
 		var cityPartner model.CityPartner
 		if err := db.Where("id = ? AND status = ?", cityClient.PartnerID, "approved").First(&cityPartner).Error; err == nil {
 			cityPartnerID = cityPartner.ID
-			cityCommAmt = int64(math.Round(float64(marginFen) * cityPartner.CommRate))
+			cityRate := cityPartner.CommRate
+			if cityRate <= 0 {
+				cityRate = profitCfg.CityCommRate
+			}
+			cityCommAmt = int64(math.Round(float64(marginFen) * cityRate))
 			if cityCommAmt > 0 {
-				month := time.Now().Format("2006-01")
 				db.Create(&model.Commission{
 					ID:         uuid.New().String(),
 					PartnerID:  cityPartner.ID,
 					ClientID:   cityClient.ID,
 					Type:       "usage",
 					Amount:     cityCommAmt,
-					Rate:       cityPartner.CommRate,
+					Rate:       cityRate,
 					BaseAmount: marginFen,
 					Status:     "pending",
 					Month:      month,
 				})
 				db.Model(&cityPartner).UpdateColumn("total_earned", gorm.Expr("total_earned + ?", cityCommAmt))
-				splits["city_partner"] = gin.H{"id": cityPartner.ID, "name": cityPartner.Name, "amount": cityCommAmt, "rate": cityPartner.CommRate}
+				splits["city_partner"] = gin.H{"id": cityPartner.ID, "name": cityPartner.Name, "amount": cityCommAmt, "rate": cityRate}
 			}
 		}
 	}
 
-	// ── 3. Team partner management fee (% of city commission) ──
+	// ── 3. Team partner commission ──
+	// Two paths:
+	//   A) User belongs to City Partner → Team Partner gets management fee (% of city commission)
+	//   B) User signed directly by Team Partner (CRM deal) → Team Partner gets direct commission (% of margin)
+
 	if cityPartnerID != "" && cityCommAmt > 0 {
+		// Path A: management fee from city partner commission
 		var cityPartner model.CityPartner
 		db.Where("id = ?", cityPartnerID).First(&cityPartner)
 
@@ -906,29 +918,71 @@ func (h *BillingHandler) InternalProfitSplit(c *gin.Context) {
 				found = true
 			}
 		}
-		if found && teamPartner.ManageFeeRate > 0 {
-			mgmtFee := int64(math.Round(float64(cityCommAmt) * teamPartner.ManageFeeRate))
+		if found {
+			mgmtRate := teamPartner.ManageFeeRate
+			if mgmtRate <= 0 {
+				mgmtRate = profitCfg.TeamMgmtRate
+			}
+			mgmtFee := int64(math.Round(float64(cityCommAmt) * mgmtRate))
 			if mgmtFee > 0 {
-				month := time.Now().Format("2006-01")
 				db.Create(&model.PartnerCommission{
 					ID:         uuid.New().String(),
 					PartnerID:  teamPartner.ID,
 					CityID:     cityPartnerID,
 					Type:       "manage_fee",
 					Amount:     mgmtFee,
-					Rate:       teamPartner.ManageFeeRate,
+					Rate:       mgmtRate,
 					BaseAmount: cityCommAmt,
 					Status:     "pending",
 					Month:      month,
 				})
 				db.Model(&teamPartner).UpdateColumn("total_commission", gorm.Expr("total_commission + ?", mgmtFee))
-				splits["team_partner"] = gin.H{"id": teamPartner.ID, "name": teamPartner.Name, "amount": mgmtFee, "rate": teamPartner.ManageFeeRate}
+				splits["team_partner"] = gin.H{"id": teamPartner.ID, "name": teamPartner.Name, "amount": mgmtFee, "rate": mgmtRate, "type": "manage_fee"}
+			}
+		}
+	} else {
+		// Path B: user not under city partner — check if signed directly by team partner (CRM deal)
+		var user model.User
+		if err := db.Where("id = ?", userID).First(&user).Error; err == nil {
+			contact := user.Email
+			if contact == "" {
+				contact = user.Phone
+			}
+			if contact != "" {
+				var deal model.CRMDeal
+				if err := db.Where("contact_info LIKE ? AND stage IN ?", "%"+contact+"%",
+					[]string{"signed", "delivery", "active", "renewal"}).
+					First(&deal).Error; err == nil {
+					var teamPartner model.TeamPartner
+					if err := db.Where("id = ? AND status = ?", deal.PartnerID, "active").First(&teamPartner).Error; err == nil {
+						rate := teamPartner.DirectCommRate
+						if rate <= 0 {
+							rate = profitCfg.TeamDirectRate
+						}
+						directAmt := int64(math.Round(float64(marginFen) * rate))
+						if directAmt > 0 {
+							db.Create(&model.PartnerCommission{
+								ID:         uuid.New().String(),
+								PartnerID:  teamPartner.ID,
+								DealID:     deal.ID,
+								Type:       "direct",
+								Amount:     directAmt,
+								Rate:       rate,
+								BaseAmount: marginFen,
+								Status:     "pending",
+								Month:      month,
+							})
+							db.Model(&teamPartner).UpdateColumn("total_commission", gorm.Expr("total_commission + ?", directAmt))
+							splits["team_partner"] = gin.H{"id": teamPartner.ID, "name": teamPartner.Name, "amount": directAmt, "rate": rate, "type": "direct"}
+						}
+					}
+				}
 			}
 		}
 	}
 
-	// ── 4. Investor pool deposit (10% of margin) ──
-	investDeposit := int64(math.Round(float64(marginFen) * 0.10))
+	// ── 4. Investor pool deposit ──
+	investDeposit := int64(math.Round(float64(marginFen) * profitCfg.InvestorPoolRate))
 	if investDeposit > 0 {
 		depositToInvestorPool(db, investDeposit, marginFen, "token_usage", req.ClawID)
 		splits["investor_pool"] = investDeposit
