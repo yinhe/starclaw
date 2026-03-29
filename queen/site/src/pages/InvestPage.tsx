@@ -12,11 +12,11 @@ import {
 } from 'lucide-react'
 
 const ROUNDS = [
-  { label: '孢子期', price: '¥0.50', raised: '¥500万', mult: '1×', status: 'open' },
-  { label: '幼虫期', price: '¥2.50', raised: '¥2,500万', mult: '5×', status: 'upcoming' },
-  { label: '虫兵期', price: '¥12.50', raised: '¥1.25亿', mult: '25×', status: 'upcoming' },
-  { label: '领主期', price: '¥62.50', raised: '¥6.25亿', mult: '125×', status: 'upcoming' },
-  { label: '虫后期', price: '¥312.50', raised: '¥31.25亿', mult: '625×', status: 'upcoming' },
+  { label: '孢子期', price: '¥1.00', raised: '¥1,000万', mult: '1×', status: 'open' },
+  { label: '幼虫期', price: '¥5.00', raised: '¥5,000万', mult: '5×', status: 'upcoming' },
+  { label: '虫兵期', price: '¥25.00', raised: '¥2.5亿', mult: '25×', status: 'upcoming' },
+  { label: '领主期', price: '¥125.00', raised: '¥12.5亿', mult: '125×', status: 'upcoming' },
+  { label: '虫后期', price: '¥625.00', raised: '¥62.5亿', mult: '625×', status: 'upcoming' },
 ]
 
 const HIGHLIGHTS = [
@@ -83,7 +83,7 @@ export function InvestPage() {
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">当前价格</div>
-                <div className="text-2xl font-bold text-white">¥0.50<span className="text-sm text-gray-400">/份</span></div>
+                <div className="text-2xl font-bold text-white">¥1.00<span className="text-sm text-gray-400">/份</span></div>
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">本轮额度</div>
@@ -91,7 +91,7 @@ export function InvestPage() {
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">本轮募资</div>
-                <div className="text-2xl font-bold text-white">¥500万</div>
+                <div className="text-2xl font-bold text-white">¥1,000万</div>
               </div>
             </div>
           </div>
@@ -170,7 +170,7 @@ export function InvestPage() {
                   <td className="py-4 px-4 font-semibold text-gray-400">5轮合计</td>
                   <td className="py-4 px-4" />
                   <td className="py-4 px-4" />
-                  <td className="py-4 px-4 text-right font-bold text-amber-400">¥39.75 亿</td>
+                  <td className="py-4 px-4 text-right font-bold text-amber-400">¥78.1 亿</td>
                   <td className="py-4 px-4" />
                 </tr>
               </tfoot>

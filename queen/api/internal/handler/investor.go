@@ -503,7 +503,7 @@ func (h *InvestorHandler) PublicPoolInfo(c *gin.Context) {
 
 	// Get current round for floor price
 	var round model.FundingRound
-	var floorPrice int64 = 50 // default spore ¥0.50
+	var floorPrice int64 = 100 // default spore ¥1.00
 	if err := database.DB.Where("status = ?", "open").First(&round).Error; err == nil {
 		floorPrice = round.SharePrice
 	}
@@ -976,7 +976,7 @@ func (h *InvestorHandler) MyProfile(c *gin.Context) {
 
 	// Get current round for floor price
 	var round model.FundingRound
-	var floorPrice int64 = 50 // default spore ¥0.50
+	var floorPrice int64 = 100 // default spore ¥1.00
 	if err := database.DB.Where("status = ?", "open").First(&round).Error; err == nil {
 		floorPrice = round.SharePrice
 	}
