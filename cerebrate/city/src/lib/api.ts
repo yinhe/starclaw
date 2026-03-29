@@ -150,6 +150,33 @@ export interface MonthlySummary {
   count: number;
 }
 
+// Option Pool Types
+export interface OptionRoundSummary {
+  round: string; total_amount: number; total_shares: number; comm_rate: number;
+}
+
+export interface OptionInfo {
+  partner_id: string; partner_type: string; partner_name: string;
+  effective_rate: number; option_rate: number;
+  in_transition: boolean; legacy_rate: number;
+  total_invested: number; total_shares: number;
+  rounds: OptionRoundSummary[];
+  current_round: { round: string; invested: number; max: number; remaining: number };
+}
+
+export interface PurchaseResult {
+  message: string; investment_id: string; partner_id: string; partner_type: string;
+  round: string; amount: number; shares: number; price: number; new_comm_rate: number;
+}
+
+export const option = {
+  myOptions: () =>
+    request<OptionInfo>('GET', '/city/option/me'),
+
+  purchase: (amount: number) =>
+    request<PurchaseResult>('POST', '/city/option/purchase', { amount }),
+};
+
 export const city = {
   dashboard: () =>
     request<{

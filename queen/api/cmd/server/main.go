@@ -103,6 +103,12 @@ func main() {
 		// Partner Invites
 		&model.PartnerInvite{},
 		&model.PartnerInviteUse{},
+		// Partner Option Pool
+		&model.PartnerOptionInvestment{},
+		// Identity Recovery
+		&model.PhoneBinding{},
+		&model.CloudBackup{},
+		&model.SMSVerification{},
 	)
 
 	seedAdmin()

@@ -45,6 +45,7 @@ import FineTunePage from './pages/FineTunePage'
 import HiveMindPage from './pages/HiveMindPage'
 import GrowthPage from './pages/GrowthPage'
 import ArenaPage from './pages/ArenaPage'
+import RecoveryPage from './pages/RecoveryPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -137,6 +138,7 @@ export default function App() {
         <Route path="finetune" element={<FineTunePage />} />
         <Route path="growth" element={<GrowthPage />} />
         <Route path="arena" element={<ArenaPage />} />
+        <Route path="recovery" element={<RecoveryPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

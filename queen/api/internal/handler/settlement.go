@@ -446,9 +446,8 @@ func (h *SettlementHandler) calculateMonthlyNetIncome(month string) int64 {
 		return 0
 	}
 
-	// Upstream API cost estimate (configurable ratio)
-	profitCfg := LoadProfitConfig()
-	upstreamCost := int64(float64(totalRecharge) * profitCfg.UpstreamCostPct)
+	// Upstream API cost estimate (fixed 30% ratio for rough estimation)
+	upstreamCost := int64(float64(totalRecharge) * 0.30)
 
 	// City partner commissions this month
 	var cityCommissions int64
@@ -475,29 +474,29 @@ func nextMonth(month string) string {
 // ============================================================
 
 // ProfitConfig holds the global profit split ratios (all as float64 percentages, e.g. 0.20 = 20%)
+// ProfitConfig defines the 3-party profit split: Partner (dynamic) + OptionPool (fixed) + Platform (remainder).
+// Partner commission rate is dynamic (10%~30%/20%) based on option investment — see CalcPartnerCommRate.
+// These fields are the system-wide defaults configurable from the admin panel.
 type ProfitConfig struct {
-	CityCommRate     float64 `json:"city_comm_rate"`     // default city partner commission rate on margin
-	TeamDirectRate   float64 `json:"team_direct_rate"`   // default team partner direct commission rate on margin
-	TeamMgmtRate     float64 `json:"team_mgmt_rate"`     // default team partner management fee rate
-	InvestorPoolRate float64 `json:"investor_pool_rate"` // investor pool share of margin
-	UpstreamCostPct  float64 `json:"upstream_cost_pct"`  // estimated upstream cost % for net income calc
+	BaseCommRate   float64 `json:"base_comm_rate"`   // base commission rate when partner has no investment (default 10%)
+	CityMaxRate    float64 `json:"city_max_rate"`    // city partner max commission rate (default 30%)
+	TeamMaxRate    float64 `json:"team_max_rate"`    // team partner max commission rate (default 20%)
+	OptionPoolRate float64 `json:"option_pool_rate"` // option pool fixed share of margin (default 20%)
 }
 
 var defaultProfitConfig = ProfitConfig{
-	CityCommRate:     0.20,
-	TeamDirectRate:   0.30,
-	TeamMgmtRate:     0.05,
-	InvestorPoolRate: 0.10,
-	UpstreamCostPct:  0.30,
+	BaseCommRate:   0.10,
+	CityMaxRate:    0.30,
+	TeamMaxRate:    0.20,
+	OptionPoolRate: 0.20,
 }
 
 // configKeys maps JSON field names to DB keys
 var configKeys = map[string]string{
-	"city_comm_rate":     "profit_split.city_comm_rate",
-	"team_direct_rate":   "profit_split.team_direct_rate",
-	"team_mgmt_rate":     "profit_split.team_mgmt_rate",
-	"investor_pool_rate": "profit_split.investor_pool_rate",
-	"upstream_cost_pct":  "profit_split.upstream_cost_pct",
+	"base_comm_rate":   "profit_split.base_comm_rate",
+	"city_max_rate":    "profit_split.city_max_rate",
+	"team_max_rate":    "profit_split.team_max_rate",
+	"option_pool_rate": "profit_split.option_pool_rate",
 }
 
 // LoadProfitConfig reads the global profit split config from settlement_configs table.
@@ -514,20 +513,17 @@ func LoadProfitConfig() ProfitConfig {
 		m[r.Key] = r.Value
 	}
 
-	if v, err := strconv.ParseFloat(m["profit_split.city_comm_rate"], 64); err == nil && v > 0 {
-		cfg.CityCommRate = v
+	if v, err := strconv.ParseFloat(m["profit_split.base_comm_rate"], 64); err == nil && v > 0 {
+		cfg.BaseCommRate = v
 	}
-	if v, err := strconv.ParseFloat(m["profit_split.team_direct_rate"], 64); err == nil && v > 0 {
-		cfg.TeamDirectRate = v
+	if v, err := strconv.ParseFloat(m["profit_split.city_max_rate"], 64); err == nil && v > 0 {
+		cfg.CityMaxRate = v
 	}
-	if v, err := strconv.ParseFloat(m["profit_split.team_mgmt_rate"], 64); err == nil && v > 0 {
-		cfg.TeamMgmtRate = v
+	if v, err := strconv.ParseFloat(m["profit_split.team_max_rate"], 64); err == nil && v > 0 {
+		cfg.TeamMaxRate = v
 	}
-	if v, err := strconv.ParseFloat(m["profit_split.investor_pool_rate"], 64); err == nil && v >= 0 {
-		cfg.InvestorPoolRate = v
-	}
-	if v, err := strconv.ParseFloat(m["profit_split.upstream_cost_pct"], 64); err == nil && v > 0 {
-		cfg.UpstreamCostPct = v
+	if v, err := strconv.ParseFloat(m["profit_split.option_pool_rate"], 64); err == nil && v >= 0 {
+		cfg.OptionPoolRate = v
 	}
 
 	return cfg
@@ -549,11 +545,10 @@ func (h *SettlementHandler) UpdateProfitConfig(c *gin.Context) {
 
 	// Validate ranges (0–100%)
 	for label, val := range map[string]float64{
-		"city_comm_rate":     req.CityCommRate,
-		"team_direct_rate":   req.TeamDirectRate,
-		"team_mgmt_rate":     req.TeamMgmtRate,
-		"investor_pool_rate": req.InvestorPoolRate,
-		"upstream_cost_pct":  req.UpstreamCostPct,
+		"base_comm_rate":   req.BaseCommRate,
+		"city_max_rate":    req.CityMaxRate,
+		"team_max_rate":    req.TeamMaxRate,
+		"option_pool_rate": req.OptionPoolRate,
 	} {
 		if val < 0 || val > 1.0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s 必须在 0~1 之间", label)})
@@ -581,11 +576,10 @@ func (h *SettlementHandler) UpdateProfitConfig(c *gin.Context) {
 		}
 	}
 
-	save("city_comm_rate", req.CityCommRate)
-	save("team_direct_rate", req.TeamDirectRate)
-	save("team_mgmt_rate", req.TeamMgmtRate)
-	save("investor_pool_rate", req.InvestorPoolRate)
-	save("upstream_cost_pct", req.UpstreamCostPct)
+	save("base_comm_rate", req.BaseCommRate)
+	save("city_max_rate", req.CityMaxRate)
+	save("team_max_rate", req.TeamMaxRate)
+	save("option_pool_rate", req.OptionPoolRate)
 
 	c.JSON(http.StatusOK, gin.H{"message": "利润分配配置已更新", "config": req})
 }

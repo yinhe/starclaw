@@ -148,8 +148,17 @@ export default function SettingsPage() {
     if (isNearBottom) el.scrollTop = el.scrollHeight
   }, [updateLogs])
 
-  const isSpore = updateInfo?.runtime_mode === 'spore' || updateInfo?.runtime_mode === 'standalone'
-  const updateSteps = isSpore ? [
+  const runtimeMode = updateInfo?.runtime_mode
+  const isSpore = runtimeMode === 'spore' || runtimeMode === 'standalone'
+  const isHive = runtimeMode === 'hive'
+  const updateSteps = isHive ? [
+    '',
+    '通知 Hive Controller...',
+    '滚动升级中...',
+    '等待实例重启...',
+    '等待 API 就绪...',
+    '更新完成！',
+  ] : isSpore ? [
     '',
     '下载新版本...',
     '替换二进制...',
@@ -176,7 +185,7 @@ export default function SettingsPage() {
       if (targetVersion) {
         // Progress simulation — Docker socket pull is fast (~30s), MCP Bridge build is slow (~3-5min)
         const method = res.data.method
-        const isFast = method === 'spore' || method === 'standalone' // binary download ~10s
+        const isFast = method === 'spore' || method === 'standalone' || method === 'hive' // binary download ~10s, hive notification instant
         setTimeout(() => setUpdateStep(2), isFast ? 3000 : 8000)
         setTimeout(() => setUpdateStep(3), isFast ? 8000 : 60000)
         setTimeout(() => setUpdateStep(4), isFast ? 12000 : 90000)
@@ -452,7 +461,7 @@ export default function SettingsPage() {
                 )}
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                {updateInfo?.go_version} · {updateInfo?.os}/{updateInfo?.arch} · {updateInfo?.runtime_mode === 'spore' ? 'Spore 本地部署' : updateInfo?.runtime_mode === 'docker' ? 'Docker 部署' : updateInfo?.deploy_mode} 模式
+                {updateInfo?.go_version} · {updateInfo?.os}/{updateInfo?.arch} · {({ spore: 'Spore 本地部署', docker: 'Docker 部署', hive: 'Hive 云部署', standalone: '独立部署' } as Record<string, string>)[updateInfo?.runtime_mode] || updateInfo?.runtime_mode || '未知'}模式
               </div>
             </div>
             <div className="flex items-center gap-2">

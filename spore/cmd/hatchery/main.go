@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,9 +107,9 @@ func cmdBuild() {
 
 		buildCmd := sf.BuildCmd
 		if buildCmd == "" {
-			// Default Go build command
-			buildCmd = fmt.Sprintf("go build -ldflags=\"-s -w\" -o %s ./cmd/server",
-				filepath.Join(binDir, filepath.Base(binName)))
+			// Default Go build command — always inject version via ldflags
+			buildCmd = fmt.Sprintf("go build -ldflags=\"-s -w -X github.com/yinhe/starclaw/internal/molt.Version=%s\" -o %s ./cmd/server",
+				sf.Version, filepath.Join(binDir, filepath.Base(binName)))
 		} else {
 			// Replace variables in the build command
 			buildCmd = strings.ReplaceAll(buildCmd, "${TARGET_OS}", targetOS)
@@ -226,7 +228,7 @@ func loadSporefileOrDefaults() *Sporefile {
 	// For now return defaults for Claw
 	return &Sporefile{
 		Name:        "claw",
-		Version:     "0.1.0",
+		Version:     resolveVersion(),
 		Description: "StarClaw AI Agent Node",
 		Binary:      "claw",
 		Args:        []string{"serve"},
@@ -237,6 +239,46 @@ func loadSporefileOrDefaults() *Sporefile {
 		MinMemoryMB: 256,
 		Include:     []string{},
 	}
+}
+
+// resolveVersion determines the build version from available sources.
+// Priority: .version file → git tag → Nydus API → UTC timestamp (never "dev")
+func resolveVersion() string {
+	// 1. .version file (written by deploy scripts / Makefile)
+	if data, err := os.ReadFile("api/.version"); err == nil {
+		if v := strings.TrimSpace(string(data)); v != "" && v != "dev" {
+			return v
+		}
+	}
+	if data, err := os.ReadFile(".version"); err == nil {
+		if v := strings.TrimSpace(string(data)); v != "" && v != "dev" {
+			return v
+		}
+	}
+
+	// 2. git describe
+	if out, err := exec.Command("git", "describe", "--tags", "--abbrev=0").Output(); err == nil {
+		if v := strings.TrimPrefix(strings.TrimSpace(string(out)), "v"); v != "" {
+			return v
+		}
+	}
+
+	// 3. Nydus API
+	client := &http.Client{Timeout: 5 * time.Second}
+	if resp, err := client.Get("https://nydus.starclaw.net/releases/latest"); err == nil {
+		defer resp.Body.Close()
+		var release struct {
+			TagName string `json:"tag_name"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&release) == nil {
+			if v := strings.TrimPrefix(release.TagName, "v"); v != "" {
+				return v
+			}
+		}
+	}
+
+	// 4. UTC timestamp as last resort
+	return time.Now().UTC().Format("2006.0102.1504")
 }
 
 func copyFileOrDir(src, dst string) error {

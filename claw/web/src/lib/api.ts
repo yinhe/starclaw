@@ -682,4 +682,17 @@ export const arenaAPI = {
     api.post('/arena/pk/mutations/trigger', { claw_id: clawId }),
 }
 
+// ── Identity Recovery ──
+export const recoveryAPI = {
+  getStatus: () => api.get('/recovery/status'),
+  getMnemonic: () => api.get('/recovery/mnemonic'),
+  confirmMnemonic: (mnemonic: string) => api.post('/recovery/confirm-mnemonic', { mnemonic }),
+  bindPhone: (phone: string) => api.post('/recovery/bind-phone', { phone }),
+  verifyPhone: (phone: string, code: string) => api.post('/recovery/verify-phone', { phone, code }),
+  backup: () => api.post('/recovery/backup'),
+  verifyMnemonic: (mnemonic: string) => api.post('/recovery/verify-mnemonic', { mnemonic }),
+  restore: (mnemonic: string) => api.post('/recovery/restore', { mnemonic }),
+  getAddress: () => api.get('/recovery/address'),
+}
+
 export default api

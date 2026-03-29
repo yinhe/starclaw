@@ -10,6 +10,7 @@ import EquityPage from './pages/EquityPage'
 import NodesPage from './pages/NodesPage'
 import DeployPage from './pages/DeployPage'
 import InvitesPage from './pages/InvitesPage'
+import OptionPage from './pages/OptionPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="/cities" element={<CitiesPage />} />
           <Route path="/commissions" element={<CommissionsPage />} />
           <Route path="/equity" element={<EquityPage />} />
+          <Route path="/option" element={<OptionPage />} />
           <Route path="/deploy" element={<DeployPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

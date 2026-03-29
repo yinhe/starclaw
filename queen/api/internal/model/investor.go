@@ -2,21 +2,22 @@ package model
 
 import "time"
 
-// InvestorPool represents the global Star Diamond (星钻) profit-sharing pool.
-// 10% of all transaction profit flows into this pool.
+// InvestorPool represents the global Star Diamond (星钻) option pool.
+// 20% of all transaction profit flows into this pool.
 // Total supply: 1亿 Star Diamonds (fixed, never inflated).
+// Partner option pool: 5000万份 (5 rounds × 1000万份)
 //
 // Pricing: price = max(NAV, round floor price)
 //
 //	NAV = (TotalRaised + TotalDeposited - TotalDistributed) / TotalShares
 //
-// Funding rounds (每期 10% 份额, 5× 递增):
+// Funding rounds (每期 1000万份, 5× 递增):
 //
-//	孢子期:  10% @ ¥0.50/份  → 募资 ¥500万
-//	幼虫期:  10% @ ¥2.50/份  → 募资 ¥2500万
-//	虫兵期:  10% @ ¥12.50/份 → 募资 ¥1.25亿
-//	领主期:  10% @ ¥62.50/份 → 募资 ¥6.25亿
-//	虫后期:  10% @ ¥312.50/份→ 募资 ¥31.25亿
+//	孢子期:  1000万份 @ ¥1.00/份   → 募资 ¥1000万
+//	幼虫期:  1000万份 @ ¥5.00/份   → 募资 ¥5000万
+//	虫兵期:  1000万份 @ ¥25.00/份  → 募资 ¥2.5亿
+//	领主期:  1000万份 @ ¥125.00/份 → 募资 ¥12.5亿
+//	虫后期:  1000万份 @ ¥625.00/份 → 募资 ¥62.5亿
 type InvestorPool struct {
 	ID             string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	TotalShares    int64     `json:"total_shares" gorm:"default:0"`                 // total shares ever issued
@@ -71,11 +72,11 @@ var RoundConfig = []struct {
 	MinInvest  int64 // 每笔最低投资 (分)
 	MaxInvest  int64 // 每笔最高投资 (分)
 }{
-	{"spore", "孢子期", 1, 50, 1_000_000, 5_000_000},            // ¥0.50/份, ¥1万-¥5万
-	{"larva", "幼虫期", 5, 250, 5_000_000, 25_000_000},          // ¥2.50/份, ¥5万-¥25万
-	{"zergling", "虫兵期", 25, 1250, 10_000_000, 100_000_000},   // ¥12.50/份, ¥10万-¥100万
-	{"overlord", "领主期", 125, 6250, 50_000_000, 500_000_000},  // ¥62.50/份, ¥50万-¥500万
-	{"queen", "虫后期", 625, 31250, 100_000_000, 2_000_000_000}, // ¥312.50/份, ¥100万-¥2000万
+	{"spore", "孢子期", 1, 100, 1_000_000, 5_000_000},           // ¥1.00/份, ¥1万-¥5万
+	{"larva", "幼虫期", 5, 500, 5_000_000, 25_000_000},          // ¥5.00/份, ¥5万-¥25万
+	{"zergling", "虫兵期", 25, 2500, 10_000_000, 100_000_000},   // ¥25.00/份, ¥10万-¥100万
+	{"overlord", "领主期", 125, 12500, 50_000_000, 500_000_000}, // ¥125.00/份, ¥50万-¥500万
+	{"queen", "虫后期", 625, 62500, 100_000_000, 2_000_000_000}, // ¥625.00/份, ¥100万-¥2000万
 }
 
 // NextRound returns the next round name after the given round, or "" if no more rounds.

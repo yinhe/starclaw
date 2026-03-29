@@ -65,6 +65,15 @@ func Setup() *gin.Engine {
 	v1.POST("/auth/claw/verify", authRL.Middleware(), clawAuth.Verify)
 	v1.POST("/auth/claw-register", authRL.Middleware(), clawAuth.ClawRegister)
 
+	// ---- Recovery (public — Claw nodes call these directly) ----
+	recovery := handler.NewRecoveryHandler()
+	v1.POST("/recovery/bind-phone", recovery.BindPhone)
+	v1.POST("/recovery/verify-phone", recovery.VerifyPhone)
+	v1.POST("/recovery/backup", recovery.StoreBackup)
+	v1.GET("/recovery/backup", recovery.GetBackup)
+	v1.GET("/recovery/backup/exists", recovery.BackupExists)
+	v1.GET("/recovery/status/:node_id", recovery.NodeStatus)
+
 	// ---- Marketplace (public read) ----
 	mp := &handler.MarketplaceHandler{}
 	v1.GET("/marketplace/items", mp.List)
@@ -267,6 +276,13 @@ func Setup() *gin.Engine {
 	partnerPortal.DELETE("/invites/:id", writeRL.UserRateLimit(), inv.PartnerRevokeInvite)
 	partnerPortal.GET("/invite-stats", inv.PartnerInviteStats)
 
+	// ---- Partner Option Pool ----
+	po := &handler.PartnerOptionHandler{}
+	// Team partner option routes
+	partnerPortal.POST("/option/purchase", writeRL.UserRateLimit(), po.Purchase)
+	partnerPortal.GET("/option/me", po.MyOptions)
+	// City partner option routes (added below after cityPortal definition)
+
 	// Admin: team partner management
 	admin.GET("/partners", ph.AdminListPartners)
 	admin.POST("/partners", ph.AdminCreatePartner)
@@ -305,6 +321,9 @@ func Setup() *gin.Engine {
 		cityPortal.POST("/invites", writeRL.UserRateLimit(), inv.CityCreateInvite)
 		cityPortal.GET("/invites", inv.CityListInvites)
 		cityPortal.DELETE("/invites/:id", writeRL.UserRateLimit(), inv.CityRevokeInvite)
+		// City partner option pool
+		cityPortal.POST("/option/purchase", writeRL.UserRateLimit(), po.Purchase)
+		cityPortal.GET("/option/me", po.MyOptions)
 	}
 
 	// Admin: city partner management

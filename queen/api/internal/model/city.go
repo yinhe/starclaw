@@ -20,8 +20,14 @@ type CityPartner struct {
 	ApprovedAt    *time.Time `json:"approved_at"`
 	TotalEarned   int64      `json:"total_earned" gorm:"default:0"`  // lifetime commission earned (分)
 	TotalClients  int        `json:"total_clients" gorm:"default:0"` // total referred clients
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+
+	// Option pool transition fields
+	LegacyCommRate float64    `json:"legacy_comm_rate" gorm:"default:0"` // pre-transition commission rate (for 3-month grace period)
+	TransitionEnd  *time.Time `json:"transition_end"`                    // when grace period expires
+	TransitionDebt int64      `json:"transition_debt" gorm:"default:0"`  // excess commission during transition (分), to be recovered
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // CityClient tracks clients referred by a city partner

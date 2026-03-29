@@ -8,8 +8,9 @@ export default defineConfig({
     port: 5177,
     proxy: {
       '/api': {
-        target: 'http://localhost:8085',
+        target: 'https://api.starclaw.net',
         changeOrigin: true,
+        secure: true,
         rewrite: (path) => path.replace(/^\/api/, '/v1'),
       },
     },

@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Coins, FileBox, LogOut, Link2, BarChart3, Ticket } from 'lucide-react'
+import { LayoutDashboard, Users, Coins, FileBox, LogOut, Link2, BarChart3, Ticket, Gem } from 'lucide-react'
 import { clearToken } from '../lib/api'
 
 const nav = [
@@ -9,6 +9,7 @@ const nav = [
   { to: '/commissions', icon: Coins, label: '我的佣金' },
   { to: '/client-stats', icon: BarChart3, label: '消费统计' },
   { to: '/materials', icon: FileBox, label: '营销工具' },
+  { to: '/option', icon: Gem, label: '合伙人期权' },
 ]
 
 export default function Layout() {

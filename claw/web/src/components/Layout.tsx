@@ -83,6 +83,7 @@ function getNavGroups(t: (key: string) => string): NavGroup[] {
         { to: '/webhooks', icon: Webhook, label: t('nav.webhooks') },
         { to: '/developer', icon: Code2, label: t('nav.developer') },
         { to: '/security', icon: Shield, label: t('nav.security') },
+        { to: '/recovery', icon: Shield, label: '身份恢复' },
       ],
     },
     {

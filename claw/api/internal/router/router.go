@@ -289,6 +289,15 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			})
 		})
 
+		// Recovery (public endpoints — needed on fresh installs before auth exists)
+		recoveryQueenURL := ""
+		if cfg.Swarm.QueenURL != "" {
+			recoveryQueenURL = strings.TrimSuffix(cfg.Swarm.QueenURL, "/api") + "/api"
+		}
+		recoveryHandler := v1.NewRecoveryHandler(db, identity, recoveryQueenURL)
+		apiV1.POST("/recovery/verify-mnemonic", recoveryHandler.VerifyMnemonic)
+		apiV1.POST("/recovery/restore", recoveryHandler.Restore)
+
 		// Auth request endpoints (MetaMask-style: public create+poll, protected approve)
 		authReqHandler := v1.NewAuthRequestHandler(identity)
 		apiV1.POST("/identity/auth-request", authReqHandler.Create)
@@ -1098,6 +1107,15 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/growth/daily-report", growthHandler.GetDailyReport)
 			protected.GET("/growth/curve", growthHandler.GetGrowthCurve)
 			protected.GET("/assets/overview", growthHandler.GetAssets)
+
+			// Identity Recovery (protected — requires auth)
+			protected.GET("/recovery/status", recoveryHandler.Status)
+			protected.GET("/recovery/mnemonic", recoveryHandler.GetMnemonic)
+			protected.POST("/recovery/confirm-mnemonic", recoveryHandler.ConfirmMnemonic)
+			protected.POST("/recovery/bind-phone", recoveryHandler.BindPhone)
+			protected.POST("/recovery/verify-phone", recoveryHandler.VerifyPhone)
+			protected.POST("/recovery/backup", recoveryHandler.Backup)
+			protected.GET("/recovery/address", recoveryHandler.Address)
 
 			// Arena PK (proxy to Queen → Arena service)
 			if cfg.Swarm.QueenURL != "" {

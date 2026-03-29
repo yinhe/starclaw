@@ -29,6 +29,11 @@ type TeamPartner struct {
 	ActiveClients   int   `json:"active_clients" gorm:"default:0"`
 	ManagedCities   int   `json:"managed_cities" gorm:"default:0"`
 
+	// Option pool transition fields
+	LegacyCommRate float64    `json:"legacy_comm_rate" gorm:"default:0"` // pre-transition commission rate
+	TransitionEnd  *time.Time `json:"transition_end"`                    // when grace period expires
+	TransitionDebt int64      `json:"transition_debt" gorm:"default:0"`  // excess commission during transition (分)
+
 	JoinedAt  time.Time `json:"joined_at"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

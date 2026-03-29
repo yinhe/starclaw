@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, Server, Users, Coins, TrendingUp, Rocket, LogOut, Ticket } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Server, Users, Coins, TrendingUp, Rocket, LogOut, Ticket, Gem } from 'lucide-react'
 import { clearToken } from '../lib/api'
 
 const nav = [
@@ -10,6 +10,7 @@ const nav = [
   { to: '/cities', icon: Users, label: '城市合伙人' },
   { to: '/commissions', icon: Coins, label: '佣金明细' },
   { to: '/equity', icon: TrendingUp, label: '期权归属' },
+  { to: '/option', icon: Gem, label: '合伙人期权' },
   { to: '/deploy', icon: Rocket, label: '一键部署' },
 ]
 

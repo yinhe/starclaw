@@ -13,7 +13,11 @@ import (
 	sporeRuntime "starclaw.net/spore/pkg/runtime"
 )
 
-const version = "2026.0327.0134"
+// version is set at build time via:
+//
+//	go build -ldflags "-X main.version=2026.0329.1630"
+var version = "dev"
+
 const defaultAddr = "127.0.0.1:7890"
 
 func main() {

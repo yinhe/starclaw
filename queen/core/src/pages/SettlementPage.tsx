@@ -3,11 +3,10 @@ import { api } from '../api'
 import { Calculator, CheckCircle, XCircle, Banknote, FileText, ArrowLeft, Settings, Save } from 'lucide-react'
 
 interface ProfitConfig {
-  city_comm_rate: number
-  team_direct_rate: number
-  team_mgmt_rate: number
-  investor_pool_rate: number
-  upstream_cost_pct: number
+  base_comm_rate: number
+  city_max_rate: number
+  team_max_rate: number
+  option_pool_rate: number
 }
 
 interface SettlementBill {
@@ -293,13 +292,12 @@ export default function SettlementPage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 mb-4">调整全局默认比例。个别合伙人如有自定义费率，将优先使用自定义值。</p>
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             {([
-              { key: 'city_comm_rate' as const, label: '城市合伙人佣金', desc: '消费利润 × 比例', color: 'text-blue-400' },
-              { key: 'team_direct_rate' as const, label: '团队直签佣金', desc: '消费利润 × 比例', color: 'text-green-400' },
-              { key: 'team_mgmt_rate' as const, label: '团队管理费', desc: '城市佣金 × 比例', color: 'text-purple-400' },
-              { key: 'investor_pool_rate' as const, label: '投资人池', desc: '消费利润 × 比例', color: 'text-amber-400' },
-              { key: 'upstream_cost_pct' as const, label: '上游成本估算', desc: '充值额 × 比例', color: 'text-gray-400' },
+              { key: 'base_comm_rate' as const, label: '基础佣金率', desc: '不投资时的佣金率', color: 'text-gray-300' },
+              { key: 'city_max_rate' as const, label: '城市最高佣金率', desc: '城市合伙人投满时', color: 'text-blue-400' },
+              { key: 'team_max_rate' as const, label: '团队最高佣金率', desc: '团队合伙人投满时', color: 'text-green-400' },
+              { key: 'option_pool_rate' as const, label: '期权池比例', desc: '恒定注入（不可调）', color: 'text-amber-400' },
             ]).map(item => (
               <div key={item.key} className="bg-gray-800/50 rounded-lg p-3">
                 <div className={`text-xs font-medium mb-1 ${item.color}`}>{item.label}</div>
@@ -317,12 +315,14 @@ export default function SettlementPage() {
             ))}
           </div>
           <div className="mt-4 p-3 bg-gray-800/30 rounded-lg">
-            <div className="text-[10px] text-gray-500 mb-1">利润分配示例（假设消费利润 ¥100）</div>
+            <div className="text-[10px] text-gray-500 mb-1">三方分配示例（假设消费利润 ¥100，城市合伙人满投）</div>
             <div className="flex gap-4 text-xs">
-              <span className="text-blue-400">城市佣金 ¥{(profitCfg.city_comm_rate * 100).toFixed(0)}</span>
-              <span className="text-green-400">直签佣金 ¥{(profitCfg.team_direct_rate * 100).toFixed(0)}</span>
-              <span className="text-purple-400">管理费 ¥{(profitCfg.city_comm_rate * profitCfg.team_mgmt_rate * 100).toFixed(1)}</span>
-              <span className="text-amber-400">投资池 ¥{(profitCfg.investor_pool_rate * 100).toFixed(0)}</span>
+              <span className="text-blue-400">合伙人佣金 ¥{(profitCfg.city_max_rate * 100).toFixed(0)}（满投）</span>
+              <span className="text-amber-400">期权池 ¥{(profitCfg.option_pool_rate * 100).toFixed(0)}</span>
+              <span className="text-gray-400">平台 ¥{((1 - profitCfg.city_max_rate - profitCfg.option_pool_rate) * 100).toFixed(0)}</span>
+            </div>
+            <div className="flex gap-4 text-xs mt-1">
+              <span className="text-gray-500">不投资时：合伙人 ¥{(profitCfg.base_comm_rate * 100).toFixed(0)} / 期权池 ¥{(profitCfg.option_pool_rate * 100).toFixed(0)} / 平台 ¥{((1 - profitCfg.base_comm_rate - profitCfg.option_pool_rate) * 100).toFixed(0)}</span>
             </div>
           </div>
         </div>
