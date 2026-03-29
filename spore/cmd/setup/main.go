@@ -13,7 +13,10 @@ import (
 	"time"
 )
 
-const version = "2026.0327.0134"
+// version is set at build time via:
+//
+//	go build -ldflags "-X main.version=2026.0329.1630"
+var version = "dev"
 
 //go:embed embed/spore_bin
 var sporeBin []byte

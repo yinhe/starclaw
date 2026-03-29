@@ -35,16 +35,10 @@ if (-not $gitVersion) {
 $vTag = "v$gitVersion"
 Write-Host "Version: $vTag" -ForegroundColor Yellow
 
-# Patch version const in setup/main.go and spore/main.go
-foreach ($f in @("cmd\setup\main.go", "cmd\spore\main.go", "cmd\desktop\main.go")) {
-    $fp = Join-Path $SporeDir $f
-    $src = [IO.File]::ReadAllText($fp)
-    $patched = $src -replace 'const version = "[^"]+"', "const version = `"$gitVersion`""
-    if ($patched -ne $src) {
-        [IO.File]::WriteAllText($fp, $patched)
-        Write-Host "  Patched $f -> $gitVersion"
-    }
-}
+# Write .version file for Dockerfile builds (belt-and-suspenders with ldflags)
+$versionFile = Join-Path $ClawDir ".version"
+[IO.File]::WriteAllText($versionFile, $gitVersion)
+Write-Host "  Wrote api/.version = $gitVersion"
 
 # Clean
 if (Test-Path $Dist) { Remove-Item -Recurse -Force $Dist }
@@ -66,7 +60,7 @@ foreach ($p in $platforms) {
     $sporeBin = Join-Path $Dist "spore-$label$($p.Ext)"
     Write-Host "  [1/5] Compiling spore runtime..."
     Push-Location $SporeDir
-    go build -ldflags="-s -w" -o $sporeBin ./cmd/spore
+    go build -ldflags="-s -w -X main.version=$gitVersion" -o $sporeBin ./cmd/spore
     if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Failed to build spore for $label" }
     Pop-Location
     $sz = '{0:N1}' -f ((Get-Item $sporeBin).Length / 1MB)
@@ -96,7 +90,7 @@ foreach ($p in $platforms) {
     $bridgeBin = Join-Path $Dist $bridgeName
     Write-Host "  [2b/5] Cross-compiling MCP Bridge..."
     Push-Location $ClawDir
-    go build -ldflags="-s -w" -o $bridgeBin ./cmd/mcp-bridge
+    go build -ldflags="-s -w -X main.version=$gitVersion" -o $bridgeBin ./cmd/mcp-bridge
     if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "  WARN: MCP Bridge build failed, skipping" }
     Pop-Location
     if (Test-Path $bridgeBin) {
@@ -144,7 +138,7 @@ foreach ($p in $platforms) {
     $rawSetup = Join-Path $Dist "setup-raw-$label$($p.Ext)"
     Write-Host "  [5/5] Compiling setup installer..."
     Push-Location $SporeDir
-    go build -ldflags="-s -w" -o $rawSetup ./cmd/setup
+    go build -ldflags="-s -w -X main.version=$gitVersion" -o $rawSetup ./cmd/setup
     if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Failed to build setup for $label" }
     Pop-Location
     $sz = '{0:N1}' -f ((Get-Item $rawSetup).Length / 1MB)

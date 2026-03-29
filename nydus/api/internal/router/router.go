@@ -58,8 +58,12 @@ func Setup() *gin.Engine {
 		releases.GET("/latest", handler.GetLatestRelease)
 		releases.GET("/spore/latest", handler.GetSporeLatest)
 		releases.GET("/download/:filename", handler.DownloadRelease)
+		releases.GET("/binary/:tag/:filename", handler.DownloadBinaryRelease)
 		releases.GET("/source.tar.gz", handler.GetSourceTarball)
 	}
+
+	// Spore runtime binary downloads (for `spore update`)
+	r.GET("/spore/releases/:filename", handler.DownloadSporeRelease)
 
 	// Public API for web UI (read-only, no auth needed)
 	// PublicOnly flag — handlers will filter out non-public repos

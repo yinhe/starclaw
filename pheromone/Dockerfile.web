@@ -1,0 +1,23 @@
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/node:18-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm config set registry https://registry.npmmirror.com && npm install --legacy-peer-deps
+COPY . .
+# Patch: hosted mode uses same simple login as opensource
+RUN sed -i "s/deployMode === 'opensource' ? (/deployMode !== null ? (/" src/pages/LoginPage.tsx && \
+    echo "=== PATCH VERIFY ===" && \
+    grep -n "deployMode !== null" src/pages/LoginPage.tsx
+RUN npm run build
+
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/nginx:alpine
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

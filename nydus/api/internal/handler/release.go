@@ -165,6 +165,41 @@ func GetSporeLatest(c *gin.Context) {
 	c.Data(200, "application/json; charset=utf-8", data)
 }
 
+// DownloadBinaryRelease serves a pre-built binary from /opt/releases/binary/:tag/:filename.
+// Used by Spore one-click update: GET /releases/binary/v2026.0329/starclaw-linux-amd64
+func DownloadBinaryRelease(c *gin.Context) {
+	tag := filepath.Base(c.Param("tag"))
+	filename := filepath.Base(c.Param("filename"))
+	if strings.Contains(tag, "..") || strings.Contains(filename, "..") {
+		c.JSON(400, gin.H{"error": "invalid path"})
+		return
+	}
+
+	localPath := filepath.Join("/opt/releases/binary", tag, filename)
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		c.JSON(404, gin.H{"error": "binary not found"})
+		return
+	}
+	c.File(localPath)
+}
+
+// DownloadSporeRelease serves a Spore runtime binary from /opt/spore/releases/.
+// Used by `spore update`: GET /spore/releases/spore-linux-amd64
+func DownloadSporeRelease(c *gin.Context) {
+	filename := filepath.Base(c.Param("filename"))
+	if strings.Contains(filename, "..") {
+		c.JSON(400, gin.H{"error": "invalid filename"})
+		return
+	}
+
+	localPath := filepath.Join("/opt/spore/releases", filename)
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		c.JSON(404, gin.H{"error": "spore binary not found"})
+		return
+	}
+	c.File(localPath)
+}
+
 // GetSourceTarball serves a tarball of the claw OSS repo.
 func GetSourceTarball(c *gin.Context) {
 	bareRepo := clawBareRepoPath()

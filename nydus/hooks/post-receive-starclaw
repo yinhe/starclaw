@@ -250,9 +250,36 @@ while read oldrev newrev refname; do
             ls -lh /out/
           "
 
+        # Also build Spore runtime binaries (for `spore update` downloads)
+        SPORE_DIR=$(mktemp -d)
+        SPORE_RELEASE_DIR="/opt/spore/releases"
+        mkdir -p "$SPORE_RELEASE_DIR"
+        git --git-dir="$REPO" archive "$newrev":spore/ | tar xf - -C "$SPORE_DIR"
+
+        docker run --rm \
+          -v "$SPORE_DIR:/src" \
+          -v "$SPORE_RELEASE_DIR:/out" \
+          -w /src \
+          golang:1.24-alpine sh -c "
+            LDFLAGS='-s -w -X main.version=$VER'
+            for pair in linux:amd64 linux:arm64 darwin:amd64 darwin:arm64 windows:amd64; do
+              os_name=\${pair%%:*}
+              arch_name=\${pair##*:}
+              outname=spore-\${os_name}-\${arch_name}
+              [ \"\$os_name\" = windows ] && outname=\"\${outname}.exe\"
+              echo \"  Building \$outname (v$VER)...\"
+              GOOS=\$os_name GOARCH=\$arch_name CGO_ENABLED=0 \
+                go build -ldflags \"\$LDFLAGS\" -o /out/\$outname ./cmd/spore 2>&1 || \
+                echo \"  WARN: failed to build \$outname\"
+            done
+            ls -lh /out/
+          "
+        rm -rf "$SPORE_DIR"
+
         rm -rf "$BUILD_DIR"
-        echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Binaries for $tag ready in $RELEASE_DIR" | cat >> "$LOG"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [release] Binaries for $tag ready in $RELEASE_DIR + $SPORE_RELEASE_DIR" | cat >> "$LOG"
         ls -lh "$RELEASE_DIR/" 2>/dev/null || true
+        ls -lh "$SPORE_RELEASE_DIR/" 2>/dev/null || true
       ) </dev/null >> "$LOG" 2>&1 &
 
       continue
