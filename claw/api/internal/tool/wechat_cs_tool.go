@@ -174,7 +174,7 @@ func (t *WeChatCSTool) sendReply(ctx context.Context, a wechatCSArgs) (string, e
 			if strings.TrimSpace(msg) == "" {
 				msg = "wechat_send returned error"
 			}
-			return "", fmt.Errorf(msg)
+			return "", fmt.Errorf("%s", msg)
 		}
 	}
 
