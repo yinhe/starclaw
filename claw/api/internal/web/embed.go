@@ -47,32 +47,57 @@ func resolveFS() http.FileSystem {
 // Priority: external dist/ folder > embedded dist/ in binary.
 // SPA fallback: non-file paths return index.html for client-side routing.
 func RegisterRoutes(r *gin.Engine) {
-	webFS := resolveFS()
-	if webFS == nil {
-		log.Printf("[web] No frontend found (neither external dist/ nor embedded)")
+	// Check for external dist/ folder first
+	for _, dir := range []string{"dist", "web/dist", "../web/dist"} {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			log.Printf("[web] Using external frontend: %s", dir)
+			registerExternal(r, dir)
+			return
+		}
+	}
+	// Fallback to embedded
+	if HasEmbeddedAssets() {
+		log.Printf("[web] Using embedded frontend")
+		registerEmbedded(r)
 		return
 	}
+	log.Printf("[web] No frontend found")
+}
 
-	fileServer := http.FileServer(webFS)
+func registerExternal(r *gin.Engine, dir string) {
+	// Serve /assets/* directly with proper MIME types
+	r.Static("/assets", dir+"/assets")
 
+	// Serve other static files (favicon, etc.)
+	r.StaticFile("/vite.svg", dir+"/vite.svg")
+
+	// SPA fallback: all non-API, non-file routes serve index.html
+	indexPath := dir + "/index.html"
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
-
-		// Skip API routes
 		if strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/metrics") {
 			c.JSON(404, gin.H{"error": "not found"})
 			return
 		}
+		c.File(indexPath)
+	})
+}
 
-		// Static assets: serve directly (check both with and without leading slash)
-		trimmed := strings.TrimPrefix(path, "/")
-		if strings.Contains(trimmed, ".") {
-			// Has file extension — serve the static file directly
+func registerEmbedded(r *gin.Engine) {
+	subFS, _ := fs.Sub(assets, "dist")
+	fileServer := http.FileServer(http.FS(subFS))
+
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/metrics") {
+			c.JSON(404, gin.H{"error": "not found"})
+			return
+		}
+		if f, err := subFS.Open(strings.TrimPrefix(path, "/")); err == nil {
+			f.Close()
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			return
 		}
-
-		// SPA fallback: no extension = client-side route, serve index.html
 		c.Request.URL.Path = "/"
 		fileServer.ServeHTTP(c.Writer, c.Request)
 	})
