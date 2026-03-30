@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Webhook, Code2, Shield, Target, FlaskConical, MessageCircle, Swords, Sprout } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Webhook, Code2, Shield, Lock, Target, FlaskConical, MessageCircle, Swords, Sprout } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -83,13 +83,13 @@ function getNavGroups(t: (key: string) => string): NavGroup[] {
         { to: '/webhooks', icon: Webhook, label: t('nav.webhooks') },
         { to: '/developer', icon: Code2, label: t('nav.developer') },
         { to: '/security', icon: Shield, label: t('nav.security') },
-        { to: '/recovery', icon: Shield, label: '身份恢复' },
+        { to: '/recovery', icon: Lock, label: '身份恢复' },
       ],
     },
     {
       group: t('nav.group.intelligence'),
       items: [
-        { to: '/growth', icon: Sprout, label: t('nav.growth') || 'Agent 成长' },
+        { to: '/growth', icon: Sprout, label: '龙虾成长' },
         { to: '/arena', icon: Swords, label: '龙虾竞技场' },
         { to: '/goals', icon: Target, label: t('nav.goals') },
         { to: '/finetune', icon: FlaskConical, label: t('nav.finetune') },
