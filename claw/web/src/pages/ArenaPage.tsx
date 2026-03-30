@@ -128,7 +128,8 @@ export default function ArenaPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="max-w-4xl mx-auto p-4 pb-20 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">🦞 龙虾竞技场</h1>
         {myFighter && (
@@ -176,6 +177,7 @@ export default function ArenaPage() {
       {tab === 'craft' && registered && <CraftTab clawId={clawId} />}
       {tab === 'stardust' && registered && <StardustTab clawId={clawId} />}
       {tab === 'mutations' && registered && <MutationsTab clawId={clawId} />}
+    </div>
     </div>
   )
 }
