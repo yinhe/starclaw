@@ -107,7 +107,7 @@ const evolutionTree: Record<string, { levels: number[]; names: string[]; namesEN
 
 function StatCard({ icon, label, value, sub }: { icon: string; label: string; value: number | string; sub?: string }) {
   return (
-    <div className="bg-gray-800/50 rounded-xl p-3 text-center border border-gray-700/50">
+    <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 text-center border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
       <div className="text-xl mb-1">{icon}</div>
       <div className="text-lg font-bold text-white">{typeof value === 'number' ? value.toLocaleString() : value}</div>
       <div className="text-xs text-gray-400">{label}</div>
@@ -304,15 +304,15 @@ export default function GrowthPage() {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 bg-gray-900/60 rounded-xl p-1 border border-gray-700/50">
+      <div className="flex gap-1 bg-white/5 dark:bg-gray-800/80 rounded-xl p-1.5 border border-gray-200 dark:border-gray-700">
         {([['growth', '🌱', '成长'], ['report', '📝', '日报'], ['curve', '📈', '曲线'], ['assets', '💼', '资产']] as const).map(([key, icon, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+            className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
               tab === key
-                ? 'bg-gray-700 text-white shadow-sm'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700/50'
             }`}
           >
             {icon} {label}
@@ -322,7 +322,7 @@ export default function GrowthPage() {
 
       {tab === 'growth' && <>
       {/* Hero Section */}
-      <div className="bg-gray-900/80 rounded-2xl p-6 border border-gray-700/50 backdrop-blur">
+      <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="flex items-start gap-6">
           {/* Pet Avatar */}
           <PetAvatar
@@ -335,26 +335,26 @@ export default function GrowthPage() {
           {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-300">
+              <span className="text-sm px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
                 {profile.path_emoji} {profile.path_name}
               </span>
             </div>
-            <div className="text-lg text-gray-200 mb-2">
+            <div className="text-lg text-gray-900 dark:text-gray-100 font-semibold mb-2">
               {profile.title} <span className="text-gray-500 text-sm">({profile.title_en})</span>
             </div>
-            <div className="text-sm text-gray-400 mb-3">
+            <div className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               {profile.days_with > 0
                 ? `陪伴你 ${profile.days_with} 天，记住了 ${stats.memories} 件事`
                 : '等待首次对话...'}
             </div>
 
             {/* EXP bar */}
-            <div className="mb-1 flex items-center justify-between text-xs text-gray-400">
+            <div className="mb-1 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
               <span>Lv.{stats.level}</span>
               <span>{stats.exp.toLocaleString()} / {stats.next_level_exp.toLocaleString()} EXP</span>
               <span>Lv.{stats.level + 1}</span>
             </div>
-            <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500"
                 style={{ width: `${stats.level_progress * 100}%` }}
@@ -384,14 +384,14 @@ export default function GrowthPage() {
       {/* Personality Radar + Battle Stats + Evolution Tree */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Personality Radar */}
-        <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">🎭 性格雷达</h3>
+        <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">🎭 性格雷达</h3>
           <PersonalityRadar stats={stats} />
         </div>
 
         {/* Battle Stats */}
-        <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">⚔️ 战斗属性</h3>
+        <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">⚔️ 战斗属性</h3>
           <div className="space-y-2">
             <BattleStatBar label="HP" value={stats.hp} max={100} color="bg-red-500" />
             <BattleStatBar label="ATK" value={stats.atk} max={80} color="bg-orange-500" />
@@ -402,8 +402,8 @@ export default function GrowthPage() {
         </div>
 
         {/* Evolution Tree */}
-        <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">🧬 进化路线 — {profile.path_emoji} {profile.path_name}</h3>
+        <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">🧬 进化路线 — {profile.path_emoji} {profile.path_name}</h3>
           <div className="space-y-1">
             {tree.levels.map((lv, i) => {
               const reached = stats.level >= lv
@@ -431,8 +431,8 @@ export default function GrowthPage() {
       </div>
 
       {/* Milestones */}
-      <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">🏆 里程碑</h3>
+      <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">🏆 里程碑</h3>
         {profile.milestones.length === 0 ? (
           <p className="text-gray-500 text-sm">还没有里程碑，开始和 Agent 对话吧！</p>
         ) : (
