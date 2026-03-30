@@ -439,6 +439,19 @@ def daily_report():
     return _json_safe(report)
 
 
+# --- MCP Server endpoint (JSON-RPC 2.0 for Claw MCP protocol) ---
+
+from fastapi import Request
+
+@app.post("/")
+async def mcp_jsonrpc(request: Request):
+    """MCP JSON-RPC 2.0 endpoint. Claw sends POST to base URL with JSON-RPC body."""
+    from mcp_server import handle_jsonrpc
+    body = await request.json()
+    result = handle_jsonrpc(body, {"app": app})
+    return result
+
+
 if __name__ == "__main__":
     port = int(os.getenv("BRIDGE_PORT", "8098"))
     uvicorn.run(app, host="0.0.0.0", port=port)
