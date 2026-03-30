@@ -139,30 +139,32 @@ export default function ArenaPage() {
       </div>
 
       {/* Tab Bar */}
-      <div className="space-y-1">
-        <div className="flex gap-1 bg-gray-900/60 rounded-xl p-1 border border-gray-700/50">
+      <div className="space-y-2">
+        <div className="flex gap-1 bg-white/5 dark:bg-gray-800/80 rounded-xl p-1.5 border border-gray-200 dark:border-gray-700">
           {([['leaderboard', '🏆', '排行榜'], ['fighter', '⚔️', '宠物'], ['shop', '🏪', '商店'], ['history', '📜', '记录']] as const).map(([key, icon, label]) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-2 px-2 rounded-lg text-sm font-medium transition-all ${tab === key ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
+              className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${tab === key ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700/50'}`}
             >{icon} {label}</button>
           ))}
         </div>
-        <div className="flex gap-1 bg-gray-900/60 rounded-xl p-1 border border-gray-700/50">
+        <div className="flex gap-1 bg-white/5 dark:bg-gray-800/80 rounded-xl p-1.5 border border-gray-200 dark:border-gray-700">
           {([['season', '🌊', '赛季'], ['craft', '🔨', '打造'], ['stardust', '✨', '星尘'], ['mutations', '🧬', '变异']] as const).map(([key, icon, label]) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-2 px-2 rounded-lg text-sm font-medium transition-all ${tab === key ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
+              className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${tab === key ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700/50'}`}
             >{icon} {label}</button>
           ))}
         </div>
       </div>
 
       {!registered && tab !== 'leaderboard' && tab !== 'shop' && (
-        <div className="bg-gray-900/80 rounded-xl p-6 border border-gray-700/50 text-center space-y-3">
-          <p className="text-gray-300">你的宠物还未注册竞技场</p>
-          <button onClick={handleRegister} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium">
+        <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-8 border border-gray-200 dark:border-gray-700 shadow-sm text-center space-y-4">
+          <div className="text-5xl mb-2">🦞</div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">你的小龙虾还未参战</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">注册后可以和其他 Claw 节点的小龙虾对战，赢取星尘和装备</p>
+          <button onClick={handleRegister} className="bg-primary-600 hover:bg-primary-500 text-white px-8 py-3 rounded-xl font-semibold text-base shadow-lg shadow-primary-600/20 transition-all">
             🦞 注册参战
           </button>
-          <p className="text-xs text-gray-500">将同步你的成长属性到竞技场</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">将同步你的成长属性到竞技场，包括等级、HP、ATK、DEF、SPD</p>
         </div>
       )}
 
@@ -207,7 +209,11 @@ function LeaderboardTab({ clawId, myFighter }: { clawId: string; myFighter: Figh
         <BattleResultCard result={battleResult} onClose={() => setBattleResult(null)} />
       )}
       {fighters.length === 0 && (
-        <div className="text-center py-12 text-gray-500">竞技场暂无选手</div>
+        <div className="text-center py-16">
+          <div className="text-5xl mb-3">⚔️</div>
+          <p className="text-gray-500 dark:text-gray-400 font-medium">竞技场暂无选手</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">等待更多 Claw 节点加入虫群网络</p>
+        </div>
       )}
       {fighters.map((f, i) => (
         <div key={f.id} className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50 flex items-center gap-4">
