@@ -187,10 +187,11 @@ def execute_tool(name: str, args: dict, app_state: dict) -> str:
         return str(obj)
 
     try:
-        # Import bridge modules directly (same process, no HTTP)
-        import main as bridge_main
+        # Access the live global state from __main__ module (the running process)
+        import __main__ as bridge_main
 
-        qmt = bridge_main.qmt
+        qmt = getattr(bridge_main, "qmt", None)
+        accounts = getattr(bridge_main, "accounts", None)
 
         if name == "health":
             connected = qmt.is_connected() if qmt else False
@@ -227,36 +228,41 @@ def execute_tool(name: str, args: dict, app_state: dict) -> str:
             connected = qmt.is_connected() if qmt else False
             return json.dumps({"status": "ok", "qmt_connected": connected})
 
-        elif name == "kline":
-            code = args.get("code", "000001.SZ")
-            period = args.get("period", "1d")
-            count = args.get("count", 60)
-            data = qmt.get_kline(code, period, count)
-            return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
+        # Tools below require QMT connection
+        elif name in ("kline", "quote", "account_info", "buy", "sell"):
+            if not qmt or not qmt.is_connected():
+                return json.dumps({"error": "QMT未连接。请确认miniQMT客户端已启动并登录。当前为非交易时段QMT可能已断开。"})
 
-        elif name == "quote":
-            codes = [c.strip() for c in args.get("codes", "000001.SZ").split(",")]
-            data = qmt.get_quotes(codes)
-            return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
+            if name == "kline":
+                code = args.get("code", "000001.SZ")
+                period = args.get("period", "1d")
+                count = args.get("count", 60)
+                data = qmt.get_kline(code, period, count)
+                return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
 
-        elif name == "account_info":
-            account = args.get("account", "27800348")
-            data = qmt.get_account_info(account)
-            return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
+            elif name == "quote":
+                codes = [c.strip() for c in args.get("codes", "000001.SZ").split(",")]
+                data = qmt.get_quotes(codes)
+                return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
 
-        elif name == "buy":
-            order_id = qmt.submit_order(
-                account=args.get("account", "27800348"),
-                code=args["code"], direction="buy",
-                price=args["price"], volume=args["volume"], order_type="limit")
-            return json.dumps({"order_id": str(order_id), "status": "submitted"})
+            elif name == "account_info":
+                account = args.get("account", "27800348")
+                data = qmt.get_account_info(account)
+                return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
 
-        elif name == "sell":
-            order_id = qmt.submit_order(
-                account=args.get("account", "27800348"),
-                code=args["code"], direction="sell",
-                price=args["price"], volume=args["volume"], order_type="limit")
-            return json.dumps({"order_id": str(order_id), "status": "submitted"})
+            elif name == "buy":
+                order_id = qmt.submit_order(
+                    account=args.get("account", "27800348"),
+                    code=args["code"], direction="buy",
+                    price=args["price"], volume=args["volume"], order_type="limit")
+                return json.dumps({"order_id": str(order_id), "status": "submitted"})
+
+            elif name == "sell":
+                order_id = qmt.submit_order(
+                    account=args.get("account", "27800348"),
+                    code=args["code"], direction="sell",
+                    price=args["price"], volume=args["volume"], order_type="limit")
+                return json.dumps({"order_id": str(order_id), "status": "submitted"})
 
         elif name == "daily_report":
             positions = executor.positions.get_positions_list()
