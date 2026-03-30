@@ -281,7 +281,7 @@ func (h *AgentHandler) Get(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var agent model.Agent
-	if err := h.db.Where("id = ? AND (user_id = ? OR is_public = ?)", id, userID, true).First(&agent).Error; err != nil {
+	if err := h.db.Preload("Skills").Where("id = ? AND (user_id = ? OR is_public = ?)", id, userID, true).First(&agent).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "agent not found"})
 		return
 	}
