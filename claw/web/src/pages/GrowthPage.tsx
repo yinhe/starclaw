@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { growthAPI } from '../lib/api'
+import { growthAPI, swarmAPI, stardustAPI } from '../lib/api'
 import PetAvatar from '../components/PetAvatar'
 
 interface GrowthStats {
@@ -40,6 +40,11 @@ interface GrowthProfile {
   evolution_path: string
   form_code: string
   title: string
+  awakening_stars: number
+  generation: number
+  realm_path: string
+  realm_level: number
+  stardust_balance: number
   title_en: string
   path_emoji: string
   path_name: string
@@ -503,12 +508,150 @@ export default function GrowthPage() {
           </div>
         </div>
       </div>
+      {/* Swarm (虫群) */}
+      <SwarmSection />
+
+      {/* Stardust (星尘) */}
+      <StardustSection userLevel={stats.level} awakeningStars={profile.awakening_stars || 0} />
+
       </>}
 
       {tab === 'report' && <DailyReportTab />}
       {tab === 'curve' && <GrowthCurveTab />}
       {tab === 'assets' && <AssetsTab />}
     </div>
+    </div>
+  )
+}
+
+// ── Swarm Display ──
+
+const unitTypeInfo: Record<string, { icon: string; label: string; color: string }> = {
+  financial: { icon: '🏦', label: '财务官虫', color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700' },
+  creative: { icon: '🎬', label: '创意虫', color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700' },
+  social: { icon: '💬', label: '社交虫', color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700' },
+  engineer: { icon: '💻', label: '工程虫', color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' },
+  scout: { icon: '🔍', label: '侦察虫', color: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700' },
+  scholar: { icon: '🧠', label: '学者虫', color: 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-700' },
+  generic: { icon: '⚔️', label: '通用虫', color: 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700' },
+}
+
+function SwarmSection() {
+  const [swarm, setSwarm] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    swarmAPI.list()
+      .then(r => { setSwarm(r.data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="text-center py-4 text-gray-400 text-sm">加载虫群...</div>
+
+  const units = swarm?.units || []
+  if (units.length === 0) {
+    return (
+      <div className="bg-white dark:bg-gray-800/90 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm text-center">
+        <div className="text-3xl mb-2">🐛</div>
+        <p className="text-gray-500 dark:text-gray-400 font-medium">虫群为空</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">创建智能体后，虫群会自动增加成员</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">🐛 虫群 ({units.length})</h3>
+        {swarm?.count_bonus > 0 && (
+          <span className="text-xs text-primary-500">虫群加成 +{swarm.count_bonus}%</span>
+        )}
+      </div>
+
+      {/* Total power */}
+      <div className="flex gap-3 mb-3 text-xs">
+        <span className="text-red-500">❤️ {swarm?.total_hp || 0}</span>
+        <span className="text-orange-500">⚔️ {swarm?.total_atk || 0}</span>
+        <span className="text-blue-500">🛡️ {swarm?.total_def || 0}</span>
+        <span className="text-green-500">💨 {swarm?.total_spd || 0}</span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {units.map((u: any) => {
+          const info = unitTypeInfo[u.unit_type] || unitTypeInfo.generic
+          return (
+            <div key={u.id} className={`rounded-lg p-3 border ${info.color} transition-all hover:shadow-md`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg">{info.icon}</span>
+                <span className="font-semibold text-sm text-gray-900 dark:text-white truncate">{u.agent_name}</span>
+                <span className="text-[10px] text-gray-500 ml-auto">Lv.{u.level}</span>
+              </div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">{info.label}</div>
+              <div className="flex gap-2 text-[10px]">
+                <span>❤️{u.hp}</span>
+                <span>⚔️{u.atk}</span>
+                <span>🛡️{u.def}</span>
+                <span>💨{u.spd}</span>
+              </div>
+              {u.skill_1 && <div className="text-[10px] text-primary-500 mt-1">🎯 {u.skill_1}</div>}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Stardust Display ──
+
+function StardustSection({ userLevel, awakeningStars }: { userLevel: number; awakeningStars: number }) {
+  const [balance, setBalance] = useState(0)
+  const [showShop, setShowShop] = useState(false)
+
+  useEffect(() => {
+    stardustAPI.balance().then(r => setBalance(r.data?.balance || 0)).catch(() => {})
+  }, [])
+
+  return (
+    <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">✨ 星尘</h3>
+        <span className="text-lg font-bold text-amber-500">{balance.toLocaleString()}</span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <button onClick={() => setShowShop(!showShop)}
+          className="px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition">
+          💪 强化英雄
+        </button>
+        <button onClick={() => setShowShop(!showShop)}
+          className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition">
+          🐛 强化虫群
+        </button>
+        <button onClick={() => setShowShop(!showShop)}
+          className="px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition">
+          🥚 孵化新虫
+        </button>
+        {userLevel >= 50 && (
+          <button
+            className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 transition">
+            ⭐ 觉醒 ({awakeningStars}星)
+          </button>
+        )}
+      </div>
+
+      {awakeningStars >= 3 && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-700 text-xs font-medium text-purple-700 dark:text-purple-300 transition">
+            🧬 跨路线融合
+          </button>
+          {awakeningStars >= 5 && (
+            <button className="px-3 py-2 rounded-lg bg-gradient-to-r from-amber-50 to-red-50 dark:from-amber-900/20 dark:to-red-900/20 border border-amber-200 dark:border-amber-700 text-xs font-medium text-amber-700 dark:text-amber-300 transition">
+              🔄 遗产转生
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

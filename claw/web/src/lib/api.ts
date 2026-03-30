@@ -644,6 +644,28 @@ export const growthAPI = {
   getGrowthCurve: (days?: number) =>
     api.get('/growth/curve', { params: { days: days || 7 } }),
   getAssets: () => api.get('/assets/overview'),
+  // v2: Path & Realm choice
+  choosePath: (path: string) => api.post('/growth/choose-path', { path }),
+  chooseRealm: (realm: string) => api.post('/growth/choose-realm', { realm }),
+  // v2: Endgame
+  awaken: () => api.post('/growth/awaken'),
+  fuse: (targetPath: string) => api.post('/growth/fuse', { target_path: targetPath }),
+  rebirth: (newPath: string) => api.post('/growth/rebirth', { new_path: newPath }),
+}
+
+// ── Swarm System (Agent → 虫群) ──
+export const swarmAPI = {
+  list: () => api.get('/swarm'),
+  get: (id: string) => api.get(`/swarm/${id}`),
+  invest: (id: string, stat: string, amount: number) => api.post(`/swarm/${id}/invest`, { stat, amount }),
+}
+
+// ── Stardust Economy (星尘) ──
+export const stardustAPI = {
+  balance: () => api.get('/stardust'),
+  transactions: () => api.get('/stardust/transactions'),
+  enhanceHero: (stat: string, amount: number) => api.post('/stardust/enhance-hero', { stat, amount }),
+  hatch: (type?: string) => api.post('/stardust/hatch', type ? { type } : {}),
 }
 
 // ── Arena PK Battle System (proxied through Queen) ──
