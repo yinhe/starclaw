@@ -332,6 +332,9 @@ func (h *ChatHandler) handleSyncWithTools(c *gin.Context, rt *agentpkg.Runtime, 
 	}
 	h.db.Create(&assistantMsg)
 
+	// Stardust reward for chat
+	go NewStardustEngine(h.db).RewardChat(c.GetString("user_id"))
+
 	// Cerebrate: async extract memories + summary from this conversation turn
 	if h.cerebrate != nil {
 		uid, aid := c.GetString("user_id"), c.GetString("agent_id_for_cerebrate")
@@ -515,6 +518,9 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				}
 				h.db.Create(&assistantMsg)
 				saved = true
+
+				// Stardust reward for streaming chat
+				go NewStardustEngine(h.db).RewardChat(c.GetString("user_id"))
 
 				// Cerebrate: async extract memories + summary from this conversation
 				if h.cerebrate != nil {

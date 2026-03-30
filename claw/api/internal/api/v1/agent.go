@@ -276,6 +276,9 @@ func (h *AgentHandler) Create(c *gin.Context) {
 	// Auto-create swarm unit (虫群成员) for this agent
 	CreateSwarmUnitFromAgent(h.db, userID, agent)
 
+	// Stardust reward for creating a new agent
+	go NewStardustEngine(h.db).RewardAgentCreated(userID)
+
 	c.JSON(http.StatusCreated, agent)
 }
 

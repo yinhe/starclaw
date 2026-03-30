@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { growthAPI, swarmAPI, stardustAPI } from '../lib/api'
 import PetAvatar from '../components/PetAvatar'
+import PathChoiceModal from '../components/PathChoiceModal'
+import RealmChoiceModal from '../components/RealmChoiceModal'
 
 interface GrowthStats {
   conversations: number
@@ -272,6 +274,8 @@ export default function GrowthPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<TabKey>('growth')
+  const [showPathChoice, setShowPathChoice] = useState(false)
+  const [showRealmChoice, setShowRealmChoice] = useState(false)
 
   // Load node growth profile
   useEffect(() => {
@@ -328,8 +332,30 @@ export default function GrowthPage() {
   // Determine current evolution stage index
   const currentIdx = tree.levels.reduce((acc, lv, i) => (stats.level >= lv ? i : acc), 0)
 
+  // Auto-show path choice at Lv.5 if still on larva
+  useEffect(() => {
+    if (profile && profile.stats.level >= 5 && profile.evolution_path === 'larva') {
+      setShowPathChoice(true)
+    }
+    if (profile && (profile.awakening_stars || 0) >= 2 && !profile.realm_path) {
+      setShowRealmChoice(true)
+    }
+  }, [profile])
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    {showPathChoice && (
+      <PathChoiceModal
+        onClose={() => setShowPathChoice(false)}
+        onChoose={() => { setShowPathChoice(false); window.location.reload() }}
+      />
+    )}
+    {showRealmChoice && (
+      <RealmChoiceModal
+        onClose={() => setShowRealmChoice(false)}
+        onChoose={() => { setShowRealmChoice(false); window.location.reload() }}
+      />
+    )}
     <div className="max-w-4xl mx-auto p-4 pb-20 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
