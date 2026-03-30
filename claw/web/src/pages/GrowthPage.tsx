@@ -87,21 +87,55 @@ interface AssetOverview {
   agent_count: number
 }
 
-const evolutionTree: Record<string, { levels: number[]; names: string[]; namesEN: string[] }> = {
-  abyss: {
-    levels: [1, 5, 10, 20, 30, 50],
-    names: ['小龙虾', '章鱼', '蛟', '鲲', '利维坦', '渊皇'],
-    namesEN: ['Claw', 'Octopus', 'Jiao', 'Kun', 'Leviathan', 'Abyssal'],
+const evolutionTree: Record<string, { levels: number[]; names: string[]; namesEN: string[]; emoji: string }> = {
+  larva: {
+    levels: [1, 3, 5],
+    names: ['浮游幼体', '虾苗', '小龙虾'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish'],
+    emoji: '🦐',
+  },
+  ocean: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '帝王蟹', '章鱼', '大白鲨', '海豚', '大王乌贼', '虎鲸', '蓝鲸', '沧龙', '利维坦'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'King Crab', 'Octopus', 'Great White', 'Dolphin', 'Giant Squid', 'Orca', 'Blue Whale', 'Mosasaurus', 'Leviathan'],
+    emoji: '🌊',
   },
   terrain: {
-    levels: [1, 5, 10, 20, 30, 50],
-    names: ['跳虫', '刺蛇', '潜伏者', '雷兽', '泰坦', '陆皇'],
-    namesEN: ['Zergling', 'Hydralisk', 'Lurker', 'Ultralisk', 'Titan', 'Colossus'],
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '蝎子', '科莫多龙', '灰狼', '灰熊', '狮子', '非洲象', '猛犸象', '腕龙', '霸王龙'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Scorpion', 'Komodo Dragon', 'Gray Wolf', 'Grizzly Bear', 'Lion', 'African Elephant', 'Mammoth', 'Brachiosaurus', 'T-Rex'],
+    emoji: '🏔️',
   },
   sky: {
-    levels: [1, 5, 10, 20, 30, 50],
-    names: ['翼龙', '阿根廷巨鹰', '飞龙', '鹏', '守护者', '穹皇'],
-    namesEN: ['Pterosaur', 'Argentavis', 'Mutalisk', 'Peng', 'Guardian', 'Skyward'],
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '蜻蜓', '猫头鹰', '猎隼', '金雕', '安第斯神鹫', '巨型果蝠', '翼龙', '阿根廷巨鹰', '凤凰'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Dragonfly', 'Owl', 'Peregrine Falcon', 'Golden Eagle', 'Andean Condor', 'Giant Bat', 'Pteranodon', 'Argentavis', 'Phoenix'],
+    emoji: '🌪️',
+  },
+  wisdom: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '乌鸦', '章鱼', '海豚', '大象', '大猩猩', '黑猩猩', '智人', '达·芬奇', '超智体'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Crow', 'Octopus', 'Dolphin', 'Elephant', 'Gorilla', 'Chimpanzee', 'Homo Sapiens', 'Da Vinci', 'Superintelligence'],
+    emoji: '🧬',
+  },
+  ancient: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '三叶虫', '邓氏鱼', '异齿龙', '帝鳄', '迅猛龙', '棘龙', '霸王龙', '龙', '哥斯拉'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Trilobite', 'Dunkleosteus', 'Dimetrodon', 'Sarcosuchus', 'Velociraptor', 'Spinosaurus', 'T-Rex', 'Dragon', 'Godzilla'],
+    emoji: '🔥',
+  },
+  symbiont: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '蜜蜂', '珊瑚', '灰狼', '红杉', '大象', '灯塔水母', '菌丝网络', '世界树', '盖亚'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Honeybee', 'Coral', 'Wolf', 'Redwood', 'Elephant', 'Immortal Jellyfish', 'Mycelium Network', 'Yggdrasil', 'Gaia'],
+    emoji: '🌿',
+  },
+  // Legacy alias
+  abyss: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '帝王蟹', '章鱼', '大白鲨', '海豚', '大王乌贼', '虎鲸', '蓝鲸', '沧龙', '利维坦'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'King Crab', 'Octopus', 'Great White', 'Dolphin', 'Giant Squid', 'Orca', 'Blue Whale', 'Mosasaurus', 'Leviathan'],
+    emoji: '🌊',
   },
 }
 
