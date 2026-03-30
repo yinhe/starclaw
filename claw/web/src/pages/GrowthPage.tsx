@@ -400,13 +400,35 @@ export default function GrowthPage() {
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-sm px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
                 {profile.path_emoji} {profile.path_name}
               </span>
+              {profile.realm_path && (
+                <span className={`text-sm px-2 py-0.5 rounded-full ${
+                  profile.realm_path === 'immortal' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
+                  profile.realm_path === 'demon' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' :
+                  'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                }`}>
+                  {profile.realm_path === 'immortal' ? '✨ 仙道' : profile.realm_path === 'demon' ? '🔥 魔道' : '🌿 妖道'}
+                </span>
+              )}
+              {(profile.awakening_stars || 0) > 0 && (
+                <span className="text-sm px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                  {'★'.repeat(profile.awakening_stars)}{'☆'.repeat(Math.max(0, 5 - profile.awakening_stars))} 觉醒
+                </span>
+              )}
+              {(profile.generation || 0) > 0 && (
+                <span className="text-sm px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                  🔄 第{profile.generation}代
+                </span>
+              )}
             </div>
             <div className="text-lg text-gray-900 dark:text-gray-100 font-semibold mb-2">
-              {profile.title} <span className="text-gray-500 text-sm">({profile.title_en})</span>
+              {profile.realm_path ? (
+                <>{profile.realm_path === 'immortal' ? '仙' : profile.realm_path === 'demon' ? '魔' : '妖'}道·{profile.title}</>
+              ) : profile.title}
+              {' '}<span className="text-gray-500 text-sm">({profile.title_en})</span>
             </div>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               {profile.days_with > 0
