@@ -273,6 +273,9 @@ func (h *AgentHandler) Create(c *gin.Context) {
 		h.db.Create(&wf)
 	}
 
+	// Auto-create swarm unit (虫群成员) for this agent
+	CreateSwarmUnitFromAgent(h.db, userID, agent)
+
 	c.JSON(http.StatusCreated, agent)
 }
 

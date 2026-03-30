@@ -891,6 +891,23 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/agents/install-marketplace", agentHandler.InstallFromMarketplace)
 			protected.DELETE("/agents/uninstall/:source_id", agentHandler.UninstallBySourceID)
 
+			// Swarm (虫群)
+			swarmHandler := v1.NewSwarmHandler(db)
+			protected.GET("/swarm", swarmHandler.List)
+			protected.GET("/swarm/:id", swarmHandler.Get)
+			protected.POST("/swarm/:id/invest", swarmHandler.Invest)
+
+			// Stardust (星尘)
+			stardustHandler := v1.NewStardustHandler(db)
+			protected.GET("/stardust", stardustHandler.Balance)
+			protected.GET("/stardust/transactions", stardustHandler.Transactions)
+			protected.POST("/stardust/enhance-hero", stardustHandler.EnhanceHero)
+			protected.POST("/stardust/hatch", stardustHandler.Hatch)
+
+			// Evolution path choice
+			protected.POST("/growth/choose-path", v1.NewGrowthChoiceHandler(db).ChoosePath)
+			protected.POST("/growth/choose-realm", v1.NewGrowthChoiceHandler(db).ChooseRealm)
+
 			// Agent Templates (Creep Marketplace)
 			tplHandler := v1.NewTemplateHandler(db)
 			protected.GET("/templates", tplHandler.List)
