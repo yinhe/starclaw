@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: extractor-postgres
+    environment:
+      POSTGRES_DB: extractor_db
+      POSTGRES_USER: extractor
+      POSTGRES_PASSWORD: ${EXTRACTOR_DB_PASSWORD:-ExtractorDb!2026}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: extractor-api
+    environment:
+      EXTRACTOR_DATABASE_DSN: "host=postgres user=extractor password=${EXTRACTOR_DB_PASSWORD:-ExtractorDb!2026} dbname=extractor_db port=5432 sslmode=disable"
+      EXTRACTOR_BRIDGE_URL: "http://host.docker.internal:8098"
+      EXTRACTOR_PORT: "8097"
+      QUEEN_URL: ${QUEEN_URL:-https://api.starclaw.net}
+      QUEEN_TOKEN: ${QUEEN_TOKEN:-}
+    ports:
+      - "127.0.0.1:8097:8097"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Python Bridge runs natively on Windows (needs xtquant + QMT client)
+  # Start manually: cd bridge && python main.py
+
+volumes:
+  pg_data:

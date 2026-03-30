@@ -1,0 +1,27 @@
+{
+  "name": "trading_scan",
+  "description": "Trigger a full A-share stock scan: quantitative scoring across ~3000+ stocks, returning top candidates with scores, reasons, and order details. Takes 2-3 minutes.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "min_score": {
+        "type": "number",
+        "description": "Minimum score threshold (0.0-1.0, default 0.6)"
+      },
+      "top_n": {
+        "type": "integer",
+        "description": "Number of top candidates to return (default 10)"
+      }
+    }
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/scan",
+    "method": "POST"
+  },
+  "metadata": {
+    "category": "trading",
+    "timeout": 300
+  }
+}

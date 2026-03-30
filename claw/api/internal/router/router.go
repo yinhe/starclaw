@@ -42,6 +42,7 @@ import (
 	"github.com/yinhe/starclaw/internal/squad"
 	"github.com/yinhe/starclaw/internal/swarm"
 	"github.com/yinhe/starclaw/internal/tool"
+	"github.com/yinhe/starclaw/internal/trading"
 	"github.com/yinhe/starclaw/internal/web"
 	"github.com/yinhe/starclaw/internal/webhook"
 	"github.com/yinhe/starclaw/internal/worker"
@@ -141,7 +142,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewSlackTool(db))
 	toolRegistry.Register(tool.NewDiscordTool(db))
 	toolRegistry.Register(tool.NewTelegramTool(db))
-	toolRegistry.Register(tool.NewWeChatCSTool(db))
+	toolRegistry.Register(tool.NewWeChatCSTool(db, cfg.JWT.Secret, cfg.Server.Port))
 	toolRegistry.Register(tool.NewDesktopTool())
 
 	// Generate thumbnails for existing videos on startup
@@ -174,8 +175,34 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	}
 	toolRegistry.Register(tool.NewSystemTool(db, providerRegistry, delegateFunc))
 
-	// Load JSON tool plugins from plugins/ directory
+	// Load JSON tool plugins from plugins/ directory (includes trading_*.json when present)
 	_ = tool.LoadPluginsFromDir(toolRegistry, "plugins")
+
+	// Trading plugin (Extractor quantitative trading)
+	if cfg.Trading.Enabled {
+		tradingCfg := trading.Config{
+			Enabled:   cfg.Trading.Enabled,
+			Role:      cfg.Trading.Role,
+			BridgeURL: cfg.Trading.BridgeURL,
+			Mode:      cfg.Trading.Mode,
+			Master: trading.MasterConfig{
+				HeartbeatURL:      cfg.Trading.Master.HeartbeatURL,
+				HeartbeatInterval: cfg.Trading.Master.HeartbeatInterval,
+				HeartbeatTimeout:  cfg.Trading.Master.HeartbeatTimeout,
+				AutoAutonomous:    cfg.Trading.Master.AutoAutonomous,
+			},
+			Auto: trading.AutoPolicy{
+				AllowNewPositions: cfg.Trading.Auto.AllowNewPositions,
+				MaxPositionPct:    cfg.Trading.Auto.MaxPositionPct,
+				StopLossPct:       cfg.Trading.Auto.StopLossPct,
+				MinConfidence:     cfg.Trading.Auto.MinConfidence,
+				ScanInterval:      cfg.Trading.Auto.ScanInterval,
+			},
+		}
+		tradingPlugin := trading.NewPlugin(tradingCfg)
+		tradingPlugin.Start()
+		log.Printf("[router] trading plugin started: role=%s mode=%s", tradingCfg.Role, tradingCfg.Mode)
+	}
 
 	// Auto-detect and register MCP Bridge (host control) + Dev Bridge (development tools)
 	mcp.AutoRegisterBridge(toolRegistry)
@@ -211,8 +238,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
 	taskWorker.Start()
-	wechatWatcher := worker.NewWeChatWatcher(db)
-	wechatWatcher.Start()
+	// WeChatWatcher disabled — causes focus stealing on desktop
+	// wechatWatcher := worker.NewWeChatWatcher(db)
+	// wechatWatcher.Start()
 
 	// Start Instinct engine (proactive behavior system)
 	instinctEngine := instinct.NewEngine(db)

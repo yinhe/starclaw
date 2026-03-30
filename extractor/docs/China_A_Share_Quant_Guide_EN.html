@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>China A-Share Quantitative Trading</title>
+<style>
+
+@page { size: A4; margin: 2cm; }
+body { font-family: "Segoe UI", Arial, sans-serif; line-height: 1.8; color: #1a1a1a; max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+h1 { color: #0a2540; border-bottom: 3px solid #0a2540; padding-bottom: 12px; font-size: 26px; }
+h2 { color: #1a1a2e; margin-top: 32px; font-size: 20px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+h3 { color: #32325d; font-size: 17px; }
+table { border-collapse: collapse; width: 100%%; margin: 14px 0; font-size: 13.5px; }
+th { background: #0a2540; color: white; padding: 9px 12px; text-align: left; }
+td { padding: 7px 12px; border-bottom: 1px solid #e6e6e6; }
+tr:nth-child(even) { background: #f7f9fc; }
+blockquote { background: #f0f4ff; border-left: 4px solid #0a2540; padding: 12px 16px; margin: 14px 0; border-radius: 4px; font-style: italic; }
+code { background: #f4f4f8; padding: 2px 5px; border-radius: 3px; font-size: 13px; }
+pre { background: #1a1a2e; color: #e0e0e0; padding: 14px; border-radius: 8px; font-size: 12px; overflow-x: auto; }
+hr { border: none; border-top: 1px solid #e0e0e0; margin: 28px 0; }
+a { color: #0a2540; text-decoration: none; }
+
+.hdr { background: linear-gradient(135deg, #0a2540 0%, #635bff 100%); color: white; padding: 28px; border-radius: 12px; margin-bottom: 28px; }
+.hdr h1 { color: white; border: none; margin: 0; font-size: 24px; }
+.hdr p { color: rgba(255,255,255,0.8); margin: 8px 0 0; }
+.ft { text-align: center; margin-top: 36px; padding-top: 18px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>China A-Share Quantitative Trading</h1>
+  <p>Investor Guide — StarClaw Quant Team</p>
+</div>
+<h1>China A-Share Quantitative Trading — Investor Guide</h1>
+
+<blockquote>
+  <p>How to participate in AI-powered algorithmic trading on China's stock market</p>
+</blockquote>
+
+<hr />
+
+<h2>What We Do</h2>
+
+<p>We built an <strong>AI-powered quantitative trading system (codename: Extractor)</strong> that automatically scans 4,000+ stocks listed on the Shanghai and Shenzhen Stock Exchanges, identifies "main wave" breakout signals, and executes trades after AI confirmation.</p>
+
+<p><strong>Our Unique Edge: Quantitative Scoring × AI Double-Check</strong></p>
+
+<table>
+<thead>
+<tr>
+  <th>Traditional Quant</th>
+  <th>Our System</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Technical indicators → Execute directly</td>
+  <td>4-dimensional scoring → <strong>AI analyzes fundamentals, news, sector activity</strong> → Execute after confirmation</td>
+</tr>
+<tr>
+  <td>Vulnerable to earnings bombs &amp; sudden bad news</td>
+  <td>AI pre-filters risks: earnings warnings, insider selling, policy changes</td>
+</tr>
+<tr>
+  <td>Fixed strategy can't adapt</td>
+  <td>Auto-detects bull/sideways/bear market, dynamically adjusts parameters</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2>How Our System Works</h2>
+
+<pre><code>                    ┌──────────────────┐
+                    │  QMT Trading      │
+                    │  Terminal          │
+                    └────────┬─────────┘
+                             │ Real-time data + Auto execution
+                             ▼
+┌───────────────────────────────────────────────────┐
+│        Extractor System (Our Technology)            │
+│                                                     │
+│  ① Scan 4,000+ A-share stocks (daily bars)         │
+│  ② Score each stock on 4 dimensions [0-1]:         │
+│     · Trend + Position (50%) — Moving average       │
+│       alignment, price percentile                   │
+│     · Momentum (20%) — 3-day vs 10-day elasticity   │
+│     · Today's Price-Volume (30%) — Breakout level   │
+│       + volume surge                                │
+│     · Volatility Constraint — ATR penalty           │
+│  ③ AI Double-Check (Claw Agent):                    │
+│     · Fundamental scan — earnings, ST/delisting     │
+│     · News scan — negative news, insider selling    │
+│     · Technical verification — trend confirmation   │
+│     · Sector resonance — industry activity          │
+│  ④ Auto-execute confirmed trades                    │
+│  ⑤ 3-level circuit breaker risk management          │
+│  ⑥ Daily settlement + performance report            │
+└───────────────────────────────────────────────────┘
+</code></pre>
+
+<hr />
+
+<h2>How to Open an Account</h2>
+
+<h3>For Chinese Residents (Easiest)</h3>
+
+<ol>
+<li><strong>Download a broker app</strong> — We recommend GuoJin Securities (国金证券)</li>
+<li><strong>Online account opening</strong> — Takes 10 minutes, need ID card + bank card</li>
+<li><strong>Apply for QMT access</strong> — Ask your account manager to enable quantitative trading</li>
+<li><strong>Done</strong> — No minimum balance required for testing</li>
+</ol>
+
+<h3>For Foreign Investors (Including US Citizens)</h3>
+
+<p>Foreign individuals can invest in China A-shares through two routes:</p>
+
+<h4>Route A: Direct A-Share Account (QFII-like)</h4>
+
+<ul>
+<li>Requires: Passport + China visa + Chinese bank account</li>
+<li>Must open in person at a brokerage office in China</li>
+<li>Restrictions apply — consult the broker in advance</li>
+<li><strong>Not recommended</strong> for most foreign investors due to complexity</li>
+</ul>
+
+<h4>Route B: Stock Connect (Recommended for Foreign Investors) 🌟</h4>
+
+<p>Invest in A-shares through <strong>Shanghai-Hong Kong Stock Connect</strong> and <strong>Shenzhen-Hong Kong Stock Connect</strong>, without needing a Chinese account.</p>
+
+<table>
+<thead>
+<tr>
+  <th>Broker</th>
+  <th>Stock Connect Access</th>
+  <th>Account Opening</th>
+  <th>Language</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Interactive Brokers (IBKR)</strong></td>
+  <td>✅ Shanghai + Shenzhen Connect</td>
+  <td>Online, 1-2 days</td>
+  <td>English</td>
+</tr>
+<tr>
+  <td><strong>Futu (moomoo)</strong></td>
+  <td>✅</td>
+  <td>Online</td>
+  <td>English + Chinese</td>
+</tr>
+<tr>
+  <td><strong>Tiger Brokers</strong></td>
+  <td>✅</td>
+  <td>Online</td>
+  <td>English + Chinese</td>
+</tr>
+<tr>
+  <td><strong>HSBC Hong Kong</strong></td>
+  <td>✅</td>
+  <td>In-person (HK)</td>
+  <td>English</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Our recommendation: Open an IBKR account</strong> → Enable "Hong Kong Stock Connect" → You can trade ~2,000 A-share stocks directly.</p>
+
+<p>Stock Connect covers:
+- All Shanghai Stock Exchange 180 &amp; 380 index constituents
+- All Shenzhen Stock Exchange Component &amp; Small/Mid Cap index constituents
+- Total: ~2,000 stocks (covers most liquid large &amp; mid caps)</p>
+
+<hr />
+
+<h2>How Much Money Do You Need</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Stage</th>
+  <th>Amount</th>
+  <th>What You Can Do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Paper Trading (Simulated)</strong></td>
+  <td><strong>¥0 / $0</strong></td>
+  <td>Test strategies with virtual money. Zero risk.</td>
+</tr>
+<tr>
+  <td><strong>Minimum Live Trading</strong></td>
+  <td><strong>¥5,000 – ¥20,000</strong> (~$700 – $2,800)</td>
+  <td>Run basic strategy on 3-5 stocks</td>
+</tr>
+<tr>
+  <td><strong>Recommended Start</strong></td>
+  <td><strong>¥50,000 – ¥200,000</strong> (~$7,000 – $28,000)</td>
+  <td>Diversified portfolio, 8-15 stocks, full risk management</td>
+</tr>
+<tr>
+  <td><strong>Standard Allocation</strong></td>
+  <td><strong>¥500,000+</strong> (~$70,000+)</td>
+  <td>Multiple concurrent strategies</td>
+</tr>
+<tr>
+  <td><strong>Professional Scale</strong></td>
+  <td><strong>¥1,000,000+</strong> (~$140,000+)</td>
+  <td>Full strategy suite + hedging + IPO subscription</td>
+</tr>
+</tbody>
+</table>
+
+<h3>For Foreign Investors via Stock Connect</h3>
+
+<ul>
+<li>IBKR minimum: <strong>$0</strong> (no minimum)</li>
+<li>Recommended: <strong>$5,000 – $20,000</strong> for meaningful testing</li>
+<li>Stock Connect settlement in CNH (offshore RMB) or HKD</li>
+</ul>
+
+<h3>Our Suggestion</h3>
+
+<blockquote>
+  <p><strong>Start with paper trading ($0) for 2-4 weeks</strong>, then allocate <strong>$10,000 – $30,000</strong> for initial live testing via Stock Connect.</p>
+</blockquote>
+
+<hr />
+
+<h2>Important A-Share Market Rules</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Rule</th>
+  <th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>T+1 Trading</strong></td>
+  <td>Stocks bought today can only be sold tomorrow (no same-day round trips)</td>
+</tr>
+<tr>
+  <td><strong>Price Limits</strong></td>
+  <td>Main board: ±10% daily limit; ChiNext/STAR: ±20%</td>
+</tr>
+<tr>
+  <td><strong>Minimum Lot</strong></td>
+  <td>100 shares (1 lot) — most stocks are ¥5-50/share, so 1 lot = ¥500-5,000</td>
+</tr>
+<tr>
+  <td><strong>Trading Hours</strong></td>
+  <td>9:30-11:30 AM, 1:00-3:00 PM (Beijing Time, UTC+8)</td>
+</tr>
+<tr>
+  <td><strong>No Short Selling</strong></td>
+  <td>Retail investors generally cannot short A-shares</td>
+</tr>
+<tr>
+  <td><strong>Stamp Tax</strong></td>
+  <td>0.05% on sell side only (government tax)</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2>Risk Management — 3-Level Circuit Breaker</h2>
+
+<h3>Level 1: Per-Strategy</h3>
+
+<ul>
+<li>Per-trade stop loss: <strong>-2%</strong> auto-close</li>
+<li>Daily strategy loss: <strong>-3%</strong> pause strategy</li>
+<li>Single stock max: <strong>25%</strong> of portfolio</li>
+</ul>
+
+<h3>Level 2: Per-Account</h3>
+
+<ul>
+<li>Account daily drawdown exceeds threshold → pause all strategies</li>
+<li>Available cash below 20% → block new positions</li>
+<li>3 consecutive losing days → auto-reduce 50% + alert</li>
+</ul>
+
+<h3>Level 3: System-Wide</h3>
+
+<ul>
+<li>Total drawdown &gt; <strong>-5%</strong> → <strong>Full circuit break</strong> (cancel all orders, block all trading)</li>
+<li>System connection failure → emergency cancel all pending orders</li>
+<li>Extreme market conditions → emergency liquidation protection</li>
+</ul>
+
+<hr />
+
+<h2>Profit Distribution</h2>
+
+<pre><code>After market close each trading day (3:30 PM Beijing):
+
+Net Profit = Realized P&amp;L - Commission - Stamp Tax
+
+├── 60% → Reinvested (compound growth)
+├── 20% → Investor returns (withdrawable per agreement)
+├── 10% → Technology team management fee
+└── 10% → Risk reserve fund (covers losing days)
+
+Losing days: No distribution, covered by reserve fund.
+</code></pre>
+
+<hr />
+
+<h2>Fee Structure</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Item</th>
+  <th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Broker commission</td>
+  <td>~0.015% each way (buy + sell)</td>
+</tr>
+<tr>
+  <td>Stamp tax</td>
+  <td>0.05% (sell only, government tax)</td>
+</tr>
+<tr>
+  <td>Transfer fee</td>
+  <td>0.001%</td>
+</tr>
+<tr>
+  <td>Our management fee</td>
+  <td>Profit sharing (to be discussed)</td>
+</tr>
+<tr>
+  <td>System fee</td>
+  <td>None</td>
+</tr>
+<tr>
+  <td>Account minimum</td>
+  <td>None (recommend ¥50,000+ / $7,000+)</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2>What You See as an Investor</h2>
+
+<h3>Real-Time Dashboard</h3>
+
+<ul>
+<li>📊 All positions, P&amp;L, and trade history at a glance</li>
+<li>📋 Daily report: what was bought/sold and AI's reasoning</li>
+<li>🚨 Risk alerts: immediate notification on circuit breaker triggers</li>
+<li>📈 Monthly performance: return curve, max drawdown, Sharpe ratio, vs CSI 300 benchmark</li>
+</ul>
+
+<h3>What You DON'T Need to Do</h3>
+
+<ul>
+<li>❌ No need to watch the market</li>
+<li>❌ No need to make trading decisions</li>
+<li>❌ No need to understand technical analysis</li>
+<li>❌ No need to install any software</li>
+</ul>
+
+<h3>Transparency &amp; Security</h3>
+
+<ul>
+<li>✅ Your money stays in <strong>your own brokerage account</strong> — we cannot withdraw funds</li>
+<li>✅ We only have trading permission (buy/sell), never fund transfer permission</li>
+<li>✅ All trades are recorded by the broker, fully auditable</li>
+<li>✅ You can revoke API access at any time to stop automated trading</li>
+</ul>
+
+<hr />
+
+<h2>Next Steps</h2>
+
+<ol>
+<li><strong>Open a brokerage account</strong> — IBKR (for Stock Connect) or GuoJin Securities (for direct A-share)</li>
+<li><strong>Enable quantitative trading access</strong> — Request QMT/API permission</li>
+<li><strong>Share account credentials</strong> — We only need API keys, never your password</li>
+<li><strong>We connect and start paper trading</strong> — 2-4 weeks of simulated testing</li>
+<li><strong>Review results together</strong> — Verify strategy performance</li>
+<li><strong>Go live</strong> — Fund the account and switch to real trading</li>
+</ol>
+
+<hr />
+
+<h2>Risk Disclosure</h2>
+
+<p>⚠️ <strong>All trading involves risk. Past performance does not guarantee future results.</strong></p>
+
+<ul>
+<li>Quantitative systems can generate losses due to extreme market volatility, technical failures, or model limitations</li>
+<li>AI analysis is based on historical data and public information — it cannot perfectly predict the future</li>
+<li>China A-share market is regulated by the CSRC (China Securities Regulatory Commission)</li>
+<li>Foreign investors face additional risks including currency fluctuation (RMB/USD) and regulatory changes</li>
+<li><strong>Only invest money you can afford to lose</strong></li>
+</ul>
+
+<hr />
+
+<p><em>Prepared by the StarClaw Quantitative Trading Team</em></p>
+
+<div class="ft"><p>Prepared by the StarClaw Quantitative Trading Team · For informational purposes only, not investment advice</p></div>
+</body>
+</html>

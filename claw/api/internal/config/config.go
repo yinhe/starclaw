@@ -21,6 +21,7 @@ type Config struct {
 	Storage     StorageConfig     `mapstructure:"storage"`
 	Hive        HiveConfig        `mapstructure:"hive"`
 	Forge       ForgeConfig       `mapstructure:"forge"`
+	Trading     TradingConfig     `mapstructure:"trading"`
 }
 
 type StorageConfig struct {
@@ -72,6 +73,30 @@ type NydusConfig struct {
 	STUNServers []string `mapstructure:"stun_servers"` // custom STUN servers (default: Google + Cloudflare)
 	RelayURLs   []string `mapstructure:"relay_urls"`   // relay fallback URLs (default: peer addresses)
 	EnableRelay bool     `mapstructure:"enable_relay"` // serve as relay for other nodes (default: true if public IP)
+}
+
+type TradingConfig struct {
+	Enabled   bool                    `mapstructure:"enabled"`
+	Role      string                  `mapstructure:"role"`
+	BridgeURL string                  `mapstructure:"bridge_url"`
+	Mode      string                  `mapstructure:"mode"`
+	Master    TradingMasterConfig     `mapstructure:"master"`
+	Auto      TradingAutonomousPolicy `mapstructure:"autonomous_policy"`
+}
+
+type TradingMasterConfig struct {
+	HeartbeatURL      string `mapstructure:"heartbeat_url"`
+	HeartbeatInterval int    `mapstructure:"heartbeat_interval"`
+	HeartbeatTimeout  int    `mapstructure:"heartbeat_timeout"`
+	AutoAutonomous    bool   `mapstructure:"auto_autonomous"`
+}
+
+type TradingAutonomousPolicy struct {
+	AllowNewPositions bool    `mapstructure:"allow_new_positions"`
+	MaxPositionPct    float64 `mapstructure:"max_position_pct"`
+	StopLossPct       float64 `mapstructure:"stop_loss_pct"`
+	MinConfidence     float64 `mapstructure:"min_confidence"`
+	ScanInterval      int     `mapstructure:"scan_interval"`
 }
 
 type OAuthConfig struct {
@@ -172,6 +197,19 @@ func Load() (*Config, error) {
 	viper.SetDefault("storage.data_dir", "/app")
 	viper.SetDefault("hive.url", "")
 	viper.SetDefault("forge.url", "")
+	viper.SetDefault("trading.enabled", false)
+	viper.SetDefault("trading.role", "worker")
+	viper.SetDefault("trading.bridge_url", "http://localhost:8098")
+	viper.SetDefault("trading.mode", "follower")
+	viper.SetDefault("trading.master.heartbeat_url", "")
+	viper.SetDefault("trading.master.heartbeat_interval", 10)
+	viper.SetDefault("trading.master.heartbeat_timeout", 30)
+	viper.SetDefault("trading.master.auto_autonomous", true)
+	viper.SetDefault("trading.autonomous_policy.allow_new_positions", false)
+	viper.SetDefault("trading.autonomous_policy.max_position_pct", 50.0)
+	viper.SetDefault("trading.autonomous_policy.stop_loss_pct", 3.0)
+	viper.SetDefault("trading.autonomous_policy.min_confidence", 0.90)
+	viper.SetDefault("trading.autonomous_policy.scan_interval", 300)
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

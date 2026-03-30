@@ -1,0 +1,23 @@
+{
+  "name": "trading_positions",
+  "description": "Query current stock positions for a QMT account. Returns code, name, volume, available volume, cost price, market price, and floating P&L for each holding.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "account": {
+        "type": "string",
+        "description": "QMT account ID, e.g. test1006"
+      }
+    },
+    "required": ["account"]
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/account/positions?account={{account}}",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

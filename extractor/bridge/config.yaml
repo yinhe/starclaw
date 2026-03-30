@@ -1,0 +1,17 @@
+# Extractor Bridge Configuration
+# QMT connection + account definitions
+
+qmt:
+  # Path to QMT userdata directory (miniQMT mode)
+  path: "D:\\中金财富QMT个人版模拟交易端\\userdata_mini"
+  session_id: 123456
+
+# Go API callback URL (for order fills, ticks, alerts)
+callback_url: "http://localhost:8097/callback"
+
+# Trading accounts
+accounts:
+  - id: "27800348"
+    password: ""
+    group: "trend"
+    label: "primary-real"

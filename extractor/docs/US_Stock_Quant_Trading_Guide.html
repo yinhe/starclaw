@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Getting Started with Algorithmic Trading in US Stock Markets</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; line-height: 1.7; color: #1a1a1a; max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+  h1 { color: #0a2540; border-bottom: 3px solid #635bff; padding-bottom: 12px; font-size: 28px; }
+  h2 { color: #0a2540; margin-top: 36px; font-size: 22px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+  h3 { color: #32325d; font-size: 18px; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th { background: #0a2540; color: white; padding: 10px 14px; text-align: left; }
+  td { padding: 8px 14px; border-bottom: 1px solid #e6e6e6; }
+  tr:nth-child(even) { background: #f7f9fc; }
+  blockquote { background: #f0f4ff; border-left: 4px solid #635bff; padding: 14px 18px; margin: 16px 0; border-radius: 4px; font-style: italic; }
+  code { background: #f4f4f8; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+  hr { border: none; border-top: 1px solid #e0e0e0; margin: 30px 0; }
+  .header-bar { background: linear-gradient(135deg, #0a2540 0%, #635bff 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px; }
+  .header-bar h1 { color: white; border: none; margin: 0; }
+  .header-bar p { color: #c4c8ff; margin: 8px 0 0 0; }
+  a { color: #635bff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .risk-box { background: #fff3f3; border: 1px solid #ffcccc; border-radius: 8px; padding: 16px; margin: 16px 0; }
+  .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="header-bar">
+  <h1>Getting Started with Algorithmic Trading in US Stock Markets</h1>
+  <p>A guide for investors partnering with a quantitative trading team &mdash; StarClaw Quant</p>
+</div>
+
+<h1 id="getting-started-with-algorithmic-trading-in-us-stock-markets">Getting Started with Algorithmic Trading in US Stock Markets</h1>
+
+<blockquote>
+  <p>A plain-language guide for investors partnering with a quantitative trading team</p>
+</blockquote>
+
+<hr />
+
+<h2 id="what-we-do">What We Do</h2>
+
+<p>We build <strong>AI-powered quantitative trading systems</strong> that automatically analyze thousands of stocks, identify high-probability trading opportunities, and execute trades — all without human emotion getting in the way.</p>
+
+<p>Our technology combines:
+- <strong>Mathematical models</strong> that score every stock on trend strength, momentum, volume, and volatility
+- <strong>AI confirmation</strong> (our proprietary Claw AI) that cross-checks each candidate against news, earnings, and sector activity before placing any trade
+- <strong>Automated risk management</strong> with multi-level circuit breakers to protect capital</p>
+
+<hr />
+
+<h2 id="opening-a-brokerage-account">Opening a Brokerage Account</h2>
+
+<p>To run algorithmic trading on US stocks, you need a brokerage account that provides <strong>API access</strong> (a way for our software to place trades automatically).</p>
+
+<h3 id="recommended-brokers">Recommended Brokers</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Broker</th>
+  <th>Best For</th>
+  <th>Minimum Deposit</th>
+  <th>Commission</th>
+  <th>API Access</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Interactive Brokers (IBKR)</strong></td>
+  <td>Serious quantitative trading</td>
+  <td>$0</td>
+  <td>~$0.005/share (min $1)</td>
+  <td>✅ Professional-grade</td>
+</tr>
+<tr>
+  <td><strong>Alpaca</strong></td>
+  <td>Getting started / testing</td>
+  <td>$0</td>
+  <td><strong>$0 (free)</strong></td>
+  <td>✅ Easy REST API</td>
+</tr>
+<tr>
+  <td><strong>Charles Schwab</strong></td>
+  <td>Long-term + some algo</td>
+  <td>$0</td>
+  <td>$0</td>
+  <td>✅ Via thinkorswim</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="our-recommendation">Our Recommendation</h3>
+
+<p><strong>Start with Interactive Brokers (IBKR)</strong> — it's what most quantitative hedge funds use worldwide. Here's why:</p>
+
+<ul>
+<li>✅ Supports stocks, options, futures, forex, crypto — all in one account</li>
+<li>✅ Professional API (TWS API / IB Gateway) with Python support</li>
+<li>✅ <strong>Free paper trading</strong> (simulated trading with fake money) to test strategies</li>
+<li>✅ Low commissions ($1 minimum per trade)</li>
+<li>✅ Available to US residents and international investors</li>
+<li>✅ Trusted — publicly traded company (Nasdaq: IBKR), founded 1978</li>
+</ul>
+
+<hr />
+
+<h2 id="what-you-need-to-open-an-account">What You Need to Open an Account</h2>
+
+<h3 id="for-us-residents">For US Residents</h3>
+
+<ol>
+<li><strong>Government-issued ID</strong> (driver's license or passport)</li>
+<li><strong>Social Security Number (SSN)</strong></li>
+<li><strong>Bank account</strong> for funding</li>
+<li><strong>5 minutes</strong> to complete the online application</li>
+</ol>
+
+<h3 id="for-non-us-residents">For Non-US Residents</h3>
+
+<ol>
+<li><strong>Passport</strong></li>
+<li><strong>Proof of address</strong> (utility bill or bank statement)</li>
+<li><strong>W-8BEN tax form</strong> (filled online — declares you're a non-US person for tax purposes)</li>
+<li><strong>Wire transfer</strong> capability from your bank</li>
+</ol>
+
+<h3 id="account-type">Account Type</h3>
+
+<ul>
+<li><strong>Individual account</strong> — simplest, for personal trading</li>
+<li><strong>LLC / Corporate account</strong> — if trading through a company (recommended for larger amounts)</li>
+</ul>
+
+<hr />
+
+<h2 id="how-much-money-do-you-need">How Much Money Do You Need?</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Stage</th>
+  <th>Amount</th>
+  <th>What You Can Do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Paper Trading (Simulated)</strong></td>
+  <td><strong>$0</strong></td>
+  <td>Test our strategies with fake money. No risk. Full functionality.</td>
+</tr>
+<tr>
+  <td><strong>Minimum Live Trading</strong></td>
+  <td><strong>$500 – $2,000</strong></td>
+  <td>Run basic strategies on 3–5 stocks. Good for proof of concept.</td>
+</tr>
+<tr>
+  <td><strong>Meaningful Live Trading</strong></td>
+  <td><strong>$5,000 – $25,000</strong></td>
+  <td>Diversified portfolio of 8–15 stocks. Proper risk management.</td>
+</tr>
+<tr>
+  <td><strong>Day Trading</strong></td>
+  <td><strong>$25,000+</strong></td>
+  <td>Required by SEC rules (Pattern Day Trader rule) if you buy and sell the same stock on the same day more than 3 times per week.</td>
+</tr>
+<tr>
+  <td><strong>Professional Scale</strong></td>
+  <td><strong>$100,000+</strong></td>
+  <td>Full strategy suite, multiple concurrent strategies, options hedging.</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="our-suggestion-for-first-time-testing">Our Suggestion for First-Time Testing</h3>
+
+<blockquote>
+  <p><strong>Start with $0 (paper trading) for 2–4 weeks</strong>, then fund with <strong>$5,000–$10,000</strong> for initial live testing.</p>
+</blockquote>
+
+<p>Paper trading lets you verify that:
+- Our algorithms generate profitable signals
+- The AI confirmation layer filters out bad trades
+- Risk management works as designed
+- You're comfortable with the trading frequency and style</p>
+
+<p><strong>You risk nothing during paper trading.</strong> When you're satisfied with the results, you fund the account and switch to live trading with one click.</p>
+
+<hr />
+
+<h2 id="what-permissions-access-do-you-need">What Permissions / Access Do You Need?</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Permission</th>
+  <th>Why</th>
+  <th>How to Get It</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Market data subscription</strong></td>
+  <td>Real-time stock prices</td>
+  <td>Included free with IBKR (basic) or ~$4.50/month (professional)</td>
+</tr>
+<tr>
+  <td><strong>API access</strong></td>
+  <td>Let our software trade automatically</td>
+  <td>Enabled by default on IBKR; just need to download TWS or IB Gateway</td>
+</tr>
+<tr>
+  <td><strong>Margin account</strong> (optional)</td>
+  <td>Borrow money to trade more</td>
+  <td>Apply during account opening; requires $2,000+ minimum</td>
+</tr>
+<tr>
+  <td><strong>Options trading</strong> (optional)</td>
+  <td>Hedging strategies</td>
+  <td>Apply during account opening; requires passing a short questionnaire</td>
+</tr>
+</tbody>
+</table>
+
+<p>For our initial strategy (stock-only, long-only), you just need:
+- ✅ A funded account
+- ✅ Market data (free tier is fine)
+- ✅ API access enabled</p>
+
+<p><strong>No margin, no options, no special permissions needed to start.</strong></p>
+
+<hr />
+
+<h2 id="how-it-works-investors-view">How It Works (Investor's View)</h2>
+
+<pre><code>You fund the account
+        ↓
+Our system runs 24/5 (market hours)
+        ↓
+┌─────────────────────────────────────┐
+│  1. Scan 4,000+ stocks              │
+│  2. Score each on 4 dimensions      │
+│  3. AI reviews top candidates       │
+│  4. Execute confirmed trades        │
+│  5. Monitor &amp; manage risk 24/7      │
+│  6. Auto stop-loss if things go bad │
+└─────────────────────────────────────┘
+        ↓
+You see results in a real-time dashboard
+        ↓
+Profits are tracked transparently
+</code></pre>
+
+<h3 id="what-you-see">What You See</h3>
+
+<ul>
+<li><strong>Real-time dashboard</strong> showing all positions, P&amp;L, and trade history</li>
+<li><strong>Daily summary</strong> with what was bought/sold and why</li>
+<li><strong>Risk alerts</strong> if any circuit breaker triggers</li>
+<li><strong>Monthly performance report</strong> with benchmark comparison</li>
+</ul>
+
+<h3 id="what-you-dont-need-to-do">What You Don't Need to Do</h3>
+
+<ul>
+<li>❌ No need to watch the market</li>
+<li>❌ No need to make trading decisions</li>
+<li>❌ No need to understand technical analysis</li>
+<li>❌ No need to install any software (dashboard is web-based)</li>
+</ul>
+
+<hr />
+
+<h2 id="fee-structure">Fee Structure</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Item</th>
+  <th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Brokerage commission</td>
+  <td>~$1 per trade (paid to IBKR)</td>
+</tr>
+<tr>
+  <td>Market data</td>
+  <td>$0 – $4.50/month</td>
+</tr>
+<tr>
+  <td>Our management fee</td>
+  <td>To be discussed (typically % of profits)</td>
+</tr>
+<tr>
+  <td>Account minimum</td>
+  <td>No minimum (we recommend $5,000+)</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="risk-disclosure">Risk Disclosure</h2>
+
+<p>All trading involves risk. Past performance does not guarantee future results. Our system includes multiple safety mechanisms:</p>
+
+<ul>
+<li><strong>Per-trade stop loss</strong>: Maximum 2% loss per position</li>
+<li><strong>Daily circuit breaker</strong>: If total portfolio drops 5% in one day, all trading stops</li>
+<li><strong>AI confirmation</strong>: Every trade is reviewed by AI before execution</li>
+<li><strong>Diversification</strong>: Maximum 25% in any single stock</li>
+</ul>
+
+<p>However, losses can and do occur. Only invest money you can afford to lose.</p>
+
+<hr />
+
+<h2 id="next-steps">Next Steps</h2>
+
+<ol>
+<li><strong>Open an IBKR account</strong> at <a href="https://www.interactivebrokers.com">interactivebrokers.com</a></li>
+<li><strong>Enable paper trading</strong> (Settings → Paper Trading Account)</li>
+<li><strong>Share your account ID</strong> with us (we never need your password — API uses separate credentials)</li>
+<li><strong>We connect and start testing</strong> with paper money</li>
+<li><strong>Review results together</strong> after 2–4 weeks</li>
+<li><strong>Decision</strong>: Fund for live trading or adjust strategy</li>
+</ol>
+
+<hr />
+
+<p><em>Prepared by the StarClaw Quantitative Trading Team</em>
+<em>Contact: [your contact info here]</em></p>
+
+
+<div class="footer">
+  <p>Prepared by the StarClaw Quantitative Trading Team &bull; 2026/03/29 周日</p>
+  <p>This document is for informational purposes only and does not constitute investment advice.</p>
+</div>
+
+</body>
+</html>

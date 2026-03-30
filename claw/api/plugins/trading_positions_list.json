@@ -1,0 +1,17 @@
+{
+  "name": "trading_positions_list",
+  "description": "List all currently held stock positions. Returns code, account, entry price, volume, score, entry time, and highest price since entry for each position.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/positions",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

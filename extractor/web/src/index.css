@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer utilities {
+  .glow-up {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+  }
+  .glow-down {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+  }
+  .gradient-text {
+    @apply bg-gradient-to-r from-red-400 to-amber-300 bg-clip-text text-transparent;
+  }
+}
