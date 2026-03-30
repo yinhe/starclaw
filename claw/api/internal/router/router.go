@@ -904,9 +904,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/stardust/enhance-hero", stardustHandler.EnhanceHero)
 			protected.POST("/stardust/hatch", stardustHandler.Hatch)
 
-			// Evolution path choice
-			protected.POST("/growth/choose-path", v1.NewGrowthChoiceHandler(db).ChoosePath)
-			protected.POST("/growth/choose-realm", v1.NewGrowthChoiceHandler(db).ChooseRealm)
+			// Evolution path + realm choice
+			growthChoiceH := v1.NewGrowthChoiceHandler(db)
+			protected.POST("/growth/choose-path", growthChoiceH.ChoosePath)
+			protected.POST("/growth/choose-realm", growthChoiceH.ChooseRealm)
+
+			// Endgame (awakening, fusion, rebirth)
+			endgameH := v1.NewEndgameHandler(db)
+			protected.POST("/growth/awaken", endgameH.Awaken)
+			protected.POST("/growth/fuse", endgameH.Fuse)
+			protected.POST("/growth/rebirth", endgameH.Rebirth)
 
 			// Agent Templates (Creep Marketplace)
 			tplHandler := v1.NewTemplateHandler(db)
