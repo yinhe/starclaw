@@ -109,8 +109,8 @@ function StatCard({ icon, label, value, sub }: { icon: string; label: string; va
   return (
     <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 text-center border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
       <div className="text-xl mb-1">{icon}</div>
-      <div className="text-lg font-bold text-white">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-      <div className="text-xs text-gray-400">{label}</div>
+      <div className="text-lg font-bold text-gray-900 dark:text-white">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
       {sub && <div className="text-[10px] text-gray-500 mt-0.5">{sub}</div>}
     </div>
   )
@@ -293,7 +293,7 @@ export default function GrowthPage() {
     <div className="max-w-4xl mx-auto p-4 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
           🐾 我的小龙虾
         </h1>
         {profile.agent_count > 0 && (
@@ -413,10 +413,10 @@ export default function GrowthPage() {
                   <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${reached ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-500'}`}>
                     {reached ? '✓' : lv}
                   </span>
-                  <span className={`text-sm ${reached ? 'text-white' : 'text-gray-500'}`}>
+                  <span className={`text-sm ${reached ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
                     Lv.{lv}
                   </span>
-                  <span className={`text-sm font-medium ${current ? 'text-white' : reached ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span className={`text-sm font-medium ${current ? 'text-gray-900 dark:text-white' : reached ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600'}`}>
                     {tree.names[i]}
                   </span>
                   <span className={`text-xs ${current ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -440,7 +440,7 @@ export default function GrowthPage() {
             {profile.milestones.map(m => (
               <div key={m.id} className="flex items-center gap-3 text-sm">
                 <span className="text-green-400">✅</span>
-                <span className="text-white flex-1">{m.title}</span>
+                <span className="text-gray-900 dark:text-white flex-1">{m.title}</span>
                 <span className="text-xs text-gray-500">
                   {new Date(m.achieved_at).toLocaleDateString('zh-CN')}
                 </span>
