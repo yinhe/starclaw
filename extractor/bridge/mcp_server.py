@@ -167,11 +167,8 @@ def handle_jsonrpc(request_body: dict, app_state: dict) -> dict:
 
 
 def execute_tool(name: str, args: dict, app_state: dict) -> str:
-    """Execute a trading tool and return result as text."""
+    """Execute a trading tool directly (no HTTP self-call to avoid deadlock)."""
     import math
-    import httpx
-
-    bridge_url = "http://localhost:8098"
 
     def json_safe(obj):
         if obj is None or isinstance(obj, (str, bool, int)):
@@ -190,42 +187,110 @@ def execute_tool(name: str, args: dict, app_state: dict) -> str:
         return str(obj)
 
     try:
-        if name == "scan":
-            resp = httpx.post(f"{bridge_url}/scan", json=args, timeout=300)
+        # Import bridge modules directly (same process, no HTTP)
+        import main as bridge_main
+
+        qmt = bridge_main.qmt
+
+        if name == "health":
+            connected = qmt.is_connected() if qmt else False
+            return json.dumps({"status": "ok", "qmt_connected": connected})
+
+        # For tools needing executor, try to get it; for simple reads, use position_manager directly
+        executor = bridge_main._executor
+        if executor is None and qmt and bridge_main.accounts:
+            try:
+                executor = bridge_main._get_executor()
+            except Exception as e:
+                logger.warning(f"MCP: executor init failed: {e}")
+
+        # positions can be read directly from file even without executor
+        if name == "positions":
+            from position_manager import PositionManager, POSITIONS_FILE
+            import os
+            if os.path.exists(POSITIONS_FILE):
+                with open(POSITIONS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
+            return json.dumps([])
+
+        elif name == "check_exits":
+            if executor is None:
+                return json.dumps({"error": "Executor not ready"})
+            exits = executor.positions.check_exits()
+            if not exits:
+                return json.dumps({"exits": 0, "message": "no exit conditions triggered"})
+            results = executor.positions.execute_exits(exits)
+            return json.dumps(json_safe({"exits": len(results), "details": results}), ensure_ascii=False, indent=2)
+
+        elif name == "health":
+            connected = qmt.is_connected() if qmt else False
+            return json.dumps({"status": "ok", "qmt_connected": connected})
+
         elif name == "kline":
             code = args.get("code", "000001.SZ")
             period = args.get("period", "1d")
             count = args.get("count", 60)
-            resp = httpx.get(f"{bridge_url}/market/kline?code={code}&period={period}&count={count}", timeout=30)
+            data = qmt.get_kline(code, period, count)
+            return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
+
         elif name == "quote":
-            codes = args.get("codes", "000001.SZ")
-            resp = httpx.get(f"{bridge_url}/market/quote?codes={codes}", timeout=10)
-        elif name == "positions":
-            resp = httpx.get(f"{bridge_url}/positions", timeout=10)
-        elif name == "check_exits":
-            resp = httpx.post(f"{bridge_url}/positions/check_exits", timeout=30)
-        elif name == "buy":
-            body = {"account": args.get("account", "27800348"), "code": args["code"],
-                    "direction": "buy", "price": args["price"], "volume": args["volume"], "order_type": "limit"}
-            resp = httpx.post(f"{bridge_url}/order/submit", json=body, timeout=10)
-        elif name == "sell":
-            body = {"account": args.get("account", "27800348"), "code": args["code"],
-                    "direction": "sell", "price": args["price"], "volume": args["volume"], "order_type": "limit"}
-            resp = httpx.post(f"{bridge_url}/order/submit", json=body, timeout=10)
-        elif name == "health":
-            resp = httpx.get(f"{bridge_url}/health", timeout=5)
-        elif name == "premarket":
-            resp = httpx.get(f"{bridge_url}/premarket", timeout=60)
-        elif name == "daily_report":
-            resp = httpx.get(f"{bridge_url}/report/daily", timeout=10)
+            codes = [c.strip() for c in args.get("codes", "000001.SZ").split(",")]
+            data = qmt.get_quotes(codes)
+            return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
+
         elif name == "account_info":
             account = args.get("account", "27800348")
-            resp = httpx.get(f"{bridge_url}/account/info?account={account}", timeout=10)
+            data = qmt.get_account_info(account)
+            return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
+
+        elif name == "buy":
+            order_id = qmt.submit_order(
+                account=args.get("account", "27800348"),
+                code=args["code"], direction="buy",
+                price=args["price"], volume=args["volume"], order_type="limit")
+            return json.dumps({"order_id": str(order_id), "status": "submitted"})
+
+        elif name == "sell":
+            order_id = qmt.submit_order(
+                account=args.get("account", "27800348"),
+                code=args["code"], direction="sell",
+                price=args["price"], volume=args["volume"], order_type="limit")
+            return json.dumps({"order_id": str(order_id), "status": "submitted"})
+
+        elif name == "daily_report":
+            positions = executor.positions.get_positions_list()
+            summary = executor.positions.summary()
+            scan = bridge_main._last_scan_result or {}
+            from datetime import datetime
+            report = {
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "market_env": executor._market_env,
+                "positions_held": len(positions),
+                "positions_cost": summary.get("total_cost", 0),
+                "last_scan": {"scanned": scan.get("scanned", 0), "candidates": scan.get("candidates", 0), "orders": scan.get("orders", 0)},
+                "positions": positions,
+            }
+            return json.dumps(json_safe(report), ensure_ascii=False, indent=2)
+
+        elif name == "premarket":
+            env = executor.detect_market_env()
+            held = executor.positions.get_positions_list()
+            from datetime import datetime
+            return json.dumps(json_safe({
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "market_env": env,
+                "positions_count": len(held),
+                "positions": held,
+            }), ensure_ascii=False, indent=2)
+
+        elif name == "scan":
+            result = executor.scan_once()
+            return json.dumps(json_safe(result), ensure_ascii=False, indent=2)
+
         else:
             return json.dumps({"error": f"Unknown tool: {name}"})
 
-        data = resp.json()
-        return json.dumps(json_safe(data), ensure_ascii=False, indent=2)
-
     except Exception as e:
+        logger.error(f"MCP execute_tool error: {e}")
         return json.dumps({"error": str(e)})
