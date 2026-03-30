@@ -26,5 +26,8 @@ func (f *WorkspaceFile) BeforeCreate(tx *gorm.DB) error {
 	if f.ID == "" {
 		f.ID = uuid.New().String()
 	}
+	if f.CreatedAt.IsZero() {
+		f.CreatedAt = time.Now()
+	}
 	return nil
 }
