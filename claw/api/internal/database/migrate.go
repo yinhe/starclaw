@@ -78,6 +78,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.ForgeBoard{},
 		&model.AgentSkill{},
 		&model.ServiceToken{},
+		&model.SwarmUnit{},
+		&model.StardustTransaction{},
 	); err != nil {
 		return err
 	}
