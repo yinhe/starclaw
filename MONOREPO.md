@@ -20,6 +20,7 @@ starclaw/                          # 私有 monorepo
 ├── spore/      🍄 孢子              # 桌面一键安装器
 ├── chrysalis/  🦋 化蛹              # 宠物进化 & PK 对战系统
 ├── drone/      🐝 工蜂              # 数据采集 + 虫茧同化（Agent/Skill 市场填充）
+├── extractor/  🏦 萃取器             # 量化交易引擎（quant.starclaw.net）
 │
 ├── docker-compose.yml             # Claw 本地开发
 ├── docker-compose.prod.yml        # Claw 生产部署
@@ -367,6 +368,7 @@ Nydus 是虫群的物流系统:
 | 虫巢 | Brood | Overlord 内置 | 企业级节点注册 |
 | 星能 | Star Energy | 跨模块 | 虫群血液 — 内部货币 |
 | 化蛹 | Chrysalis | `chrysalis/` | 蛹壳内蜕变 — 成长/进化/装备/PK |
+| 萃取器 | Extractor | `extractor/` | 气矿采集器 — 从市场中萃取财富，经济命脉 |
 | 菌毯 | Creep | 规划中 | 数据同步层 — 覆盖即掌控 |
 
 ---

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -28,20 +29,19 @@ func NewClawClient(baseURL, apiKey string) *ClawClient {
 	}
 }
 
-// ClawConfirmRequest is sent to Claw for AI secondary analysis.
+// ClawConfirmRequest is sent to Claw's native chat API.
 type ClawConfirmRequest struct {
-	Model    string                 `json:"model"`
-	Messages []ClawMessage          `json:"messages"`
-	Stream   bool                   `json:"stream"`
-}
-
-type ClawMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	AgentID string `json:"agent_id"`
+	Message string `json:"message"`
+	Stream  bool   `json:"stream"`
 }
 
 // ClawConfirmResponse from Claw /v1/chat/completions.
 type ClawConfirmResponse struct {
+	// Claw native format
+	Content string `json:"content"`
+	Role    string `json:"role"`
+	// OpenAI compat fallback
 	Choices []struct {
 		Message struct {
 			Content string `json:"content"`
@@ -51,14 +51,14 @@ type ClawConfirmResponse struct {
 
 // CandidateStock represents a quantitatively scored stock candidate.
 type CandidateStock struct {
-	Code           string  `json:"code"`
-	Score          float64 `json:"score"`
-	TrendOK        bool    `json:"trend_ok"`
-	TodayChange    float64 `json:"today_change"`
-	VolumeRatio    float64 `json:"volume_ratio"`
-	Reason         string  `json:"reason"`
+	Code        string  `json:"code"`
+	Score       float64 `json:"score"`
+	TrendOK     bool    `json:"trend_ok"`
+	TodayChange float64 `json:"today_change"`
+	VolumeRatio float64 `json:"volume_ratio"`
+	Reason      string  `json:"reason"`
 	// After Claw confirmation
-	ClawAction     string   `json:"claw_action,omitempty"`     // confirm, reject, reduce
+	ClawAction     string   `json:"claw_action,omitempty"` // confirm, reject, reduce
 	ClawConfidence float64  `json:"claw_confidence,omitempty"`
 	RiskFlags      []string `json:"risk_flags,omitempty"`
 	Suggestion     string   `json:"suggestion,omitempty"`
@@ -68,16 +68,16 @@ type CandidateStock struct {
 // RequestConfirmation sends candidates to Claw AI for secondary analysis.
 // Returns the raw LLM response text.
 func (c *ClawClient) RequestConfirmation(prompt string, model string) (string, error) {
-	if model == "" {
-		model = "qwen-max" // default to Qwen for Chinese stock analysis
+	// Use first available agent, or env-configured agent ID
+	agentID := os.Getenv("EXTRACTOR_CLAW_AGENT_ID")
+	if agentID == "" {
+		agentID = "default"
 	}
 
 	req := ClawConfirmRequest{
-		Model: model,
-		Messages: []ClawMessage{
-			{Role: "user", Content: prompt},
-		},
-		Stream: false,
+		AgentID: agentID,
+		Message: prompt,
+		Stream:  false,
 	}
 
 	body, err := json.Marshal(req)
@@ -115,11 +115,15 @@ func (c *ClawClient) RequestConfirmation(prompt string, model string) (string, e
 		return "", fmt.Errorf("parse response: %w", err)
 	}
 
-	if len(clawResp.Choices) == 0 {
-		return "", fmt.Errorf("claw returned empty choices")
+	// Try Claw native format first (content field), then OpenAI compat (choices)
+	content := clawResp.Content
+	if content == "" && len(clawResp.Choices) > 0 {
+		content = clawResp.Choices[0].Message.Content
+	}
+	if content == "" {
+		return "", fmt.Errorf("claw returned empty response")
 	}
 
-	content := clawResp.Choices[0].Message.Content
 	log.Printf("[claw] AI response length: %d chars", len(content))
 	return content, nil
 }

@@ -22,23 +22,39 @@ export default function Login({ onLogin }: Props) {
     setLoading(true)
 
     try {
-      const addr = clawAddr.trim().replace(/\/+$/, '')
-      const resp = await fetch('/api/v1/node/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ claw_url: addr }),
-      })
+      const addr = clawAddr.trim()
 
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-        throw new Error(data.error || L('认证失败', 'Authentication failed'))
+      // Validate format: claw:<hex> or http(s)://...
+      if (!addr.startsWith('claw:') && !addr.startsWith('http')) {
+        throw new Error(L('请输入有效的 Claw 节点地址（claw:xxx 或 http://...）', 'Please enter a valid Claw node address (claw:xxx or http://...)'))
       }
 
-      const data = await resp.json()
-      onLogin(data.token || addr)
+      // For claw:<node_id> format, verify against whitelist
+      if (addr.startsWith('claw:')) {
+        const nodeId = addr.slice(5)
+        // Whitelist of authorized node IDs (first 8 chars match is enough)
+        const authorized = ['4293d544', '27800348']
+        const isAuthorized = authorized.some(prefix => nodeId.startsWith(prefix))
+        if (!isAuthorized) {
+          throw new Error(L('该节点未授权，请联系管理员', 'Node not authorized. Contact administrator.'))
+        }
+        onLogin(addr)
+        navigate('/dashboard')
+        return
+      }
+
+      // For http:// format, try to reach the Claw health endpoint
+      const resp = await fetch(addr.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(5000) })
+      if (!resp.ok) throw new Error(L('节点不可达', 'Node unreachable'))
+
+      onLogin(addr)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.message || L('连接失败', 'Connection failed'))
+      if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+        setError(L('连接超时', 'Connection timeout'))
+      } else {
+        setError(err.message || L('连接失败', 'Connection failed'))
+      }
     } finally {
       setLoading(false)
     }

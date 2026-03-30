@@ -310,6 +310,10 @@ async def start_auto_scanner():
 
     # Schedule: 09:35, 10:05, 10:35, 11:05, 13:05, 13:35, 14:05, 14:35
     async def scanner_loop():
+        import concurrent.futures
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        loop = asyncio.get_event_loop()
+
         logger.info(f"[scheduler] Auto-scan started (interval={scan_interval}s during trading hours)")
         last_scan_minute = -1
         while True:
@@ -329,10 +333,13 @@ async def start_auto_scanner():
                 last_scan_minute = minute_bucket
 
                 logger.info(f"[scheduler] === AUTO SCAN {now.strftime('%H:%M')} ===")
-                executor = _get_executor()
 
-                # Override params if needed
-                result = executor.scan_once()
+                # Run blocking scan_once() in thread pool to avoid blocking event loop
+                def do_scan():
+                    executor = _get_executor()
+                    return executor.scan_once()
+
+                result = await loop.run_in_executor(pool, do_scan)
                 safe = _json_safe(result)
 
                 global _last_scan_result

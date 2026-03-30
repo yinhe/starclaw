@@ -65,6 +65,7 @@ public class WeChatWin {
         }, IntPtr.Zero);
         return result;
     }
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
     public static bool ReliableSetForeground(IntPtr hWnd) {
         if (IsIconic(hWnd)) { ShowWindow(hWnd, 9); System.Threading.Thread.Sleep(300); }
         IntPtr fgWnd = GetForegroundWindow();
@@ -74,6 +75,9 @@ public class WeChatWin {
         uint tgtTid = GetWindowThreadProcessId(hWnd, out dummy);
         if (curTid != fgTid) AttachThreadInput(curTid, fgTid, true);
         if (curTid != tgtTid) AttachThreadInput(curTid, tgtTid, true);
+        // Simulate Alt key press to bypass Windows foreground lock
+        keybd_event(0x12, 0, 0, UIntPtr.Zero);        // Alt down
+        keybd_event(0x12, 0, 0x0002, UIntPtr.Zero);   // Alt up
         ShowWindow(hWnd, 5);
         bool ok = SetForegroundWindow(hWnd);
         if (curTid != tgtTid) AttachThreadInput(curTid, tgtTid, false);
@@ -86,14 +90,21 @@ Add-Type -TypeDefinition $csCode -ReferencedAssemblies System.dll
 
 $log = @()
 
-# --- Layer 2: FocusGuard --- abort immediately if focus is lost ---
+# --- Layer 2: FocusGuard --- retry re-activation if focus lost to transient windows ---
 function AssertFocus([string]$step) {
     $fg = [WeChatWin]::GetForegroundWindow()
-    if ($fg -ne $script:hwnd) {
-        $t = [WeChatWin]::GetTitle($fg)
-        Write-Output "ERROR|FOCUS_LOST at $step (foreground=$t)"
-        exit
+    if ($fg -eq $script:hwnd) { return }
+    # Focus lost — try to reclaim up to 3 times
+    for ($retry = 0; $retry -lt 3; $retry++) {
+        Start-Sleep -Milliseconds 300
+        [WeChatWin]::ReliableSetForeground($script:hwnd) | Out-Null
+        Start-Sleep -Milliseconds 200
+        $fg = [WeChatWin]::GetForegroundWindow()
+        if ($fg -eq $script:hwnd) { return }
     }
+    $t = [WeChatWin]::GetTitle($fg)
+    Write-Output "ERROR|FOCUS_LOST at $step (foreground=$t)"
+    exit
 }
 function SafeClick($x, $y, [string]$step) {
     AssertFocus $step

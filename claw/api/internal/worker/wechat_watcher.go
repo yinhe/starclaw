@@ -141,7 +141,7 @@ func (w *WeChatWatcher) processWatch(watch *model.WeChatWatch) error {
 	}
 
 	now := time.Now()
-	goal := fmt.Sprintf("你正在处理微信群“%s”的客服监控任务。系统已检测到微信客户端界面发生变化。请按以下顺序执行：1) 调用 mcp_host_open_app(name=\"微信\") 激活微信客户端；2) 调用 mcp_host_screen_inspect() 读取当前活动微信窗口中的可见文本和 OCR 结果；3) 仅根据 screen_inspect 返回的可见文本，判断是否有新客户消息、图片、语音或待回复内容。不要编造看不到的信息，不要凭空生成监控ID、模式或系统限制。若 screen_inspect 无法读出有效聊天文本，再明确说明无法判断。若识别到新的客户咨询，先调用 wechat_cs(action=\"classify_message\", content=\"从当前窗口文本提取出的客户最新消息\") 做分类，然后给出客服回复建议；高风险场景必须调用 wechat_cs(action=\"handoff_to_human\")。如果当前 watch.mode=auto_task 且回复风险低，可以调用 wechat_cs(action=\"send_reply\", target=\"%s\", content=\"你的回复\") 发送。请始终以客服机器人身份工作，不伪装真人。", watch.Target, watch.Target)
+	goal := fmt.Sprintf(`微信[%s]有新消息。请直接调用 wechat_cs(action="send_reply", target="%s", content="你的回复内容") 发送一条友好的回复。回复要自然、像真人朋友聊天一样，不要说自己是机器人。不需要截图、不需要分析、不需要调用其他工具，直接回复即可。`, watch.Target, watch.Target)
 	task := model.Task{
 		UserID:       watch.UserID,
 		AgentID:      watch.AgentID,

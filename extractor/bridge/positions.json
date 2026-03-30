@@ -1,0 +1,222 @@
+[
+  {
+    "code": "601952.SH",
+    "account": "27800348",
+    "entry_price": 3.99,
+    "volume": 10000,
+    "score": 0.8440000000000001,
+    "order_id": "1745879052",
+    "reason": "多头排列 + 放量VR=3.2 + 突破涨5.9%",
+    "entry_time": "2026-03-30 13:10:40",
+    "highest_price": 3.99
+  },
+  {
+    "code": "000546.SZ",
+    "account": "27800348",
+    "entry_price": 5.99,
+    "volume": 10000,
+    "score": 0.793,
+    "order_id": "1745879053",
+    "reason": "多头排列 + 放量VR=3.4 + 预判涨3.8%",
+    "entry_time": "2026-03-30 13:10:50",
+    "highest_price": 5.99
+  },
+  {
+    "code": "600313.SH",
+    "account": "27800348",
+    "entry_price": 1.06,
+    "volume": 10000,
+    "score": 0.7894366316316688,
+    "order_id": "1745879054",
+    "reason": "多头排列 + 预判涨3.9%",
+    "entry_time": "2026-03-30 13:11:01",
+    "highest_price": 1.06
+  },
+  {
+    "code": "000155.SZ",
+    "account": "27800348",
+    "entry_price": 14.72,
+    "volume": 10000,
+    "score": 0.7845347702227109,
+    "order_id": "1745879055",
+    "reason": "多头排列 + 放量VR=2.3 + 突破涨6.7%",
+    "entry_time": "2026-03-30 13:11:11",
+    "highest_price": 14.72
+  },
+  {
+    "code": "000048.SZ",
+    "account": "27800348",
+    "entry_price": 18.74,
+    "volume": 10000,
+    "score": 0.7810190404970265,
+    "order_id": "1745879056",
+    "reason": "多头排列 + 放量VR=2.2 + 突破涨8.6%",
+    "entry_time": "2026-03-30 13:11:21",
+    "highest_price": 18.74
+  },
+  {
+    "code": "600502.SH",
+    "account": "27800348",
+    "entry_price": 2.35,
+    "volume": 10000,
+    "score": 0.757229940414856,
+    "order_id": "1745879057",
+    "reason": "多头排列 + 放量VR=2.1 + 突破涨10.1%",
+    "entry_time": "2026-03-30 13:11:31",
+    "highest_price": 2.35
+  },
+  {
+    "code": "600988.SH",
+    "account": "27800348",
+    "entry_price": 1.43,
+    "volume": 10000,
+    "score": 0.7539999999999999,
+    "order_id": "1745879058",
+    "reason": "多头排列 + 突破涨6.5%",
+    "entry_time": "2026-03-30 13:11:41",
+    "highest_price": 1.43
+  },
+  {
+    "code": "002648.SZ",
+    "account": "27800348",
+    "entry_price": 25.5,
+    "volume": 10000,
+    "score": 0.743,
+    "order_id": "1745879059",
+    "reason": "多头排列 + 预判涨3.3% + 缩量整理",
+    "entry_time": "2026-03-30 13:11:51",
+    "highest_price": 25.5
+  },
+  {
+    "code": "600539.SH",
+    "account": "27800348",
+    "entry_price": 5.71,
+    "volume": 10000,
+    "score": 0.7414244921130729,
+    "order_id": "1745879060",
+    "reason": "多头排列 + 放量VR=2.3 + 突破涨9.4%",
+    "entry_time": "2026-03-30 13:12:01",
+    "highest_price": 5.71
+  },
+  {
+    "code": "601000.SH",
+    "account": "27800348",
+    "entry_price": 100.0,
+    "volume": 10000,
+    "score": 0.73540445142913,
+    "order_id": "1745879061",
+    "reason": "多头排列 + 放量VR=2.0 + 突破涨7.5%",
+    "entry_time": "2026-03-30 13:12:11",
+    "highest_price": 100.0
+  },
+  {
+    "code": "600110.SH",
+    "account": "27800348",
+    "entry_price": 1.75,
+    "volume": 10000,
+    "score": 0.7469330722551967,
+    "order_id": "1745879062",
+    "reason": "多头排列 + 放量VR=2.2 + 预判涨4.4%",
+    "entry_time": "2026-03-30 13:48:19",
+    "highest_price": 1.75
+  },
+  {
+    "code": "000972.SZ",
+    "account": "27800348",
+    "entry_price": 3.62,
+    "volume": 10000,
+    "score": 0.7365752120020559,
+    "order_id": "1745879063",
+    "reason": "多头排列 + 放量VR=1.6 + 预判涨5.0%",
+    "entry_time": "2026-03-30 13:48:29",
+    "highest_price": 3.62
+  },
+  {
+    "code": "002263.SZ",
+    "account": "27800348",
+    "entry_price": 3.68,
+    "volume": 10000,
+    "score": 0.7300000000000001,
+    "order_id": "1745879064",
+    "reason": "多头排列 + 放量VR=3.9",
+    "entry_time": "2026-03-30 13:48:39",
+    "highest_price": 3.68
+  },
+  {
+    "code": "603076.SH",
+    "account": "27800348",
+    "entry_price": 11.56,
+    "volume": 10000,
+    "score": 0.7300000000000001,
+    "order_id": "1745879065",
+    "reason": "多头排列 + 放量VR=2.9",
+    "entry_time": "2026-03-30 13:48:49",
+    "highest_price": 11.56
+  },
+  {
+    "code": "603239.SH",
+    "account": "27800348",
+    "entry_price": 7.26,
+    "volume": 10000,
+    "score": 0.7267844476607972,
+    "order_id": "1745879066",
+    "reason": "放量VR=2.6 + 突破涨9.2%",
+    "entry_time": "2026-03-30 13:48:59",
+    "highest_price": 7.26
+  },
+  {
+    "code": "603023.SH",
+    "account": "27800348",
+    "entry_price": 1.38,
+    "volume": 10000,
+    "score": 0.724401729318528,
+    "order_id": "1745879067",
+    "reason": "放量VR=2.2 + 突破涨6.5%",
+    "entry_time": "2026-03-30 13:49:09",
+    "highest_price": 1.38
+  },
+  {
+    "code": "000753.SZ",
+    "account": "27800348",
+    "entry_price": 6.17,
+    "volume": 10000,
+    "score": 0.712,
+    "order_id": "1745879068",
+    "reason": "放量VR=3.1 + 突破涨10.1%",
+    "entry_time": "2026-03-30 13:49:19",
+    "highest_price": 6.17
+  },
+  {
+    "code": "002866.SZ",
+    "account": "27800348",
+    "entry_price": 20.11,
+    "volume": 10000,
+    "score": 0.7095245120585252,
+    "order_id": "1745879069",
+    "reason": "多头排列 + 放量VR=2.4 + 突破涨6.5%",
+    "entry_time": "2026-03-30 13:49:30",
+    "highest_price": 20.11
+  },
+  {
+    "code": "002082.SZ",
+    "account": "27800348",
+    "entry_price": 23.59,
+    "volume": 10000,
+    "score": 0.7077859972880275,
+    "order_id": "1745879070",
+    "reason": "多头排列 + 放量VR=2.3 + 突破涨5.4%",
+    "entry_time": "2026-03-30 13:49:40",
+    "highest_price": 23.59
+  },
+  {
+    "code": "002466.SZ",
+    "account": "27800348",
+    "entry_price": 53.43,
+    "volume": 10000,
+    "score": 0.703128986879994,
+    "order_id": "1745879071",
+    "reason": "多头排列",
+    "entry_time": "2026-03-30 13:49:50",
+    "highest_price": 53.43
+  }
+]

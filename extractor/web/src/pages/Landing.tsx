@@ -198,19 +198,52 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-24 px-6 bg-gradient-to-b from-gray-900/50 to-gray-950">
+      {/* Team */}
+      <section className="py-24 px-6">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-3xl font-bold text-white text-center mb-4">{L('团队', 'Our Team')}</h2>
+          <p className="text-gray-400 text-center mb-12">{L('技术驱动，交易验证', 'Tech-Driven, Market-Proven')}</p>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              { role: { zh: '创始人 / 系统架构师', en: 'Founder / System Architect' }, desc: { zh: '10年+全栈工程经验，开源项目 StarClaw 作者。负责整体架构设计、AI Agent 引擎、分布式节点协调。', en: '10+ years full-stack engineering. Author of open-source StarClaw. Leads system architecture, AI Agent engine, and distributed node coordination.' } },
+              { role: { zh: 'AI 量化研究员', en: 'AI Quant Researcher' }, desc: { zh: '深耕A股量化策略，主升浪四维评分模型设计者。负责策略研发、回测验证、参数优化。', en: 'Deep expertise in A-share quant strategies. Designer of the 4-factor main wave scoring model. Leads strategy R&D, backtesting, and parameter optimization.' } },
+              { role: { zh: '风控 / 运营', en: 'Risk Control / Operations' }, desc: { zh: '负责三级风控体系、投资人账户管理、日常运营监控。确保每一分钱都在安全红线之内。', en: 'Manages 3-level risk control, investor account operations, and daily monitoring. Ensures every dollar stays within safety limits.' } },
+            ].map((m, i) => (
+              <div key={i} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 text-center">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-500/20 to-amber-500/20 flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl">{['👨‍💻', '📊', '🛡️'][i]}</span>
+                </div>
+                <h3 className="text-sm font-semibold text-red-400 mb-1">{L(m.role.zh, m.role.en)}</h3>
+                <p className="text-xs text-gray-400 leading-relaxed">{L(m.desc.zh, m.desc.en)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Contact */}
+      <section className="py-24 px-6 bg-gray-900/50">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-4">{L('准备好让 AI 帮你理财了吗？', 'Ready to Let AI Manage Your Wealth?')}</h2>
-          <p className="text-gray-400 mb-8">{L(
-            '联系我们开设账户，或登录查看已有投资组合。',
-            'Contact us to open an account, or log in to view your existing portfolio.'
+          <p className="text-gray-400 mb-10">{L(
+            '联系我们的投资顾问，了解合作方式和开户流程。',
+            'Contact our investment advisor to learn about partnership and account setup.'
           )}</p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/login" className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-8 py-3.5 rounded-xl text-lg font-medium transition">
-              {L('投资人登录', 'Investor Login')} <ChevronRight className="w-5 h-5" />
-            </Link>
+          <div className="grid sm:grid-cols-2 gap-6 mb-10">
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6">
+              <div className="text-2xl mb-3">💬</div>
+              <h3 className="font-semibold text-white mb-1">{L('微信咨询', 'WeChat')}</h3>
+              <p className="text-sm text-gray-400">{L('添加微信：yinheark', 'Add WeChat: yinheark')}</p>
+            </div>
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6">
+              <div className="text-2xl mb-3">📧</div>
+              <h3 className="font-semibold text-white mb-1">{L('邮箱', 'Email')}</h3>
+              <p className="text-sm text-gray-400">7895056@qq.com</p>
+            </div>
           </div>
+          <Link to="/login" className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-8 py-3.5 rounded-xl text-lg font-medium transition">
+            {L('投资人登录', 'Investor Login')} <ChevronRight className="w-5 h-5" />
+          </Link>
         </div>
       </section>
 

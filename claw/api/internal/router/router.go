@@ -327,7 +327,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/recovery/restore", recoveryHandler.Restore)
 
 		// Auth request endpoints (MetaMask-style: public create+poll, protected approve)
-		authReqHandler := v1.NewAuthRequestHandler(identity)
+		authReqHandler := v1.NewAuthRequestHandler(identity, db)
 		apiV1.POST("/identity/auth-request", authReqHandler.Create)
 		apiV1.GET("/identity/auth-request/:id", authReqHandler.GetStatus)
 

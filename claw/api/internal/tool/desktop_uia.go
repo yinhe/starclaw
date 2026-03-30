@@ -698,6 +698,12 @@ Write-Output "WAITING"
 //go:embed wechat_send.ps1
 var wechatSendPS1 string
 
+//go:embed wechat_reply_all.ps1
+var wechatReplyAllPS1 string
+
+//go:embed wechat_auto_chat.ps1
+var wechatAutoChatPS1 string
+
 // ── wechat_send: Robust WeChat message sending ──
 //
 // Uses EnumWindows for window discovery, AttachThreadInput for reliable activation,
