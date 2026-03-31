@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -691,6 +692,86 @@ Write-Output "WAITING"
 		"name":    a.Title,
 		"timeout": timeoutSec,
 		"message": fmt.Sprintf("等待 \"%s\" 超时 (%d秒)", a.Title, timeoutSec),
+	}), nil
+}
+
+//go:embed wechat_send.ps1
+var wechatSendPS1 string
+
+//go:embed wechat_reply_all.ps1
+var wechatReplyAllPS1 string
+
+//go:embed wechat_auto_chat.ps1
+var wechatAutoChatPS1 string
+
+// ── wechat_send: Robust WeChat message sending ──
+//
+// Uses EnumWindows for window discovery, AttachThreadInput for reliable activation,
+// and FocusGuard to abort immediately if focus is ever lost.
+// See docs/WECHAT_SEND_DESIGN.md for design rationale.
+
+func (t *DesktopTool) wechatSend(ctx context.Context, a desktopArgs) (string, error) {
+	target := a.Title // group or contact name
+	message := a.Text // message to send
+	if target == "" {
+		return "", fmt.Errorf("wechat_send requires 'title' (group or contact name)")
+	}
+	if message == "" {
+		return "", fmt.Errorf("wechat_send requires 'text' (message content)")
+	}
+
+	targetB64 := encodeBase64(target)
+	msgB64 := encodeBase64(message)
+
+	// Robust PowerShell script: EnumWindows → AttachThreadInput → FocusGuard → send
+	// See docs/WECHAT_SEND_DESIGN.md
+	psScript := wechatSendPS1
+	psScript = strings.Replace(psScript, "{{TARGET_B64}}", targetB64, 1)
+	psScript = strings.Replace(psScript, "{{MSG_B64}}", msgB64, 1)
+
+	out, err := runPowerShell(ctx, psScript)
+	if err != nil {
+		return "", fmt.Errorf("wechat_send failed: %w\n%.800s", err, out)
+	}
+	out = strings.TrimSpace(out)
+
+	if strings.HasPrefix(out, "ERROR|") {
+		errMsg := strings.TrimPrefix(out, "ERROR|")
+		return toJSON(map[string]interface{}{
+			"action":  "wechat_send",
+			"status":  "error",
+			"target":  target,
+			"message": errMsg,
+		}), nil
+	}
+
+	parts := strings.SplitN(out, "|", 4)
+	logStr := ""
+	clickedName := target
+	msgLen := 0
+	if len(parts) >= 2 {
+		logStr = parts[1]
+	}
+	if len(parts) >= 3 {
+		clickedName = parts[2]
+	}
+	if len(parts) >= 4 {
+		msgLen, _ = strconv.Atoi(parts[3])
+	}
+
+	preview := message
+	if len(preview) > 80 {
+		preview = preview[:80] + "..."
+	}
+
+	return toJSON(map[string]interface{}{
+		"action":       "wechat_send",
+		"status":       "success",
+		"target":       target,
+		"clicked_name": clickedName,
+		"msg_length":   msgLen,
+		"steps":        logStr,
+		"message":      fmt.Sprintf("已向 \"%s\" 发送消息: \"%s\"", clickedName, preview),
 	}), nil
 }
 

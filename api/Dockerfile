@@ -31,12 +31,18 @@ RUN VERSION="$BUILD_VERSION" && \
     if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then \
       [ -f ../.git-version ] && VERSION=$(cat ../.git-version | tr -d '\n\r '); \
     fi && \
-    # 3. GitHub API fallback (may fail in China) 
+    # 3. Nydus API (our own server, fast in China) 
     if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then \
-      VERSION=$(wget -qO- "https://api.github.com/repos/yinhe/starclaw/releases/latest" 2>/dev/null \
+      VERSION=$(wget -qO- -T 5 "https://nydus.starclaw.net/releases/latest" 2>/dev/null \
         | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true); \
     fi && \
-    [ -z "$VERSION" ] && VERSION=dev; \
+    # 4. GitHub API fallback 
+    if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then \
+      VERSION=$(wget -qO- -T 8 "https://api.github.com/repos/yinhe/starclaw/releases/latest" 2>/dev/null \
+        | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true); \
+    fi && \
+    # 5. UTC timestamp as last resort (NEVER "dev") 
+    if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then VERSION=$(date -u +"%Y.%m%d.%H%M"); fi && \
     echo "Building with version: $VERSION" && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" -o /starclaw ./cmd/server && \
     echo "Cross-compiling MCP Bridge for all platforms..." && \

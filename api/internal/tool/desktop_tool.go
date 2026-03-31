@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/google/uuid"
 )
@@ -43,6 +44,9 @@ UI自动化操作（精确、快速、首选）：
 - ui_select: 在下拉框中选择选项（title="分辨率" text="1080P"）
 - ui_scroll: 滚动页面（button="down/up/left/right" seconds=滚动量1-10）
 - ui_wait: 等待某个元素出现（title="导出完成" seconds=超时秒数）
+
+微信专用（一键发送，不丢焦点）：
+- wechat_send: 一键发微信消息（title="群名或联系人" text="消息内容"），自动激活微信→搜索→点击结果→粘贴→发送
 
 浏览器操作（网页场景首选，通过 Chrome DevTools Protocol）：
 - browser_navigate: 打开网页（text="https://example.com"）
@@ -84,7 +88,7 @@ func (t *DesktopTool) Parameters() interface{} {
 			"action": {
 				Type:        "string",
 				Description: "Desktop action to perform",
-				Enum:        []string{"ui_tree", "ui_click", "ui_type", "ui_select", "ui_scroll", "ui_wait", "browser_navigate", "browser_click", "browser_type", "browser_read", "browser_js", "browser_tabs", "excel_read", "excel_write", "excel_formula", "word_read", "word_write", "word_format", "file_list", "file_read", "file_write", "screenshot", "mouse_click", "mouse_move", "mouse_drag", "keyboard_type", "keyboard_hotkey", "keyboard_key", "list_windows", "focus_window", "launch_app", "wait"},
+				Enum:        []string{"ui_tree", "ui_click", "ui_type", "ui_select", "ui_scroll", "ui_wait", "wechat_send", "browser_navigate", "browser_click", "browser_type", "browser_read", "browser_js", "browser_tabs", "excel_read", "excel_write", "excel_formula", "word_read", "word_write", "word_format", "file_list", "file_read", "file_write", "screenshot", "mouse_click", "mouse_move", "mouse_drag", "keyboard_type", "keyboard_hotkey", "keyboard_key", "list_windows", "focus_window", "launch_app", "wait"},
 			},
 			"x":          {Type: "integer", Description: "X coordinate (pixels from left). For mouse_click, mouse_move, mouse_drag (start)."},
 			"y":          {Type: "integer", Description: "Y coordinate (pixels from top). For mouse_click, mouse_move, mouse_drag (start)."},
@@ -144,6 +148,8 @@ func (t *DesktopTool) Execute(ctx context.Context, args string) (string, error) 
 		return t.uiScroll(ctx, a)
 	case "ui_wait":
 		return t.uiWait(ctx, a)
+	case "wechat_send":
+		return t.wechatSend(ctx, a)
 	// Browser CDP (web pages)
 	case "browser_navigate":
 		return t.browserNavigate(ctx, a)
@@ -681,9 +687,24 @@ func isDockerEnv() bool {
 }
 
 func runPowerShell(ctx context.Context, script string) (string, error) {
+	if runtime.GOOS == "windows" {
+		encoded := base64.StdEncoding.EncodeToString([]byte(stringsToUTF16LE(script)))
+		cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+func stringsToUTF16LE(s string) []byte {
+	utf16Vals := utf16.Encode([]rune(s))
+	b := make([]byte, 0, len(utf16Vals)*2)
+	for _, v := range utf16Vals {
+		b = append(b, byte(v), byte(v>>8))
+	}
+	return b
 }
 
 // mouseClickPS returns the PowerShell mouse_event calls for a specific button and click type.

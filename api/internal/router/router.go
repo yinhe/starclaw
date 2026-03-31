@@ -42,6 +42,7 @@ import (
 	"github.com/yinhe/starclaw/internal/squad"
 	"github.com/yinhe/starclaw/internal/swarm"
 	"github.com/yinhe/starclaw/internal/tool"
+	"github.com/yinhe/starclaw/internal/trading"
 	"github.com/yinhe/starclaw/internal/web"
 	"github.com/yinhe/starclaw/internal/webhook"
 	"github.com/yinhe/starclaw/internal/worker"
@@ -141,6 +142,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	toolRegistry.Register(tool.NewSlackTool(db))
 	toolRegistry.Register(tool.NewDiscordTool(db))
 	toolRegistry.Register(tool.NewTelegramTool(db))
+	toolRegistry.Register(tool.NewWeChatCSTool(db, cfg.JWT.Secret, cfg.Server.Port))
 	toolRegistry.Register(tool.NewDesktopTool())
 
 	// Generate thumbnails for existing videos on startup
@@ -173,12 +175,41 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	}
 	toolRegistry.Register(tool.NewSystemTool(db, providerRegistry, delegateFunc))
 
-	// Load JSON tool plugins from plugins/ directory
+	// Load JSON tool plugins from plugins/ directory (includes trading_*.json when present)
 	_ = tool.LoadPluginsFromDir(toolRegistry, "plugins")
+
+	// Trading plugin (Extractor quantitative trading)
+	if cfg.Trading.Enabled {
+		tradingCfg := trading.Config{
+			Enabled:   cfg.Trading.Enabled,
+			Role:      cfg.Trading.Role,
+			BridgeURL: cfg.Trading.BridgeURL,
+			Mode:      cfg.Trading.Mode,
+			Master: trading.MasterConfig{
+				HeartbeatURL:      cfg.Trading.Master.HeartbeatURL,
+				HeartbeatInterval: cfg.Trading.Master.HeartbeatInterval,
+				HeartbeatTimeout:  cfg.Trading.Master.HeartbeatTimeout,
+				AutoAutonomous:    cfg.Trading.Master.AutoAutonomous,
+			},
+			Auto: trading.AutoPolicy{
+				AllowNewPositions: cfg.Trading.Auto.AllowNewPositions,
+				MaxPositionPct:    cfg.Trading.Auto.MaxPositionPct,
+				StopLossPct:       cfg.Trading.Auto.StopLossPct,
+				MinConfidence:     cfg.Trading.Auto.MinConfidence,
+				ScanInterval:      cfg.Trading.Auto.ScanInterval,
+			},
+		}
+		tradingPlugin := trading.NewPlugin(tradingCfg)
+		tradingPlugin.Start()
+		log.Printf("[router] trading plugin started: role=%s mode=%s", tradingCfg.Role, tradingCfg.Mode)
+	}
 
 	// Auto-detect and register MCP Bridge (host control) + Dev Bridge (development tools)
 	mcp.AutoRegisterBridge(toolRegistry)
 	mcp.AutoRegisterDevBridge(toolRegistry)
+
+	// Reload user-saved MCP servers from DB (survives restarts)
+	v1.ReloadSavedServers(db, toolRegistry)
 
 	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
 	// Prefer dedicated swarm.node_token for Queen internal API; fall back to jwt.secret
@@ -195,7 +226,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	}
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &billing.ToolUsageRecord{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &model.WeChatWatch{}, &billing.ToolUsageRecord{}, &model.NodeGrowth{}, &model.Milestone{}, &model.MarketplacePurchase{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
@@ -210,6 +241,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Start background task worker (7x24 autonomous execution)
 	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
 	taskWorker.Start()
+	// WeChatWatcher disabled — causes focus stealing on desktop
+	// wechatWatcher := worker.NewWeChatWatcher(db)
+	// wechatWatcher.Start()
 
 	// Start Instinct engine (proactive behavior system)
 	instinctEngine := instinct.NewEngine(db)
@@ -286,8 +320,17 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			})
 		})
 
+		// Recovery (public endpoints — needed on fresh installs before auth exists)
+		recoveryQueenURL := ""
+		if cfg.Swarm.QueenURL != "" {
+			recoveryQueenURL = strings.TrimSuffix(cfg.Swarm.QueenURL, "/api") + "/api"
+		}
+		recoveryHandler := v1.NewRecoveryHandler(db, identity, recoveryQueenURL)
+		apiV1.POST("/recovery/verify-mnemonic", recoveryHandler.VerifyMnemonic)
+		apiV1.POST("/recovery/restore", recoveryHandler.Restore)
+
 		// Auth request endpoints (MetaMask-style: public create+poll, protected approve)
-		authReqHandler := v1.NewAuthRequestHandler(identity)
+		authReqHandler := v1.NewAuthRequestHandler(identity, db)
 		apiV1.POST("/identity/auth-request", authReqHandler.Create)
 		apiV1.GET("/identity/auth-request/:id", authReqHandler.GetStatus)
 
@@ -851,8 +894,32 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/agents/install-marketplace", agentHandler.InstallFromMarketplace)
 			protected.DELETE("/agents/uninstall/:source_id", agentHandler.UninstallBySourceID)
 
+			// Swarm (虫群)
+			swarmHandler := v1.NewSwarmHandler(db)
+			protected.GET("/swarm", swarmHandler.List)
+			protected.GET("/swarm/:id", swarmHandler.Get)
+			protected.POST("/swarm/:id/invest", swarmHandler.Invest)
+
+			// Stardust (星尘)
+			stardustHandler := v1.NewStardustHandler(db)
+			protected.GET("/stardust", stardustHandler.Balance)
+			protected.GET("/stardust/transactions", stardustHandler.Transactions)
+			protected.POST("/stardust/enhance-hero", stardustHandler.EnhanceHero)
+			protected.POST("/stardust/hatch", stardustHandler.Hatch)
+
+			// Evolution path + realm choice
+			growthChoiceH := v1.NewGrowthChoiceHandler(db)
+			protected.POST("/growth/choose-path", growthChoiceH.ChoosePath)
+			protected.POST("/growth/choose-realm", growthChoiceH.ChooseRealm)
+
+			// Endgame (awakening, fusion, rebirth)
+			endgameH := v1.NewEndgameHandler(db)
+			protected.POST("/growth/awaken", endgameH.Awaken)
+			protected.POST("/growth/fuse", endgameH.Fuse)
+			protected.POST("/growth/rebirth", endgameH.Rebirth)
+
 			// Agent Templates (Creep Marketplace)
-			tplHandler := v1.NewTemplateHandler(db)
+			tplHandler := v1.NewTemplateHandler(db, queenClient)
 			protected.GET("/templates", tplHandler.List)
 			protected.GET("/templates/categories", tplHandler.Categories)
 			protected.GET("/templates/:id", tplHandler.Get)
@@ -862,6 +929,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/templates/community", tplHandler.CommunityList)
 			protected.GET("/templates/community/:id", tplHandler.CommunityGet)
 			protected.POST("/templates/:id/rate", tplHandler.Rate)
+			protected.POST("/templates/community/:id/purchase", tplHandler.Purchase)
+			protected.GET("/templates/community/:id/access", tplHandler.CheckAccess)
+			protected.GET("/templates/purchases", tplHandler.ListPurchases)
+			protected.GET("/templates/purchases/:order_no/status", tplHandler.PollPurchaseStatus)
 
 			// Inference (user-facing: route to contributors)
 			protected.POST("/inference/completions", inferenceHandler.Infer)
@@ -1035,9 +1106,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			multiAgentHandler := v1.NewMultiAgentHandler(db, providerRegistry, toolRegistry)
 			protected.POST("/multi-agent/run", multiAgentHandler.Run)
 
-			// Teams (lightweight orchestrator mapping)
+			// Teams — local multi-agent collaboration (Hexad layer)
 			teamHandler := v1.NewTeamHandler(db)
-			protected.GET("/teams/:id/orchestrator", teamHandler.GetOrchestrator)
+			protected.GET("/teams", teamHandler.List)
+			protected.POST("/teams", teamHandler.Create)
+			protected.GET("/team-templates", teamHandler.ListTemplates)
+			protected.GET("/teams/:id", teamHandler.Get)
+			protected.PUT("/teams/:id", teamHandler.Update)
+			protected.DELETE("/teams/:id", teamHandler.Delete)
+			protected.POST("/teams/:id/members", teamHandler.AddMember)
+			protected.DELETE("/teams/:id/members/:member_id", teamHandler.RemoveMember)
 
 			// Squads (multi-node team collaboration)
 			squadHandler := v1.NewSquadHandler(db, identity)
@@ -1086,6 +1164,30 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			// Dashboard
 			dashboardHandler := v1.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
+
+			// Node Growth System (one pet per Claw node)
+			growthHandler := v1.NewGrowthHandler(db, providerRegistry, identity)
+			protected.GET("/growth", growthHandler.GetGrowth)
+			protected.GET("/growth/milestones", growthHandler.GetMilestones)
+			protected.GET("/growth/milestones/new", growthHandler.GetNewMilestones)
+			protected.GET("/growth/daily-report", growthHandler.GetDailyReport)
+			protected.GET("/growth/curve", growthHandler.GetGrowthCurve)
+			protected.GET("/assets/overview", growthHandler.GetAssets)
+
+			// Identity Recovery (protected — requires auth)
+			protected.GET("/recovery/status", recoveryHandler.Status)
+			protected.GET("/recovery/mnemonic", recoveryHandler.GetMnemonic)
+			protected.POST("/recovery/confirm-mnemonic", recoveryHandler.ConfirmMnemonic)
+			protected.POST("/recovery/bind-phone", recoveryHandler.BindPhone)
+			protected.POST("/recovery/verify-phone", recoveryHandler.VerifyPhone)
+			protected.POST("/recovery/backup", recoveryHandler.Backup)
+			protected.GET("/recovery/address", recoveryHandler.Address)
+
+			// Arena PK (proxy to Queen → Arena service)
+			if cfg.Swarm.QueenURL != "" {
+				log.Printf("[router] arena PK proxy → %s", cfg.Swarm.QueenURL)
+				protected.Any("/arena/*path", arenaProxy(cfg.Swarm.QueenURL))
+			}
 
 			// Auth request management (protected — user approves/rejects on their Claw UI)
 			protected.GET("/identity/auth-requests", authReqHandler.List)
@@ -1992,6 +2094,29 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	web.RegisterRoutes(r)
 
 	return r
+}
+
+// arenaProxy returns a Gin handler that reverse-proxies /v1/arena/* to Queen API's /v1/arena/* endpoint.
+// Path mapping: /v1/arena/pk/leaderboard → queen /v1/arena/pk/leaderboard
+func arenaProxy(queenURL string) gin.HandlerFunc {
+	target, err := url.Parse(queenURL)
+	if err != nil {
+		log.Printf("[arena-proxy] invalid queen URL %q: %v", queenURL, err)
+		return func(c *gin.Context) {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "arena proxy misconfigured"})
+		}
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(`{"error":"arena service unreachable"}`))
+	}
+	return func(c *gin.Context) {
+		subPath := c.Param("path")
+		c.Request.URL.Path = "/v1/arena" + subPath
+		c.Request.Host = target.Host
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
 }
 
 // forgeProxy returns a Gin handler that reverse-proxies /v1/forge/* to the standalone forge-api.

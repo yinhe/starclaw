@@ -183,6 +183,96 @@ func (qc *QueenClient) ResolvePartners(clawID string) (string, string) {
 	return result.CityPartnerID, result.CorePartnerID
 }
 
+// ── Marketplace Direct Payment ──
+
+// MarketplacePayResult holds the response from Queen's create-payment endpoint.
+type MarketplacePayResult struct {
+	OrderNo    string  `json:"order_no"`
+	PayURL     string  `json:"pay_url"`  // Alipay redirect URL
+	CodeURL    string  `json:"code_url"` // WeChat QR code URL
+	AmountYuan float64 `json:"amount_yuan"`
+	PayMethod  string  `json:"pay_method"`
+	Status     string  `json:"status"`
+}
+
+// MarketplaceOrderStatus holds the response from Queen's order query endpoint.
+type MarketplaceOrderStatus struct {
+	OrderNo      string  `json:"order_no"`
+	Status       string  `json:"status"` // pending, paid, expired, failed
+	TemplateID   string  `json:"template_id"`
+	TemplateName string  `json:"template_name"`
+	AmountYuan   float64 `json:"amount_yuan"`
+	PaidAt       *string `json:"paid_at"`
+}
+
+// CreateMarketplacePayment creates a direct Alipay/WeChat payment order via Queen.
+func (qc *QueenClient) CreateMarketplacePayment(userID, templateID, templateName, payMethod string, amountCents int64) (*MarketplacePayResult, error) {
+	if !qc.enabled {
+		return nil, fmt.Errorf("billing not connected")
+	}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"claw_id":       qc.clawID,
+		"user_id":       userID,
+		"template_id":   templateID,
+		"template_name": templateName,
+		"amount":        amountCents,
+		"pay_method":    payMethod,
+		"pay_form":      "pc",
+	})
+
+	req, _ := http.NewRequest("POST", qc.queenURL+"/internal/marketplace/create-payment", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Node-Token", qc.nodeToken)
+
+	resp, err := qc.httpC.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("payment service unavailable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		var errResp map[string]string
+		json.Unmarshal(respBody, &errResp)
+		errMsg := errResp["error"]
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("payment error (HTTP %d)", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	var result MarketplacePayResult
+	json.Unmarshal(respBody, &result)
+	log.Printf("[queen-client] marketplace payment created: order=%s method=%s amount=¥%.2f",
+		result.OrderNo, result.PayMethod, result.AmountYuan)
+	return &result, nil
+}
+
+// QueryMarketplaceOrder checks the payment status of a marketplace order.
+func (qc *QueenClient) QueryMarketplaceOrder(orderNo string) (*MarketplaceOrderStatus, error) {
+	if !qc.enabled {
+		return nil, fmt.Errorf("billing not connected")
+	}
+
+	req, _ := http.NewRequest("GET", qc.queenURL+"/internal/marketplace/order/"+orderNo, nil)
+	req.Header.Set("X-Node-Token", qc.nodeToken)
+
+	resp, err := qc.httpC.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("order not found")
+	}
+
+	var result MarketplaceOrderStatus
+	json.NewDecoder(resp.Body).Decode(&result)
+	return &result, nil
+}
+
 // DepositInvestorPool deposits profit into the investor pool on Queen.
 func (qc *QueenClient) DepositInvestorPool(sourceType, sourceID string, amount, marginTotal int64, clawID string) {
 	if !qc.enabled || amount <= 0 {

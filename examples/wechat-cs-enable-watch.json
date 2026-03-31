@@ -1,0 +1,8 @@
+{
+  "action": "enable_watch",
+  "target": "星爪小龙虾",
+  "agent_id": "<YOUR_WECHAT_CS_AGENT_ID>",
+  "window_title": "微信",
+  "mode": "auto_task",
+  "poll_interval_sec": "20"
+}

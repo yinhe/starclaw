@@ -307,9 +307,18 @@ export const multiAgentAPI = {
     api.post('/multi-agent/run', data),
 }
 
-// Teams
+// Teams (local multi-agent collaboration)
 export const teamAPI = {
-  getOrchestrator: (teamId: string) => api.get(`/teams/${teamId}/orchestrator`),
+  list: () => api.get('/teams'),
+  create: (data: { name: string; description?: string; icon?: string; coordinator_id: string; topology?: string; template_id?: string; members?: { agent_id: string; role?: string; specialty?: string; order?: number }[] }) =>
+    api.post('/teams', data),
+  get: (id: string) => api.get(`/teams/${id}`),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/teams/${id}`, data),
+  delete: (id: string) => api.delete(`/teams/${id}`),
+  addMember: (id: string, data: { agent_id: string; specialty?: string; order?: number }) =>
+    api.post(`/teams/${id}/members`, data),
+  removeMember: (id: string, memberId: string) => api.delete(`/teams/${id}/members/${memberId}`),
+  templates: () => api.get('/team-templates'),
 }
 
 // Workflows
@@ -354,6 +363,14 @@ export const queenMarketplaceAPI = {
     api.get('/templates/community', { params }),
   get: (id: string) =>
     api.get(`/templates/community/${id}`),
+  purchase: (id: string, payMethod: string = 'alipay') =>
+    api.post(`/templates/community/${id}/purchase`, { pay_method: payMethod }),
+  pollPurchaseStatus: (orderNo: string) =>
+    api.get(`/templates/purchases/${orderNo}/status`),
+  checkAccess: (id: string) =>
+    api.get(`/templates/community/${id}/access`),
+  listPurchases: (params?: { status?: string }) =>
+    api.get('/templates/purchases', { params }),
 }
 
 // Schedules (Cron)
@@ -632,6 +649,89 @@ export const squadAPI = {
   sprints: (missionId: string) => api.get(`/missions/${missionId}/sprints`),
   submitFeedback: (missionId: string, feedback: string) => api.post(`/missions/${missionId}/feedback`, { feedback }),
   reviews: (missionId: string) => api.get(`/missions/${missionId}/reviews`),
+}
+
+// ── Node Growth System (one pet per Claw node) ──
+export const growthAPI = {
+  getGrowth: () => api.get('/growth'),
+  getMilestones: () => api.get('/growth/milestones'),
+  getNewMilestones: () => api.get('/growth/milestones/new'),
+  getDailyReport: (date?: string) =>
+    api.get('/growth/daily-report', { params: date ? { date } : {} }),
+  getGrowthCurve: (days?: number) =>
+    api.get('/growth/curve', { params: { days: days || 7 } }),
+  getAssets: () => api.get('/assets/overview'),
+  // v2: Path & Realm choice
+  choosePath: (path: string) => api.post('/growth/choose-path', { path }),
+  chooseRealm: (realm: string) => api.post('/growth/choose-realm', { realm }),
+  // v2: Endgame
+  awaken: () => api.post('/growth/awaken'),
+  fuse: (targetPath: string) => api.post('/growth/fuse', { target_path: targetPath }),
+  rebirth: (newPath: string) => api.post('/growth/rebirth', { new_path: newPath }),
+}
+
+// ── Swarm System (Agent → 虫群) ──
+export const swarmAPI = {
+  list: () => api.get('/swarm'),
+  get: (id: string) => api.get(`/swarm/${id}`),
+  invest: (id: string, stat: string, amount: number) => api.post(`/swarm/${id}/invest`, { stat, amount }),
+}
+
+// ── Stardust Economy (星尘) ──
+export const stardustAPI = {
+  balance: () => api.get('/stardust'),
+  transactions: () => api.get('/stardust/transactions'),
+  enhanceHero: (stat: string, amount: number) => api.post('/stardust/enhance-hero', { stat, amount }),
+  hatch: (type?: string) => api.post('/stardust/hatch', type ? { type } : {}),
+}
+
+// ── Arena PK Battle System (proxied through Queen) ──
+export const arenaAPI = {
+  registerFighter: (data: { claw_id: string; name: string; level: number; evolution_path: string; form_code: string; base_hp: number; base_atk: number; base_def: number; base_spd: number }) =>
+    api.post('/arena/pk/register', data),
+  getFighter: (clawId: string) => api.get(`/arena/pk/fighter/${clawId}`),
+  challenge: (challengerClawId: string, opponentClawId: string) =>
+    api.post('/arena/pk/challenge', { challenger_claw_id: challengerClawId, opponent_claw_id: opponentClawId }),
+  getHistory: (clawId: string) => api.get(`/arena/pk/history/${clawId}`),
+  getLeaderboard: () => api.get('/arena/pk/leaderboard'),
+  getShop: () => api.get('/arena/pk/shop'),
+  buyEquipment: (clawId: string, defId: string) =>
+    api.post('/arena/pk/shop/buy', { claw_id: clawId, def_id: defId }),
+  equip: (clawId: string, itemId: string) =>
+    api.post('/arena/pk/equip', { claw_id: clawId, item_id: itemId }),
+  unequip: (clawId: string, slot: string) =>
+    api.post('/arena/pk/unequip', { claw_id: clawId, slot }),
+  getInventory: (clawId: string) => api.get(`/arena/pk/inventory/${clawId}`),
+  // Stardust
+  getStardust: (clawId: string) => api.get(`/arena/pk/stardust/${clawId}`),
+  // Season
+  getSeason: () => api.get('/arena/pk/season'),
+  getSeasonRecord: (clawId: string) => api.get(`/arena/pk/season/record/${clawId}`),
+  // Crafting
+  getMaterials: () => api.get('/arena/pk/craft/materials'),
+  getMyMaterials: (clawId: string) => api.get(`/arena/pk/craft/inventory/${clawId}`),
+  getRecipes: () => api.get('/arena/pk/craft/recipes'),
+  craft: (clawId: string, recipeId: string) =>
+    api.post('/arena/pk/craft', { claw_id: clawId, recipe_id: recipeId }),
+  collectMaterials: (clawId: string) =>
+    api.post('/arena/pk/craft/collect', { claw_id: clawId }),
+  // Mutations
+  getMutations: (clawId: string) => api.get(`/arena/pk/mutations/${clawId}`),
+  triggerMutation: (clawId: string) =>
+    api.post('/arena/pk/mutations/trigger', { claw_id: clawId }),
+}
+
+// ── Identity Recovery ──
+export const recoveryAPI = {
+  getStatus: () => api.get('/recovery/status'),
+  getMnemonic: () => api.get('/recovery/mnemonic'),
+  confirmMnemonic: (mnemonic: string) => api.post('/recovery/confirm-mnemonic', { mnemonic }),
+  bindPhone: (phone: string) => api.post('/recovery/bind-phone', { phone }),
+  verifyPhone: (phone: string, code: string) => api.post('/recovery/verify-phone', { phone, code }),
+  backup: () => api.post('/recovery/backup'),
+  verifyMnemonic: (mnemonic: string) => api.post('/recovery/verify-mnemonic', { mnemonic }),
+  restore: (mnemonic: string) => api.post('/recovery/restore', { mnemonic }),
+  getAddress: () => api.get('/recovery/address'),
 }
 
 export default api

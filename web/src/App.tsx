@@ -35,6 +35,7 @@ import BillingPage from './pages/BillingPage'
 import MiningPage from './pages/MiningPage'
 import IntegrationsPage from './pages/IntegrationsPage'
 import SquadPage from './pages/SquadPage'
+import TeamPage from './pages/TeamPage'
 import MemoryPage from './pages/MemoryPage'
 import ObservePage from './pages/ObservePage'
 import WebhooksPage from './pages/WebhooksPage'
@@ -43,6 +44,9 @@ import SecurityPage from './pages/SecurityPage'
 import GoalsPage from './pages/GoalsPage'
 import FineTunePage from './pages/FineTunePage'
 import HiveMindPage from './pages/HiveMindPage'
+import GrowthPage from './pages/GrowthPage'
+import ArenaPage from './pages/ArenaPage'
+import RecoveryPage from './pages/RecoveryPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -110,6 +114,7 @@ export default function App() {
         <Route path="knowledge" element={<KnowledgeBasePage />} />
         <Route path="mcp" element={<MCPPage />} />
         <Route path="skills" element={<SkillsPage />} />
+        <Route path="instincts" element={<ActivityPage />} />
         <Route path="videos" element={<VideosPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="multi-agent" element={<MultiAgentPage />} />
@@ -124,6 +129,7 @@ export default function App() {
         <Route path="wallet" element={<Navigate to="/billing" replace />} />
         <Route path="mining" element={<MiningPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
+        <Route path="teams" element={<TeamPage />} />
         <Route path="squads" element={<SquadPage />} />
         <Route path="hivemind" element={<HiveMindPage />} />
         <Route path="memories" element={<MemoryPage />} />
@@ -133,6 +139,9 @@ export default function App() {
         <Route path="security" element={<SecurityPage />} />
         <Route path="goals" element={<GoalsPage />} />
         <Route path="finetune" element={<FineTunePage />} />
+        <Route path="growth" element={<GrowthPage />} />
+        <Route path="arena" element={<ArenaPage />} />
+        <Route path="recovery" element={<RecoveryPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

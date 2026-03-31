@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -20,6 +21,45 @@ type MCPHandler struct {
 
 func NewMCPHandler(db *gorm.DB, tr *tool.Registry) *MCPHandler {
 	return &MCPHandler{db: db, toolRegistry: tr}
+}
+
+// ReloadSavedServers re-registers all saved MCP servers from DB on startup.
+// This ensures MCP tools survive Claw restarts.
+func ReloadSavedServers(db *gorm.DB, registry *tool.Registry) {
+	go func() {
+		// Wait for DB to be ready
+		time.Sleep(5 * time.Second)
+
+		var servers []model.MCPServer
+		db.Where("status = ?", "active").Find(&servers)
+		if len(servers) == 0 {
+			return
+		}
+
+		for _, server := range servers {
+			cfg := mcp.ServerConfig{
+				BaseURL: server.BaseURL,
+				APIKey:  security.DecryptAPIKey(server.APIKey),
+				Name:    server.Name,
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			client := mcp.NewClient(cfg)
+			tools, err := client.ListTools(ctx)
+			cancel()
+
+			if err != nil {
+				log.Printf("[MCP] Failed to reload server %s (%s): %v", server.Name, server.BaseURL, err)
+				db.Model(&server).Update("status", "error")
+				continue
+			}
+
+			for _, info := range tools {
+				mcpTool := mcp.NewMCPTool(client, info, server.Name)
+				registry.Register(mcpTool)
+			}
+			log.Printf("[MCP] ✓ Reloaded %d tools from %s (%s)", len(tools), server.Name, server.BaseURL)
+		}
+	}()
 }
 
 func (h *MCPHandler) ListServers(c *gin.Context) {
@@ -132,9 +172,13 @@ func (h *MCPHandler) TestServer(c *gin.Context) {
 
 	h.db.Model(&server).Updates(map[string]interface{}{"status": "active", "tool_count": len(tools)})
 
-	toolNames := make([]string, len(tools))
-	for i, t := range tools {
-		toolNames[i] = t.Name
+	type toolDetail struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "active", "tools": toolNames})
+	details := make([]toolDetail, len(tools))
+	for i, t := range tools {
+		details[i] = toolDetail{Name: t.Name, Description: t.Description}
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "active", "tools": details})
 }

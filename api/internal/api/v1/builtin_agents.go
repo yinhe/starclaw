@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/yinhe/starclaw/internal/model"
@@ -13,8 +14,8 @@ import (
 func SeedBuiltinAgents(db *gorm.DB) {
 	ownerID := getOwnerOrSystemID(db)
 
-	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
-	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","audio_analysis","feishu","desktop"]`
+	superDesc := "你的首席 AI 助手。统领全部专业 Agent，简单任务亲自执行，复杂任务智能委派。搜索研究、内容创作、编程开发、文档处理，无所不能。"
+	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","audio_analysis","document","desktop"]`
 
 	// Temporarily disable FK checks for seeding (model_id is NULL for system agents)
 	db.Exec("SET FOREIGN_KEY_CHECKS = 0")
@@ -44,6 +45,15 @@ func SeedBuiltinAgents(db *gorm.DB) {
 			"is_public":     true,
 		})
 	}
+
+	// Update SuperAgent workflow to 总管决策流程
+	updateSuperAgentWorkflow(db, ownerID, superAgent.Name)
+
+	// Clean up deprecated/duplicate activities (daily_review → self_improve, schedule_reminder → remind_check)
+	db.Where("template IN ?", []string{"daily_review", "schedule_reminder"}).Delete(&model.Activity{})
+
+	// Seed Q8bot 麒博 marketplace template (replace old English version)
+	seedQ8botMarketplaceTemplate(db, ownerID)
 
 	// Seed/update specialist agents (MV, 视频, 音乐, etc.)
 	for _, def := range builtinAgents {
@@ -1169,3 +1179,20 @@ BGM是抖音爆款的隐藏变量！合适的BGM能让完播率提升30%+
 8. **必须覆盖全部流程** — 选题→脚本→视频→配音→BGM→封面→标题，缺一不可
 9. 不要创建子Agent或后台任务，直接调用工具
 10. 每个场景等上一个完成再提交下一个（ref_video_id 衔接需要尾帧）`
+
+// Q8bot template is in builtin_agents_q8bot.go (excluded from OSS sync)
+
+// updateSuperAgentWorkflow ensures the SuperAgent's workflow contains the 总管决策流程 nodes.
+func updateSuperAgentWorkflow(db *gorm.DB, ownerID, agentName string) {
+	wfTag := fmt.Sprintf("[agent:%s]", agentName)
+	superWorkflowDef := `{"nodes":[{"id":"start","type":"start","position":{"x":400,"y":30},"data":{"label":"开始"}},{"id":"step-1","type":"llm","position":{"x":400,"y":130},"data":{"label":"理解意图","description":"分析用户需求的类型和复杂度"}},{"id":"step-2","type":"condition","position":{"x":400,"y":250},"data":{"label":"路由决策","description":"简单任务直接执行 / 专业任务委派 Agent"}},{"id":"step-3a","type":"tool","position":{"x":200,"y":370},"data":{"label":"直接执行","toolName":"system","description":"调用合适的工具组合完成任务"}},{"id":"step-3b","type":"tool","position":{"x":600,"y":370},"data":{"label":"委派 Agent","toolName":"system","description":"delegate_to_agent 委派给专业 Agent"}},{"id":"step-4","type":"llm","position":{"x":400,"y":490},"data":{"label":"质量检查","description":"验证执行结果，确保符合用户预期"}},{"id":"step-5","type":"llm","position":{"x":400,"y":600},"data":{"label":"交付汇报","description":"展示结果，提供后续建议"}},{"id":"step-6","type":"tool","position":{"x":400,"y":710},"data":{"label":"记忆归档","toolName":"document","description":"提取对话关键信息存入长期记忆"}},{"id":"end","type":"end","position":{"x":400,"y":820},"data":{"label":"完成"}}],"edges":[{"id":"e-s1","source":"start","target":"step-1"},{"id":"e-12","source":"step-1","target":"step-2"},{"id":"e-2a","source":"step-2","target":"step-3a","data":{"label":"简单任务"}},{"id":"e-2b","source":"step-2","target":"step-3b","data":{"label":"专业任务"}},{"id":"e-a4","source":"step-3a","target":"step-4"},{"id":"e-b4","source":"step-3b","target":"step-4"},{"id":"e-45","source":"step-4","target":"step-5"},{"id":"e-56","source":"step-5","target":"step-6"},{"id":"e-6e","source":"step-6","target":"end"}]}`
+
+	var wf model.Workflow
+	if err := db.Where("user_id = ? AND description LIKE ?", ownerID, "%"+wfTag+"%").First(&wf).Error; err == nil {
+		db.Model(&wf).Updates(map[string]interface{}{
+			"definition": superWorkflowDef,
+			"name":       agentName + " 工作流",
+		})
+		log.Printf("[Seed] Updated SuperAgent workflow: %s", wf.ID)
+	}
+}

@@ -11,6 +11,7 @@ type Conversation struct {
 	ID            string         `json:"id" gorm:"type:varchar(36);primaryKey"`
 	UserID        string         `json:"user_id" gorm:"type:varchar(36);index;not null"`
 	AgentID       string         `json:"agent_id" gorm:"type:varchar(36);index;not null"`
+	TeamID        string         `json:"team_id,omitempty" gorm:"type:varchar(36);index"`   // non-empty = team conversation (multi-agent)
 	ModelID       string         `json:"model_id,omitempty" gorm:"type:varchar(36)"`        // per-conversation model config override
 	ModelOverride string         `json:"model_override,omitempty" gorm:"type:varchar(100)"` // model name override within provider (e.g. "deepseek-chat" within star-ai)
 	Title         string         `json:"title" gorm:"type:varchar(500)"`

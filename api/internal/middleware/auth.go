@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -44,14 +45,32 @@ func ParseToken(tokenStr string, secret string) (*TokenClaims, error) {
 	return tc, nil
 }
 
-// ResolveToken validates either a JWT or Owner Token and returns claims.
-// Strategy: try JWT first; if it fails, fallback to DB lookup as Owner Token.
+// ResolveToken validates a JWT, Owner Token, or Service Token and returns claims.
+// Strategy: try JWT first; then Service Token (svc-*); then DB lookup as Owner Token.
 // Used by both AuthRequired middleware and WebSocket handler.
 func ResolveToken(tokenStr string, cfg *config.Config, db *gorm.DB) (*TokenClaims, error) {
 	// Try JWT first
 	if claims, err := ParseToken(tokenStr, cfg.JWT.Secret); err == nil {
 		return claims, nil
 	}
+
+	// Try Service Token (svc-*)
+	if strings.HasPrefix(tokenStr, "svc-") {
+		var svcToken model.ServiceToken
+		if err := db.Where("token = ? AND revoked = ?", tokenStr, false).First(&svcToken).Error; err == nil {
+			if svcToken.IsValid() {
+				now := time.Now()
+				db.Model(&svcToken).Update("last_used_at", &now)
+				return &TokenClaims{
+					UserID:   svcToken.UserID,
+					Username: "service:" + svcToken.Name,
+					Role:     "service",
+				}, nil
+			}
+		}
+		return nil, fmt.Errorf("invalid or revoked service token")
+	}
+
 	// Fallback: Owner Token (plain hex string stored in DB)
 	var user model.User
 	if err := db.Where("owner_token = ?", tokenStr).First(&user).Error; err != nil {

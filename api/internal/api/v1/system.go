@@ -328,13 +328,7 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
-	// Detect runtime mode: spore (managed by Spore), docker, or standalone
-	runtimeMode := "standalone"
-	if os.Getenv("SPORE_DATA_DIR") != "" {
-		runtimeMode = "spore"
-	} else if _, err := os.Stat("/.dockerenv"); err == nil {
-		runtimeMode = "docker"
-	}
+	runtimeMode := detectRuntimeMode(h.cfg.Hive.URL)
 
 	c.JSON(http.StatusOK, gin.H{
 		"version":       vi,
@@ -349,8 +343,9 @@ func (h *SystemHandler) GetUpdateInfo(c *gin.Context) {
 }
 
 // TriggerUpdate detects runtime mode and dispatches to the appropriate update path:
-//   - docker: Docker socket pull+up (fast) → MCP Bridge build (fallback)
-//   - spore:  download binary → replace → exit → Spore auto-restarts
+//   - hive:       notify Hive Controller → rolling upgrade of all instances
+//   - docker:     Docker socket pull+up (fast) → MCP Bridge build (fallback)
+//   - spore:      download binary → replace → exit → Spore auto-restarts
 //   - standalone: download binary → replace → exit
 func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 	vi := molt.GetVersionInfo()
@@ -363,10 +358,20 @@ func (h *SystemHandler) TriggerUpdate(c *gin.Context) {
 	ulogInfo("开始更新: %s → %s", vi.Current, vi.Latest)
 
 	// Detect runtime mode
-	runtimeMode := detectRuntimeMode()
+	runtimeMode := detectRuntimeMode(h.cfg.Hive.URL)
 	ulogInfo("运行模式: %s", runtimeMode)
 
 	switch runtimeMode {
+	case "hive":
+		// Notify Hive Controller to perform rolling upgrade of all instances
+		ulogInfo("Hive 模式，通知 Hive Controller 执行滚动升级")
+		go func() {
+			defer finishUpdateLog()
+			if err := performHiveUpdate(h.cfg.Hive.URL, vi); err != nil {
+				ulogError("Hive 升级通知失败: %v", err)
+			}
+		}()
+
 	case "docker":
 		// Try Docker socket first (fast pull), fall back to MCP Bridge (source build)
 		if hasDockerSocket() {
@@ -730,11 +735,15 @@ func (h *SystemHandler) GetUpdateLog(c *gin.Context) {
 
 // ── Helpers: runtime detection ──
 
-func detectRuntimeMode() string {
+func detectRuntimeMode(hiveURL string) string {
 	if os.Getenv("SPORE_DATA_DIR") != "" {
 		return "spore"
 	}
 	if _, err := os.Stat("/.dockerenv"); err == nil {
+		// Hive containers have hive.url configured by the Hive Controller
+		if hiveURL != "" {
+			return "hive"
+		}
 		return "docker"
 	}
 	return "standalone"
@@ -859,13 +868,13 @@ if [ "$NEED_BUILD" = "true" ]; then
 
   # Build images
   echo "@@BUILD_START"
-  STARCLAW_VERSION="$VER" $DC build api web 2>&1
+  BUILD_VERSION="$VER" STARCLAW_VERSION="$VER" $DC build api web 2>&1
   echo "@@BUILD_OK"
 fi
 
 # ── Recreate containers ──
 echo "@@UP_START"
-STARCLAW_VERSION="$VER" $DC up -d --no-deps api web 2>&1
+BUILD_VERSION="$VER" STARCLAW_VERSION="$VER" $DC up -d --no-deps api web 2>&1
 echo "@@UPDATE_COMPLETE"
 `, hostDir, targetVersion, nydusURL)
 
@@ -954,6 +963,29 @@ echo "@@UPDATE_COMPLETE"
 		return fmt.Errorf("helper container failed: %w", err)
 	}
 	return nil
+}
+
+// ── Hive update (notify Hive Controller → rolling upgrade of all instances) ──
+
+func performHiveUpdate(hiveURL string, vi molt.VersionInfo) error {
+	ulogInfo("通知 Hive Controller: %s", hiveURL)
+
+	body := fmt.Sprintf(`{"current_version":"%s","latest_version":"%s","source":"claw-ui"}`,
+		vi.Current, vi.Latest)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(hiveURL+"/hive/upgrade-notify", "application/json",
+		strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("连接 Hive Controller 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
+		ulogSuccess("✅ Hive Controller 已接受升级请求，将对所有实例执行滚动升级")
+		return nil
+	}
+	return fmt.Errorf("Hive Controller 返回 HTTP %d", resp.StatusCode)
 }
 
 // ── Spore update (download binary, replace in-place, exit for auto-restart) ──
@@ -1148,8 +1180,8 @@ func performDockerUpdate() error {
 	ulogInfo("写入版本 %s 到 api/.version", targetVersion)
 
 	// Step 4: Build and restart with correct compose file (5 min timeout for docker build)
-	updateCmd := fmt.Sprintf(`cd "%s" && docker compose -f %s build api web 2>&1 && docker compose -f %s up -d --no-deps api web 2>&1`,
-		projectDir, composeFile, composeFile)
+	updateCmd := fmt.Sprintf(`cd "%s" && BUILD_VERSION="%s" docker compose -f %s build api web 2>&1 && BUILD_VERSION="%s" docker compose -f %s up -d --no-deps api web 2>&1`,
+		projectDir, targetVersion, composeFile, targetVersion, composeFile)
 	result, err := execOnHostTimeout(client, updateCmd, 900)
 	if err != nil {
 		ulogError("构建/重启失败: %v", err)
