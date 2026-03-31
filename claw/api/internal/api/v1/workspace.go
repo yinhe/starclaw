@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/sandbox"
 	"gorm.io/gorm"
 )
 
@@ -21,7 +22,7 @@ type WorkspaceHandler struct {
 }
 
 func NewWorkspaceHandler(db *gorm.DB) *WorkspaceHandler {
-	return &WorkspaceHandler{db: db, baseDir: "/app/workspaces"}
+	return &WorkspaceHandler{db: db, baseDir: sandbox.WorkspacesDir()}
 }
 
 // FolderInfo represents a conversation-level folder with aggregated stats

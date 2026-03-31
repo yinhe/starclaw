@@ -1,10 +1,8 @@
 package v1
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,6 +18,7 @@ import (
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
+	"github.com/yinhe/starclaw/internal/sandbox"
 	"github.com/yinhe/starclaw/internal/tool"
 	"github.com/yinhe/starclaw/internal/ws"
 	"gorm.io/gorm"
@@ -199,6 +198,34 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	// Inject file context into prompt if files are attached
 	if len(req.Files) > 0 {
+		// Copy uploaded files to conversation workspace so code tool Read can find them
+		for _, f := range req.Files {
+			stored := f.Stored
+			if stored == "" && f.URL != "" {
+				stored = filepath.Base(f.URL)
+			}
+			if stored != "" {
+				srcPath := resolveUploadPath(stored)
+				if srcPath != "" {
+					workspaceDir := filepath.Join(sandbox.WorkspacesDir(), conversation.UserID, conversation.ID)
+					wsUploads := filepath.Join(workspaceDir, "uploads")
+					os.MkdirAll(workspaceDir, 0755)
+					os.MkdirAll(wsUploads, 0755)
+					if src, err := os.ReadFile(srcPath); err == nil {
+						for _, dstPath := range []string{
+							filepath.Join(workspaceDir, f.Filename),
+							filepath.Join(wsUploads, f.Filename),
+						} {
+							if _, err := os.Stat(dstPath); os.IsNotExist(err) {
+								os.WriteFile(dstPath, src, 0644)
+								log.Printf("[file] copied %s → %s", srcPath, dstPath)
+							}
+						}
+					}
+				}
+			}
+		}
+
 		fileContext := buildFileContext(req.Files)
 		if fileContext != "" {
 			systemPrompt += "\n\n" + fileContext
@@ -837,7 +864,12 @@ func buildFileContext(files []FileAttachment) string {
 			stored = filepath.Base(f.URL)
 		}
 		if isTextReadable(f.Mime, f.Filename) && stored != "" {
-			content, err := readUploadedFileContent("/app/uploads/" + stored)
+			resolvedPath := resolveUploadPath(stored)
+			log.Printf("[file] resolveUploadPath(%s) → %q", stored, resolvedPath)
+			content, err := readUploadedFileContent(resolvedPath)
+			if err != nil {
+				log.Printf("[file] readUploadedFileContent error: %v", err)
+			}
 			if err == nil && content != "" {
 				// Limit to 10000 chars to avoid prompt overflow
 				if len(content) > 10000 {
@@ -857,7 +889,7 @@ func isTextReadable(mime, filename string) bool {
 			return true
 		}
 	}
-	textExts := []string{".md", ".csv", ".yaml", ".yml", ".toml", ".ini", ".log", ".sql", ".sh", ".py", ".js", ".ts", ".go", ".java", ".c", ".cpp", ".rs", ".rb", ".php", ".html", ".xml", ".json", ".txt", ".rtf", ".docx"}
+	textExts := []string{".md", ".csv", ".yaml", ".yml", ".toml", ".ini", ".log", ".sql", ".sh", ".py", ".js", ".ts", ".go", ".java", ".c", ".cpp", ".rs", ".rb", ".php", ".html", ".xml", ".json", ".txt", ".rtf", ".docx", ".pdf", ".pptx", ".xlsx"}
 	ext := strings.ToLower(filepath.Ext(filename))
 	for _, e := range textExts {
 		if ext == e {
@@ -868,9 +900,11 @@ func isTextReadable(mime, filename string) bool {
 }
 
 func readUploadedFileContent(path string) (string, error) {
-	// For .docx files, extract text from the XML inside the zip
-	if strings.HasSuffix(strings.ToLower(path), ".docx") {
-		return readDocxText(path)
+	ext := strings.ToLower(filepath.Ext(path))
+	// Binary document formats: use centralized parser with panic recovery
+	switch ext {
+	case ".docx", ".pdf", ".pptx", ".xlsx":
+		return sandbox.SafeReadDocument(path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -879,48 +913,7 @@ func readUploadedFileContent(path string) (string, error) {
 	return string(data), nil
 }
 
-// readDocxText extracts plain text from a .docx file (which is a zip containing XML)
-func readDocxText(path string) (string, error) {
-	r, err := zip.OpenReader(path)
-	if err != nil {
-		return "", fmt.Errorf("open docx: %w", err)
-	}
-	defer r.Close()
-
-	for _, f := range r.File {
-		if f.Name != "word/document.xml" {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return "", err
-		}
-		defer rc.Close()
-
-		decoder := xml.NewDecoder(rc)
-		var text strings.Builder
-		inParagraph := false
-		for {
-			tok, err := decoder.Token()
-			if err != nil {
-				break
-			}
-			switch t := tok.(type) {
-			case xml.StartElement:
-				if t.Name.Local == "p" {
-					if inParagraph {
-						text.WriteString("\n")
-					}
-					inParagraph = true
-				}
-			case xml.CharData:
-				text.Write(t)
-			}
-		}
-		return text.String(), nil
-	}
-	return "", fmt.Errorf("word/document.xml not found in docx")
-}
+// resolveUploadPath is defined in vision_extract.go
 
 func formatFileSize(size int64) string {
 	if size < 1024 {

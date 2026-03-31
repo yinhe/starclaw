@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yinhe/starclaw/internal/sandbox"
 )
 
 // GitTool provides Git version control operations for coding agents.
@@ -20,7 +22,7 @@ type GitTool struct {
 
 // NewGitTool creates a new Git tool
 func NewGitTool() *GitTool {
-	baseDir := "/app/workspaces"
+	baseDir := sandbox.WorkspacesDir()
 	os.MkdirAll(baseDir, 0755)
 	return &GitTool{baseDir: baseDir}
 }

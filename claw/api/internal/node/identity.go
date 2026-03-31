@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -23,11 +24,27 @@ type Identity struct {
 	NodeID     string             `json:"node_id"`
 }
 
+// nodeDataDir is optionally set at startup to search for .node_key in the data directory.
+var nodeDataDir string
+
+// SetDataDir tells the node package where the data directory is.
+// getKeyFile() will prefer {dataDir}/.node_key if it exists.
+func SetDataDir(dir string) {
+	nodeDataDir = dir
+}
+
 // getKeyFile returns the path to the node key file.
-// Supports NODE_KEY_PATH env var for Docker volume persistence.
+// Search order: NODE_KEY_PATH env > {dataDir}/.node_key > CWD/.node_key
 func getKeyFile() string {
 	if p := os.Getenv("NODE_KEY_PATH"); p != "" {
 		return p
+	}
+	// Check data directory (Spore keeps .node_key alongside claw.db)
+	if nodeDataDir != "" {
+		p := filepath.Join(nodeDataDir, ".node_key")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
 	}
 	return ".node_key"
 }

@@ -10,9 +10,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/yinhe/starclaw/internal/sandbox"
 )
 
-const uploadDir = "/app/uploads"
+// uploadDir returns the uploads directory from the centralized path manager.
+func getUploadDir() string {
+	return sandbox.UploadsDir()
+}
+
 const maxUploadSize = 100 * 1024 * 1024 // 100MB
 
 // Supported file types for chat attachments
@@ -127,13 +132,10 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Create upload directory if not exists
-	os.MkdirAll(uploadDir, 0755)
-
 	// Generate unique filename
 	fileID := uuid.New().String()
 	storedName := fileID + ext
-	destPath := filepath.Join(uploadDir, storedName)
+	destPath := filepath.Join(getUploadDir(), storedName)
 
 	out, err := os.Create(destPath)
 	if err != nil {
@@ -172,7 +174,7 @@ func ServeUploadedFile(c *gin.Context) {
 		return
 	}
 
-	filePath := filepath.Join(uploadDir, filename)
+	filePath := filepath.Join(getUploadDir(), filename)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
 		return

@@ -28,7 +28,7 @@ func HasEmbeddedAssets() bool {
 // This allows frontend hot-updates without recompiling the Go binary.
 func resolveFS() http.FileSystem {
 	// Check for external dist/ folder next to the binary
-	for _, dir := range []string{"dist", "web/dist", "../web/dist"} {
+	for _, dir := range []string{"dist", "web/dist", "../web/dist", "web"} {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			log.Printf("[web] Using external frontend: %s", dir)
 			return http.Dir(dir)
@@ -48,7 +48,7 @@ func resolveFS() http.FileSystem {
 // SPA fallback: non-file paths return index.html for client-side routing.
 func RegisterRoutes(r *gin.Engine) {
 	// Check for external dist/ folder first
-	for _, dir := range []string{"dist", "web/dist", "../web/dist"} {
+	for _, dir := range []string{"dist", "web/dist", "../web/dist", "web"} {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			log.Printf("[web] Using external frontend: %s", dir)
 			registerExternal(r, dir)
