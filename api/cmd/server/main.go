@@ -19,6 +19,7 @@ import (
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
+	"github.com/yinhe/starclaw/internal/instinct"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/node"
@@ -98,6 +99,16 @@ func main() {
 
 	// Seed system-level built-in agents (visible to all users)
 	v1.SeedBuiltinAgents(db)
+
+	// Auto-seed missing built-in activities for all users who have a SuperAgent
+	// This ensures new instinct templates are available even for existing users
+	go func() {
+		var superAgents []model.Agent
+		db.Where("name = ? AND is_builtin = ?", "全能助手", true).Find(&superAgents)
+		for _, sa := range superAgents {
+			instinct.SeedBuiltinActivities(db, sa.UserID, sa.ID)
+		}
+	}()
 
 	// Initialize Redis (optional — nil means in-memory fallback)
 	var rdb *redis.Client
@@ -405,6 +416,8 @@ func cmdRejectDevice() {
 
 // migrateIdentity calls Queen's identity migration API to transfer balance/bindings
 // from an old claw address to a new one. Runs async, non-fatal on failure.
+var _ = migrateIdentity // suppress unused lint — called conditionally at startup
+
 func migrateIdentity(queenURL, token, oldClawID, newClawID string) {
 	body := fmt.Sprintf(`{"old_claw_id":"%s","new_claw_id":"%s"}`, oldClawID, newClawID)
 	url := strings.TrimSuffix(queenURL, "/swarm") + "/internal/identity/migrate"

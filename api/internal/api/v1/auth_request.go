@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/node"
+	"gorm.io/gorm"
 )
 
 // AuthRequest represents a pending login authorization from Queen portal
@@ -20,22 +22,27 @@ type AuthRequest struct {
 	Status    string `json:"status"` // pending / approved / rejected / expired
 	CreatedAt int64  `json:"created_at"`
 	// Filled after approval
-	NodeID    string `json:"node_id,omitempty"`
-	PublicKey string `json:"public_key,omitempty"`
-	Signature string `json:"signature,omitempty"`
-	Username  string `json:"username,omitempty"`
+	NodeID       string `json:"node_id,omitempty"`
+	PublicKey    string `json:"public_key,omitempty"`
+	Signature    string `json:"signature,omitempty"`
+	Username     string `json:"username,omitempty"`
+	ServiceToken string `json:"service_token,omitempty"`
 }
 
 type AuthRequestHandler struct {
 	identity *node.Identity
+	db       *gorm.DB
 	mu       sync.RWMutex
 	requests map[string]*AuthRequest // id → request
 }
 
-func NewAuthRequestHandler(identity *node.Identity) *AuthRequestHandler {
+func NewAuthRequestHandler(identity *node.Identity, db ...*gorm.DB) *AuthRequestHandler {
 	h := &AuthRequestHandler{
 		identity: identity,
 		requests: make(map[string]*AuthRequest),
+	}
+	if len(db) > 0 {
+		h.db = db[0]
 	}
 	// Clean up expired requests every 60s
 	go func() {
@@ -169,7 +176,22 @@ func (h *AuthRequestHandler) Approve(c *gin.Context) {
 	req.Signature = fmt.Sprintf("%x", sig)
 	req.Username = c.GetString("username")
 
-	c.JSON(http.StatusOK, gin.H{"status": "approved"})
+	// Generate a service token for the approved requester
+	result := gin.H{"status": "approved"}
+	if h.db != nil {
+		svcToken := &model.ServiceToken{
+			Name:        req.Origin,
+			Origin:      req.Origin,
+			Permissions: "chat",
+			UserID:      c.GetString("user_id"),
+		}
+		if err := h.db.Create(svcToken).Error; err == nil {
+			req.ServiceToken = svcToken.Token
+			result["service_token"] = svcToken.Token
+		}
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // Reject marks the request as rejected (PROTECTED)

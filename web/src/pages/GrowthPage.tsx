@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import { growthAPI } from '../lib/api'
+import { growthAPI, swarmAPI, stardustAPI } from '../lib/api'
 import PetAvatar from '../components/PetAvatar'
+import PathChoiceModal from '../components/PathChoiceModal'
+import RealmChoiceModal from '../components/RealmChoiceModal'
 
 interface GrowthStats {
   conversations: number
@@ -40,6 +42,11 @@ interface GrowthProfile {
   evolution_path: string
   form_code: string
   title: string
+  awakening_stars: number
+  generation: number
+  realm_path: string
+  realm_level: number
+  stardust_balance: number
   title_en: string
   path_emoji: string
   path_name: string
@@ -87,30 +94,64 @@ interface AssetOverview {
   agent_count: number
 }
 
-const evolutionTree: Record<string, { levels: number[]; names: string[]; namesEN: string[] }> = {
-  abyss: {
-    levels: [1, 5, 10, 20, 30, 50],
-    names: ['小龙虾', '章鱼', '蛟', '鲲', '利维坦', '渊皇'],
-    namesEN: ['Claw', 'Octopus', 'Jiao', 'Kun', 'Leviathan', 'Abyssal'],
+const evolutionTree: Record<string, { levels: number[]; names: string[]; namesEN: string[]; emoji: string }> = {
+  larva: {
+    levels: [1, 3, 5],
+    names: ['浮游幼体', '虾苗', '小龙虾'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish'],
+    emoji: '🦐',
+  },
+  ocean: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '帝王蟹', '章鱼', '大白鲨', '海豚', '大王乌贼', '虎鲸', '蓝鲸', '沧龙', '利维坦'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'King Crab', 'Octopus', 'Great White', 'Dolphin', 'Giant Squid', 'Orca', 'Blue Whale', 'Mosasaurus', 'Leviathan'],
+    emoji: '🌊',
   },
   terrain: {
-    levels: [1, 5, 10, 20, 30, 50],
-    names: ['跳虫', '刺蛇', '潜伏者', '雷兽', '泰坦', '陆皇'],
-    namesEN: ['Zergling', 'Hydralisk', 'Lurker', 'Ultralisk', 'Titan', 'Colossus'],
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '蝎子', '科莫多龙', '灰狼', '灰熊', '狮子', '非洲象', '猛犸象', '腕龙', '霸王龙'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Scorpion', 'Komodo Dragon', 'Gray Wolf', 'Grizzly Bear', 'Lion', 'African Elephant', 'Mammoth', 'Brachiosaurus', 'T-Rex'],
+    emoji: '🏔️',
   },
   sky: {
-    levels: [1, 5, 10, 20, 30, 50],
-    names: ['翼龙', '阿根廷巨鹰', '飞龙', '鹏', '守护者', '穹皇'],
-    namesEN: ['Pterosaur', 'Argentavis', 'Mutalisk', 'Peng', 'Guardian', 'Skyward'],
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '蜻蜓', '猫头鹰', '猎隼', '金雕', '安第斯神鹫', '巨型果蝠', '翼龙', '阿根廷巨鹰', '凤凰'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Dragonfly', 'Owl', 'Peregrine Falcon', 'Golden Eagle', 'Andean Condor', 'Giant Bat', 'Pteranodon', 'Argentavis', 'Phoenix'],
+    emoji: '🌪️',
+  },
+  wisdom: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '乌鸦', '章鱼', '海豚', '大象', '大猩猩', '黑猩猩', '智人', '达·芬奇', '超智体'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Crow', 'Octopus', 'Dolphin', 'Elephant', 'Gorilla', 'Chimpanzee', 'Homo Sapiens', 'Da Vinci', 'Superintelligence'],
+    emoji: '🧬',
+  },
+  ancient: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '三叶虫', '邓氏鱼', '异齿龙', '帝鳄', '迅猛龙', '棘龙', '霸王龙', '龙', '哥斯拉'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Trilobite', 'Dunkleosteus', 'Dimetrodon', 'Sarcosuchus', 'Velociraptor', 'Spinosaurus', 'T-Rex', 'Dragon', 'Godzilla'],
+    emoji: '🔥',
+  },
+  symbiont: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '蜜蜂', '珊瑚', '灰狼', '红杉', '大象', '灯塔水母', '菌丝网络', '世界树', '盖亚'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'Honeybee', 'Coral', 'Wolf', 'Redwood', 'Elephant', 'Immortal Jellyfish', 'Mycelium Network', 'Yggdrasil', 'Gaia'],
+    emoji: '🌿',
+  },
+  // Legacy alias
+  abyss: {
+    levels: [1, 3, 5, 8, 12, 16, 20, 25, 30, 38, 45, 50],
+    names: ['浮游幼体', '虾苗', '小龙虾', '帝王蟹', '章鱼', '大白鲨', '海豚', '大王乌贼', '虎鲸', '蓝鲸', '沧龙', '利维坦'],
+    namesEN: ['Nauplius', 'Shrimplet', 'Crayfish', 'King Crab', 'Octopus', 'Great White', 'Dolphin', 'Giant Squid', 'Orca', 'Blue Whale', 'Mosasaurus', 'Leviathan'],
+    emoji: '🌊',
   },
 }
 
 function StatCard({ icon, label, value, sub }: { icon: string; label: string; value: number | string; sub?: string }) {
   return (
-    <div className="bg-gray-800/50 rounded-xl p-3 text-center border border-gray-700/50">
+    <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 text-center border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
       <div className="text-xl mb-1">{icon}</div>
-      <div className="text-lg font-bold text-white">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-      <div className="text-xs text-gray-400">{label}</div>
+      <div className="text-lg font-bold text-gray-900 dark:text-white">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
       {sub && <div className="text-[10px] text-gray-500 mt-0.5">{sub}</div>}
     </div>
   )
@@ -233,6 +274,8 @@ export default function GrowthPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<TabKey>('growth')
+  const [showPathChoice, setShowPathChoice] = useState(false)
+  const [showRealmChoice, setShowRealmChoice] = useState(false)
 
   // Load node growth profile
   useEffect(() => {
@@ -252,12 +295,21 @@ export default function GrowthPage() {
   // Show new milestone popup
   useEffect(() => {
     if (profile?.new_milestones?.length) {
-      // Could use a toast system here; for now just log
       profile.new_milestones.forEach(m => {
         console.log(`🏆 New milestone: ${m.title}`)
       })
     }
   }, [profile?.new_milestones])
+
+  // Auto-show path choice at Lv.5 if still on larva (must be before conditional returns)
+  useEffect(() => {
+    if (profile && profile.stats.level >= 5 && profile.evolution_path === 'larva') {
+      setShowPathChoice(true)
+    }
+    if (profile && (profile.awakening_stars || 0) >= 2 && !profile.realm_path) {
+      setShowRealmChoice(true)
+    }
+  }, [profile])
 
   if (loading) {
     return (
@@ -290,29 +342,42 @@ export default function GrowthPage() {
   const currentIdx = tree.levels.reduce((acc, lv, i) => (stats.level >= lv ? i : acc), 0)
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-6">
+    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900">
+    {showPathChoice && (
+      <PathChoiceModal
+        onClose={() => setShowPathChoice(false)}
+        onChoose={() => { setShowPathChoice(false); window.location.reload() }}
+      />
+    )}
+    {showRealmChoice && (
+      <RealmChoiceModal
+        onClose={() => setShowRealmChoice(false)}
+        onChoose={() => { setShowRealmChoice(false); window.location.reload() }}
+      />
+    )}
+    <div className="max-w-4xl mx-auto p-4 pb-20 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
           🐾 我的小龙虾
         </h1>
         {profile.agent_count > 0 && (
-          <span className="text-sm text-gray-400">
-            🤖 {profile.agent_count} 个 Agent 共同培养
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            🤖 {profile.agent_count} 个智能体共同培养
           </span>
         )}
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 bg-gray-900/60 rounded-xl p-1 border border-gray-700/50">
+      <div className="flex gap-1 bg-white/5 dark:bg-gray-800/80 rounded-xl p-1.5 border border-gray-200 dark:border-gray-700">
         {([['growth', '🌱', '成长'], ['report', '📝', '日报'], ['curve', '📈', '曲线'], ['assets', '💼', '资产']] as const).map(([key, icon, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+            className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
               tab === key
-                ? 'bg-gray-700 text-white shadow-sm'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700/50'
             }`}
           >
             {icon} {label}
@@ -322,7 +387,7 @@ export default function GrowthPage() {
 
       {tab === 'growth' && <>
       {/* Hero Section */}
-      <div className="bg-gray-900/80 rounded-2xl p-6 border border-gray-700/50 backdrop-blur">
+      <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="flex items-start gap-6">
           {/* Pet Avatar */}
           <PetAvatar
@@ -334,27 +399,49 @@ export default function GrowthPage() {
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-300">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-sm px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
                 {profile.path_emoji} {profile.path_name}
               </span>
+              {profile.realm_path && (
+                <span className={`text-sm px-2 py-0.5 rounded-full ${
+                  profile.realm_path === 'immortal' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
+                  profile.realm_path === 'demon' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' :
+                  'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                }`}>
+                  {profile.realm_path === 'immortal' ? '✨ 仙道' : profile.realm_path === 'demon' ? '🔥 魔道' : '🌿 妖道'}
+                </span>
+              )}
+              {(profile.awakening_stars || 0) > 0 && (
+                <span className="text-sm px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                  {'★'.repeat(profile.awakening_stars)}{'☆'.repeat(Math.max(0, 5 - profile.awakening_stars))} 觉醒
+                </span>
+              )}
+              {(profile.generation || 0) > 0 && (
+                <span className="text-sm px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                  🔄 第{profile.generation}代
+                </span>
+              )}
             </div>
-            <div className="text-lg text-gray-200 mb-2">
-              {profile.title} <span className="text-gray-500 text-sm">({profile.title_en})</span>
+            <div className="text-lg text-gray-900 dark:text-gray-100 font-semibold mb-2">
+              {profile.realm_path ? (
+                <>{profile.realm_path === 'immortal' ? '仙' : profile.realm_path === 'demon' ? '魔' : '妖'}道·{profile.title}</>
+              ) : profile.title}
+              {' '}<span className="text-gray-500 text-sm">({profile.title_en})</span>
             </div>
-            <div className="text-sm text-gray-400 mb-3">
+            <div className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               {profile.days_with > 0
                 ? `陪伴你 ${profile.days_with} 天，记住了 ${stats.memories} 件事`
                 : '等待首次对话...'}
             </div>
 
             {/* EXP bar */}
-            <div className="mb-1 flex items-center justify-between text-xs text-gray-400">
+            <div className="mb-1 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
               <span>Lv.{stats.level}</span>
               <span>{stats.exp.toLocaleString()} / {stats.next_level_exp.toLocaleString()} EXP</span>
               <span>Lv.{stats.level + 1}</span>
             </div>
-            <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500"
                 style={{ width: `${stats.level_progress * 100}%` }}
@@ -384,14 +471,14 @@ export default function GrowthPage() {
       {/* Personality Radar + Battle Stats + Evolution Tree */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Personality Radar */}
-        <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">🎭 性格雷达</h3>
+        <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">🎭 性格雷达</h3>
           <PersonalityRadar stats={stats} />
         </div>
 
         {/* Battle Stats */}
-        <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">⚔️ 战斗属性</h3>
+        <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">⚔️ 战斗属性</h3>
           <div className="space-y-2">
             <BattleStatBar label="HP" value={stats.hp} max={100} color="bg-red-500" />
             <BattleStatBar label="ATK" value={stats.atk} max={80} color="bg-orange-500" />
@@ -402,8 +489,8 @@ export default function GrowthPage() {
         </div>
 
         {/* Evolution Tree */}
-        <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">🧬 进化路线 — {profile.path_emoji} {profile.path_name}</h3>
+        <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">🧬 进化路线 — {profile.path_emoji} {profile.path_name}</h3>
           <div className="space-y-1">
             {tree.levels.map((lv, i) => {
               const reached = stats.level >= lv
@@ -413,10 +500,10 @@ export default function GrowthPage() {
                   <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${reached ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-500'}`}>
                     {reached ? '✓' : lv}
                   </span>
-                  <span className={`text-sm ${reached ? 'text-white' : 'text-gray-500'}`}>
+                  <span className={`text-sm ${reached ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
                     Lv.{lv}
                   </span>
-                  <span className={`text-sm font-medium ${current ? 'text-white' : reached ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span className={`text-sm font-medium ${current ? 'text-gray-900 dark:text-white' : reached ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600'}`}>
                     {tree.names[i]}
                   </span>
                   <span className={`text-xs ${current ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -431,8 +518,8 @@ export default function GrowthPage() {
       </div>
 
       {/* Milestones */}
-      <div className="bg-gray-900/80 rounded-xl p-4 border border-gray-700/50">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">🏆 里程碑</h3>
+      <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">🏆 里程碑</h3>
         {profile.milestones.length === 0 ? (
           <p className="text-gray-500 text-sm">还没有里程碑，开始和 Agent 对话吧！</p>
         ) : (
@@ -440,7 +527,7 @@ export default function GrowthPage() {
             {profile.milestones.map(m => (
               <div key={m.id} className="flex items-center gap-3 text-sm">
                 <span className="text-green-400">✅</span>
-                <span className="text-white flex-1">{m.title}</span>
+                <span className="text-gray-900 dark:text-white flex-1">{m.title}</span>
                 <span className="text-xs text-gray-500">
                   {new Date(m.achieved_at).toLocaleDateString('zh-CN')}
                 </span>
@@ -468,11 +555,150 @@ export default function GrowthPage() {
           </div>
         </div>
       </div>
+      {/* Swarm (虫群) */}
+      <SwarmSection />
+
+      {/* Stardust (星尘) */}
+      <StardustSection userLevel={stats.level} awakeningStars={profile.awakening_stars || 0} />
+
       </>}
 
       {tab === 'report' && <DailyReportTab />}
       {tab === 'curve' && <GrowthCurveTab />}
       {tab === 'assets' && <AssetsTab />}
+    </div>
+    </div>
+  )
+}
+
+// ── Swarm Display ──
+
+const unitTypeInfo: Record<string, { icon: string; label: string; color: string }> = {
+  financial: { icon: '🏦', label: '财务官虫', color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700' },
+  creative: { icon: '🎬', label: '创意虫', color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700' },
+  social: { icon: '💬', label: '社交虫', color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700' },
+  engineer: { icon: '💻', label: '工程虫', color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' },
+  scout: { icon: '🔍', label: '侦察虫', color: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700' },
+  scholar: { icon: '🧠', label: '学者虫', color: 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-700' },
+  generic: { icon: '⚔️', label: '通用虫', color: 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700' },
+}
+
+function SwarmSection() {
+  const [swarm, setSwarm] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    swarmAPI.list()
+      .then(r => { setSwarm(r.data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="text-center py-4 text-gray-400 text-sm">加载虫群...</div>
+
+  const units = swarm?.units || []
+  if (units.length === 0) {
+    return (
+      <div className="bg-white dark:bg-gray-800/90 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm text-center">
+        <div className="text-3xl mb-2">🐛</div>
+        <p className="text-gray-500 dark:text-gray-400 font-medium">虫群为空</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">创建智能体后，虫群会自动增加成员</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">🐛 虫群 ({units.length})</h3>
+        {swarm?.count_bonus > 0 && (
+          <span className="text-xs text-primary-500">虫群加成 +{swarm.count_bonus}%</span>
+        )}
+      </div>
+
+      {/* Total power */}
+      <div className="flex gap-3 mb-3 text-xs">
+        <span className="text-red-500">❤️ {swarm?.total_hp || 0}</span>
+        <span className="text-orange-500">⚔️ {swarm?.total_atk || 0}</span>
+        <span className="text-blue-500">🛡️ {swarm?.total_def || 0}</span>
+        <span className="text-green-500">💨 {swarm?.total_spd || 0}</span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {units.map((u: any) => {
+          const info = unitTypeInfo[u.unit_type] || unitTypeInfo.generic
+          return (
+            <div key={u.id} className={`rounded-lg p-3 border ${info.color} transition-all hover:shadow-md`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg">{info.icon}</span>
+                <span className="font-semibold text-sm text-gray-900 dark:text-white truncate">{u.agent_name}</span>
+                <span className="text-[10px] text-gray-500 ml-auto">Lv.{u.level}</span>
+              </div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">{info.label}</div>
+              <div className="flex gap-2 text-[10px]">
+                <span>❤️{u.hp}</span>
+                <span>⚔️{u.atk}</span>
+                <span>🛡️{u.def}</span>
+                <span>💨{u.spd}</span>
+              </div>
+              {u.skill_1 && <div className="text-[10px] text-primary-500 mt-1">🎯 {u.skill_1}</div>}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Stardust Display ──
+
+function StardustSection({ userLevel, awakeningStars }: { userLevel: number; awakeningStars: number }) {
+  const [balance, setBalance] = useState(0)
+  const [showShop, setShowShop] = useState(false)
+
+  useEffect(() => {
+    stardustAPI.balance().then(r => setBalance(r.data?.balance || 0)).catch(() => {})
+  }, [])
+
+  return (
+    <div className="bg-white dark:bg-gray-800/90 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">✨ 星尘</h3>
+        <span className="text-lg font-bold text-amber-500">{balance.toLocaleString()}</span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <button onClick={() => setShowShop(!showShop)}
+          className="px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition">
+          💪 强化英雄
+        </button>
+        <button onClick={() => setShowShop(!showShop)}
+          className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition">
+          🐛 强化虫群
+        </button>
+        <button onClick={() => setShowShop(!showShop)}
+          className="px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition">
+          🥚 孵化新虫
+        </button>
+        {userLevel >= 50 && (
+          <button
+            className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 transition">
+            ⭐ 觉醒 ({awakeningStars}星)
+          </button>
+        )}
+      </div>
+
+      {awakeningStars >= 3 && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-700 text-xs font-medium text-purple-700 dark:text-purple-300 transition">
+            🧬 跨路线融合
+          </button>
+          {awakeningStars >= 5 && (
+            <button className="px-3 py-2 rounded-lg bg-gradient-to-r from-amber-50 to-red-50 dark:from-amber-900/20 dark:to-red-900/20 border border-amber-200 dark:border-amber-700 text-xs font-medium text-amber-700 dark:text-amber-300 transition">
+              🔄 遗产转生
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

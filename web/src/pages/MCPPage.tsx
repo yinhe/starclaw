@@ -20,8 +20,25 @@ export default function MCPPage() {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
   const [bridge, setBridge] = useState<any>(null)
+  const [expandedServer, setExpandedServer] = useState<string | null>(null)
+  const [serverTools, setServerTools] = useState<Record<string, any[]>>({})
 
   useEffect(() => { loadServers(); loadBridge() }, [])
+
+  // Load tools when a server is expanded
+  useEffect(() => {
+    if (!expandedServer || serverTools[expandedServer]) return
+    const srv = servers.find(s => s.id === expandedServer)
+    if (!srv) return
+    // Fetch tool list from the MCP server via our API
+    mcpAPI.testServer(expandedServer).then(res => {
+      setServerTools(prev => ({ ...prev, [expandedServer]: res.data?.tools || [] }))
+    }).catch(() => {
+      // Fallback: generate placeholder tools from tool_count
+      const placeholders = Array.from({ length: srv.tool_count }, (_, i) => ({ name: `tool_${i + 1}`, description: '' }))
+      setServerTools(prev => ({ ...prev, [expandedServer]: placeholders }))
+    })
+  }, [expandedServer, servers])
 
   const loadBridge = async () => {
     try {
@@ -74,8 +91,8 @@ export default function MCPPage() {
       <div className="max-w-5xl mx-auto p-8">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">MCP 工具市场</h1>
-            <p className="text-gray-500 text-sm mt-1">连接外部 MCP 工具服务器，扩展 Agent 能力</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Plug className="w-6 h-6 text-purple-500" /> 外接服务</h1>
+            <p className="text-gray-500 text-sm mt-1">MCP 外部工具服务 — 点击展开查看暴露的工具列表</p>
           </div>
           <button
             onClick={() => { setShowModal(true); setAddError('') }}
@@ -115,54 +132,74 @@ export default function MCPPage() {
         {servers.length === 0 && !bridge?.connected ? (
           <div className="text-center py-20 text-gray-400">
             <Plug className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>还没有连接 MCP 服务器</p>
-            <p className="text-xs mt-1">MCP 服务器提供外部工具供 Agent 调用</p>
+            <p>还没有连接 MCP 外接服务</p>
+            <p className="text-xs mt-1">安装智能体时自动注册，或手动添加</p>
           </div>
         ) : servers.length === 0 ? null : (
           <div className="space-y-3">
             {servers.map((s) => (
-              <div key={s.id} className="bg-white border rounded-xl p-5 flex items-center justify-between group">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    s.status === 'active' ? 'bg-green-100' : 'bg-red-100'
-                  }`}>
-                    <Plug className={`w-5 h-5 ${s.status === 'active' ? 'text-green-600' : 'text-red-600'}`} />
+              <div key={s.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden group">
+                <div className="flex items-center justify-between p-5 cursor-pointer" onClick={() => setExpandedServer(expandedServer === s.id ? null : s.id)}>
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      s.status === 'active' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
+                    }`}>
+                      <Plug className={`w-5 h-5 ${s.status === 'active' ? 'text-green-600' : 'text-red-600'}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-gray-900 dark:text-white">{s.name}</h3>
+                        {s.status === 'active' ? (
+                          <CheckCircle className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-red-500" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+                        <span className="truncate max-w-[300px]">{s.base_url}</span>
+                        <span className="font-medium">{s.tool_count} 个工具</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-gray-900">{s.name}</h3>
-                      {s.status === 'active' ? (
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-red-500" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
-                      <span className="truncate max-w-[300px]">{s.base_url}</span>
-                      <span>{s.tool_count} 工具</span>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleTest(s.id) }}
+                      disabled={testing === s.id}
+                      className="p-2 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                      title="测试连接"
+                    >
+                      {testing === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(s.id) }}
+                      className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleTest(s.id)}
-                    disabled={testing === s.id}
-                    className="p-2 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
-                    title="测试连接"
-                  >
-                    {testing === s.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-4 h-4" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleDelete(s.id)}
-                    className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {/* Expanded: show tool list */}
+                {expandedServer === s.id && serverTools[s.id] && (
+                  <div className="border-t border-gray-100 dark:border-gray-700 px-5 py-3 bg-gray-50 dark:bg-gray-750">
+                    <div className="text-xs font-medium text-gray-500 mb-2">暴露的工具 ({serverTools[s.id].length})</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {serverTools[s.id].map((tool: any, i: number) => (
+                        <div key={i} className="flex items-start gap-2 px-3 py-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                          <span className="text-purple-500 mt-0.5">⚡</span>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{tool.name || tool}</div>
+                            {tool.description && <div className="text-[10px] text-gray-400 truncate">{tool.description}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {expandedServer === s.id && !serverTools[s.id] && (
+                  <div className="border-t border-gray-100 dark:border-gray-700 px-5 py-4 text-center text-xs text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin inline mr-1" /> 加载工具列表...
+                  </div>
+                )}
               </div>
             ))}
           </div>

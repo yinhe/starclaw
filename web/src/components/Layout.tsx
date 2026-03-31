@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, ListTodo, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Webhook, Code2, Shield, Target, FlaskConical, MessageCircle, Swords, Sprout } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Swords, Sprout } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -30,11 +30,6 @@ interface NavItem { to: string; icon: React.ComponentType<{ className?: string }
 interface NavGroup { group: string; items: NavItem[] }
 
 function getNavGroups(t: (key: string) => string): NavGroup[] {
-  const systemItems: NavItem[] = [
-    { to: '/billing', icon: Zap, label: t('nav.wallet') },
-    { to: '/mining', icon: Cpu, label: t('nav.mining') },
-    { to: '/settings', icon: Settings, label: t('nav.settings') },
-  ]
   return [
     {
       group: '',
@@ -44,29 +39,28 @@ function getNavGroups(t: (key: string) => string): NavGroup[] {
       ],
     },
     {
-      group: t('nav.group.swarm'),
+      group: t('nav.group.agents'),
       items: [
         { to: '/agents', icon: Bot, label: t('nav.agents') },
         { to: '/marketplace', icon: Store, label: t('nav.marketplace') },
-        { to: '/squads', icon: Swords, label: t('nav.squads') },
+        { to: '/teams', icon: Swords, label: t('nav.teams') },
       ],
     },
     {
-      group: t('nav.group.capability'),
+      group: t('nav.group.hexad'),
       items: [
-        { to: '/models', icon: Cpu, label: t('nav.models') },
-        { to: '/knowledge', icon: BookOpen, label: t('nav.knowledge') },
-        { to: '/skills', icon: Plug, label: t('nav.skills') },
+        { to: '/skills', icon: Zap, label: t('nav.skills') },
+        { to: '/instincts', icon: Activity, label: t('nav.instincts') },
+        { to: '/mcp', icon: Plug, label: t('nav.mcp') },
+        { to: '/workflows', icon: GitBranch, label: t('nav.workflows') },
         { to: '/memories', icon: Brain, label: t('nav.memories') },
       ],
     },
     {
-      group: t('nav.group.automation'),
+      group: t('nav.group.foundation'),
       items: [
-        { to: '/workflows', icon: GitBranch, label: t('nav.workflows') },
-        { to: '/tasks', icon: ListTodo, label: t('nav.tasks') },
-        { to: '/activities', icon: Brain, label: t('nav.activities') },
-        { to: '/integrations', icon: MessageCircle, label: t('nav.integrations') },
+        { to: '/models', icon: Cpu, label: t('nav.models') },
+        { to: '/knowledge', icon: BookOpen, label: t('nav.knowledge') },
       ],
     },
     {
@@ -77,27 +71,12 @@ function getNavGroups(t: (key: string) => string): NavGroup[] {
       ],
     },
     {
-      group: t('nav.group.ops'),
-      items: [
-        { to: '/observe', icon: Activity, label: t('nav.observe') },
-        { to: '/webhooks', icon: Webhook, label: t('nav.webhooks') },
-        { to: '/developer', icon: Code2, label: t('nav.developer') },
-        { to: '/security', icon: Shield, label: t('nav.security') },
-        { to: '/recovery', icon: Shield, label: '身份恢复' },
-      ],
-    },
-    {
-      group: t('nav.group.intelligence'),
-      items: [
-        { to: '/growth', icon: Sprout, label: t('nav.growth') || 'Agent 成长' },
-        { to: '/arena', icon: Swords, label: '龙虾竞技场' },
-        { to: '/goals', icon: Target, label: t('nav.goals') },
-        { to: '/finetune', icon: FlaskConical, label: t('nav.finetune') },
-      ],
-    },
-    {
       group: t('nav.group.system'),
-      items: systemItems,
+      items: [
+        { to: '/billing', icon: Zap, label: t('nav.wallet') },
+        { to: '/growth', icon: Sprout, label: t('nav.growth') },
+        { to: '/settings', icon: Settings, label: t('nav.settings') },
+      ],
     },
   ]
 }

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#f97316"/>
+    </linearGradient>
+  </defs>
+  <!-- Body -->
+  <ellipse cx="32" cy="38" rx="14" ry="10" fill="url(#g)"/>
+  <!-- Head -->
+  <circle cx="32" cy="24" r="9" fill="url(#g)"/>
+  <!-- Eyes -->
+  <circle cx="28" cy="22" r="2" fill="white"/>
+  <circle cx="36" cy="22" r="2" fill="white"/>
+  <circle cx="28.5" cy="22" r="1" fill="#1a1a2e"/>
+  <circle cx="36.5" cy="22" r="1" fill="#1a1a2e"/>
+  <!-- Left Claw -->
+  <path d="M14 28 Q8 22 6 18 Q4 14 8 16 Q12 18 14 22 Z" fill="url(#g)"/>
+  <path d="M14 28 Q8 28 4 24 Q2 20 6 22 Q10 24 14 26 Z" fill="url(#g)"/>
+  <!-- Right Claw -->
+  <path d="M50 28 Q56 22 58 18 Q60 14 56 16 Q52 18 50 22 Z" fill="url(#g)"/>
+  <path d="M50 28 Q56 28 60 24 Q62 20 58 22 Q54 24 50 26 Z" fill="url(#g)"/>
+  <!-- Antennae -->
+  <line x1="28" y1="16" x2="22" y2="8" stroke="url(#g)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="36" y1="16" x2="42" y2="8" stroke="url(#g)" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="22" cy="8" r="2" fill="#ef4444"/>
+  <circle cx="42" cy="8" r="2" fill="#ef4444"/>
+  <!-- Tail segments -->
+  <ellipse cx="32" cy="48" rx="11" ry="4" fill="#dc2626"/>
+  <ellipse cx="32" cy="52" rx="8" ry="3" fill="#b91c1c"/>
+  <ellipse cx="32" cy="55" rx="5" ry="2.5" fill="#991b1b"/>
+  <!-- Tail fan -->
+  <path d="M27 57 Q24 62 28 62 L32 58 Z" fill="#dc2626"/>
+  <path d="M32 58 L36 62 Q40 62 37 57 Z" fill="#dc2626"/>
+  <path d="M29 58 Q32 64 35 58 Z" fill="#ef4444"/>
+</svg>

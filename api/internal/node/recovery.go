@@ -128,11 +128,11 @@ func DecryptBackup(encrypted []byte, mnemonic string) ([]byte, error) {
 
 // BackupPayload is the JSON structure encrypted and uploaded to Queen.
 type BackupPayload struct {
-	NodeID    string        `json:"node_id"`
-	Version   int           `json:"version"`
-	Timestamp time.Time     `json:"timestamp"`
-	Identity  BackupKey     `json:"identity"`
-	Agents    []BackupAgent `json:"agents"`
+	NodeID    string          `json:"node_id"`
+	Version   int             `json:"version"`
+	Timestamp time.Time       `json:"timestamp"`
+	Identity  BackupKey       `json:"identity"`
+	Agents    []BackupAgent   `json:"agents"`
 	Config    json.RawMessage `json:"config,omitempty"`
 }
 
@@ -179,7 +179,8 @@ type RecoveryStatus struct {
 	BackupTime    string `json:"backup_time,omitempty"`
 }
 
-const recoveryStatusFile = ".recovery_status"
+// recoveryStatusFile is the legacy status filename (now uses getKeyFile() + ".recovery").
+const _ = ".recovery_status"
 
 // LoadRecoveryStatus reads the local recovery status.
 func LoadRecoveryStatus() *RecoveryStatus {

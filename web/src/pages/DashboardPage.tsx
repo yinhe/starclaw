@@ -147,19 +147,22 @@ export default function DashboardPage() {
             {dailyUsage.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">暂无数据</p>
             ) : (
-              <div className="flex items-end gap-2 h-32">
+              <div className="space-y-0">
                 {dailyUsage.map((d) => {
                   const maxTokens = Math.max(...dailyUsage.map((x) => x.tokens), 1)
-                  const h = Math.max((d.tokens / maxTokens) * 100, 4)
+                  const pct = Math.max((d.tokens / maxTokens) * 100, 2)
                   return (
-                    <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-xs text-gray-500">{d.tokens > 0 ? d.tokens.toLocaleString() : ''}</span>
-                      <div
-                        className="w-full bg-primary-500 rounded-t-md transition-all"
-                        style={{ height: `${h}%` }}
-                        title={`${d.tokens} tokens, ${d.msgs} 消息`}
-                      />
-                      <span className="text-xs text-gray-400">{d.date.slice(5)}</span>
+                    <div key={d.date} className="flex items-center gap-3 py-1.5">
+                      <span className="text-xs text-gray-400 w-12 text-right flex-shrink-0">{d.date.slice(5)}</span>
+                      <div className="flex-1 h-5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-primary-500 to-primary-400 rounded-full transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-600 dark:text-gray-300 w-20 text-right flex-shrink-0 font-mono">
+                        {d.tokens > 0 ? d.tokens.toLocaleString() : '0'}
+                      </span>
                     </div>
                   )
                 })}

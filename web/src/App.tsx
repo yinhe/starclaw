@@ -35,6 +35,7 @@ import BillingPage from './pages/BillingPage'
 import MiningPage from './pages/MiningPage'
 import IntegrationsPage from './pages/IntegrationsPage'
 import SquadPage from './pages/SquadPage'
+import TeamPage from './pages/TeamPage'
 import MemoryPage from './pages/MemoryPage'
 import ObservePage from './pages/ObservePage'
 import WebhooksPage from './pages/WebhooksPage'
@@ -113,6 +114,7 @@ export default function App() {
         <Route path="knowledge" element={<KnowledgeBasePage />} />
         <Route path="mcp" element={<MCPPage />} />
         <Route path="skills" element={<SkillsPage />} />
+        <Route path="instincts" element={<ActivityPage />} />
         <Route path="videos" element={<VideosPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="multi-agent" element={<MultiAgentPage />} />
@@ -127,6 +129,7 @@ export default function App() {
         <Route path="wallet" element={<Navigate to="/billing" replace />} />
         <Route path="mining" element={<MiningPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
+        <Route path="teams" element={<TeamPage />} />
         <Route path="squads" element={<SquadPage />} />
         <Route path="hivemind" element={<HiveMindPage />} />
         <Route path="memories" element={<MemoryPage />} />

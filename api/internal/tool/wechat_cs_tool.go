@@ -4,9 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/yinhe/starclaw/internal/model"
 	"gorm.io/gorm"
 )
@@ -15,18 +21,22 @@ import (
 // It is designed for bot-labeled support workflows: capture latest context,
 // suggest escalation, and send approved replies via desktop automation.
 type WeChatCSTool struct {
-	db      *gorm.DB
-	desktop *DesktopTool
+	db          *gorm.DB
+	desktop     *DesktopTool
+	jwtSecret   string
+	apiPort     int
+	autoChatMu  sync.Mutex
+	autoChatPID int // background auto-chat process PID, 0 = not running
 }
 
-func NewWeChatCSTool(db *gorm.DB) *WeChatCSTool {
-	return &WeChatCSTool{db: db, desktop: NewDesktopTool()}
+func NewWeChatCSTool(db *gorm.DB, jwtSecret string, apiPort int) *WeChatCSTool {
+	return &WeChatCSTool{db: db, desktop: NewDesktopTool(), jwtSecret: jwtSecret, apiPort: apiPort}
 }
 
 func (t *WeChatCSTool) Name() string { return "wechat_cs" }
 
 func (t *WeChatCSTool) Description() string {
-	return "微信群客服机器人技能：用于客服场景的微信桌面辅助。支持抓取最新聊天界面、发送已确认回复、标记转人工，以及对消息做基础意图判断。默认按机器人客服身份工作，不应用于伪装真人长期社交互动。"
+	return "微信聊天助手：支持持续自动聊天(start_auto_chat)、一次性回复所有未读(reply_all_unread)、发送指定消息(send_reply)、停止自动聊天(stop_auto_chat)。start_auto_chat 在后台持续监控微信未读消息并自动回复，直到调用 stop_auto_chat。"
 }
 
 func (t *WeChatCSTool) Parameters() interface{} {
@@ -35,8 +45,8 @@ func (t *WeChatCSTool) Parameters() interface{} {
 		Properties: map[string]Property{
 			"action": {
 				Type:        "string",
-				Description: "Action: capture_latest, send_reply, handoff_to_human, classify_message, enable_watch, list_watches, disable_watch",
-				Enum:        []string{"capture_latest", "send_reply", "handoff_to_human", "classify_message", "enable_watch", "list_watches", "disable_watch"},
+				Description: "Action: start_auto_chat(启动持续自动聊天,后台运行), stop_auto_chat(停止自动聊天), reply_all_unread(一次性回复所有未读), send_reply, capture_latest, handoff_to_human, classify_message, enable_watch, list_watches, disable_watch",
+				Enum:        []string{"start_auto_chat", "stop_auto_chat", "reply_all_unread", "capture_latest", "send_reply", "handoff_to_human", "classify_message", "enable_watch", "list_watches", "disable_watch"},
 			},
 			"target": {
 				Type:        "string",
@@ -103,6 +113,12 @@ func (t *WeChatCSTool) Execute(ctx context.Context, args string) (string, error)
 	}
 
 	switch parsed.Action {
+	case "start_auto_chat":
+		return t.startAutoChat(ctx, parsed)
+	case "stop_auto_chat":
+		return t.stopAutoChat(ctx, parsed)
+	case "reply_all_unread":
+		return t.replyAllUnread(ctx, parsed)
 	case "capture_latest":
 		return t.captureLatest(ctx, parsed)
 	case "send_reply":
@@ -120,6 +136,214 @@ func (t *WeChatCSTool) Execute(ctx context.Context, args string) (string, error)
 	default:
 		return "", fmt.Errorf("unknown action: %s", parsed.Action)
 	}
+}
+
+func (t *WeChatCSTool) autoChatPIDFile() string {
+	return filepath.Join(os.TempDir(), "claw_wechat_auto_chat.pid")
+}
+
+func (t *WeChatCSTool) startAutoChat(ctx context.Context, a wechatCSArgs) (string, error) {
+	t.autoChatMu.Lock()
+	defer t.autoChatMu.Unlock()
+
+	// Check if already running
+	if t.autoChatPID != 0 {
+		if proc, err := os.FindProcess(t.autoChatPID); err == nil {
+			// On Windows FindProcess always succeeds; check PID file
+			_ = proc
+			if _, err := os.Stat(t.autoChatPIDFile()); err == nil {
+				return toJSON(map[string]interface{}{
+					"action":  "start_auto_chat",
+					"status":  "already_running",
+					"pid":     t.autoChatPID,
+					"message": fmt.Sprintf("自动聊天已在运行中 (PID=%d)。如需重启请先调用 stop_auto_chat。", t.autoChatPID),
+				}), nil
+			}
+		}
+	}
+
+	userID, _ := ctx.Value(CtxKeyUserID).(string)
+	if userID == "" {
+		return "", fmt.Errorf("start_auto_chat requires user context")
+	}
+
+	// Generate long-lived JWT (24h) for background process
+	token, err := t.generateLongJWT(userID)
+	if err != nil {
+		return "", fmt.Errorf("generate JWT failed: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("http://127.0.0.1:%d", t.apiPort)
+	mcpURL := "http://127.0.0.1:9101"
+	agentID := strings.TrimSpace(a.AgentID)
+	if agentID == "" {
+		var agent model.Agent
+		if err := t.db.Where("user_id = ? AND tools LIKE ?", userID, "%wechat_cs%").First(&agent).Error; err == nil {
+			agentID = agent.ID
+		}
+	}
+	if agentID == "" {
+		return "", fmt.Errorf("start_auto_chat requires agent_id")
+	}
+
+	pollSec := 5
+	if strings.TrimSpace(a.PollSec) != "" {
+		if v, err := strconv.Atoi(strings.TrimSpace(a.PollSec)); err == nil && v > 0 {
+			pollSec = v
+		}
+	}
+
+	pidFile := t.autoChatPIDFile()
+
+	psScript := wechatAutoChatPS1
+	psScript = strings.Replace(psScript, "{{API_URL}}", apiURL, 1)
+	psScript = strings.Replace(psScript, "{{JWT_TOKEN}}", token, 1)
+	psScript = strings.Replace(psScript, "{{AGENT_ID}}", agentID, 1)
+	psScript = strings.Replace(psScript, "{{MCP_URL}}", mcpURL, 1)
+	psScript = strings.Replace(psScript, "{{POLL_SEC}}", strconv.Itoa(pollSec), 1)
+	psScript = strings.Replace(psScript, "{{PID_FILE}}", strings.ReplaceAll(pidFile, `\`, `\\`), 1)
+
+	// Write script to temp file and launch as background process
+	scriptFile := filepath.Join(os.TempDir(), "claw_wechat_auto_chat.ps1")
+	if err := os.WriteFile(scriptFile, []byte(psScript), 0644); err != nil {
+		return "", fmt.Errorf("write script failed: %w", err)
+	}
+
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptFile)
+	cmd.Dir = os.TempDir()
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("start auto_chat process failed: %w", err)
+	}
+
+	t.autoChatPID = cmd.Process.Pid
+
+	// Don't wait for it — it runs in background
+	go cmd.Wait()
+
+	// Wait briefly for PID file to be written
+	time.Sleep(2 * time.Second)
+
+	return toJSON(map[string]interface{}{
+		"action":       "start_auto_chat",
+		"status":       "started",
+		"pid":          t.autoChatPID,
+		"poll_sec":     pollSec,
+		"cooldown_sec": 120,
+		"message":      fmt.Sprintf("已启动微信自动聊天模式！每%d秒扫描未读消息，检测到新消息自动用AI理解上下文并回复。PID=%d。说\"停止\"可调用 stop_auto_chat 关闭。", pollSec, t.autoChatPID),
+	}), nil
+}
+
+func (t *WeChatCSTool) stopAutoChat(ctx context.Context, a wechatCSArgs) (string, error) {
+	t.autoChatMu.Lock()
+	defer t.autoChatMu.Unlock()
+
+	pidFile := t.autoChatPIDFile()
+
+	// Remove PID file — the script checks this and will exit
+	if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("remove PID file failed: %w", err)
+	}
+
+	// Also try to kill the process directly
+	if t.autoChatPID != 0 {
+		if proc, err := os.FindProcess(t.autoChatPID); err == nil {
+			_ = proc.Kill()
+		}
+	}
+
+	oldPID := t.autoChatPID
+	t.autoChatPID = 0
+
+	// Clean up script file
+	os.Remove(filepath.Join(os.TempDir(), "claw_wechat_auto_chat.ps1"))
+
+	return toJSON(map[string]interface{}{
+		"action":  "stop_auto_chat",
+		"status":  "stopped",
+		"old_pid": oldPID,
+		"message": "已停止微信自动聊天模式。",
+	}), nil
+}
+
+func (t *WeChatCSTool) generateLongJWT(userID string) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":      userID,
+		"username": "wechat_auto_chat",
+		"role":     "admin",
+		"exp":      time.Now().Add(24 * time.Hour).Unix(),
+		"iat":      time.Now().Unix(),
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return tok.SignedString([]byte(t.jwtSecret))
+}
+
+func (t *WeChatCSTool) replyAllUnread(ctx context.Context, a wechatCSArgs) (string, error) {
+	userID, _ := ctx.Value(CtxKeyUserID).(string)
+	if userID == "" {
+		return "", fmt.Errorf("reply_all_unread requires user context")
+	}
+
+	// Generate JWT token for the PS1 script to call Claw API
+	token, err := t.generateJWT(userID)
+	if err != nil {
+		return "", fmt.Errorf("generate JWT failed: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("http://127.0.0.1:%d", t.apiPort)
+	mcpURL := "http://127.0.0.1:9101"
+	agentID := strings.TrimSpace(a.AgentID)
+	if agentID == "" {
+		// Try to find a wechat agent from DB
+		var agent model.Agent
+		if err := t.db.Where("user_id = ? AND tools LIKE ?", userID, "%wechat_cs%").First(&agent).Error; err == nil {
+			agentID = agent.ID
+		}
+	}
+	if agentID == "" {
+		return "", fmt.Errorf("reply_all_unread requires agent_id (or a wechat_cs agent in DB)")
+	}
+
+	psScript := wechatReplyAllPS1
+	psScript = strings.Replace(psScript, "{{API_URL}}", apiURL, 1)
+	psScript = strings.Replace(psScript, "{{JWT_TOKEN}}", token, 1)
+	psScript = strings.Replace(psScript, "{{AGENT_ID}}", agentID, 1)
+	psScript = strings.Replace(psScript, "{{MCP_URL}}", mcpURL, 1)
+
+	// Use a longer timeout — vision calls take time per badge
+	longCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	out, err := runPowerShell(longCtx, psScript)
+	if err != nil {
+		return "", fmt.Errorf("reply_all_unread failed: %w\n%.1000s", err, out)
+	}
+	out = strings.TrimSpace(out)
+
+	// Try to parse structured JSON output
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &result); err == nil {
+		result["action"] = "reply_all_unread"
+		return toJSON(result), nil
+	}
+
+	return toJSON(map[string]interface{}{
+		"action":  "reply_all_unread",
+		"status":  "success",
+		"raw":     out,
+		"message": "已执行微信未读消息自动回复。",
+	}), nil
+}
+
+func (t *WeChatCSTool) generateJWT(userID string) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":      userID,
+		"username": "wechat_cs_bot",
+		"role":     "admin",
+		"exp":      time.Now().Add(1 * time.Hour).Unix(),
+		"iat":      time.Now().Unix(),
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return tok.SignedString([]byte(t.jwtSecret))
 }
 
 func (t *WeChatCSTool) captureLatest(ctx context.Context, a wechatCSArgs) (string, error) {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { GitBranch, Plus, Trash2, Clock, History, CheckCircle, XCircle, Loader2, Webhook, Timer, Copy, Check, MessageSquare } from 'lucide-react'
+import { GitBranch, Trash2, Clock, History, CheckCircle, XCircle, Loader2, Webhook, Timer, Copy, Check, MessageSquare } from 'lucide-react'
 import { workflowAPI, scheduleAPI } from '../lib/api'
 
 interface Schedule {
@@ -142,21 +142,15 @@ export default function WorkflowListPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">工作流</h1>
-            <p className="text-gray-500 text-sm mt-1">创建和管理 AI 工作流编排</p>
+            <p className="text-gray-500 text-sm mt-1">智能体绑定的多步自动化管道</p>
           </div>
-          <button
-            onClick={() => navigate('/workflows/editor')}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            新建工作流
-          </button>
         </div>
 
         {workflows.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>还没有工作流，点击上方按钮创建第一个</p>
+            <p>还没有工作流</p>
+            <p className="text-xs mt-1">工作流跟随智能体安装，或在智能体详情页中创建</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

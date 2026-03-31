@@ -10,6 +10,7 @@ import (
 type Workflow struct {
 	ID             string         `json:"id" gorm:"type:varchar(36);primaryKey"`
 	UserID         string         `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	AgentID        string         `json:"agent_id" gorm:"type:varchar(36);index"` // Hexad: bound to agent
 	ConversationID string         `json:"conversation_id" gorm:"type:varchar(36);index"`
 	Name           string         `json:"name" gorm:"type:varchar(200);not null"`
 	Description    string         `json:"description" gorm:"type:text"`

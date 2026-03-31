@@ -307,9 +307,18 @@ export const multiAgentAPI = {
     api.post('/multi-agent/run', data),
 }
 
-// Teams
+// Teams (local multi-agent collaboration)
 export const teamAPI = {
-  getOrchestrator: (teamId: string) => api.get(`/teams/${teamId}/orchestrator`),
+  list: () => api.get('/teams'),
+  create: (data: { name: string; description?: string; icon?: string; coordinator_id: string; topology?: string; template_id?: string; members?: { agent_id: string; role?: string; specialty?: string; order?: number }[] }) =>
+    api.post('/teams', data),
+  get: (id: string) => api.get(`/teams/${id}`),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/teams/${id}`, data),
+  delete: (id: string) => api.delete(`/teams/${id}`),
+  addMember: (id: string, data: { agent_id: string; specialty?: string; order?: number }) =>
+    api.post(`/teams/${id}/members`, data),
+  removeMember: (id: string, memberId: string) => api.delete(`/teams/${id}/members/${memberId}`),
+  templates: () => api.get('/team-templates'),
 }
 
 // Workflows
@@ -354,6 +363,14 @@ export const queenMarketplaceAPI = {
     api.get('/templates/community', { params }),
   get: (id: string) =>
     api.get(`/templates/community/${id}`),
+  purchase: (id: string, payMethod: string = 'alipay') =>
+    api.post(`/templates/community/${id}/purchase`, { pay_method: payMethod }),
+  pollPurchaseStatus: (orderNo: string) =>
+    api.get(`/templates/purchases/${orderNo}/status`),
+  checkAccess: (id: string) =>
+    api.get(`/templates/community/${id}/access`),
+  listPurchases: (params?: { status?: string }) =>
+    api.get('/templates/purchases', { params }),
 }
 
 // Schedules (Cron)
@@ -644,6 +661,28 @@ export const growthAPI = {
   getGrowthCurve: (days?: number) =>
     api.get('/growth/curve', { params: { days: days || 7 } }),
   getAssets: () => api.get('/assets/overview'),
+  // v2: Path & Realm choice
+  choosePath: (path: string) => api.post('/growth/choose-path', { path }),
+  chooseRealm: (realm: string) => api.post('/growth/choose-realm', { realm }),
+  // v2: Endgame
+  awaken: () => api.post('/growth/awaken'),
+  fuse: (targetPath: string) => api.post('/growth/fuse', { target_path: targetPath }),
+  rebirth: (newPath: string) => api.post('/growth/rebirth', { new_path: newPath }),
+}
+
+// ── Swarm System (Agent → 虫群) ──
+export const swarmAPI = {
+  list: () => api.get('/swarm'),
+  get: (id: string) => api.get(`/swarm/${id}`),
+  invest: (id: string, stat: string, amount: number) => api.post(`/swarm/${id}/invest`, { stat, amount }),
+}
+
+// ── Stardust Economy (星尘) ──
+export const stardustAPI = {
+  balance: () => api.get('/stardust'),
+  transactions: () => api.get('/stardust/transactions'),
+  enhanceHero: (stat: string, amount: number) => api.post('/stardust/enhance-hero', { stat, amount }),
+  hatch: (type?: string) => api.post('/stardust/hatch', type ? { type } : {}),
 }
 
 // ── Arena PK Battle System (proxied through Queen) ──

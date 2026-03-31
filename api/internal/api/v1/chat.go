@@ -240,6 +240,26 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	// Inject resource directory info so AI knows where media files are stored
 	systemPrompt += "\n\n" + tool.DataDirSummary()
 
+	// Auto-inject available agent roster for builtin agents with system tool (e.g. 全能助手).
+	// This enables dynamic delegation: newly installed agents are automatically discoverable.
+	if agent.IsBuiltin && strings.Contains(agent.Tools, "system") {
+		var peers []model.Agent
+		h.db.Where("user_id = ? AND id != ? AND deleted_at IS NULL", agent.UserID, agent.ID).
+			Select("id, name, description").Find(&peers)
+		if len(peers) > 0 {
+			roster := "\n\n## 可委派的专业Agent（动态发现）\n遇到以下领域的任务，使用 delegate_to_agent 委派给对应Agent：\n"
+			for _, p := range peers {
+				desc := p.Description
+				if len(desc) > 80 {
+					desc = desc[:80] + "…"
+				}
+				roster += fmt.Sprintf("- **%s** (ID: %s): %s\n", p.Name, p.ID, desc)
+			}
+			roster += "\n当用户 @某个Agent 时，必须委派给该Agent处理。"
+			systemPrompt += roster
+		}
+	}
+
 	messages := buildProviderMessages(systemPrompt, history, req.Images)
 
 	// Get or create provider dynamically
@@ -331,6 +351,9 @@ func (h *ChatHandler) handleSyncWithTools(c *gin.Context, rt *agentpkg.Runtime, 
 		go recordUsage(h.db, c.GetString("user_id"), "tokens", int64(result.Usage.TotalTokens), c.GetBool("is_platform_key"))
 	}
 	h.db.Create(&assistantMsg)
+
+	// Stardust reward for chat
+	go NewStardustEngine(h.db).RewardChat(c.GetString("user_id"))
 
 	// Cerebrate: async extract memories + summary from this conversation turn
 	if h.cerebrate != nil {
@@ -515,6 +538,9 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				}
 				h.db.Create(&assistantMsg)
 				saved = true
+
+				// Stardust reward for streaming chat
+				go NewStardustEngine(h.db).RewardChat(c.GetString("user_id"))
 
 				// Cerebrate: async extract memories + summary from this conversation
 				if h.cerebrate != nil {
