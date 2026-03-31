@@ -94,8 +94,8 @@ Output goes to `spore/dist/`. Expected: 8 files with correct VERSION in filename
 
 6. Upload to Nydus (Server C) + set permissions:
 ```
-scp -i ~/.ssh/starai_deploy spore/dist/StarClaw-Setup* spore/dist/spore-* root@43.106.158.26:/opt/spore/releases/
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "chmod +x /opt/spore/releases/StarClaw-Setup-* /opt/spore/releases/spore-*"
+scp -i ~/.ssh/starai_deploy spore/dist/StarClaw-Setup* spore/dist/spore-* spore/dist/claw-api-* root@43.106.158.26:/opt/spore/releases/
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "chmod +x /opt/spore/releases/StarClaw-Setup-* /opt/spore/releases/spore-* /opt/spore/releases/claw-api-*"
 ```
 
 7. Upload to StarAI mirror (Server B):
