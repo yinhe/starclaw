@@ -29,11 +29,13 @@ func GetDataDir() string {
 			dataDir = os.Getenv("STARCLAW_STORAGE_DATA_DIR")
 		}
 		if dataDir == "" {
-			// Inside Docker container, /app is the standard root
-			if _, err := os.Stat("/app"); err == nil {
-				dataDir = "/app"
-			} else if runtime.GOOS == "windows" {
+			if runtime.GOOS == "windows" {
+				// On Windows, never use /app (C:\app is unrelated).
+				// Default to ./data relative to working directory.
 				dataDir = "./data"
+			} else if _, err := os.Stat("/app"); err == nil {
+				// Inside Docker container, /app is the standard root
+				dataDir = "/app"
 			} else {
 				// Try common Linux install paths
 				for _, d := range []string{"/opt/starclaw/data", "/opt/claw/data"} {

@@ -397,12 +397,9 @@ func (w *TaskWorker) collectWeChatObservation(ctx context.Context, p provider.Mo
 		return "", fmt.Errorf("tool registry unavailable")
 	}
 	var sections []string
-	if _, ok := w.toolRegistry.Get("mcp_host_open_app"); ok {
-		openArgs := `{"target":"微信"}`
-		if out, err := w.toolRegistry.Execute(ctx, "mcp_host_open_app", openArgs); err == nil && strings.TrimSpace(out) != "" {
-			sections = append(sections, "open_app:\n"+out)
-		}
-	}
+	// NOTE: Do NOT call mcp_host_open_app("微信") here — it forces the
+	// WeChat window to foreground, causing unwanted popups every poll cycle.
+	// The task AI can decide to open WeChat on its own if needed.
 	if _, ok := w.toolRegistry.Get("mcp_host_screen_capture"); !ok {
 		return "", fmt.Errorf("mcp_host_screen_capture not available")
 	}

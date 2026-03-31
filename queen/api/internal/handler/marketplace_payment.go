@@ -31,9 +31,9 @@ func (h *MarketplacePaymentHandler) CreatePayment(c *gin.Context) {
 		UserID       string `json:"user_id"`
 		TemplateID   string `json:"template_id" binding:"required"`
 		TemplateName string `json:"template_name"`
-		Amount       int64  `json:"amount" binding:"required"` // CNY in 分
+		Amount       int64  `json:"amount" binding:"required"`     // CNY in 分
 		PayMethod    string `json:"pay_method" binding:"required"` // alipay / wechatpay
-		PayForm      string `json:"pay_form"` // pc / h5
+		PayForm      string `json:"pay_form"`                      // pc / h5
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields: " + err.Error()})
@@ -57,12 +57,20 @@ func (h *MarketplacePaymentHandler) CreatePayment(c *gin.Context) {
 		if existing.ExpireAt != nil && existing.ExpireAt.Before(time.Now()) {
 			db.Model(&existing).Update("status", "expired")
 		} else {
-			// Return the existing order (idempotent)
-			c.JSON(http.StatusOK, gin.H{
-				"order_no": existing.OrderNo,
-				"status":   "existing_pending",
-				"message":  "已有待支付订单，请完成支付或等待过期",
-			})
+			// Return the existing order with stored pay links (idempotent)
+			out := gin.H{
+				"order_no":    existing.OrderNo,
+				"status":      "existing_pending",
+				"amount_yuan": float64(existing.Amount) / 100,
+				"pay_method":  existing.PayMethod,
+			}
+			if existing.PayURL != "" {
+				out["pay_url"] = existing.PayURL
+			}
+			if existing.CodeURL != "" {
+				out["code_url"] = existing.CodeURL
+			}
+			c.JSON(http.StatusOK, out)
 			return
 		}
 	}
@@ -152,9 +160,11 @@ func (h *MarketplacePaymentHandler) CreatePayment(c *gin.Context) {
 	}
 	if v, ok := result["pay_url"]; ok {
 		out["pay_url"] = v
+		db.Model(&order).Update("pay_url", v)
 	}
 	if v, ok := result["code_url"]; ok {
 		out["code_url"] = v
+		db.Model(&order).Update("code_url", v)
 	}
 
 	log.Printf("[marketplace-pay] order created: %s claw=%s template=%s amount=¥%.2f method=%s",

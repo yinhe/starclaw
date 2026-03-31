@@ -402,7 +402,7 @@ export default function AgentsPage() {
                           }}
                           className="hidden"
                         />
-                        {t === 'web_search' ? 'Web 搜索' : t === 'http_request' ? 'HTTP 请求' : t}
+                        {t === 'web_search' ? 'Web 搜索' : t === 'http_request' ? 'HTTP 请求' : t === 'wechat_cs' ? '微信客服' : t === 'desktop' ? '桌面操控' : t === 'feishu' ? '飞书' : t === 'video_generation' ? '视频生成' : t === 'image_generation' ? '图片生成' : t === 'music_generation' ? '音乐创作' : t}
                       </label>
                     ))}
                   </div>

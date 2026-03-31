@@ -1088,16 +1088,34 @@ func performSporeUpdate(targetVersion string) error {
 		return nil
 	}
 
-	// Standalone: re-exec new binary with same args, then exit this process.
-	cmd := exec.Command(currentBin, os.Args[1:]...)
-	cmd.Dir, _ = os.Getwd()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
+	// Standalone: spawn a detached helper that waits for this process to exit
+	// (releasing the port), then starts the new binary.
+	cwd, _ := os.Getwd()
+	pid := os.Getpid()
+	argsStr := strings.Join(os.Args[1:], " ")
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// PowerShell: wait for old PID to exit, then start new binary
+		script := fmt.Sprintf(
+			`Start-Sleep -Seconds 2; `+
+				`try { Wait-Process -Id %d -Timeout 10 -ErrorAction SilentlyContinue } catch {}; `+
+				`Start-Process -FilePath '%s' -ArgumentList '%s' -WorkingDirectory '%s'`,
+			pid, currentBin, argsStr, cwd)
+		cmd = exec.Command("powershell", "-WindowStyle", "Hidden", "-Command", script)
+	} else {
+		// Unix: wait for old PID to exit, then start new binary
+		script := fmt.Sprintf(
+			`sleep 2; while kill -0 %d 2>/dev/null; do sleep 1; done; cd '%s' && '%s' %s &`,
+			pid, cwd, currentBin, argsStr)
+		cmd = exec.Command("sh", "-c", script)
+	}
+	cmd.SysProcAttr = detachedSysProcAttr()
 	if err := cmd.Start(); err != nil {
 		ulogError("重启失败: %v（请手动启动）", err)
 	} else {
-		ulogInfo("新进程已启动 (PID %d)，旧进程退出...", cmd.Process.Pid)
+		ulogInfo("延迟重启已调度 (等待 PID %d 退出后启动新进程)...", pid)
+		cmd.Process.Release()
 	}
 	os.Exit(0)
 	return nil // unreachable
