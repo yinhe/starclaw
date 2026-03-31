@@ -1078,9 +1078,21 @@ func performSporeUpdate(targetVersion string) error {
 
 	ulogSuccess("✅ 二进制已替换: %s，正在重启...", currentBin)
 
-	// Give the HTTP response time to flush, then exit.
-	// Spore runtime's restart loop (or systemd/launchd) will restart with new binary.
+	// Give the HTTP response time to flush, then restart.
 	time.Sleep(1 * time.Second)
+
+	// Re-exec: start the new binary with same args, then exit this process.
+	// Works for standalone and Spore modes. Spore runtime also has its own restart loop as backup.
+	cmd := exec.Command(currentBin, os.Args[1:]...)
+	cmd.Dir, _ = os.Getwd()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+	if err := cmd.Start(); err != nil {
+		ulogError("重启失败: %v（请手动启动）", err)
+	} else {
+		ulogInfo("新进程已启动 (PID %d)，旧进程退出...", cmd.Process.Pid)
+	}
 	os.Exit(0)
 	return nil // unreachable
 }
