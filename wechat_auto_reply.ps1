@@ -21,6 +21,10 @@ public class Wx5 {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")] public static extern void SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, IntPtr e);
+    [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
     public struct RECT { public int Left, Top, Right, Bottom; }
     public static string FgTitle() { var sb = new System.Text.StringBuilder(256); GetWindowText(GetForegroundWindow(), sb, 256); return sb.ToString(); }
     public static void Click(int x, int y) {
@@ -31,7 +35,23 @@ public class Wx5 {
 }
 "@
 
+function Get-WeChatHwnd {
+    # Find WeChat window without activating it
+    $hwnd = [Wx5]::FindWindow('WeChatMainWndForPC', $null)
+    if ($hwnd -eq [IntPtr]::Zero) {
+        $hwnd = [Wx5]::FindWindow($null, '微信')
+    }
+    if ($hwnd -ne [IntPtr]::Zero -and [Wx5]::IsWindowVisible($hwnd)) { return $hwnd }
+    return [IntPtr]::Zero
+}
+
 function Activate-WeChat {
+    $hwnd = Get-WeChatHwnd
+    if ($hwnd -ne [IntPtr]::Zero) {
+        [Wx5]::SetForegroundWindow($hwnd) | Out-Null
+        Start-Sleep -Milliseconds 500
+        return $true
+    }
     try {
         $body = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"open_app","arguments":{"target":"\u5fae\u4fe1"}}}'
         Invoke-RestMethod $MCP_URL -Method Post -ContentType 'application/json' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 10 | Out-Null
@@ -45,6 +65,33 @@ function Get-WxRect {
     $r = New-Object Wx5+RECT
     [Wx5]::GetWindowRect($fg, [ref]$r) | Out-Null
     return $r
+}
+
+function Get-WxRectByHwnd([IntPtr]$hwnd) {
+    $r = New-Object Wx5+RECT
+    [Wx5]::GetWindowRect($hwnd, [ref]$r) | Out-Null
+    return $r
+}
+
+# Background screenshot of WeChat sidebar — no focus steal
+function Get-SidebarBitmap([IntPtr]$hwnd) {
+    $r = Get-WxRectByHwnd $hwnd
+    $wW = $r.Right - $r.Left; $wH = $r.Bottom - $r.Top
+    if ($wW -lt 500 -or $wH -lt 400) { return $null }
+    $sW = [int]($wW * 0.35)
+    $bmp = New-Object System.Drawing.Bitmap($wW, $wH)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $hdc = $g.GetHdc()
+    [Wx5]::PrintWindow($hwnd, $hdc, 2) | Out-Null  # PW_RENDERFULLCONTENT=2
+    $g.ReleaseHdc($hdc)
+    $g.Dispose()
+    # Crop to sidebar
+    $sidebar = New-Object System.Drawing.Bitmap($sW, $wH)
+    $g2 = [System.Drawing.Graphics]::FromImage($sidebar)
+    $g2.DrawImage($bmp, 0, 0, (New-Object System.Drawing.Rectangle(0, 0, $sW, $wH)), [System.Drawing.GraphicsUnit]::Pixel)
+    $g2.Dispose()
+    $bmp.Dispose()
+    return @{bmp=$sidebar; wW=$wW; wH=$wH; sW=$sW; rect=$r}
 }
 
 function Get-Token {
@@ -148,18 +195,13 @@ Write-Host "[$ts] Waiting for badges..."
 
 while ($true) {
     try {
-        if (-not (Activate-WeChat)) { Start-Sleep -Seconds $PollSeconds; continue }
+        # Background check: find WeChat window without activating it
+        $wxHwnd = Get-WeChatHwnd
+        if ($wxHwnd -eq [IntPtr]::Zero) { Start-Sleep -Seconds $PollSeconds; continue }
 
-        $wr = Get-WxRect
-        $wW = $wr.Right - $wr.Left; $wH = $wr.Bottom - $wr.Top
-        if ($wW -lt 500 -or $wH -lt 400) { Start-Sleep -Seconds $PollSeconds; continue }
-        $sW = [int]($wW * 0.35)
-
-        # Screenshot sidebar for badge detection
-        $bmp = New-Object System.Drawing.Bitmap($sW, $wH)
-        $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.CopyFromScreen($wr.Left, $wr.Top, 0, 0, (New-Object System.Drawing.Size($sW, $wH)))
-        $g.Dispose()
+        $sbData = Get-SidebarBitmap $wxHwnd
+        if (-not $sbData) { Start-Sleep -Seconds $PollSeconds; continue }
+        $bmp = $sbData.bmp; $wW = $sbData.wW; $wH = $sbData.wH; $sW = $sbData.sW; $wr = $sbData.rect
 
         $entryH = 70; $startY = [int]($wH * 0.12)
         $sx1 = [int]($sW * 0.35); $sx2 = [int]($sW * 0.65)
@@ -184,6 +226,10 @@ while ($true) {
 
             $ts = Get-Date -Format 'HH:mm:ss'
             Write-Host "[$ts] BADGE row$row (reds=$reds)"
+
+            # Only NOW activate WeChat (need foreground for click/type)
+            if (-not (Activate-WeChat)) { Write-Host "  activate failed"; continue }
+            $wr = Get-WxRect  # refresh rect after activation
 
             # Click the chat entry
             $cx = $wr.Left + [int]($sW * 0.5)
