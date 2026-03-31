@@ -207,6 +207,7 @@ func (m *Manager) Start(name string) error {
 // StartWithEnv launches a spore process with additional environment variable overrides.
 // envOverrides format: ["KEY=VALUE", ...]
 // Special env: "SPORE_SANDBOX=1" enables sandbox mode at runtime.
+// It launches a supervisor process that automatically restarts the child on crash/update.
 func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	inst, err := m.Get(name)
 	if err != nil {
@@ -222,7 +223,64 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 		return fmt.Errorf("binary not found: %s", binPath)
 	}
 
-	// Check if sandbox is requested (manifest or env override)
+	installBase := filepath.Join(m.InstalledDir(), name)
+	os.Remove(filepath.Join(installBase, ".stop"))
+
+	// Try supervisor mode: launch "spore supervise <name>" as a background process
+	sporeBin, exeErr := os.Executable()
+	if exeErr == nil {
+		sporeBin, _ = filepath.EvalSymlinks(sporeBin)
+	}
+	if exeErr == nil && sporeBin != "" {
+		return m.startSupervised(name, inst, sporeBin, envOverrides)
+	}
+
+	// Fallback: direct launch without supervision (old behavior)
+	return m.startDirect(name, inst, envOverrides)
+}
+
+// startSupervised launches a "spore supervise <name>" background process.
+func (m *Manager) startSupervised(name string, inst *SporeInstance, sporeBin string, envOverrides []string) error {
+	args := []string{"supervise", name}
+	for _, e := range envOverrides {
+		args = append(args, "--env", e)
+	}
+
+	cmd := exec.Command(sporeBin, args...)
+	os.MkdirAll(inst.LogDir, 0755)
+	logFile, err := os.OpenFile(
+		filepath.Join(inst.LogDir, "supervisor.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("open supervisor log: %w", err)
+	}
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = detachAttr()
+	}
+
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		return fmt.Errorf("start supervisor: %w", err)
+	}
+
+	installBase := filepath.Join(m.InstalledDir(), name)
+	os.WriteFile(filepath.Join(installBase, ".supervisor.pid"),
+		[]byte(strconv.Itoa(cmd.Process.Pid)), 0644)
+
+	log.Printf("[spore] supervisor started for %s (PID %d)", name, cmd.Process.Pid)
+
+	cmd.Process.Release()
+	logFile.Close()
+
+	time.Sleep(1 * time.Second)
+	return nil
+}
+
+// startDirect launches the binary directly without supervision (fallback).
+func (m *Manager) startDirect(name string, inst *SporeInstance, envOverrides []string) error {
 	sandboxEnabled := inst.Manifest.Sandbox.Enabled
 	for _, e := range envOverrides {
 		if e == "SPORE_SANDBOX=1" || e == "SPORE_SANDBOX=true" {
@@ -230,7 +288,7 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 		}
 	}
 
-	// Build command
+	binPath := filepath.Join(inst.InstallDir, inst.Manifest.Binary)
 	args := inst.Manifest.Args
 	cmd := exec.Command(binPath, args...)
 	cmd.Dir = inst.InstallDir
@@ -238,24 +296,20 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 		fmt.Sprintf("SPORE_DATA_DIR=%s", inst.DataDir),
 		fmt.Sprintf("SPORE_LOG_DIR=%s", inst.LogDir),
 	)
-	// Inject custom env vars from manifest
 	for k, v := range inst.Manifest.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	// Apply CLI env overrides (highest priority)
 	env = append(env, envOverrides...)
 	cmd.Env = env
 
-	// Apply sandbox wrapper if requested
 	if sandboxEnabled {
 		runner := sandbox.New()
 		if runner == nil {
 			return fmt.Errorf("sandbox requested but no backend available: %s", sandbox.EnsureAvailable())
 		}
 		cfg := inst.Manifest.Sandbox
-		// Default: allow network
 		if !cfg.AllowNet && cfg.MaxMemoryMB == 0 && cfg.MaxCPU == 0 && len(cfg.AllowPaths) == 0 {
-			cfg.AllowNet = true // default to allow network if no explicit config
+			cfg.AllowNet = true
 		}
 		if err := runner.Wrap(cmd, binPath, inst.DataDir, inst.LogDir, cfg); err != nil {
 			return fmt.Errorf("sandbox wrap: %w", err)
@@ -263,7 +317,6 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 		log.Printf("[spore] sandbox enabled: %s (backend: %s)", name, runner.Name())
 	}
 
-	// Redirect output to log file
 	logFile, err := os.OpenFile(
 		filepath.Join(inst.LogDir, name+".log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -273,7 +326,6 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
-	// Detach process (skip if sandbox already set SysProcAttr)
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = detachAttr()
 	}
@@ -283,7 +335,6 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 		return fmt.Errorf("start process: %w", err)
 	}
 
-	// Write PID file
 	os.WriteFile(inst.PidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 
 	mode := ""
@@ -292,7 +343,6 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 	}
 	log.Printf("[spore] started %s (PID %d)%s", name, cmd.Process.Pid, mode)
 
-	// Release the process so it runs independently
 	cmd.Process.Release()
 	logFile.Close()
 
@@ -300,55 +350,62 @@ func (m *Manager) StartWithEnv(name string, envOverrides []string) error {
 }
 
 // Stop sends a signal to gracefully stop a running spore.
+// It writes a ".stop" marker so the supervisor knows not to restart the child.
 func (m *Manager) Stop(name string) error {
 	inst, err := m.Get(name)
 	if err != nil {
 		return err
 	}
 
-	pid, err := m.readPid(inst.PidFile)
-	if err != nil {
-		return fmt.Errorf("%s is not running (no PID file)", name)
-	}
+	installBase := filepath.Join(m.InstalledDir(), name)
 
-	if !isProcessRunning(pid) {
-		os.Remove(inst.PidFile)
-		return nil
-	}
+	// Write stop marker BEFORE killing — supervisor checks this on child exit
+	os.WriteFile(filepath.Join(installBase, ".stop"), []byte("1"), 0644)
 
-	// Platform-specific graceful stop
-	if goruntime.GOOS == "windows" {
-		// Windows: SIGTERM is not supported; use taskkill for graceful shutdown
-		exec.Command("taskkill", "/PID", strconv.Itoa(pid)).Run()
-	} else {
-		proc, err := os.FindProcess(pid)
-		if err != nil {
-			os.Remove(inst.PidFile)
-			return nil
+	// Kill the child process
+	pid, _ := m.readPid(inst.PidFile)
+	if pid > 0 && isProcessRunning(pid) {
+		if goruntime.GOOS == "windows" {
+			exec.Command("taskkill", "/PID", strconv.Itoa(pid)).Run()
+		} else {
+			if proc, err := os.FindProcess(pid); err == nil {
+				proc.Signal(syscall.SIGTERM)
+			}
 		}
-		proc.Signal(syscall.SIGTERM)
-	}
 
-	// Wait up to 10 seconds for graceful shutdown
-	for i := 0; i < 20; i++ {
-		time.Sleep(500 * time.Millisecond)
-		if !isProcessRunning(pid) {
-			os.Remove(inst.PidFile)
-			log.Printf("[spore] stopped %s (PID %d)", name, pid)
-			return nil
+		for i := 0; i < 20; i++ {
+			time.Sleep(500 * time.Millisecond)
+			if !isProcessRunning(pid) {
+				break
+			}
 		}
-	}
 
-	// Force kill
-	if goruntime.GOOS == "windows" {
-		exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid)).Run()
-	} else {
-		if proc, err := os.FindProcess(pid); err == nil {
-			proc.Kill()
+		if isProcessRunning(pid) {
+			if goruntime.GOOS == "windows" {
+				exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid)).Run()
+			} else {
+				if proc, err := os.FindProcess(pid); err == nil {
+					proc.Kill()
+				}
+			}
 		}
 	}
 	os.Remove(inst.PidFile)
-	log.Printf("[spore] force-killed %s (PID %d)", name, pid)
+
+	// Kill supervisor if running
+	supPidFile := filepath.Join(installBase, ".supervisor.pid")
+	if supPid, err := m.readPid(supPidFile); err == nil && isProcessRunning(supPid) {
+		if goruntime.GOOS == "windows" {
+			exec.Command("taskkill", "/F", "/PID", strconv.Itoa(supPid)).Run()
+		} else {
+			if proc, err := os.FindProcess(supPid); err == nil {
+				proc.Kill()
+			}
+		}
+	}
+	os.Remove(supPidFile)
+
+	log.Printf("[spore] stopped %s", name)
 	return nil
 }
 
@@ -436,6 +493,102 @@ func RunInline(dir string, envOverrides []string) error {
 		// Clean exit
 		log.Printf("[spore-inline] process exited cleanly")
 		return nil
+	}
+}
+
+// SuperviseLoop runs a spore process with automatic restart on unexpected exit.
+// This method blocks — meant to be called from a detached supervisor process.
+// It restarts the child when it exits, unless a ".stop" marker file is present.
+func (m *Manager) SuperviseLoop(name string, envOverrides []string) error {
+	installBase := filepath.Join(m.InstalledDir(), name)
+	stopMarker := filepath.Join(installBase, ".stop")
+	os.Remove(stopMarker)
+
+	sandboxEnabled := false
+	for _, e := range envOverrides {
+		if e == "SPORE_SANDBOX=1" || e == "SPORE_SANDBOX=true" {
+			sandboxEnabled = true
+		}
+	}
+
+	log.Printf("[supervisor] watching %s (sandbox=%v)", name, sandboxEnabled)
+
+	for {
+		inst, err := m.Get(name)
+		if err != nil {
+			log.Printf("[supervisor] load %s: %v, retry in 5s", name, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		binPath := filepath.Join(inst.InstallDir, inst.Manifest.Binary)
+		if _, err := os.Stat(binPath); err != nil {
+			log.Printf("[supervisor] binary not found: %s, retry in 5s", binPath)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		cmd := exec.Command(binPath, inst.Manifest.Args...)
+		cmd.Dir = inst.InstallDir
+		env := append(os.Environ(),
+			fmt.Sprintf("SPORE_DATA_DIR=%s", inst.DataDir),
+			fmt.Sprintf("SPORE_LOG_DIR=%s", inst.LogDir),
+			"SPORE_SUPERVISED=1",
+		)
+		for k, v := range inst.Manifest.Env {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+		env = append(env, envOverrides...)
+		cmd.Env = env
+
+		if sandboxEnabled {
+			runner := sandbox.New()
+			if runner != nil {
+				cfg := inst.Manifest.Sandbox
+				if !cfg.AllowNet && cfg.MaxMemoryMB == 0 && cfg.MaxCPU == 0 && len(cfg.AllowPaths) == 0 {
+					cfg.AllowNet = true
+				}
+				if err := runner.Wrap(cmd, binPath, inst.DataDir, inst.LogDir, cfg); err != nil {
+					log.Printf("[supervisor] sandbox wrap: %v, continuing without sandbox", err)
+				}
+			}
+		}
+
+		os.MkdirAll(inst.LogDir, 0755)
+		logFile, err := os.OpenFile(
+			filepath.Join(inst.LogDir, name+".log"),
+			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			log.Printf("[supervisor] open log: %v, retry in 5s", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+
+		if err := cmd.Start(); err != nil {
+			logFile.Close()
+			log.Printf("[supervisor] start failed: %v, retry in 5s", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		os.WriteFile(inst.PidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
+		log.Printf("[supervisor] started %s (PID %d)", name, cmd.Process.Pid)
+
+		waitErr := cmd.Wait()
+		logFile.Close()
+		log.Printf("[supervisor] %s exited: %v", name, waitErr)
+
+		if _, err := os.Stat(stopMarker); err == nil {
+			os.Remove(stopMarker)
+			os.Remove(inst.PidFile)
+			log.Printf("[supervisor] stop marker found, exiting")
+			return nil
+		}
+
+		log.Printf("[supervisor] restarting %s in 3s...", name)
+		time.Sleep(3 * time.Second)
 	}
 }
 

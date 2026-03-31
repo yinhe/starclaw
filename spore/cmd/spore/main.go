@@ -37,6 +37,8 @@ func main() {
 		cmdRun(mgr)
 	case "run-inline":
 		cmdRunInline()
+	case "supervise":
+		cmdSupervise(mgr)
 	case "start":
 		cmdStart(mgr)
 	case "stop":
@@ -153,6 +155,25 @@ func cmdRun(mgr *runtime.Manager) {
 	}
 	binPath := filepath.Join(inst.InstallDir, inst.Manifest.Binary)
 	fmt.Printf("Binary: %s %s\n", binPath, strings.Join(inst.Manifest.Args, " "))
+}
+
+func cmdSupervise(mgr *runtime.Manager) {
+	if len(os.Args) < 3 {
+		fatal("usage: spore supervise <name> [--env KEY=VALUE ...]")
+	}
+	name := os.Args[2]
+
+	var envOverrides []string
+	for i := 3; i < len(os.Args); i++ {
+		if os.Args[i] == "--env" && i+1 < len(os.Args) {
+			envOverrides = append(envOverrides, os.Args[i+1])
+			i++
+		}
+	}
+
+	if err := mgr.SuperviseLoop(name, envOverrides); err != nil {
+		fatal("supervise: %v", err)
+	}
 }
 
 func cmdRunInline() {

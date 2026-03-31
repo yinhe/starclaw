@@ -1081,8 +1081,14 @@ func performSporeUpdate(targetVersion string) error {
 	// Give the HTTP response time to flush, then restart.
 	time.Sleep(1 * time.Second)
 
-	// Re-exec: start the new binary with same args, then exit this process.
-	// Works for standalone and Spore modes. Spore runtime also has its own restart loop as backup.
+	// If supervised by Spore (SPORE_SUPERVISED=1), just exit — supervisor restarts automatically.
+	if os.Getenv("SPORE_SUPERVISED") == "1" {
+		ulogInfo("Spore 监控模式，退出后自动重启...")
+		os.Exit(0)
+		return nil
+	}
+
+	// Standalone: re-exec new binary with same args, then exit this process.
 	cmd := exec.Command(currentBin, os.Args[1:]...)
 	cmd.Dir, _ = os.Getwd()
 	cmd.Stdout = os.Stdout
