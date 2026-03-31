@@ -1,0 +1,30 @@
+{
+  "name": "trading_backtest",
+  "description": "运行策略回测：用历史数据验证主升浪策略的胜率、最大回撤、夏普比率。可指定回测天数和最低打分阈值。注意：回测需要几分钟时间下载数据和计算。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "days": {
+        "type": "integer",
+        "description": "回测交易天数，默认60"
+      },
+      "min_score": {
+        "type": "number",
+        "description": "最低打分阈值，默认0.60"
+      },
+      "top_n": {
+        "type": "integer",
+        "description": "每轮最多选几只，默认10"
+      }
+    }
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/trading/backtest",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

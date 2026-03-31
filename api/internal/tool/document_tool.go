@@ -80,7 +80,7 @@ func (t *DocumentTool) Execute(ctx context.Context, argsJSON string) (string, er
 	switch args.Action {
 	case "summarize":
 		return t.summarize(args)
-	case "export_word":
+	case "export_word", "create_docx":
 		return t.exportWord(ctx, args)
 	case "summary_to_word":
 		return t.summaryToWord(ctx, args)
@@ -168,7 +168,7 @@ func (t *DocumentTool) exportWord(ctx context.Context, args documentArgs) (strin
 
 	// Save to disk
 	filename := fmt.Sprintf("doc_%s.docx", uuid.New().String()[:8])
-	docDir := "/app/data/documents"
+	docDir := filepath.Join(GetDataDir(), "documents")
 	os.MkdirAll(docDir, 0755)
 	filePath := filepath.Join(docDir, filename)
 
@@ -255,7 +255,7 @@ func (t *DocumentTool) summaryToWord(ctx context.Context, args documentArgs) (st
 	}
 
 	filename := fmt.Sprintf("summary_%s.docx", uuid.New().String()[:8])
-	docDir := "/app/data/documents"
+	docDir := filepath.Join(GetDataDir(), "documents")
 	os.MkdirAll(docDir, 0755)
 	filePath := filepath.Join(docDir, filename)
 

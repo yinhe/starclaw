@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yinhe/starclaw/internal/sandbox"
 )
 
 // ConflictResolver is a callback that resolves merge conflicts using an LLM.
@@ -28,10 +30,9 @@ type GitManager struct {
 
 // NewGitManager creates a new Git manager
 func NewGitManager() *GitManager {
-	reposDir := "/app/repos"
-	workspacesDir := "/app/workspaces"
+	reposDir := filepath.Join(sandbox.WorkspacesDir(), "..", "repos")
+	workspacesDir := sandbox.WorkspacesDir()
 	os.MkdirAll(reposDir, 0755)
-	os.MkdirAll(workspacesDir, 0755)
 	return &GitManager{
 		reposDir:      reposDir,
 		workspacesDir: workspacesDir,

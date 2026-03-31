@@ -1,0 +1,17 @@
+{
+  "name": "trading_check_exits",
+  "description": "Check all held positions for exit conditions (stop-loss, trailing stop, take-profit, time-stop) and automatically execute sell orders for any triggered exits. Returns the number of exits executed and their details.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/positions/check_exits",
+    "method": "POST"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

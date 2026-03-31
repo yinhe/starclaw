@@ -1091,21 +1091,31 @@ func performStandaloneUpdate(targetVersion string) error {
 }
 
 // sporeDownloadURLs returns candidate download URLs for the given version.
-// Nydus mirror first (faster in China), GitHub second.
+// Nydus Spore releases first (faster in China), then Nydus binary path, then GitHub.
 func sporeDownloadURLs(version string) []string {
 	os_ := runtime.GOOS
 	arch := runtime.GOARCH
 
-	// GitHub release binary name pattern: starclaw-{os}-{arch}[.exe]
-	name := fmt.Sprintf("starclaw-%s-%s", os_, arch)
+	// claw-api binary name pattern: claw-api-{os}-{arch}[.exe]
+	name := fmt.Sprintf("claw-api-%s-%s", os_, arch)
 	if os_ == "windows" {
 		name += ".exe"
 	}
 
-	nydusURL := fmt.Sprintf("https://nydus.starclaw.net/releases/binary/v%s/%s", version, name)
-	ghURL := fmt.Sprintf("https://github.com/yinhe/starclaw/releases/download/v%s/%s", version, name)
+	// GitHub release binary name pattern: starclaw-{os}-{arch}[.exe]
+	ghName := fmt.Sprintf("starclaw-%s-%s", os_, arch)
+	if os_ == "windows" {
+		ghName += ".exe"
+	}
 
-	return []string{nydusURL, ghURL}
+	return []string{
+		// Nydus Spore releases dir (uploaded by build-release.ps1)
+		fmt.Sprintf("https://nydus.starclaw.net/spore/releases/%s", name),
+		// Nydus binary release path (legacy)
+		fmt.Sprintf("https://nydus.starclaw.net/releases/binary/v%s/%s", version, ghName),
+		// GitHub release
+		fmt.Sprintf("https://github.com/yinhe/starclaw/releases/download/v%s/%s", version, ghName),
+	}
 }
 
 // ── MCP Bridge update (source build, legacy fallback) ──

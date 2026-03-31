@@ -1,0 +1,23 @@
+{
+  "name": "trading_quote",
+  "description": "Get real-time quote for one or more stocks. Returns price, open, high, low, volume. Only works during trading hours (9:30-15:00 weekdays).",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "codes": {
+        "type": "string",
+        "description": "Comma-separated stock codes, e.g. 600519.SH,000001.SZ"
+      }
+    },
+    "required": ["codes"]
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/market/quote?codes={{codes}}",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

@@ -159,8 +159,8 @@ func (h *KnowledgeHandler) UploadDocument(c *gin.Context) {
 	if isBinaryKBFile(name) {
 		ext := strings.ToLower(filepath.Ext(name))
 		storedName := uuid.New().String() + ext
-		os.MkdirAll("/app/uploads", 0755)
-		destPath := filepath.Join("/app/uploads", storedName)
+		os.MkdirAll(getUploadDir(), 0755)
+		destPath := filepath.Join(getUploadDir(), storedName)
 		if err := os.WriteFile(destPath, content, 0644); err == nil {
 			fileURL = "/v1/uploads/" + storedName
 		}

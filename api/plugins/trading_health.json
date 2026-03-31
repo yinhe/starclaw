@@ -1,0 +1,17 @@
+{
+  "name": "trading_health",
+  "description": "Check the health status of the Python Bridge and QMT connection. Returns whether QMT is connected and the bridge is responsive.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/health",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}
