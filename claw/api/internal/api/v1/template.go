@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/yinhe/starclaw/internal/billing"
 	"github.com/yinhe/starclaw/internal/model"
 	"gorm.io/gorm"
 )
@@ -16,11 +20,55 @@ import (
 const queenMarketplaceURL = "https://starclaw.net/api/marketplace"
 
 type TemplateHandler struct {
-	db *gorm.DB
+	db      *gorm.DB
+	billing *billing.QueenClient // optional, nil when billing is disabled
 }
 
-func NewTemplateHandler(db *gorm.DB) *TemplateHandler {
-	return &TemplateHandler{db: db}
+func NewTemplateHandler(db *gorm.DB, billingClient *billing.QueenClient) *TemplateHandler {
+	return &TemplateHandler{db: db, billing: billingClient}
+}
+
+// pricingInfo describes pricing embedded in a template's config JSON.
+type pricingInfo struct {
+	Type     string `json:"type"`     // free, one_time, subscription
+	Price    int    `json:"price"`    // cents (分)
+	Period   string `json:"period"`   // month, quarter, year
+	Currency string `json:"currency"` // CNY
+	Display  string `json:"display"`  // e.g. "¥2,999/季度"
+}
+
+// parsePricing extracts pricing info from a template's config JSON.
+func parsePricing(configJSON string) *pricingInfo {
+	var cfg struct {
+		Pricing *pricingInfo `json:"pricing"`
+	}
+	if json.Unmarshal([]byte(configJSON), &cfg) != nil || cfg.Pricing == nil {
+		return nil
+	}
+	if cfg.Pricing.Type == "" || cfg.Pricing.Type == "free" {
+		return nil
+	}
+	if cfg.Pricing.Currency == "" {
+		cfg.Pricing.Currency = "CNY"
+	}
+	return cfg.Pricing
+}
+
+// expiresFromPeriod calculates expiry time from a subscription period.
+func expiresFromPeriod(period string) *time.Time {
+	var d time.Duration
+	switch period {
+	case "month":
+		d = 30 * 24 * time.Hour
+	case "quarter":
+		d = 90 * 24 * time.Hour
+	case "year":
+		d = 365 * 24 * time.Hour
+	default:
+		return nil // one_time = permanent
+	}
+	t := time.Now().Add(d)
+	return &t
 }
 
 // List returns marketplace templates with optional category/search filter
@@ -158,7 +206,36 @@ func (h *TemplateHandler) Install(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"agent": agent})
 }
 
-// InstallRemote creates an agent from a remote marketplace template (e.g. from Queen/starclaw.net)
+// installBundleSkill mirrors Queen's AgentSkillSpec for JSON parsing.
+type installBundleSkill struct {
+	Name    string `json:"name"`
+	Spec    string `json:"spec"`
+	Version string `json:"version"`
+}
+
+// installBundleMCP mirrors Queen's AgentMCPSpec for JSON parsing.
+type installBundleMCP struct {
+	Name        string `json:"name"`
+	BaseURL     string `json:"base_url"`
+	Description string `json:"description"`
+	Tools       string `json:"tools"`
+}
+
+// installBundleWorkflow mirrors Queen's AgentWorkflowSpec for JSON parsing.
+type installBundleWorkflow struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Definition  string `json:"definition"`
+}
+
+// installBundlePlugin mirrors Queen's AgentPluginSpec for JSON parsing.
+type installBundlePlugin struct {
+	Name string `json:"name"` // e.g. "trading_scan"
+	Spec string `json:"spec"` // full JSON plugin definition
+}
+
+// InstallRemote creates an agent from a remote marketplace template (e.g. from Queen/starclaw.net).
+// If the config contains skills/mcp_servers/workflows, they are installed as a bundle.
 func (h *TemplateHandler) InstallRemote(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -171,12 +248,20 @@ func (h *TemplateHandler) InstallRemote(c *gin.Context) {
 		Icon         string `json:"icon"`
 		Source       string `json:"source"` // e.g. "starclaw.net"
 		SourceID     string `json:"source_id"`
+		// Full installation bundle (optional)
+		Skills     []installBundleSkill    `json:"skills"`
+		MCPServers []installBundleMCP      `json:"mcp_servers"`
+		Workflows  []installBundleWorkflow `json:"workflows"`
+		Plugins    []installBundlePlugin   `json:"plugins"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	tx := h.db.Begin()
+
+	// 1. Create agent
 	agent := model.Agent{
 		UserID:       userID,
 		Name:         req.Name,
@@ -184,16 +269,85 @@ func (h *TemplateHandler) InstallRemote(c *gin.Context) {
 		SystemPrompt: req.SystemPrompt,
 		Tools:        req.Tools,
 		Config:       req.Config,
+		SourceID:     req.SourceID,
 	}
-	if err := h.db.Create(&agent).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to install"})
+	if err := tx.Create(&agent).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to install agent"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"agent": agent})
+	// 2. Install skills (passive + active)
+	skillsInstalled := 0
+	for _, s := range req.Skills {
+		skill := model.AgentSkill{
+			AgentID:   agent.ID,
+			SkillName: s.Name,
+			SkillSpec: s.Spec,
+			Version:   s.Version,
+		}
+		if err := tx.Create(&skill).Error; err == nil {
+			skillsInstalled++
+		}
+	}
+
+	// 3. Register MCP servers
+	mcpInstalled := 0
+	for _, m := range req.MCPServers {
+		mcp := model.MCPServer{
+			UserID:  userID,
+			Name:    m.Name,
+			BaseURL: m.BaseURL,
+			Status:  "active",
+		}
+		if err := tx.Create(&mcp).Error; err == nil {
+			mcpInstalled++
+		}
+	}
+
+	// 4. Create workflows
+	wfInstalled := 0
+	for _, w := range req.Workflows {
+		wf := model.Workflow{
+			UserID:      userID,
+			Name:        w.Name,
+			Description: w.Description + " [agent:" + agent.Name + "]",
+			Definition:  w.Definition,
+		}
+		if err := tx.Create(&wf).Error; err == nil {
+			wfInstalled++
+		}
+	}
+
+	tx.Commit()
+
+	// 5. Install JSON tool plugins (write to plugins/ directory, outside tx)
+	pluginsInstalled := 0
+	if len(req.Plugins) > 0 {
+		pluginDir := "plugins"
+		_ = os.MkdirAll(pluginDir, 0755)
+		for _, p := range req.Plugins {
+			if p.Name == "" || p.Spec == "" {
+				continue
+			}
+			path := pluginDir + "/" + p.Name + ".json"
+			if err := os.WriteFile(path, []byte(p.Spec), 0644); err == nil {
+				pluginsInstalled++
+			}
+		}
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"agent":               agent,
+		"skills_installed":    skillsInstalled,
+		"mcp_installed":       mcpInstalled,
+		"workflows_installed": wfInstalled,
+		"plugins_installed":   pluginsInstalled,
+	})
 }
 
-// CommunityList proxies the Queen marketplace API to avoid CORS issues
+// CommunityList proxies the Queen marketplace API to avoid CORS issues.
+// Falls back to local agent templates if Queen is unreachable.
 func (h *TemplateHandler) CommunityList(c *gin.Context) {
 	q := c.Query("q")
 	url := fmt.Sprintf("%s/items?type=agent&size=500", queenMarketplaceURL)
@@ -201,55 +355,131 @@ func (h *TemplateHandler) CommunityList(c *gin.Context) {
 		url += "&q=" + q
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Get(url)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach community marketplace"})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response"})
-		return
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid response"})
-		return
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			body, err2 := io.ReadAll(resp.Body)
+			if err2 == nil {
+				var result map[string]interface{}
+				if json.Unmarshal(body, &result) == nil {
+					c.JSON(http.StatusOK, result)
+					return
+				}
+			}
+		}
 	}
 
-	c.JSON(http.StatusOK, result)
+	// Fallback: return local published templates + builtin agents as marketplace items
+	var items []gin.H
+
+	// Local published templates
+	var templates []model.AgentTemplate
+	tq := h.db.Preload("Author").Order("install_count DESC, created_at DESC").Limit(200)
+	if q != "" {
+		tq = tq.Where("name LIKE ? OR description LIKE ?", "%"+q+"%", "%"+q+"%")
+	}
+	tq.Find(&templates)
+	for _, t := range templates {
+		authorName := "StarClaw 官方"
+		if t.Author.Username != "" {
+			authorName = t.Author.Username
+		}
+		if strings.Contains(t.Name, "Q8bot") || strings.Contains(t.Name, "麒博") {
+			authorName = "Q8bot官方"
+		}
+		items = append(items, gin.H{
+			"id": t.ID, "name": t.Name, "description": t.Description,
+			"icon": t.Icon, "tags": t.Tags, "config": t.Config,
+			"downloads": t.InstallCount, "rating": t.Rating,
+			"author": gin.H{"nickname": authorName},
+		})
+	}
+
+	// Always include builtin agents as installable items
+	existingNames := make(map[string]bool)
+	for _, item := range items {
+		if n, ok := item["name"].(string); ok {
+			existingNames[n] = true
+		}
+	}
+	var agents []model.Agent
+	h.db.Where("is_builtin = ? AND is_public = ?", true, true).Find(&agents)
+	for _, a := range agents {
+		if existingNames[a.Name] || a.Name == "全能助手" {
+			continue // skip duplicates and the builtin SuperAgent
+		}
+		items = append(items, gin.H{
+			"id": a.ID, "name": a.Name, "description": a.Description,
+			"icon": "", "tags": "[]", "config": fmt.Sprintf(`{"system_prompt":%q,"tools":%s}`, a.SystemPrompt, a.Tools),
+			"downloads": 0, "rating": 0,
+			"author": gin.H{"nickname": "StarClaw 官方"},
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
 }
 
-// CommunityGet proxies a single item from Queen marketplace
+// CommunityGet proxies a single item from Queen marketplace.
+// Falls back to local template or agent if Queen is unreachable.
 func (h *TemplateHandler) CommunityGet(c *gin.Context) {
 	id := c.Param("id")
 	url := fmt.Sprintf("%s/items/%s", queenMarketplaceURL, id)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Get(url)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach community marketplace"})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read response"})
-		return
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid response"})
-		return
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			body, err2 := io.ReadAll(resp.Body)
+			if err2 == nil {
+				var result map[string]interface{}
+				if json.Unmarshal(body, &result) == nil {
+					c.JSON(http.StatusOK, result)
+					return
+				}
+			}
+		}
 	}
 
-	c.JSON(http.StatusOK, result)
+	// Fallback: try local template
+	var tpl model.AgentTemplate
+	if err := h.db.Preload("Author").Where("id = ?", id).First(&tpl).Error; err == nil {
+		authorName := "StarClaw 官方"
+		if tpl.Author.Username != "" {
+			authorName = tpl.Author.Username
+		}
+		// Override author for Q8bot
+		if strings.Contains(tpl.Name, "Q8bot") || strings.Contains(tpl.Name, "麒博") {
+			authorName = "Q8bot官方"
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"item": gin.H{
+				"id": tpl.ID, "name": tpl.Name, "description": tpl.Description,
+				"icon": tpl.Icon, "tags": tpl.Tags, "config": tpl.Config,
+				"downloads": tpl.InstallCount, "rating": tpl.Rating,
+				"author": gin.H{"nickname": authorName},
+			},
+		})
+		return
+	}
+
+	// Fallback: try local agent
+	var agent model.Agent
+	if err := h.db.Where("id = ?", id).First(&agent).Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"item": gin.H{
+				"id": agent.ID, "name": agent.Name, "description": agent.Description,
+				"icon": "", "tags": "[]", "config": fmt.Sprintf(`{"system_prompt":%q,"tools":%s}`, agent.SystemPrompt, agent.Tools),
+				"downloads": 0, "rating": 0,
+				"author": gin.H{"nickname": "StarClaw 官方"},
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "item not found"})
 }
 
 // Rate adds a rating to a template
@@ -304,6 +534,234 @@ func (h *TemplateHandler) Categories(c *gin.Context) {
 		{"id": "business", "name": "商业办公", "name_en": "Business", "icon": "Briefcase"},
 	}
 	c.JSON(http.StatusOK, gin.H{"categories": categories})
+}
+
+// ── Paid Marketplace Purchases (Direct Alipay/WeChat) ──
+
+// Purchase creates a direct Alipay/WeChat payment order via Queen → Synapse.
+// Flow: parse pricing → create payment order → return pay_url → frontend opens payment page.
+// After payment, frontend polls PollPurchaseStatus → when paid, agent is auto-installed.
+func (h *TemplateHandler) Purchase(c *gin.Context) {
+	userID := c.GetString("user_id")
+	templateID := c.Param("id")
+
+	var req struct {
+		PayMethod string `json:"pay_method"` // alipay / wechatpay (default: alipay)
+	}
+	c.ShouldBindJSON(&req)
+	if req.PayMethod == "" {
+		req.PayMethod = "alipay"
+	}
+
+	// 1. Load template
+	configJSON, templateName, _ := h.loadTemplateInfo(templateID)
+	if configJSON == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "template not found"})
+		return
+	}
+
+	// 2. Parse pricing
+	pricing := parsePricing(configJSON)
+	if pricing == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this template is free, use install instead"})
+		return
+	}
+
+	// 3. Check if user already has an active purchase
+	var existing model.MarketplacePurchase
+	if err := h.db.Where("user_id = ? AND template_id = ? AND status = ?", userID, templateID, "active").First(&existing).Error; err == nil {
+		if existing.IsActive() {
+			c.JSON(http.StatusConflict, gin.H{"error": "already_purchased", "purchase": existing})
+			return
+		}
+		h.db.Model(&existing).Update("status", "expired")
+	}
+
+	// 4. Check billing is enabled
+	if h.billing == nil || !h.billing.IsEnabled() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "billing_unavailable",
+			"message": "计费系统未连接，请先加入 StarClaw 网络（设置 → 加入星爪网络）",
+		})
+		return
+	}
+
+	// 5. Create payment order via Queen → Synapse (Alipay/WeChat)
+	priceFen := int64(pricing.Price)
+	result, err := h.billing.CreateMarketplacePayment(userID, templateID, templateName, req.PayMethod, priceFen)
+	if err != nil {
+		log.Printf("[marketplace] create payment failed: user=%s template=%s err=%v", userID, templateID, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "payment_failed", "message": "创建支付订单失败: " + err.Error()})
+		return
+	}
+
+	// 6. Create local pending purchase record (will be activated after payment)
+	purchase := model.MarketplacePurchase{
+		UserID:       userID,
+		TemplateID:   templateID,
+		TemplateName: templateName,
+		PricingType:  pricing.Type,
+		PriceCents:   pricing.Price,
+		Period:       pricing.Period,
+		Currency:     pricing.Currency,
+		Status:       "pending_payment",
+		PurchasedAt:  time.Now(),
+	}
+	h.db.Create(&purchase)
+
+	log.Printf("[marketplace] payment order created: order=%s user=%s template=%s(%s) method=%s",
+		result.OrderNo, userID, templateID, templateName, req.PayMethod)
+
+	c.JSON(http.StatusOK, gin.H{
+		"order_no":      result.OrderNo,
+		"pay_url":       result.PayURL,
+		"code_url":      result.CodeURL,
+		"pay_method":    result.PayMethod,
+		"amount_yuan":   result.AmountYuan,
+		"price_display": pricing.Display,
+		"purchase_id":   purchase.ID,
+	})
+}
+
+// PollPurchaseStatus checks whether a marketplace payment has been completed.
+// Frontend polls this every 3s after opening the payment URL.
+// When status=paid, the agent is auto-installed and returned.
+func (h *TemplateHandler) PollPurchaseStatus(c *gin.Context) {
+	userID := c.GetString("user_id")
+	orderNo := c.Param("order_no")
+
+	if h.billing == nil || !h.billing.IsEnabled() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "billing not connected"})
+		return
+	}
+
+	// Query Queen for order status
+	status, err := h.billing.QueryMarketplaceOrder(orderNo)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "order not found"})
+		return
+	}
+
+	if status.Status != "paid" {
+		c.JSON(http.StatusOK, gin.H{"status": status.Status})
+		return
+	}
+
+	// Payment confirmed! Auto-install the agent
+	templateID := status.TemplateID
+	configJSON, templateName, templateDesc := h.loadTemplateInfo(templateID)
+
+	// Update local purchase record
+	var purchase model.MarketplacePurchase
+	if err := h.db.Where("user_id = ? AND template_id = ? AND status = ?", userID, templateID, "pending_payment").
+		First(&purchase).Error; err == nil {
+		pricing := parsePricing(configJSON)
+		var expiresAt *time.Time
+		if pricing != nil && pricing.Type == "subscription" {
+			expiresAt = expiresFromPeriod(pricing.Period)
+		}
+		h.db.Model(&purchase).Updates(map[string]interface{}{
+			"status":     "active",
+			"expires_at": expiresAt,
+		})
+	}
+
+	// Install the agent
+	var cfg struct {
+		SystemPrompt string `json:"system_prompt"`
+		Tools        string `json:"tools"`
+	}
+	json.Unmarshal([]byte(configJSON), &cfg)
+
+	agent := model.Agent{
+		UserID:       userID,
+		Name:         templateName,
+		Description:  templateDesc,
+		SystemPrompt: cfg.SystemPrompt,
+		Tools:        cfg.Tools,
+		Config:       configJSON,
+		SourceID:     templateID,
+	}
+
+	var agentID string
+	if err := h.db.Create(&agent).Error; err == nil {
+		agentID = agent.ID
+		h.db.Model(&purchase).Update("agent_id", agentID)
+		h.db.Model(&model.AgentTemplate{}).Where("id = ?", templateID).
+			UpdateColumn("install_count", gorm.Expr("install_count + 1"))
+	}
+
+	log.Printf("[marketplace] payment complete, agent installed: order=%s template=%s agent=%s", orderNo, templateName, agentID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "paid",
+		"agent_id": agentID,
+		"message":  fmt.Sprintf("支付成功，已安装「%s」", templateName),
+	})
+}
+
+// loadTemplateInfo loads template config, name, description from local DB.
+func (h *TemplateHandler) loadTemplateInfo(templateID string) (configJSON, name, desc string) {
+	var tpl model.AgentTemplate
+	if err := h.db.Where("id = ?", templateID).First(&tpl).Error; err == nil {
+		return tpl.Config, tpl.Name, tpl.Description
+	}
+	var agent model.Agent
+	if err := h.db.Where("id = ?", templateID).First(&agent).Error; err == nil {
+		cfg := fmt.Sprintf(`{"system_prompt":%q,"tools":%s}`, agent.SystemPrompt, agent.Tools)
+		return cfg, agent.Name, agent.Description
+	}
+	return "", "", ""
+}
+
+// ListPurchases returns the user's marketplace purchases.
+func (h *TemplateHandler) ListPurchases(c *gin.Context) {
+	userID := c.GetString("user_id")
+	status := c.DefaultQuery("status", "active")
+
+	var purchases []model.MarketplacePurchase
+	q := h.db.Where("user_id = ?", userID).Order("purchased_at DESC")
+	if status != "all" {
+		q = q.Where("status = ?", status)
+	}
+	q.Limit(100).Find(&purchases)
+
+	// Mark expired subscriptions
+	now := time.Now()
+	for i, p := range purchases {
+		if p.Status == "active" && p.ExpiresAt != nil && p.ExpiresAt.Before(now) {
+			h.db.Model(&p).Update("status", "expired")
+			purchases[i].Status = "expired"
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"purchases": purchases})
+}
+
+// CheckAccess returns whether the user has an active purchase for a template.
+func (h *TemplateHandler) CheckAccess(c *gin.Context) {
+	userID := c.GetString("user_id")
+	templateID := c.Param("id")
+
+	var purchase model.MarketplacePurchase
+	err := h.db.Where("user_id = ? AND template_id = ? AND status = ?", userID, templateID, "active").
+		Order("purchased_at DESC").First(&purchase).Error
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"has_access": false})
+		return
+	}
+
+	active := purchase.IsActive()
+	if !active {
+		// Auto-expire
+		h.db.Model(&purchase).Update("status", "expired")
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"has_access": active,
+		"purchase":   purchase,
+	})
 }
 
 // SeedBuiltinTemplates seeds default templates on first run and adds new ones incrementally.

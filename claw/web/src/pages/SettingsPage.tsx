@@ -3,6 +3,7 @@ import { Settings, User, Key, Shield, Loader2, Check, FileText, Download, Globe,
 import { settingsAPI, auditAPI, systemAPI, nodeAPI, peerAPI, authAPI, queenAPI, deviceAPI } from '../lib/api'
 
 export default function SettingsPage() {
+  const [settingsTab, setSettingsTab] = useState<'basic' | 'advanced'>('basic')
   const [profile, setProfile] = useState({ username: '', email: '', phone: '' })
   const [hasPassword, setHasPassword] = useState(true)
   const [passwordForm, setPasswordForm] = useState({ old_password: '', new_password: '', confirm: '' })
@@ -437,12 +438,48 @@ export default function SettingsPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto p-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Settings className="w-6 h-6" /> 设置
           </h1>
           <p className="text-gray-500 text-sm mt-1">管理账户和配置</p>
         </div>
+
+        {/* Tab switcher */}
+        <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+          <button onClick={() => setSettingsTab('basic')} className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${settingsTab === 'basic' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>基本设置</button>
+          <button onClick={() => setSettingsTab('advanced')} className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${settingsTab === 'advanced' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>高级功能</button>
+        </div>
+
+        {settingsTab === 'advanced' ? (
+          <section className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">高级功能</h3>
+            <p className="text-xs text-gray-400 mb-4">运维、安全、开发者工具等进阶功能</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {[
+                { to: '/observe', icon: '📊', label: '可观测性', desc: '链路追踪·告警·日志' },
+                { to: '/security', icon: '🔒', label: '安全中心', desc: '加密·审计链·合规' },
+                { to: '/developer', icon: '🛠️', label: '开发者', desc: '插件·API·Playground' },
+                { to: '/webhooks', icon: '🔗', label: 'Webhook', desc: '事件驱动规则引擎' },
+                { to: '/goals', icon: '🎯', label: '自主目标', desc: 'Agent 自主分解执行' },
+                { to: '/finetune', icon: '🧬', label: '微调蒸馏', desc: 'LoRA·知识蒸馏' },
+                { to: '/recovery', icon: '🔑', label: '身份恢复', desc: '助记词·密钥导入' },
+                { to: '/tasks', icon: '📋', label: '自主任务', desc: '后台任务队列' },
+                { to: '/integrations', icon: '💬', label: '通讯集成', desc: '微信·钉钉·飞书' },
+                { to: '/mining', icon: '⛏️', label: '算力共享', desc: 'P2P 算力网络' },
+                { to: '/arena', icon: '⚔️', label: '龙虾竞技场', desc: 'PK 对战·装备·赛季' },
+              ].map(item => (
+                <a key={item.to} href={item.to} className="flex items-start gap-2.5 p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 hover:border-primary-200 dark:hover:border-primary-800 transition-colors group">
+                  <span className="text-lg">{item.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-primary-600">{item.label}</div>
+                    <div className="text-[11px] text-gray-400 truncate">{item.desc}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        ) : (<>
 
         {/* Version & Update */}
         <section className="bg-white border rounded-xl p-6 mb-6">
@@ -1525,6 +1562,8 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+
+        </>)}
       </div>
     </div>
   )

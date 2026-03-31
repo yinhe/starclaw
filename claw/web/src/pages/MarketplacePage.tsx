@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bot, Download, Search, Check, Trash2, Loader2, Store } from 'lucide-react'
+import { Bot, Download, Search, Check, Trash2, Loader2, Store, Crown } from 'lucide-react'
 import { agentAPI, queenMarketplaceAPI } from '../lib/api'
 
 const CATEGORIES = [
@@ -22,6 +22,14 @@ const CATEGORIES = [
   { id: 'assistant', label: '通用助手', match: ['日程','会议','读书','旅行','美食','生活','情感','政策','Excel','AI工具','通用','assistant','英语口语'] },
 ]
 
+interface PricingInfo {
+  type: string    // free, one_time, subscription
+  price: number   // cents
+  period?: string // month, quarter, year
+  currency?: string
+  display?: string // e.g. "¥2,999/季度"
+}
+
 interface MarketplaceItem {
   id: string
   name: string
@@ -34,6 +42,16 @@ interface MarketplaceItem {
   author?: { nickname?: string }
 }
 
+function getPricing(item: MarketplaceItem): PricingInfo | null {
+  try {
+    const cfg = JSON.parse(item.config || '{}')
+    if (cfg.pricing && cfg.pricing.type && cfg.pricing.type !== 'free' && cfg.pricing.price > 0) {
+      return cfg.pricing as PricingInfo
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
 export default function MarketplacePage() {
   const navigate = useNavigate()
   const [allItems, setAllItems] = useState<MarketplaceItem[]>([])
@@ -42,6 +60,7 @@ export default function MarketplacePage() {
   const [category, setCategory] = useState('all')
   const [installing, setInstalling] = useState<string | null>(null)
   const [toast, setToast] = useState('')
+  const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -86,7 +105,18 @@ export default function MarketplacePage() {
     return filtered
   }, [allItems, category, search])
 
+  const showToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    setToast(msg); setToastType(type)
+    setTimeout(() => setToast(''), 4000)
+  }
+
   const handleInstall = async (item: MarketplaceItem) => {
+    const pricing = getPricing(item)
+    if (pricing) {
+      // Paid item — use purchase flow
+      handlePurchase(item, pricing)
+      return
+    }
     setInstalling(item.id)
     try {
       let cfg: { system_prompt?: string; tools?: string; config?: string } = {}
@@ -101,13 +131,16 @@ export default function MarketplacePage() {
         icon: item.icon,
       })
       setInstalledIDs(prev => new Set([...prev, item.id]))
-      setToast(`已安装「${item.name}」`)
-      setTimeout(() => setToast(''), 2500)
+      showToast(`已安装「${item.name}」`)
     } catch {
-      setToast('安装失败')
-      setTimeout(() => setToast(''), 2500)
+      showToast('安装失败', 'error')
     }
     setInstalling(null)
+  }
+
+  const handlePurchase = (item: MarketplaceItem, _pricing: PricingInfo) => {
+    // Navigate to detail page which has the proper payment modal
+    navigate(`/marketplace/${item.id}`)
   }
 
   const handleUninstall = async (sourceId: string) => {
@@ -173,7 +206,11 @@ export default function MarketplacePage() {
 
         {/* Toast */}
         {toast && (
-          <div className="mb-4 px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-lg">{toast}</div>
+          <div className={`mb-4 px-4 py-2 text-sm rounded-lg ${
+            toastType === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400' :
+            toastType === 'warning' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400' :
+            'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+          }`}>{toast}</div>
         )}
 
         {loading ? (
@@ -218,16 +255,28 @@ export default function MarketplacePage() {
                         <span className="group-hover:hidden">已安装</span>
                         <span className="hidden group-hover:inline">卸载</span>
                       </button>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleInstall(item); }}
-                        disabled={isInstalling}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-                      >
-                        {isInstalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                        安装
-                      </button>
-                    )}
+                    ) : (() => {
+                      const pricing = getPricing(item)
+                      return pricing ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleInstall(item); }}
+                          disabled={isInstalling}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 font-medium"
+                        >
+                          {isInstalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Crown className="w-3.5 h-3.5" />}
+                          {pricing.display || `¥${(pricing.price / 100).toFixed(0)}`}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleInstall(item); }}
+                          disabled={isInstalling}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                        >
+                          {isInstalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                          安装
+                        </button>
+                      )
+                    })()}
                   </div>
                   <h3 className="font-semibold text-gray-900 dark:text-white">{item.name}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description || '暂无描述'}</p>
@@ -240,7 +289,9 @@ export default function MarketplacePage() {
                   )}
                   <div className="flex items-center justify-between mt-3">
                     <span className="text-xs text-gray-400">{item.author?.nickname || 'StarClaw 官方'}</span>
-                    {item.downloads > 0 && <span className="text-[10px] text-gray-400">{item.downloads} 次安装</span>}
+                    <div className="flex items-center gap-2">
+                      {item.downloads > 0 && <span className="text-[10px] text-gray-400">{item.downloads} 次安装</span>}
+                    </div>
                   </div>
                 </div>
               )

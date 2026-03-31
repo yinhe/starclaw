@@ -307,9 +307,18 @@ export const multiAgentAPI = {
     api.post('/multi-agent/run', data),
 }
 
-// Teams
+// Teams (local multi-agent collaboration)
 export const teamAPI = {
-  getOrchestrator: (teamId: string) => api.get(`/teams/${teamId}/orchestrator`),
+  list: () => api.get('/teams'),
+  create: (data: { name: string; description?: string; icon?: string; coordinator_id: string; topology?: string; template_id?: string; members?: { agent_id: string; role?: string; specialty?: string; order?: number }[] }) =>
+    api.post('/teams', data),
+  get: (id: string) => api.get(`/teams/${id}`),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/teams/${id}`, data),
+  delete: (id: string) => api.delete(`/teams/${id}`),
+  addMember: (id: string, data: { agent_id: string; specialty?: string; order?: number }) =>
+    api.post(`/teams/${id}/members`, data),
+  removeMember: (id: string, memberId: string) => api.delete(`/teams/${id}/members/${memberId}`),
+  templates: () => api.get('/team-templates'),
 }
 
 // Workflows
@@ -354,6 +363,14 @@ export const queenMarketplaceAPI = {
     api.get('/templates/community', { params }),
   get: (id: string) =>
     api.get(`/templates/community/${id}`),
+  purchase: (id: string, payMethod: string = 'alipay') =>
+    api.post(`/templates/community/${id}/purchase`, { pay_method: payMethod }),
+  pollPurchaseStatus: (orderNo: string) =>
+    api.get(`/templates/purchases/${orderNo}/status`),
+  checkAccess: (id: string) =>
+    api.get(`/templates/community/${id}/access`),
+  listPurchases: (params?: { status?: string }) =>
+    api.get('/templates/purchases', { params }),
 }
 
 // Schedules (Cron)

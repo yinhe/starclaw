@@ -208,6 +208,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	mcp.AutoRegisterBridge(toolRegistry)
 	mcp.AutoRegisterDevBridge(toolRegistry)
 
+	// Reload user-saved MCP servers from DB (survives restarts)
+	v1.ReloadSavedServers(db, toolRegistry)
+
 	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
 	// Prefer dedicated swarm.node_token for Queen internal API; fall back to jwt.secret
 	queenNodeToken := cfg.Swarm.NodeToken
@@ -223,7 +226,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	}
 
 	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &model.WeChatWatch{}, &billing.ToolUsageRecord{}, &model.NodeGrowth{}, &model.Milestone{})
+	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &model.WeChatWatch{}, &billing.ToolUsageRecord{}, &model.NodeGrowth{}, &model.Milestone{}, &model.MarketplacePurchase{})
 
 	// Drop FK constraint on agents.model_id so agents can be created without a model
 	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
@@ -916,7 +919,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/growth/rebirth", endgameH.Rebirth)
 
 			// Agent Templates (Creep Marketplace)
-			tplHandler := v1.NewTemplateHandler(db)
+			tplHandler := v1.NewTemplateHandler(db, queenClient)
 			protected.GET("/templates", tplHandler.List)
 			protected.GET("/templates/categories", tplHandler.Categories)
 			protected.GET("/templates/:id", tplHandler.Get)
@@ -926,6 +929,10 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/templates/community", tplHandler.CommunityList)
 			protected.GET("/templates/community/:id", tplHandler.CommunityGet)
 			protected.POST("/templates/:id/rate", tplHandler.Rate)
+			protected.POST("/templates/community/:id/purchase", tplHandler.Purchase)
+			protected.GET("/templates/community/:id/access", tplHandler.CheckAccess)
+			protected.GET("/templates/purchases", tplHandler.ListPurchases)
+			protected.GET("/templates/purchases/:order_no/status", tplHandler.PollPurchaseStatus)
 
 			// Inference (user-facing: route to contributors)
 			protected.POST("/inference/completions", inferenceHandler.Infer)
@@ -1099,9 +1106,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			multiAgentHandler := v1.NewMultiAgentHandler(db, providerRegistry, toolRegistry)
 			protected.POST("/multi-agent/run", multiAgentHandler.Run)
 
-			// Teams (lightweight orchestrator mapping)
+			// Teams — local multi-agent collaboration (Hexad layer)
 			teamHandler := v1.NewTeamHandler(db)
-			protected.GET("/teams/:id/orchestrator", teamHandler.GetOrchestrator)
+			protected.GET("/teams", teamHandler.List)
+			protected.POST("/teams", teamHandler.Create)
+			protected.GET("/team-templates", teamHandler.ListTemplates)
+			protected.GET("/teams/:id", teamHandler.Get)
+			protected.PUT("/teams/:id", teamHandler.Update)
+			protected.DELETE("/teams/:id", teamHandler.Delete)
+			protected.POST("/teams/:id/members", teamHandler.AddMember)
+			protected.DELETE("/teams/:id/members/:member_id", teamHandler.RemoveMember)
 
 			// Squads (multi-node team collaboration)
 			squadHandler := v1.NewSquadHandler(db, identity)

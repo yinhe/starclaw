@@ -277,11 +277,10 @@ def score_main_rise_candidate(
 
     raw_score = (trend_pos_score + speed_total + today_factor + pre_consolidation_bonus) * vol_penalty
 
-    # 熊市保底分 (来自 main.py:24724)
+    # 熊市加严：提高阈值而非降低标准
     if market_env in ("bear", "extreme_bear"):
-        if trend_score > 0.4 and 0.3 <= pos_rank <= 0.9 and today_change >= -0.03:
-            if raw_score < 0.55:
-                raw_score = 0.55
+        bear_penalty = 0.85 if market_env == "bear" else 0.70
+        raw_score *= bear_penalty
 
     raw_score = max(0.0, min(1.0, raw_score))
     result["score"] = raw_score

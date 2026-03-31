@@ -1,0 +1,22 @@
+{
+  "name": "trading_history",
+  "description": "获取最近的已完成交易记录：每笔交易的买入/卖出价格、盈亏百分比、持仓天数、退出原因、信号强度。用于复盘分析。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "description": "返回条数，默认20"
+      }
+    }
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/trading/history",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

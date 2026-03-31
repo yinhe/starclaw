@@ -3,7 +3,7 @@
 
 qmt:
   # Path to QMT userdata directory (miniQMT mode)
-  path: "D:\\中金财富QMT个人版模拟交易端\\userdata_mini"
+  path: "D:\\中金财富QMT个人版交易端\\userdata_mini"
   session_id: 123456
 
 # Go API callback URL (for order fills, ticks, alerts)
@@ -11,7 +11,20 @@ callback_url: "http://localhost:8097/callback"
 
 # Trading accounts
 accounts:
-  - id: "27800348"
+  - id: "8218033845"
     password: ""
     group: "trend"
     label: "primary-real"
+
+# Notification (微信/Server酱 告警推送)
+notify:
+  enabled: true
+  # 企业微信群机器人 webhook (二选一)
+  wechat_webhook: ""
+  # Server酱 SendKey (二选一)
+  serverchan_key: ""
+
+# Queen 星能结算
+queen:
+  url: "https://api.starclaw.net"
+  token: ""

@@ -38,6 +38,12 @@ class AccountManager:
     def get_all_accounts(self) -> List[dict]:
         return list(self.accounts.values())
 
+    def get_default_account_id(self) -> str:
+        """Return the first configured account ID."""
+        if self.accounts:
+            return next(iter(self.accounts))
+        return ""
+
     def refresh_balances(self):
         """Refresh balance info for all accounts from QMT."""
         for acc_id in self.accounts:

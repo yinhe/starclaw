@@ -30,6 +30,15 @@ type MarketplaceItem struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
+	// Pricing — paid marketplace items
+	Pricing           string `json:"pricing" gorm:"type:varchar(20);default:free"` // free / one_time / subscription
+	PriceCents        int    `json:"price_cents" gorm:"default:0"`                 // one-time price in ¥0.01 units
+	MonthlyPriceCents int    `json:"monthly_price_cents" gorm:"default:0"`         // monthly subscription price
+	Currency          string `json:"currency" gorm:"type:varchar(10);default:CNY"`
+	DemoURL           string `json:"demo_url" gorm:"type:varchar(500)"`
+	MinClawVersion    string `json:"min_claw_version" gorm:"type:varchar(20)"`
+	Featured          bool   `json:"featured" gorm:"default:false"`
+
 	// Review workflow
 	ReviewStatus string     `json:"review_status" gorm:"type:varchar(20);index"` // pending / approved / rejected
 	ReviewerID   string     `json:"reviewer_id" gorm:"type:varchar(36)"`

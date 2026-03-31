@@ -1,0 +1,17 @@
+{
+  "name": "trading_stats",
+  "description": "获取策略绩效统计：胜率、盈亏比、利润因子、期望值、最大连亏、按退出原因归因分析、按信号强度归因分析。用于评估策略表现和参数调优。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/trading/stats",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

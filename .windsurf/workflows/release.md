@@ -66,73 +66,58 @@ cd e:\starclaw\claw\api && go build ./... && go vet ./...
 cd e:\starclaw\claw\web && npm run build
 ```
 
-## Step 2: Build Spore Packages (cross-platform installers)
-
-3. Build all Spore installers + runtimes:
-```
-cd e:\starclaw\spore && powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
-```
-Output goes to `spore/dist/`. Expected: 8 files (4 setup installers + 4 spore runtimes).
-
-## Step 3: Upload Spore to Servers
-
-4. Upload to Nydus (Server C) + set permissions:
-```
-scp -i ~/.ssh/starai_deploy spore/dist/StarClaw-Setup* spore/dist/spore-* root@43.106.158.26:/opt/spore/releases/
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "chmod +x /opt/spore/releases/StarClaw-Setup-* /opt/spore/releases/spore-*"
-```
-
-5. Upload to StarAI mirror (Server B):
-```
-scp -i ~/.ssh/starai_deploy spore/dist/StarClaw-Setup* root@47.103.51.32:/dnmp/www/downloads/
-```
-
-## Step 4: Package macOS DMGs on Nydus
-
-6. Run package-releases.sh on Nydus to create DMGs from uploaded raw binaries:
-```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "bash /opt/spore/scripts/package-releases.sh VERSION 2>&1"
-```
-Expected: creates `.dmg` files for darwin-arm64 and darwin-amd64.
-
-7. Sync DMGs from Nydus to StarAI mirror (they're built on Nydus, not locally):
-```
-ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "scp -o StrictHostKeyChecking=no /opt/spore/releases/StarClaw-Setup-VERSION-darwin-arm64.dmg /opt/spore/releases/StarClaw-Setup-VERSION-darwin-amd64.dmg root@47.103.51.32:/dnmp/www/downloads/"
-```
-
-## Step 5: Generate Version Tag
+## Step 2: Generate Version Tag
 
 // turbo
-8. Generate version string (UTC timestamp format YYYY.MMDD.HHmm):
+3. Generate version string (UTC timestamp format YYYY.MMDD.HHmm):
 ```
 powershell -Command "Write-Host ('v' + (Get-Date).ToUniversalTime().ToString('yyyy.MMdd.HHmm'))"
 ```
 
-## Step 6: Update Download Pages with New Version
+## Step 3: Commit & Tag (MUST be before Spore build — Spore reads version from git tag)
 
-Both download pages have hardcoded version strings in URLs. Update them with the new VERSION from step 8:
-
-9. Update `queen/site` download page (starclaw.me/download):
-```
-Edit e:\starclaw\queen\site\src\pages\DownloadPage.tsx — change `const V = 'vOLD'` to `const V = 'VERSION'`
-```
-
-10. Update `synapse/web` download page (star-ai.net/download):
-```
-Edit e:\starclaw\synapse\web\src\pages\DownloadPage.tsx — change `const V = 'vOLD'` to `const V = 'VERSION'`
-```
-
-## Step 7: Commit & Tag in Monorepo
-
-11. Commit all changes and tag (replace VERSION with output from step 8):
+4. Commit all changes and tag (replace VERSION with output from step 3):
 ```
 cd e:\starclaw && git add -A && git commit -m "release: VERSION"
 git tag VERSION
 ```
 
-## Step 8: Push to Nydus (triggers auto-deploy + tag sync)
+## Step 4: Build Spore Packages (AFTER tag — Spore reads version from git tag)
 
-12. Push code + tags to Nydus:
+5. Build all Spore installers + runtimes:
+```
+cd e:\starclaw\spore && powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
+```
+Output goes to `spore/dist/`. Expected: 8 files with correct VERSION in filenames.
+
+## Step 5: Upload Spore to Servers
+
+6. Upload to Nydus (Server C) + set permissions:
+```
+scp -i ~/.ssh/starai_deploy spore/dist/StarClaw-Setup* spore/dist/spore-* root@43.106.158.26:/opt/spore/releases/
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "chmod +x /opt/spore/releases/StarClaw-Setup-* /opt/spore/releases/spore-*"
+```
+
+7. Upload to StarAI mirror (Server B):
+```
+scp -i ~/.ssh/starai_deploy spore/dist/StarClaw-Setup* root@47.103.51.32:/dnmp/www/downloads/
+```
+
+## Step 6: Package macOS DMGs on Nydus
+
+8. Run package-releases.sh on Nydus to create DMGs from uploaded raw binaries:
+```
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "bash /opt/spore/scripts/package-releases.sh VERSION 2>&1"
+```
+
+9. Sync DMGs from Nydus to StarAI mirror:
+```
+ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "scp -o StrictHostKeyChecking=no /opt/spore/releases/StarClaw-Setup-VERSION-darwin-arm64.dmg /opt/spore/releases/StarClaw-Setup-VERSION-darwin-amd64.dmg root@47.103.51.32:/dnmp/www/downloads/"
+```
+
+## Step 7: Push to Nydus (triggers auto-deploy + version update)
+
+10. Push code + tags to Nydus:
 ```
 cd e:\starclaw && git push nydus master --tags
 ```
@@ -140,18 +125,19 @@ This triggers the Nydus post-receive hook which:
 - Auto-deploys changed services (queen/api, queen/site, synapse/api, synapse/web)
 - **Auto-syncs the version tag to `claw.git`** (so `/releases/latest` returns the new version)
 - **Auto-regenerates `spore-latest.json`** (so Spore update checks find the new version)
+- **Download pages auto-update** (they read version from Nydus API at runtime, no manual edit needed)
 
-## Step 8b: Deploy Download Pages
+## Step 8: Deploy Download Pages (only if Nydus hook misses them)
 
-queen/site deploys via docker-compose on Server C (:8097), synapse/web deploys to Server B (star-ai.net).
-Nydus hook should handle both, but if it misses them, manually deploy:
+NOTE: Download pages read version dynamically from `https://nydus.starclaw.net/releases/spore/latest`.
+They should auto-update after Step 7. Only manually deploy if they don't reflect the new version.
 
-12. Deploy queen/site on Server C (starclaw.net landing page):
+11. (If needed) Deploy queen/site on Server C:
 ```
 ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "cd /opt/queen && docker compose -f docker-compose.prod.yml build --no-cache queen-site && docker compose -f docker-compose.prod.yml up -d queen-site"
 ```
 
-13. Deploy synapse/web to Server B (star-ai.net/download):
+12. (If needed) Deploy synapse/web to Server B:
 ```
 ssh -i ~/.ssh/starai_deploy root@43.106.158.26 "git --git-dir=/data/nydus/repos/starclaw.git archive HEAD:synapse/ | ssh root@47.103.51.32 'cd /opt/starclaw/synapse && tar xf -'"
 ssh -i ~/.ssh/starai_deploy root@47.103.51.32 "cd /opt/starclaw/synapse && docker compose build --no-cache web 2>&1 | tail -3 && docker compose up -d web 2>&1"
@@ -164,9 +150,10 @@ Use `/deploy` workflow for any services that need manual deployment (Claw, Hive,
 ## Step 9: Sync to OSS Repo
 
 // turbo
-10. Sync claw/ to OSS repo (robocopy on Windows):
+10. Sync claw/ to OSS repo (robocopy on Windows).
+    NOTE: Excludes trading plugin dir and trading_*.json to protect proprietary Q8bot quant strategy.
 ```
-robocopy "E:\starclaw\claw" "E:\starclaw-oss" /MIR /XD node_modules .git data build /XF sync-oss.sh *.tar.gz
+robocopy "E:\starclaw\claw" "E:\starclaw-oss" /MIR /XD node_modules .git data build trading /XF sync-oss.sh *.tar.gz trading_*.json builtin_agents_q8bot.go
 ```
 
 11. Commit, tag, and push OSS (triggers GitHub Actions release.yml → cross-compile + GitHub Release):

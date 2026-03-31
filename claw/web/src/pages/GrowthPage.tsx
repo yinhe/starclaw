@@ -295,12 +295,21 @@ export default function GrowthPage() {
   // Show new milestone popup
   useEffect(() => {
     if (profile?.new_milestones?.length) {
-      // Could use a toast system here; for now just log
       profile.new_milestones.forEach(m => {
         console.log(`🏆 New milestone: ${m.title}`)
       })
     }
   }, [profile?.new_milestones])
+
+  // Auto-show path choice at Lv.5 if still on larva (must be before conditional returns)
+  useEffect(() => {
+    if (profile && profile.stats.level >= 5 && profile.evolution_path === 'larva') {
+      setShowPathChoice(true)
+    }
+    if (profile && (profile.awakening_stars || 0) >= 2 && !profile.realm_path) {
+      setShowRealmChoice(true)
+    }
+  }, [profile])
 
   if (loading) {
     return (
@@ -332,18 +341,8 @@ export default function GrowthPage() {
   // Determine current evolution stage index
   const currentIdx = tree.levels.reduce((acc, lv, i) => (stats.level >= lv ? i : acc), 0)
 
-  // Auto-show path choice at Lv.5 if still on larva
-  useEffect(() => {
-    if (profile && profile.stats.level >= 5 && profile.evolution_path === 'larva') {
-      setShowPathChoice(true)
-    }
-    if (profile && (profile.awakening_stars || 0) >= 2 && !profile.realm_path) {
-      setShowRealmChoice(true)
-    }
-  }, [profile])
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900">
     {showPathChoice && (
       <PathChoiceModal
         onClose={() => setShowPathChoice(false)}

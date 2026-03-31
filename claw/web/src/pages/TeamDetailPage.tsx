@@ -67,8 +67,14 @@ export default function TeamDetailPage() {
     if (!id) return
     const loadOrchestrator = async () => {
       try {
-        const res = await teamAPI.getOrchestrator(id)
-        setOrchestratorFromBackend(res.data?.orchestrator_agent || null)
+        const res = await teamAPI.get(id)
+        const team = res.data?.team
+        if (team?.coordinator_id) {
+          const coordMember = team.members?.find((m: any) => m.role === 'coordinator')
+          setOrchestratorFromBackend(coordMember?.agent || null)
+        } else {
+          setOrchestratorFromBackend(null)
+        }
       } catch {
         setOrchestratorFromBackend(null)
       }

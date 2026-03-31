@@ -32,6 +32,8 @@ from strategies.trend_main_wave import (
     parse_claw_confirmation,
 )
 from position_manager import PositionManager
+from portfolio_risk import PortfolioRiskManager
+import alpha_engine
 
 logger = logging.getLogger("executor")
 
@@ -60,8 +62,11 @@ class StrategyExecutor:
 
         # Position manager: tracks holdings, enforces stop-loss/take-profit
         trend_accounts = account_manager.get_accounts_by_group("trend")
-        acct_id = trend_accounts[0]["id"] if trend_accounts else "27800348"
+        acct_id = trend_accounts[0]["id"] if trend_accounts else self.accounts.get_default_account_id()
         self.positions = PositionManager(qmt_client, account=acct_id)
+
+        # Portfolio-level risk manager
+        self.risk = PortfolioRiskManager(qmt_client, account=acct_id)
 
         self.strategy = TrendMainWaveStrategy(
             strategy_id="trend-main-wave-v1",
@@ -79,17 +84,12 @@ class StrategyExecutor:
         self._last_scan_ts = 0
 
     def detect_market_env(self) -> str:
-        """用上证指数判断当前市场环境。"""
+        """用 alpha_engine 增强版市场环境检测。"""
         try:
-            klines = self.qmt.get_kline("000001.SH", period="1d", count=30)
-            if klines:
-                closes = [float(k["close"]) for k in klines if k.get("close")]
-                if len(closes) >= 20:
-                    env = detect_market_env_from_index(closes)
-                    self._market_env = env
-                    self.strategy.set_market_env(env)
-                    logger.info(f"[executor] market env: {env}")
-                    return env
+            env = alpha_engine.detect_market_env()
+            self._market_env = env
+            self.strategy.set_market_env(env)
+            return env
         except Exception as e:
             logger.warning(f"[executor] detect_market_env error: {e}")
         return self._market_env
@@ -254,6 +254,44 @@ class StrategyExecutor:
                 c["risk_flags"] = [f"Error: {e}"]
             return candidates
 
+    def _is_pullback_confirmed(self, code: str) -> bool:
+        """P1: Check if stock has pulled back to MA5/MA10 support after breakout.
+
+        A stock that broke out yesterday and pulled back to MA5 today = safer entry.
+        A stock breaking out today with no pullback = riskier chase.
+        """
+        try:
+            d = alpha_engine._get_daily(code, count=15)
+            if d is None or d["close"].size < 10:
+                return True  # insufficient data, allow
+            closes = d["close"]
+            last_c = float(closes[-1])
+            ma5 = float(np.mean(closes[-5:]))
+            ma10 = float(np.mean(closes[-10:]))
+
+            # Today's change
+            today_chg = (closes[-1] - closes[-2]) / closes[-2] if closes.size >= 2 else 0
+
+            # If stock is up >7% today, it's chasing — not a pullback entry
+            if today_chg > 0.07:
+                logger.info(f"[pullback] {code}: chasing +{today_chg:.1%}, skip")
+                return False
+
+            # Price should be near MA5 (within 2%) or between MA5 and MA10
+            near_ma5 = abs(last_c - ma5) / ma5 <= 0.02
+            between_ma = ma10 <= last_c <= ma5 * 1.02
+            if near_ma5 or between_ma:
+                return True  # good pullback entry
+
+            # If price is way above MA5 (>3%), it's extended
+            if last_c > ma5 * 1.03:
+                logger.info(f"[pullback] {code}: extended above MA5 by {(last_c/ma5-1):.1%}")
+                return False
+
+            return True  # default allow
+        except Exception:
+            return True
+
     def execute_orders(self, confirmed: List[Dict], account: str = None) -> List[Dict]:
         """对确认的候选执行下单。"""
         if not account:
@@ -262,9 +300,12 @@ class StrategyExecutor:
             if trend_accounts:
                 account = trend_accounts[0]["id"]
             else:
-                account = "27800348"  # fallback: primary real account
+                account = self.accounts.get_default_account_id()
 
         orders = []
+        held_codes = self.positions.get_held_codes()
+        buy_count = 0
+
         for c in confirmed:
             code = c["code"]
             score = c.get("score", 0)
@@ -284,12 +325,31 @@ class StrategyExecutor:
                 logger.warning(f"[executor] skip {code}: no price")
                 continue
 
-            # Dynamic position sizing: max 10% of available capital per stock
-            # Round down to nearest 100 (A-share lot size)
+            # --- Portfolio risk gate ---
+            allowed, reason = self.risk.allow_buy(code, self._market_env, held_codes)
+            if not allowed:
+                logger.info(f"[executor] RISK BLOCKED {code}: {reason}")
+                continue
+
+            # --- Per-scan buy limit ---
+            if buy_count >= self.risk.max_buys_per_scan:
+                logger.info(f"[executor] Per-scan buy limit reached ({buy_count})")
+                break
+
+            # --- P1: Pullback confirmation ---
+            if not self._is_pullback_confirmed(code):
+                logger.info(f"[executor] SKIP {code}: no pullback confirmation (chasing)")
+                continue
+
+            # Kelly-based position sizing (alpha_engine)
             try:
                 acct_info = self.qmt.get_account_info(account)
                 available = float(acct_info.get("available", 0))
-                max_per_stock_pct = 0.10 if not reduce else 0.05
+                kelly_w = c.get("kelly_weight", 0)
+                if kelly_w > 0:
+                    max_per_stock_pct = min(kelly_w, 0.15)  # cap at 15%
+                else:
+                    max_per_stock_pct = 0.05 if reduce else 0.08  # fallback
                 max_amount = available * max_per_stock_pct
                 volume = int(max_amount / price / 100) * 100  # round to lot
                 volume = max(volume, 100)  # minimum 1 lot
@@ -361,8 +421,33 @@ class StrategyExecutor:
         logger.info("=" * 60)
         logger.info("[executor] === SCAN START ===")
 
-        # 1. Market environment
+        # 0. Portfolio risk gate
+        if self.risk.is_halted:
+            logger.warning("[executor] === HALTED: daily loss limit breached ===")
+            return {"error": "daily_loss_halted", "risk": self.risk.status_summary()}
+
+        # 1. Market environment + Layer 1 macro + Layer 2 sectors
         env = self.detect_market_env()
+
+        macro = {}
+        sectors_info = {}
+        try:
+            macro = alpha_engine.analyze_macro()
+            sectors_info = alpha_engine.analyze_sectors()
+            logger.info(f"[executor] Macro: {macro.get('direction','?')} "
+                        f"advice={macro.get('position_advice','?')} "
+                        f"breadth={macro.get('breadth_score',0):.0%}")
+            if sectors_info.get("recommended_sectors"):
+                logger.info(f"[executor] Hot sectors: {', '.join(sectors_info['recommended_sectors'])}")
+            if sectors_info.get("avoid_sectors"):
+                logger.info(f"[executor] Avoid sectors: {', '.join(sectors_info['avoid_sectors'])}")
+
+            # If macro is bearish and risk manager says low budget, skip scan entirely
+            if macro.get("direction") == "bearish" and self.risk.available_buy_budget(env) <= 0:
+                logger.warning("[executor] Macro bearish + no budget → skip scan")
+                return {"market_env": env, "macro": macro, "skipped": "bearish_no_budget"}
+        except Exception as e:
+            logger.debug(f"[executor] macro/sector analysis error: {e}")
 
         # 2. Stock pool (exclude already-held stocks)
         codes = self.fetch_stock_pool()
@@ -379,9 +464,44 @@ class StrategyExecutor:
         if not stock_data:
             return {"error": "no market data", "market_env": env}
 
-        # 4. Score and rank
+        # 4. Score and rank (alpha_engine enhanced)
         candidates = self.strategy.scan_candidates(stock_data)
-        logger.info(f"[executor] candidates: {len(candidates)} above min_score")
+        logger.info(f"[executor] base candidates: {len(candidates)} above min_score")
+
+        # Also scan for pre-breakout candidates (P1: 预突破接入)
+        try:
+            prebreak = alpha_engine.detect_prebreakout(list(stock_data.keys())[:200])
+            for pb_code, pb_score in prebreak[:5]:
+                if pb_code not in {c["code"] for c in candidates}:
+                    candidates.append({
+                        "code": pb_code, "score": pb_score * 0.8,
+                        "reason": f"预突破形态(score={pb_score:.2f})",
+                        "detail": {"prebreakout": True},
+                    })
+                    logger.info(f"  [prebreakout] {pb_code} score={pb_score:.2f}")
+        except Exception as e:
+            logger.debug(f"prebreakout scan error: {e}")
+
+        # Enrich with alpha_engine full evaluation
+        enriched = []
+        for c in candidates[:20]:  # cap at top 20 for performance
+            try:
+                alpha = alpha_engine.evaluate_stock(c["code"], market_env=env)
+                c["alpha"] = alpha
+                c["signal_strength"] = alpha.get("signal_strength", 0)
+                c["kelly_weight"] = alpha.get("kelly_weight", 0)
+                c["lifecycle"] = alpha.get("lifecycle", {}).get("phase", "unknown")
+                c["chip_shape"] = alpha.get("chip_shape", {}).get("shape_type", "unknown")
+                # Skip distribution phase stocks
+                if c["lifecycle"] == "distribution":
+                    logger.info(f"  SKIP {c['code']}: distribution phase")
+                    continue
+                enriched.append(c)
+            except Exception as e:
+                logger.debug(f"alpha eval {c['code']} error: {e}")
+                enriched.append(c)
+        candidates = enriched
+
         if not candidates:
             return {
                 "market_env": env,
@@ -392,9 +512,14 @@ class StrategyExecutor:
                 "elapsed": time_module.time() - t0,
             }
 
-        # Log top candidates
+        # Sort by composite: base score * 0.5 + signal_strength/6 * 0.5
+        candidates.sort(key=lambda c: c.get("score", 0) * 0.5 + c.get("signal_strength", 0) / 6 * 0.5, reverse=True)
+
+        # Log top candidates with alpha info
         for i, c in enumerate(candidates[:5]):
-            logger.info(f"  #{i+1} {c['code']} score={c['score']:.2f} {c['reason']}")
+            logger.info(f"  #{i+1} {c['code']} score={c['score']:.2f} sig={c.get('signal_strength',0)} "
+                        f"kelly={c.get('kelly_weight',0):.3f} life={c.get('lifecycle','?')} "
+                        f"chip={c.get('chip_shape','?')} {c.get('reason','')}")
 
         # 5. Claw AI confirmation
         confirmed = self.request_claw_confirmation(candidates)

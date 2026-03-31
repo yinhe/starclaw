@@ -10,12 +10,45 @@ import (
 	"starclaw.net/queen/api/internal/model"
 )
 
-// AgentConfig is the JSON blob stored in MarketplaceItem.Config for type=agent
+// AgentConfig is the JSON blob stored in MarketplaceItem.Config for type=agent.
+// For premium agents it includes the full installation bundle.
 type AgentConfig struct {
-	SystemPrompt string `json:"system_prompt"`
-	Tools        string `json:"tools"`
-	Config       string `json:"config"`
-	ModelName    string `json:"model_name,omitempty"`
+	SystemPrompt string              `json:"system_prompt"`
+	Tools        string              `json:"tools"`
+	Config       string              `json:"config"`
+	ModelName    string              `json:"model_name,omitempty"`
+	Skills       []AgentSkillSpec    `json:"skills,omitempty"`
+	MCPServers   []AgentMCPSpec      `json:"mcp_servers,omitempty"`
+	Workflows    []AgentWorkflowSpec `json:"workflows,omitempty"`
+	Plugins      []AgentPluginSpec   `json:"plugins,omitempty"`
+}
+
+// AgentSkillSpec describes a skill to install alongside the agent.
+type AgentSkillSpec struct {
+	Name    string `json:"name"`
+	Spec    string `json:"spec"` // JSON: trigger, description, tools, schedule, etc.
+	Version string `json:"version"`
+}
+
+// AgentMCPSpec describes an MCP server to register alongside the agent.
+type AgentMCPSpec struct {
+	Name        string `json:"name"`
+	BaseURL     string `json:"base_url"`
+	Description string `json:"description"`
+	Tools       string `json:"tools"` // JSON array of {name, description}
+}
+
+// AgentWorkflowSpec describes a workflow to create alongside the agent.
+type AgentWorkflowSpec struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Definition  string `json:"definition"` // JSON: {nodes, edges}
+}
+
+// AgentPluginSpec describes a JSON tool plugin to install alongside the agent.
+type AgentPluginSpec struct {
+	Name string `json:"name"` // plugin filename (e.g. "trading_scan")
+	Spec string `json:"spec"` // full JSON plugin definition
 }
 
 type officialAgent struct {
@@ -26,6 +59,18 @@ type officialAgent struct {
 	Category    string // agent sub-category for filtering
 	Prompt      string
 	Tools       string
+	// Paid agent fields (optional, default free)
+	Pricing           string // free / one_time / subscription
+	PriceCents        int    // one-time price in ¥0.01 units
+	MonthlyPriceCents int    // monthly subscription price in ¥0.01 units
+	DemoURL           string
+	Featured          bool
+	ModelName         string // preferred model
+	// Full installation bundle (optional, for premium agents)
+	Skills     []AgentSkillSpec
+	MCPServers []AgentMCPSpec
+	Workflows  []AgentWorkflowSpec
+	Plugins    []AgentPluginSpec
 }
 
 // SeedOfficialAgents populates marketplace_items with StarClaw's official agents.
@@ -197,6 +242,9 @@ func SeedOfficialAgents() {
 	agents = append(agents, industryAgents()...)
 	agents = append(agents, industryAgents2()...)
 
+	// Append paid premium agents
+	agents = append(agents, q8botAgents()...)
+
 	for _, a := range agents {
 		var count int64
 		database.DB.Model(&model.MarketplaceItem{}).
@@ -208,17 +256,33 @@ func SeedOfficialAgents() {
 				SystemPrompt: a.Prompt,
 				Tools:        a.Tools,
 				Config:       `{"temperature":0.3,"max_tokens":8192}`,
+				ModelName:    a.ModelName,
+				Skills:       a.Skills,
+				MCPServers:   a.MCPServers,
+				Workflows:    a.Workflows,
+				Plugins:      a.Plugins,
 			}
 			cfgJSON, _ := json.Marshal(cfg)
+			updates := map[string]interface{}{
+				"description": a.Description,
+				"icon":        a.Icon,
+				"tags":        a.Tags,
+				"config":      string(cfgJSON),
+				"status":      model.ItemStatusApproved,
+				"featured":    a.Featured,
+			}
+			if a.Pricing != "" && a.Pricing != "free" {
+				updates["pricing"] = a.Pricing
+				updates["price_cents"] = a.PriceCents
+				updates["monthly_price_cents"] = a.MonthlyPriceCents
+				updates["currency"] = "CNY"
+			}
+			if a.DemoURL != "" {
+				updates["demo_url"] = a.DemoURL
+			}
 			database.DB.Model(&model.MarketplaceItem{}).
 				Where("name = ? AND type = 'agent' AND user_id = ?", a.Name, systemUserID).
-				Updates(map[string]interface{}{
-					"description": a.Description,
-					"icon":        a.Icon,
-					"tags":        a.Tags,
-					"config":      string(cfgJSON),
-					"status":      model.ItemStatusApproved,
-				})
+				Updates(updates)
 			continue
 		}
 
@@ -226,6 +290,11 @@ func SeedOfficialAgents() {
 			SystemPrompt: a.Prompt,
 			Tools:        a.Tools,
 			Config:       `{"temperature":0.3,"max_tokens":8192}`,
+			ModelName:    a.ModelName,
+			Skills:       a.Skills,
+			MCPServers:   a.MCPServers,
+			Workflows:    a.Workflows,
+			Plugins:      a.Plugins,
 		}
 		cfgJSON, _ := json.Marshal(cfg)
 
@@ -245,6 +314,18 @@ func SeedOfficialAgents() {
 			ReviewerID:   systemUserID,
 			ReviewedAt:   &now,
 		}
+		// Set pricing fields for paid agents
+		if a.Pricing != "" && a.Pricing != "free" {
+			item.Pricing = a.Pricing
+			item.PriceCents = a.PriceCents
+			item.MonthlyPriceCents = a.MonthlyPriceCents
+			item.Currency = "CNY"
+		}
+		if a.DemoURL != "" {
+			item.DemoURL = a.DemoURL
+		}
+		item.Featured = a.Featured
+
 		if err := database.DB.Create(&item).Error; err != nil {
 			log.Printf("[seed-marketplace] failed to create %s: %v", a.Name, err)
 		} else {

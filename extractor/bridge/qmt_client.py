@@ -42,12 +42,26 @@ class QMTClient:
         self._connected = False
         self._trader: Optional[object] = None
         self._accounts: dict = {}  # account_id → StockAccount
+        self._config_accounts: list = self._load_config_accounts()
 
         if HAS_XTQUANT:
             self._init_xtquant()
         else:
             self._connected = True  # mock mode always "connected"
             logger.info("QMT client initialized in MOCK mode")
+
+    @staticmethod
+    def _load_config_accounts() -> list:
+        """Load account IDs from config.yaml."""
+        import os, yaml
+        cfg_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f)
+            return [a["id"] for a in cfg.get("accounts", []) if a.get("id")]
+        except Exception as e:
+            logger.warning(f"Failed to load accounts from config: {e}")
+            return []
 
     def _init_xtquant(self):
         """Initialize real xtquant connection."""
@@ -57,23 +71,38 @@ class QMTClient:
 
         session_id = int(os.getenv("QMT_SESSION_ID", "654321"))
 
-        # Build candidate paths: env var first, then auto-detect
+        # Build candidate paths: config.yaml path first, then env var, then auto-detect
         candidates = []
+
+        # 1) config.yaml qmt.path (highest priority)
+        cfg_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+        try:
+            import yaml
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f)
+            qmt_cfg_path = cfg.get("qmt", {}).get("path", "")
+            if qmt_cfg_path and os.path.isdir(qmt_cfg_path):
+                candidates.append(qmt_cfg_path)
+            cfg_session = cfg.get("qmt", {}).get("session_id")
+            if cfg_session:
+                session_id = int(cfg_session)
+        except Exception as e:
+            logger.warning(f"Failed to read QMT config: {e}")
+
+        # 2) Environment variable
         env_path = os.getenv("QMT_PATH", "")
-        if env_path and os.path.isdir(env_path):
+        if env_path and os.path.isdir(env_path) and env_path not in candidates:
             candidates.append(env_path)
 
-        # Auto-detect: find all *QMT*\userdata_mini directories on all drives
-        for drive in ["C:\\", "D:\\", "E:\\", "F:\\"]:
-            for qmt_root in glob.glob(os.path.join(drive, "*QMT*")):
-                udm = os.path.join(qmt_root, "userdata_mini")
-                if os.path.isdir(udm) and udm not in candidates:
-                    candidates.append(udm)
+        # 3) Auto-detect only if no config/env path found
+        if not candidates:
+            for drive in ["C:\\", "D:\\", "E:\\", "F:\\"]:
+                for qmt_root in glob.glob(os.path.join(drive, "*QMT*")):
+                    udm = os.path.join(qmt_root, "userdata_mini")
+                    if os.path.isdir(udm) and udm not in candidates:
+                        candidates.append(udm)
 
         logger.info(f"QMT candidate paths: {candidates}")
-
-        # Try each path, prefer the one with more files (active miniQMT)
-        candidates.sort(key=lambda p: len(os.listdir(p)), reverse=True)
 
         for qmt_path in candidates:
             try:
@@ -87,13 +116,15 @@ class QMTClient:
                 if connect_result == 0:
                     self._connected = True
                     logger.info(f"QMT connected successfully via {qmt_path}")
-                    # Subscribe trading account so orders can be placed
-                    try:
-                        acc = StockAccount("27800348")
-                        self._trader.subscribe(acc)
-                        logger.info(f"Subscribed account: 27800348")
-                    except Exception as e:
-                        logger.warning(f"Account subscribe failed: {e}")
+                    # Subscribe all configured trading accounts
+                    for acct_id in self._config_accounts:
+                        try:
+                            acc = StockAccount(acct_id)
+                            self._trader.subscribe(acc)
+                            self._accounts[acct_id] = acc
+                            logger.info(f"Subscribed account: {acct_id}")
+                        except Exception as e:
+                            logger.warning(f"Account subscribe failed for {acct_id}: {e}")
                     return
                 else:
                     logger.warning(f"QMT connect returned {connect_result} for {qmt_path}")
@@ -146,6 +177,34 @@ class QMTClient:
         self._trader.cancel_order_stock(stock_account, int(order_id))
         logger.info(f"Order cancelled: {order_id}")
 
+    def get_open_orders(self, account: str) -> list:
+        """Get all open (unfilled/partially filled) orders."""
+        if not HAS_XTQUANT:
+            return []
+
+        stock_account = StockAccount(account)
+        try:
+            orders = self._trader.query_stock_orders(stock_account)
+            open_orders = []
+            for o in orders:
+                # xtquant order status: 0=submitted, 1=partial, 2=filled, 3=cancelled, etc.
+                status = getattr(o, 'order_status', -1)
+                if status in (0, 1):  # submitted or partially filled
+                    open_orders.append({
+                        "order_id": str(o.order_id),
+                        "code": o.stock_code,
+                        "direction": "buy" if o.order_type == 23 else "sell",  # 23=buy, 24=sell
+                        "price": o.price,
+                        "volume": o.order_volume,
+                        "filled_volume": getattr(o, 'traded_volume', 0),
+                        "status": status,
+                        "order_time": getattr(o, 'order_time', ''),
+                    })
+            return open_orders
+        except Exception as e:
+            logger.warning(f"get_open_orders error: {e}")
+            return []
+
     def get_account_info(self, account: str) -> dict:
         """Get account balance info."""
         if not HAS_XTQUANT:
@@ -170,7 +229,7 @@ class QMTClient:
         return {"account": account, "total_assets": 0, "available": 0, "frozen": 0, "market_value": 0}
 
     def get_positions(self, account: str) -> list:
-        """Get current positions."""
+        """Get current positions with stock names and correct P&L."""
         if not HAS_XTQUANT:
             return [
                 {"code": "600519.SH", "name": "贵州茅台", "volume": 100, "avail_volume": 100,
@@ -181,14 +240,28 @@ class QMTClient:
         positions = self._trader.query_stock_positions(stock_account)
         result = []
         for p in positions:
+            vol = p.volume
+            cost = p.open_price
+            mkt_price = p.market_value / vol if vol > 0 else 0
+            pnl = round((mkt_price - cost) * vol, 2) if vol > 0 else 0
+
+            # Query stock name via xtdata
+            name = ""
+            try:
+                detail = xtdata.get_instrument_detail(p.stock_code)
+                if detail:
+                    name = detail.get("InstrumentName", "")
+            except Exception:
+                pass
+
             result.append({
                 "code": p.stock_code,
-                "name": p.stock_name if hasattr(p, 'stock_name') else "",
-                "volume": p.volume,
+                "name": name,
+                "volume": vol,
                 "avail_volume": p.can_use_volume,
-                "cost_price": p.open_price,
-                "market_price": p.market_value / p.volume if p.volume > 0 else 0,
-                "pnl_float": p.on_road_volume,  # placeholder
+                "cost_price": cost,
+                "market_price": round(mkt_price, 4),
+                "pnl_float": pnl,
             })
         return result
 

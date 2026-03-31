@@ -1,0 +1,22 @@
+{
+  "name": "trading_logs",
+  "description": "获取最近的交易操作日志：买入/卖出/止损/止盈记录，包含时间、代码、价格、数量、原因。用于查看交易历史。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "description": "返回条数，默认50"
+      }
+    }
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/trading/logs",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

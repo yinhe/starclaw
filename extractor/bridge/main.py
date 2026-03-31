@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from qmt_client import QMTClient
@@ -57,7 +58,14 @@ async def lifespan(app: FastAPI):
     logger.info("Bridge shutdown")
 
 
-app = FastAPI(title="Extractor Bridge", lifespan=lifespan)
+import json as _json
+
+class UTF8JSONResponse(JSONResponse):
+    """JSON response that preserves Chinese characters (no ASCII escaping)."""
+    def render(self, content) -> bytes:
+        return _json.dumps(content, ensure_ascii=False, allow_nan=False, default=str).encode("utf-8")
+
+app = FastAPI(title="Extractor Bridge", lifespan=lifespan, default_response_class=UTF8JSONResponse)
 
 
 # --- Health ---
@@ -232,7 +240,14 @@ def scan_status():
 
 @app.get("/positions")
 def get_positions():
-    """Return all open positions."""
+    """Return all open positions from QMT real account (falls back to strategy executor if QMT unavailable)."""
+    # Prefer real QMT positions from default configured account
+    if qmt.is_connected() and qmt._config_accounts:
+        default_account = qmt._config_accounts[0]
+        try:
+            return qmt.get_positions(default_account)
+        except Exception as e:
+            logger.warning(f"QMT positions query failed, falling back to executor: {e}")
     executor = _get_executor()
     return _json_safe(executor.positions.get_positions_list())
 
@@ -296,6 +311,162 @@ async def start_position_monitor():
                 logger.error(f"[monitor] error: {e}")
 
     asyncio.create_task(monitor_loop())
+
+
+# --- Order management: auto-cancel stale orders + re-submit at latest price ---
+
+@app.on_event("startup")
+async def start_order_manager():
+    """Monitor open orders. Cancel unfilled orders after 5 minutes and re-submit at latest price."""
+    import asyncio
+    from datetime import time as dtime, datetime as dt
+
+    ORDER_STALE_SECONDS = 300  # 5 minutes
+
+    async def order_manager_loop():
+        logger.info("[order_mgr] Order manager started (checks every 60s)")
+        while True:
+            await asyncio.sleep(60)
+            try:
+                now = dt.now()
+                now_t = now.time()
+                morning = dtime(9, 31) <= now_t <= dtime(11, 30)
+                afternoon = dtime(13, 1) <= now_t <= dtime(14, 57)
+                if not (morning or afternoon):
+                    continue
+
+                if not qmt.is_connected() or not qmt._config_accounts:
+                    continue
+
+                account = qmt._config_accounts[0]
+                open_orders = qmt.get_open_orders(account)
+                if not open_orders:
+                    continue
+
+                for order in open_orders:
+                    order_time_str = order.get("order_time", "")
+                    order_id = order.get("order_id", "")
+                    code = order.get("code", "")
+                    direction = order.get("direction", "")
+                    volume = order.get("volume", 0)
+                    filled = order.get("filled_volume", 0)
+                    remaining = volume - filled
+
+                    if remaining <= 0:
+                        continue
+
+                    # Parse order time and check staleness
+                    try:
+                        if len(order_time_str) >= 8:
+                            order_dt = dt.strptime(order_time_str[:14], "%Y%m%d%H%M%S") if len(order_time_str) >= 14 else now
+                        else:
+                            continue
+                        age_seconds = (now - order_dt).total_seconds()
+                    except Exception:
+                        continue
+
+                    if age_seconds < ORDER_STALE_SECONDS:
+                        continue
+
+                    # Stale order → cancel and re-submit at latest price
+                    logger.info(f"[order_mgr] Stale order {order_id}: {code} {direction} "
+                                f"age={age_seconds:.0f}s remaining={remaining}")
+
+                    try:
+                        qmt.cancel_order(account, order_id)
+                        logger.info(f"[order_mgr] Cancelled {order_id}")
+                    except Exception as e:
+                        logger.warning(f"[order_mgr] Cancel failed {order_id}: {e}")
+                        continue
+
+                    # Re-submit remaining volume at latest price
+                    try:
+                        quotes = qmt.get_quotes([code])
+                        if quotes and quotes[0].get("price", 0) > 0:
+                            new_price = float(quotes[0]["price"])
+                            # Round remaining to 100-share lots
+                            re_volume = (remaining // 100) * 100
+                            if re_volume >= 100:
+                                new_id = qmt.submit_order(
+                                    account=account, code=code,
+                                    direction=direction, price=new_price,
+                                    volume=re_volume, order_type="limit",
+                                )
+                                logger.info(f"[order_mgr] Re-submitted: {code} {direction} "
+                                            f"@{new_price:.2f} x{re_volume} (was {order_id} → {new_id})")
+                                # Log to trading log
+                                try:
+                                    _log_trade("resubmit", {
+                                        "code": code, "direction": direction,
+                                        "old_order_id": order_id, "new_order_id": new_id,
+                                        "new_price": new_price, "volume": re_volume,
+                                        "reason": f"stale_{age_seconds:.0f}s",
+                                    })
+                                except Exception:
+                                    pass
+                    except Exception as e:
+                        logger.warning(f"[order_mgr] Re-submit {code} failed: {e}")
+
+            except Exception as e:
+                logger.error(f"[order_mgr] error: {e}")
+
+    asyncio.create_task(order_manager_loop())
+
+
+# --- Auto settlement after market close ---
+
+@app.on_event("startup")
+async def start_auto_settlement():
+    """Auto-run daily settlement at 15:35 each trading day."""
+    import asyncio
+    from datetime import time as dtime, datetime as dt
+
+    async def settlement_loop():
+        logger.info("[settlement] Auto-settlement scheduler started (triggers at 15:35)")
+        settled_today = False
+        while True:
+            await asyncio.sleep(60)
+            try:
+                now = dt.now()
+                # Reset flag at midnight
+                if now.hour == 0:
+                    settled_today = False
+
+                # Trigger at 15:35
+                if now.time() >= dtime(15, 35) and now.time() <= dtime(16, 0) and not settled_today:
+                    settled_today = True
+                    logger.info("[settlement] === AUTO SETTLEMENT ===")
+
+                    from settlement import DailySettlement
+                    from trade_tracker import TradeTracker
+
+                    default_account = qmt._config_accounts[0] if qmt._config_accounts else ""
+                    if not default_account:
+                        continue
+
+                    s = DailySettlement(qmt, default_account)
+                    tracker = TradeTracker()
+                    today_str = now.strftime("%Y-%m-%d")
+                    today_trades = [t.to_dict() for t in tracker.trades if t.exit_time.startswith(today_str)]
+
+                    result = s.run(today_trades)
+                    logger.info(f"[settlement] Result: PnL={result.get('realized_pnl', 0):+.2f}")
+
+                    # Notify
+                    try:
+                        from notifier import notify_settlement
+                        notify_settlement(
+                            today_str,
+                            result.get("realized_pnl", 0),
+                            result.get("distribution", {}).get("star_energy_units", 0),
+                        )
+                    except Exception:
+                        pass
+
+            except Exception as e:
+                logger.error(f"[settlement] auto error: {e}")
+
+    asyncio.create_task(settlement_loop())
 
 
 # --- Auto-scan scheduler ---
@@ -408,6 +579,200 @@ def premarket_analysis():
         "positions": held,
         "ai_analysis": ai_response,
     })
+
+
+# --- Trading Dashboard (Q8bot integration) ---
+
+@app.get("/trading/dashboard")
+def trading_dashboard():
+    """Comprehensive trading dashboard for Q8bot — all data in one call.
+
+    Returns: account info, positions with alpha analysis, risk status,
+    market environment, last scan results, and today's trading log.
+    """
+    from datetime import datetime as dt
+    import alpha_engine
+
+    executor = _get_executor()
+    env = executor._market_env or "sideways"
+
+    # 1. Account info
+    acct_info = {}
+    default_account = qmt._config_accounts[0] if qmt._config_accounts else ""
+    if qmt.is_connected() and default_account:
+        try:
+            acct_info = qmt.get_account_info(default_account)
+        except Exception:
+            pass
+
+    # 2. Real positions with alpha enrichment
+    positions = []
+    if qmt.is_connected() and default_account:
+        try:
+            raw_positions = qmt.get_positions(default_account)
+            for p in raw_positions:
+                pos = dict(p)
+                # Add alpha analysis for each held stock
+                try:
+                    layers = alpha_engine.compute_layer_states(p["code"])
+                    lifecycle = alpha_engine.detect_lifecycle_phase(
+                        p["code"], p.get("cost_price", 0), p.get("market_price", 0), env)
+                    chip = alpha_engine.classify_chip_shape(p["code"])
+                    pos["layers"] = {k: v for k, v in layers.items() if k != "meta"}
+                    pos["lifecycle"] = lifecycle.get("phase", "unknown")
+                    pos["chip_shape"] = chip.get("shape_type", "unknown")
+                    # MA signal for exit status
+                    ma_sig = executor.positions._get_ma_signal(p["code"])
+                    pos["ma_signal"] = ma_sig
+                    # Profit target
+                    targets = alpha_engine.dynamic_profit_targets(p["code"], env)
+                    pos["profit_targets"] = targets
+                except Exception:
+                    pass
+                positions.append(pos)
+        except Exception as e:
+            logger.warning(f"dashboard positions error: {e}")
+
+    # 3. Risk status
+    risk_status = {}
+    try:
+        risk_status = executor.risk.status_summary(env)
+    except Exception:
+        pass
+
+    # 4. Last scan results
+    scan = _last_scan_result or {}
+
+    # 5. Market environment
+    try:
+        env = alpha_engine.detect_market_env()
+    except Exception:
+        pass
+
+    return _json_safe({
+        "time": dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "market_env": env,
+        "account": acct_info,
+        "positions": positions,
+        "positions_count": len(positions),
+        "total_pnl": sum(p.get("pnl_float", 0) for p in positions),
+        "risk": risk_status,
+        "last_scan": {
+            "scanned": scan.get("scanned", 0),
+            "candidates": scan.get("candidates", 0),
+            "orders": scan.get("orders", 0),
+            "elapsed": scan.get("elapsed", 0),
+        },
+    })
+
+
+@app.get("/trading/risk")
+def trading_risk():
+    """Return current portfolio risk status."""
+    executor = _get_executor()
+    env = executor._market_env or "sideways"
+    return _json_safe(executor.risk.status_summary(env))
+
+
+@app.get("/trading/alpha/{code}")
+def trading_alpha(code: str):
+    """Run full alpha evaluation on a single stock (for Q8bot analysis)."""
+    import alpha_engine
+    try:
+        env = alpha_engine.detect_market_env()
+        result = alpha_engine.evaluate_stock(code, market_env=env)
+        return _json_safe(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Trading log persistence ---
+
+_trading_log: list = []  # in-memory log, newest first
+
+def _log_trade(action: str, data: dict):
+    """Append a trade event to the in-memory log."""
+    from datetime import datetime as dt
+    entry = {"time": dt.now().strftime("%Y-%m-%d %H:%M:%S"), "action": action, **data}
+    _trading_log.insert(0, entry)
+    if len(_trading_log) > 500:
+        _trading_log[:] = _trading_log[:500]
+
+
+@app.get("/trading/logs")
+def trading_logs(limit: int = 50):
+    """Return recent trading log entries."""
+    return _json_safe(_trading_log[:limit])
+
+
+@app.get("/trading/stats")
+def trading_stats(last_n: int = 0):
+    """Strategy performance statistics: win rate, profit factor, expectancy, attribution."""
+    from trade_tracker import TradeTracker
+    tracker = TradeTracker()
+    return _json_safe({
+        "overall": tracker.stats(last_n=last_n),
+        "by_exit_reason": tracker.attribution_by_exit_reason(),
+        "by_signal_strength": tracker.attribution_by_signal_strength(),
+    })
+
+
+@app.get("/trading/history")
+def trading_history(limit: int = 20):
+    """Recent completed trades with full details."""
+    from trade_tracker import TradeTracker
+    tracker = TradeTracker()
+    return _json_safe(tracker.recent_trades(limit=limit))
+
+
+@app.get("/trading/backtest")
+def trading_backtest(days: int = 60, min_score: float = 0.60, top_n: int = 10):
+    """Run strategy backtest with given parameters."""
+    from backtest import run_backtest
+    return _json_safe(run_backtest(days=days, min_score=min_score, top_n=top_n))
+
+
+@app.get("/trading/macro")
+def trading_macro():
+    """Layer 1: Macro analysis — market direction, breadth, position advice."""
+    import alpha_engine
+    return _json_safe(alpha_engine.analyze_macro())
+
+
+@app.get("/trading/sectors")
+def trading_sectors():
+    """Layer 2: Sector rotation — hot/cold sectors ranked by momentum."""
+    import alpha_engine
+    return _json_safe(alpha_engine.analyze_sectors())
+
+
+@app.get("/trading/premarket_v2")
+def trading_premarket_v2():
+    """Comprehensive pre-market report: macro + sectors + guidance."""
+    import alpha_engine
+    return _json_safe(alpha_engine.premarket_report())
+
+
+@app.get("/trading/settlement")
+def trading_settlement_history(limit: int = 30):
+    """Get settlement history."""
+    from settlement import DailySettlement
+    default_account = qmt._config_accounts[0] if qmt._config_accounts else ""
+    s = DailySettlement(qmt, default_account)
+    return _json_safe({"history": s.get_history(limit), "cumulative": s.get_cumulative()})
+
+
+@app.post("/trading/settlement/run")
+def trading_settlement_run():
+    """Manually trigger daily settlement."""
+    from settlement import DailySettlement
+    from trade_tracker import TradeTracker
+    default_account = qmt._config_accounts[0] if qmt._config_accounts else ""
+    s = DailySettlement(qmt, default_account)
+    tracker = TradeTracker()
+    today_str = __import__("datetime").date.today().isoformat()
+    today_trades = [t.to_dict() for t in tracker.trades if t.exit_time.startswith(today_str)]
+    return _json_safe(s.run(today_trades))
 
 
 # --- Daily report ---

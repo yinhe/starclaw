@@ -471,6 +471,12 @@ func Setup() *gin.Engine {
 
 		// Payment callback from StarAI Router (diamond purchase confirmed)
 		internal.POST("/investor/payment-confirmed", investor.PaymentConfirmed)
+
+		// Marketplace direct payment (Claw node → Queen → Synapse → Alipay/WeChat)
+		mpPay := handler.NewMarketplacePaymentHandler()
+		internal.POST("/marketplace/create-payment", mpPay.CreatePayment)
+		internal.POST("/marketplace/payment-confirmed", mpPay.PaymentConfirmed)
+		internal.GET("/marketplace/order/:order_no", mpPay.QueryOrder)
 	}
 
 	return r

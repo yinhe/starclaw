@@ -109,6 +109,8 @@ func main() {
 		&model.PhoneBinding{},
 		&model.CloudBackup{},
 		&model.SMSVerification{},
+		// Marketplace Direct Payment
+		&model.MarketplacePayOrder{},
 	)
 
 	seedAdmin()

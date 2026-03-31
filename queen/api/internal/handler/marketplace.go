@@ -129,12 +129,18 @@ func (h *MarketplaceHandler) List(c *gin.Context) {
 	if q != "" {
 		query = query.Where("name LIKE ? OR description LIKE ? OR tags LIKE ?", "%"+q+"%", "%"+q+"%", "%"+q+"%")
 	}
+	if pricing := c.Query("pricing"); pricing != "" {
+		query = query.Where("pricing = ?", pricing)
+	}
+	if c.Query("featured") == "true" {
+		query = query.Where("featured = ?", true)
+	}
 
 	var total int64
 	query.Count(&total)
 
 	var items []model.MarketplaceItem
-	query.Preload("Author").Order("downloads DESC").Offset((page - 1) * size).Limit(size).Find(&items)
+	query.Preload("Author").Order("featured DESC, downloads DESC").Offset((page - 1) * size).Limit(size).Find(&items)
 
 	c.JSON(http.StatusOK, gin.H{
 		"items": items,
@@ -453,13 +459,20 @@ func (h *MarketplaceHandler) InstallSpec(c *gin.Context) {
 	database.DB.Model(&item).Update("downloads", item.Downloads+1)
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":      item.ID,
-		"name":    item.Name,
-		"type":    item.Type,
-		"version": item.Version,
-		"config":  item.Config, // JSON spec (function definition for skills, agent config for agents)
-		"tags":    item.Tags,
-		"icon":    item.Icon,
+		"id":                  item.ID,
+		"name":                item.Name,
+		"type":                item.Type,
+		"version":             item.Version,
+		"config":              item.Config, // JSON spec (function definition for skills, agent config for agents)
+		"tags":                item.Tags,
+		"icon":                item.Icon,
+		"description":         item.Description,
+		"pricing":             item.Pricing,
+		"price_cents":         item.PriceCents,
+		"monthly_price_cents": item.MonthlyPriceCents,
+		"currency":            item.Currency,
+		"demo_url":            item.DemoURL,
+		"featured":            item.Featured,
 	})
 }
 
