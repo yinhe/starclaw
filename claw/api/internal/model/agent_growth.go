@@ -90,7 +90,7 @@ func GetTitle(path EvolutionPath, level int) (string, string) {
 	if !ok {
 		titles = LevelTitles[PathAbyss]
 	}
-	titlesEN, _ := LevelTitlesEN[path]
+	titlesEN := LevelTitlesEN[path]
 
 	bestLv := 1
 	for _, lv := range LevelThresholds {

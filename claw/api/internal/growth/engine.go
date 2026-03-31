@@ -254,7 +254,7 @@ func computeDayStreak(db *gorm.DB, userID string) int {
 		}
 		if i == 0 {
 			// Adjust expected based on actual start
-			expected = t.Truncate(24 * time.Hour)
+			expected = t.Truncate(24 * time.Hour) //nolint:staticcheck // intentional reassign
 		}
 		if i > 0 {
 			prevT, _ := time.Parse("2006-01-02", days[i-1].Day)

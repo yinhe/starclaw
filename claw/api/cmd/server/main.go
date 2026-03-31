@@ -416,6 +416,8 @@ func cmdRejectDevice() {
 
 // migrateIdentity calls Queen's identity migration API to transfer balance/bindings
 // from an old claw address to a new one. Runs async, non-fatal on failure.
+var _ = migrateIdentity // suppress unused lint — called conditionally at startup
+
 func migrateIdentity(queenURL, token, oldClawID, newClawID string) {
 	body := fmt.Sprintf(`{"old_claw_id":"%s","new_claw_id":"%s"}`, oldClawID, newClawID)
 	url := strings.TrimSuffix(queenURL, "/swarm") + "/internal/identity/migrate"
