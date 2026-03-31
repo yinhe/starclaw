@@ -112,6 +112,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	browserMgr := browser.NewManager()
 	// Initialize data directory from config (must be before tool creation)
 	tool.SetDataDir(cfg.Storage.DataDir)
+	sandbox.SetDataDir(cfg.Storage.DataDir)
 
 	sandboxMgr := sandbox.NewManager()
 	processMgr := sandbox.NewProcessManager()
@@ -637,7 +638,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				c.JSON(400, gin.H{"error": "invalid document format"})
 				return
 			}
-			filePath := "/app/data/documents/" + filename
+			filePath := filepath.Join(tool.GetDataDir(), "documents", filename)
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				c.JSON(404, gin.H{"error": "document not found"})
 				return
@@ -1866,7 +1867,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 			// Documents (workspace files) - DB-backed with filesystem fallback
 			protected.GET("/documents", func(c *gin.Context) {
-				baseDir := "/app/workspaces"
+				baseDir := sandbox.WorkspacesDir()
 				userID := c.GetString("user_id")
 				convFilter := c.Query("conversation_id")
 
@@ -2016,7 +2017,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/documents/:workspace/*filepath", func(c *gin.Context) {
 				wsID := c.Param("workspace")
 				filePath := strings.TrimPrefix(c.Param("filepath"), "/")
-				baseDir := "/app/workspaces"
+				baseDir := sandbox.WorkspacesDir()
 				absPath := filepath.Join(baseDir, wsID, filePath)
 				// Security: ensure path stays within workspace
 				if !strings.HasPrefix(absPath, filepath.Join(baseDir, wsID)) {
@@ -2032,7 +2033,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.DELETE("/documents/:workspace/*filepath", func(c *gin.Context) {
 				wsID := c.Param("workspace")
 				filePath := strings.TrimPrefix(c.Param("filepath"), "/")
-				baseDir := "/app/workspaces"
+				baseDir := sandbox.WorkspacesDir()
 				absPath := filepath.Join(baseDir, wsID, filePath)
 				if !strings.HasPrefix(absPath, filepath.Join(baseDir, wsID)) {
 					c.JSON(403, gin.H{"error": "forbidden"})

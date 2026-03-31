@@ -166,17 +166,16 @@ func resolveUploadPath(stored string) string {
 	if stored == "" {
 		return ""
 	}
-	// Try common upload directories
-	candidates := []string{
-		"/app/uploads/" + stored,
-		"uploads/" + stored,
-		stored,
+	// Primary: centralized uploads dir (single source of truth)
+	primary := filepath.Join(getUploadDir(), stored)
+	if _, err := os.Stat(primary); err == nil {
+		return primary
 	}
-	for _, p := range candidates {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
+	// Fallback: raw path (absolute or relative)
+	if _, err := os.Stat(stored); err == nil {
+		return stored
 	}
+	log.Printf("[file] resolveUploadPath: NOT FOUND for %q (tried %s)", stored, primary)
 	return ""
 }
 

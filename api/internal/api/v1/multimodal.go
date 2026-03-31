@@ -78,10 +78,10 @@ func (h *MultimodalHandler) UploadImage(c *gin.Context) {
 	dataURL := fmt.Sprintf("data:%s;base64,%s", mime, b64)
 
 	// Also save to disk so AI tools can access the file
-	os.MkdirAll(uploadDir, 0755)
+	os.MkdirAll(getUploadDir(), 0755)
 	fileID := uuid.New().String()
 	storedName := fileID + ext
-	destPath := filepath.Join(uploadDir, storedName)
+	destPath := filepath.Join(getUploadDir(), storedName)
 	if err := os.WriteFile(destPath, data, 0644); err != nil {
 		log.Printf("[multimodal] failed to save image to disk: %v", err)
 	}

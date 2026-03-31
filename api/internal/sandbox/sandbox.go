@@ -49,9 +49,52 @@ type ExecResult struct {
 	Duration string `json:"duration"`
 }
 
+// sandboxDataDir is the root data directory, set once at startup via SetDataDir.
+var sandboxDataDir string
+
+// SetDataDir sets the root data directory (called once at startup from config).
+// All sub-directories (uploads, workspaces) derive from this.
+func SetDataDir(dir string) {
+	sandboxDataDir = dir
+	log.Printf("[sandbox] data dir set to %q", dir)
+}
+
+// getDataDir returns the resolved root data directory.
+// Uses sandboxDataDir if set, otherwise auto-detects.
+func getDataDir() string {
+	if sandboxDataDir != "" {
+		return sandboxDataDir
+	}
+	// Auto-detect: Docker → /app, otherwise ./data
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return "/app"
+	}
+	if _, err := os.Stat("./data/claw.db"); err == nil {
+		return "./data"
+	}
+	if info, err := os.Stat("/app"); err == nil && info.IsDir() {
+		return "/app"
+	}
+	return "./data"
+}
+
+// WorkspacesDir returns the workspaces base directory.
+func WorkspacesDir() string {
+	dir := filepath.Join(getDataDir(), "workspaces")
+	os.MkdirAll(dir, 0755)
+	return dir
+}
+
+// UploadsDir returns the uploads directory.
+func UploadsDir() string {
+	dir := filepath.Join(getDataDir(), "uploads")
+	os.MkdirAll(dir, 0755)
+	return dir
+}
+
 // NewManager creates a new sandbox manager
 func NewManager() *Manager {
-	baseDir := "/app/workspaces"
+	baseDir := WorkspacesDir()
 	os.MkdirAll(baseDir, 0755)
 	return &Manager{
 		baseDir:    baseDir,
@@ -80,12 +123,44 @@ func (m *Manager) GetOrCreateWorkspace(id string) *Workspace {
 	return ws
 }
 
-// ReadFile reads a file from the workspace
+// ReadFile reads a file from the workspace.
+// For binary document formats (docx/pdf/pptx/xlsx), extracts text instead of raw bytes.
 func (m *Manager) ReadFile(workspaceID, filePath string) (string, error) {
 	ws := m.GetOrCreateWorkspace(workspaceID)
 	absPath := m.safePath(ws, filePath)
 	if absPath == "" {
 		return "", fmt.Errorf("invalid path: %s", filePath)
+	}
+
+	// If file not found in workspace, try uploads directories (uploaded files live there)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		basename := filepath.Base(filePath)
+		candidates := []string{
+			filepath.Join(ws.Path, "uploads", basename), // workspace-local uploads
+			filepath.Join(UploadsDir(), basename),       // global uploads (authoritative)
+		}
+		for _, altPath := range candidates {
+			if _, err2 := os.Stat(altPath); err2 == nil {
+				log.Printf("[sandbox] fallback: %s → %s", filePath, altPath)
+				absPath = altPath
+				break
+			}
+		}
+	}
+
+	ext := strings.ToLower(filepath.Ext(absPath))
+
+	// Binary document formats: extract text via SafeReadDocument (with panic recovery)
+	switch ext {
+	case ".docx", ".pdf", ".pptx", ".xlsx":
+		content, err := SafeReadDocument(absPath)
+		if err != nil {
+			return "", fmt.Errorf("cannot read %s: %v", ext, err)
+		}
+		if len(content) > 100*1024 {
+			content = content[:100*1024] + "\n... [truncated]"
+		}
+		return content, nil
 	}
 
 	data, err := os.ReadFile(absPath)

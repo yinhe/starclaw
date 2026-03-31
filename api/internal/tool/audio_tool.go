@@ -92,14 +92,15 @@ func (t *AudioTool) resolveAudioPath(args audioArgs, tmpDir string) (string, err
 	}
 	if args.FileURL != "" {
 		// Check if it's a local upload path
-		if strings.HasPrefix(args.FileURL, "/app/uploads/") || strings.HasPrefix(args.FileURL, "/v1/uploads/") {
-			localPath := args.FileURL
-			if strings.HasPrefix(localPath, "/v1/uploads/") {
-				localPath = "/app/uploads/" + strings.TrimPrefix(localPath, "/v1/uploads/")
-			}
+		if strings.HasPrefix(args.FileURL, "/v1/uploads/") {
+			filename := strings.TrimPrefix(args.FileURL, "/v1/uploads/")
+			localPath := filepath.Join(UploadsDir(), filename)
 			if _, err := os.Stat(localPath); err == nil {
 				return localPath, nil
 			}
+		}
+		if _, err := os.Stat(args.FileURL); err == nil {
+			return args.FileURL, nil
 		}
 		// Check if it's a local music path
 		if strings.HasPrefix(args.FileURL, "/v1/music/") {

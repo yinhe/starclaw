@@ -1,10 +1,31 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
 )
+
+// ExeDir returns the directory containing the running executable.
+// Returns "" if it cannot be determined (e.g. go run with temp binary).
+func ExeDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Dir(exe)
+	// Skip temp directories (go run builds to temp)
+	if strings.Contains(dir, os.TempDir()) {
+		return ""
+	}
+	return dir
+}
 
 type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
@@ -149,6 +170,11 @@ func Load() (*Config, error) {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./configs")
+	// Also search exe directory (handles Spore deployments where CWD ≠ exe dir)
+	if ed := ExeDir(); ed != "" {
+		viper.AddConfigPath(ed)
+		viper.AddConfigPath(filepath.Join(ed, "configs"))
+	}
 
 	// Environment variable overrides
 	viper.SetEnvPrefix("STARCLAW")
@@ -221,6 +247,16 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Spore integration: SPORE_DATA_DIR is the shared data directory that
+	// persists across version upgrades. When set, override storage.data_dir
+	// and sqlite_path so all data goes to the shared location.
+	if sporeDataDir := os.Getenv("SPORE_DATA_DIR"); sporeDataDir != "" {
+		cfg.Storage.DataDir = sporeDataDir
+		if cfg.Database.Driver == "sqlite" {
+			cfg.Database.SQLitePath = filepath.Join(sporeDataDir, "claw.db")
+		}
 	}
 
 	return &cfg, nil

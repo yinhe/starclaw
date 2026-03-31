@@ -576,16 +576,15 @@ func (t *MVTool) resolveAudioURL(args mvArgs, tmpDir string) (string, error) {
 	}
 	if args.AudioURL != "" {
 		// Local upload path
-		if strings.HasPrefix(args.AudioURL, "/app/uploads/") {
-			if _, err := os.Stat(args.AudioURL); err == nil {
-				return args.AudioURL, nil
-			}
-		}
 		if strings.HasPrefix(args.AudioURL, "/v1/uploads/") {
-			localPath := "/app/uploads/" + strings.TrimPrefix(args.AudioURL, "/v1/uploads/")
+			filename := strings.TrimPrefix(args.AudioURL, "/v1/uploads/")
+			localPath := filepath.Join(UploadsDir(), filename)
 			if _, err := os.Stat(localPath); err == nil {
 				return localPath, nil
 			}
+		}
+		if _, err := os.Stat(args.AudioURL); err == nil {
+			return args.AudioURL, nil
 		}
 		// Music path
 		if strings.HasPrefix(args.AudioURL, "/v1/music/") {
