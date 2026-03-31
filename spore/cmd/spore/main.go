@@ -241,8 +241,8 @@ func cmdStatus(mgr *runtime.Manager) {
 		return
 	}
 
-	fmt.Printf("%-20s %-12s %-10s %s\n", "NAME", "VERSION", "STATUS", "LOCATION")
-	fmt.Println(strings.Repeat("─", 70))
+	fmt.Printf("%-20s %-16s %-10s %-8s %s\n", "NAME", "VERSION", "STATUS", "PORT", "LOCATION")
+	fmt.Println(strings.Repeat("─", 90))
 	for _, inst := range instances {
 		statusIcon := "⏹"
 		switch inst.Status {
@@ -251,7 +251,11 @@ func cmdStatus(mgr *runtime.Manager) {
 		case "error":
 			statusIcon = "🔴"
 		}
-		fmt.Printf("%-20s %-12s %s %-8s %s\n", inst.Name, inst.Version, statusIcon, inst.Status, inst.InstallDir)
+		port := ""
+		if inst.Manifest != nil && len(inst.Manifest.Network.Ports) > 0 {
+			port = fmt.Sprintf(":%d", inst.Manifest.Network.Ports[0].Port)
+		}
+		fmt.Printf("%-20s %-16s %s %-8s %-8s %s\n", inst.Name, inst.Version, statusIcon, inst.Status, port, inst.InstallDir)
 	}
 }
 
