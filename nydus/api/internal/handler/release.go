@@ -167,6 +167,8 @@ func GetSporeLatest(c *gin.Context) {
 
 // DownloadBinaryRelease serves a pre-built binary from /opt/releases/binary/:tag/:filename.
 // Used by Spore one-click update: GET /releases/binary/v2026.0329/starclaw-linux-amd64
+// Fallback: if versioned path not found, maps starclaw-{os}-{arch} → claw-api-{os}-{arch}
+// in /opt/spore/releases/ so old clients can download without per-version symlinks.
 func DownloadBinaryRelease(c *gin.Context) {
 	tag := filepath.Base(c.Param("tag"))
 	filename := filepath.Base(c.Param("filename"))
@@ -175,12 +177,30 @@ func DownloadBinaryRelease(c *gin.Context) {
 		return
 	}
 
+	// Try versioned path first
 	localPath := filepath.Join("/opt/releases/binary", tag, filename)
-	if _, err := os.Stat(localPath); os.IsNotExist(err) {
-		c.JSON(404, gin.H{"error": "binary not found"})
+	if _, err := os.Stat(localPath); err == nil {
+		c.File(localPath)
 		return
 	}
-	c.File(localPath)
+
+	// Fallback: map starclaw-{os}-{arch}[.exe] → claw-api-{os}-{arch}[.exe]
+	fallbackName := strings.Replace(filename, "starclaw-", "claw-api-", 1)
+	fallbackPath := filepath.Join("/opt/spore/releases", fallbackName)
+	if _, err := os.Stat(fallbackPath); err == nil {
+		log.Printf("[releases] binary fallback: %s/%s → %s", tag, filename, fallbackPath)
+		c.File(fallbackPath)
+		return
+	}
+
+	// Also try the original filename in /opt/spore/releases/
+	sporePath := filepath.Join("/opt/spore/releases", filename)
+	if _, err := os.Stat(sporePath); err == nil {
+		c.File(sporePath)
+		return
+	}
+
+	c.JSON(404, gin.H{"error": "binary not found"})
 }
 
 // DownloadSporeRelease serves a Spore runtime binary from /opt/spore/releases/.
