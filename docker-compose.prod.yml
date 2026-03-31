@@ -41,6 +41,9 @@ services:
     build:
       context: ./claw/api
       dockerfile: Dockerfile
+      args:
+        USE_CN_MIRROR: ${USE_CN_MIRROR:-true}
+        REGISTRY: ${REGISTRY:-docker.io}
     container_name: starclaw-api
     restart: always
     environment:
