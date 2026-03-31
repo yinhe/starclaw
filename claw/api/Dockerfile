@@ -56,8 +56,11 @@ RUN VERSION="$BUILD_VERSION" && \
 ARG REGISTRY=docker.io
 FROM ${REGISTRY}/alpine:latest
 
-# Use Alibaba Cloud mirrors for faster downloads in China
-RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories
+# Use Alibaba Cloud mirrors for faster downloads in China (skip on GitHub Actions)
+ARG USE_CN_MIRROR=false
+RUN if [ "$USE_CN_MIRROR" = "true" ]; then \
+      sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories; \
+    fi
 
 # Core + Browser + FFmpeg + Python + Node.js (one layer)
 RUN apk --no-cache add \
@@ -66,8 +69,14 @@ RUN apk --no-cache add \
     python3 py3-pip py3-setuptools \
     nodejs npm \
     docker-cli docker-cli-compose \
-    && python3 -m pip install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com flask fastapi uvicorn requests beautifulsoup4 aiohttp dashscope \
-    && npm config set registry https://registry.npmmirror.com && npm install -g yarn pnpm typescript ts-node
+    && PIP_ARGS=""; NPM_REG=""; \
+    if [ "$USE_CN_MIRROR" = "true" ]; then \
+      PIP_ARGS="-i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com"; \
+      NPM_REG="https://registry.npmmirror.com"; \
+    fi \
+    && python3 -m pip install --break-system-packages $PIP_ARGS flask fastapi uvicorn requests beautifulsoup4 aiohttp dashscope \
+    && if [ -n "$NPM_REG" ]; then npm config set registry "$NPM_REG"; fi \
+    && npm install -g yarn pnpm typescript ts-node
 
 # Go (copy from builder)
 COPY --from=builder /usr/local/go /usr/local/go
