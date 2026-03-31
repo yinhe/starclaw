@@ -7,7 +7,7 @@ import { useI18n } from '../i18n'
 
 const NYDUS_BASE = 'https://nydus.starclaw.net/spore/releases'
 const STARAI_BASE = 'https://star-ai.net/downloads'
-const V_FALLBACK = 'v2026.0329.0852'
+const V_FALLBACK = 'v2026.0331.0452'
 
 function getPackages(v: string) {
   return [
@@ -76,33 +76,13 @@ export function DownloadPage() {
   const [version, setVersion] = useState(V_FALLBACK)
 
   useEffect(() => {
-    const extractVersion = (d: any): string => {
-      // Try tag_name first
-      if (d.tag_name) return d.tag_name.startsWith('v') ? d.tag_name : 'v' + d.tag_name
-      // Extract from assets filename: "StarClaw-Setup-v2026.0331.0452.exe" → "v2026.0331.0452"
-      const assets = d.assets || {}
-      for (const k of Object.keys(assets)) {
-        const fn = assets[k]?.filename || ''
-        const m = fn.match(/Setup-(v\d{4}\.\d{4}\.\d{4})/)
-        if (m) return m[1]
-      }
-      return ''
-    }
-    fetch('https://nydus.starclaw.net/releases/spore/latest')
+    fetch('https://nydus.starclaw.net/releases/latest')
       .then(r => r.json())
       .then(d => {
-        const v = extractVersion(d)
-        if (v) setVersion(v)
+        const v = d.tag_name || ''
+        if (v) setVersion(v.startsWith('v') ? v : 'v' + v)
       })
-      .catch(() => {
-        fetch('https://nydus.starclaw.net/releases/latest')
-          .then(r => r.json())
-          .then(d => {
-            const v = d.tag_name || ''
-            if (v) setVersion(v.startsWith('v') ? v : 'v' + v)
-          })
-          .catch(() => {})
-      })
+      .catch(() => {})
   }, [])
 
   const packages = getPackages(version)
