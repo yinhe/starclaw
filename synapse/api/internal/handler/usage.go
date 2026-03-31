@@ -35,8 +35,12 @@ func (h *UsageHandler) Query(c *gin.Context) {
 
 	since := time.Now().AddDate(0, 0, -days)
 
+	// Claw-authenticated requests write records with claw_id as user_id,
+	// so we must query both the Synapse user_id and the linked claw_id.
+	userIDs := h.resolveUserIDs(userID)
+
 	var records []model.UsageRecord
-	h.db.Where("user_id = ? AND created_at >= ?", userID, since).
+	h.db.Where("user_id IN ? AND created_at >= ?", userIDs, since).
 		Order("created_at DESC").
 		Limit(500).
 		Find(&records)
@@ -79,7 +83,8 @@ func (h *UsageHandler) Logs(c *gin.Context) {
 		pageSize = 200
 	}
 
-	query := h.db.Where("user_id = ?", userID)
+	userIDs := h.resolveUserIDs(userID)
+	query := h.db.Where("user_id IN ?", userIDs)
 
 	// Filter by model
 	if m := c.Query("model"); m != "" {
@@ -117,6 +122,17 @@ func (h *UsageHandler) Logs(c *gin.Context) {
 		"page_size": pageSize,
 		"pages":     (total + int64(pageSize) - 1) / int64(pageSize),
 	})
+}
+
+// resolveUserIDs returns all identifiers that may appear as user_id in usage records.
+// Claw-authenticated requests store claw_id as user_id, so we include both.
+func (h *UsageHandler) resolveUserIDs(userID string) []string {
+	ids := []string{userID}
+	var user model.User
+	if err := h.db.Where("id = ?", userID).First(&user).Error; err == nil && user.ClawID != "" {
+		ids = append(ids, user.ClawID)
+	}
+	return ids
 }
 
 // ToolUsage returns tool consumption records (image/video/music) from Queen.
