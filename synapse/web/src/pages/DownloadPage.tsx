@@ -57,16 +57,24 @@ export default function DownloadPage() {
   const [version, setVersion] = useState<string>(V_FALLBACK);
 
   useEffect(() => {
-    // Use spore-latest.json (tracks actual built Spore installers)
-    // NOT /releases/latest (git tags that may be ahead of built installers)
+    const extractVersion = (d: any): string => {
+      if (d.tag_name) return d.tag_name.startsWith('v') ? d.tag_name : 'v' + d.tag_name;
+      // Extract from assets filename: "StarClaw-Setup-v2026.0331.0452.exe" → "v2026.0331.0452"
+      const assets = d.assets || {};
+      for (const k of Object.keys(assets)) {
+        const fn = assets[k]?.filename || '';
+        const m = fn.match(/Setup-(v\d{4}\.\d{4}\.\d{4})/);
+        if (m) return m[1];
+      }
+      return '';
+    };
     fetch('https://nydus.starclaw.net/releases/spore/latest')
       .then(r => r.json())
       .then(d => {
-        const v = d.tag_name || '';
-        if (v) setVersion(v.startsWith('v') ? v : 'v' + v);
+        const v = extractVersion(d);
+        if (v) setVersion(v);
       })
       .catch(() => {
-        // Fallback to git tag if spore-latest.json unavailable
         fetch('https://nydus.starclaw.net/releases/latest')
           .then(r => r.json())
           .then(d => {
