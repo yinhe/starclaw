@@ -47,6 +47,7 @@ func seedCicadaMarketplaceTemplate(db *gorm.DB, ownerID string) {
 		},
 		"bundle": map[string]interface{}{
 			"skills": []map[string]string{
+				// 被动技能 ×8
 				{"name": "电话拨号", "spec": `{"trigger":"passive","description":"发起外呼电话、挂断通话、转接人工坐席","tools":["cicada_phone_call"],"example_triggers":["拨打这个号码","给客户打电话","挂断","转人工"]}`},
 				{"name": "语音识别", "spec": `{"trigger":"passive","description":"实时语音识别，将客户语音转为文字（流式ASR）","tools":["cicada_phone_listen"],"example_triggers":["开始识别","听客户说什么"]}`},
 				{"name": "语音合成", "spec": `{"trigger":"passive","description":"将AI回复文字转为语音播放给客户（流式TTS）","tools":["cicada_phone_speak"],"example_triggers":["回复客户","播放语音"]}`},
@@ -55,8 +56,7 @@ func seedCicadaMarketplaceTemplate(db *gorm.DB, ownerID string) {
 				{"name": "跟进安排", "spec": `{"trigger":"passive","description":"设置客户跟进提醒，安排下次回访时间","tools":["cicada_crm_schedule"],"example_triggers":["三天后再打","安排跟进","设置提醒"]}`},
 				{"name": "录音保存", "spec": `{"trigger":"passive","description":"保存通话录音文件和ASR转写文字","tools":["cicada_record_save"],"example_triggers":["保存录音","存下这通电话"]}`},
 				{"name": "短信发送", "spec": `{"trigger":"passive","description":"通话后发送资料短信给客户","tools":["cicada_sms_send"],"example_triggers":["发个短信","把资料发给客户"]}`},
-			},
-			"instincts": []map[string]string{
+				// 本能（主动技能）×6
 				{"name": "自动外呼", "spec": `{"trigger":"proactive","schedule":"0 0 9,14 * * 1-6","description":"在设定时段（工作日9:00和14:00）自动开始批量外呼任务","auto_execute":true,"notify":true}`},
 				{"name": "通话分类", "spec": `{"trigger":"proactive","event":"call_ended","description":"通话结束后，分析完整对话文本，自动判定A-F意向等级","auto_execute":true,"notify":false}`},
 				{"name": "日报生成", "spec": `{"trigger":"proactive","schedule":"0 30 18 * * *","description":"每日18:30汇总今日外呼数据，生成日报（呼叫量/接通率/A类客户数）","auto_execute":true,"notify":true}`},
