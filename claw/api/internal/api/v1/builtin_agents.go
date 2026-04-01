@@ -126,26 +126,11 @@ func MigrateSystemToOwner(db *gorm.DB, ownerID string) {
 //  Marketplace Cleanup: fix garbled + translate English → Chinese
 // ════════════════════════════════════════════════════════════════
 
-// cleanupMarketplaceTemplates removes garbled (mojibake) templates and
-// translates known English templates to Chinese for the marketplace.
+// cleanupMarketplaceTemplates removes garbled (mojibake) and untranslated
+// English templates from the marketplace — only Chinese content survives.
 func cleanupMarketplaceTemplates(db *gorm.DB) {
-	// Step 1: Delete garbled (mojibake) templates — encoding corruption from Drone import
-	var candidates []model.AgentTemplate
-	db.Where("is_builtin = ?", false).Select("id, name, description").Find(&candidates)
-
-	deleted := 0
-	for _, t := range candidates {
-		if hasMojibake(t.Name) || hasMojibake(t.Description) {
-			db.Where("template_id = ?", t.ID).Delete(&model.AgentListing{})
-			db.Delete(&t)
-			deleted++
-		}
-	}
-	if deleted > 0 {
-		log.Printf("[Cleanup] Removed %d garbled marketplace templates", deleted)
-	}
-
-	// Step 2: Translate known English templates to Chinese
+	// Step 1: Translate known English templates to Chinese FIRST
+	// (so they gain CJK characters and survive the step-2 purge)
 	type zhTrans struct{ Name, Desc string }
 	translations := map[string]zhTrans{
 		"Animal Chefs":                 {"动物厨师", "趣味动物厨师，输入食物名称即可获取独特创意食谱。"},
@@ -181,44 +166,32 @@ func cleanupMarketplaceTemplates(db *gorm.DB) {
 		}
 	}
 
-	// Step 3: Delete remaining non-builtin templates with all-ASCII names (untranslated English)
-	var remaining []model.AgentTemplate
-	db.Where("is_builtin = ?", false).Select("id, name").Find(&remaining)
+	// Step 2: Delete ALL non-builtin templates whose name lacks CJK characters.
+	// This catches both garbled/mojibake (CP1252 artifacts) AND remaining English-only.
+	var templates []model.AgentTemplate
+	db.Where("is_builtin = ?", false).Select("id, name").Find(&templates)
 
-	cleaned := 0
-	for _, t := range remaining {
-		if isAllASCIIName(t.Name) {
+	deleted := 0
+	for _, t := range templates {
+		if !hasCJK(t.Name) {
 			db.Where("template_id = ?", t.ID).Delete(&model.AgentListing{})
 			db.Delete(&t)
-			cleaned++
+			deleted++
 		}
 	}
-	if cleaned > 0 {
-		log.Printf("[Cleanup] Removed %d untranslated English-only templates", cleaned)
+	if deleted > 0 {
+		log.Printf("[Cleanup] Removed %d garbled/English-only marketplace templates", deleted)
 	}
 }
 
-// hasMojibake detects UTF-8 text stored with broken encoding (Latin-1 artifacts).
-func hasMojibake(s string) bool {
-	count := 0
+// hasCJK returns true if s contains at least one CJK Unified Ideograph (U+4E00–U+9FFF).
+func hasCJK(s string) bool {
 	for _, r := range s {
-		// Latin-1 Supplement (C0-FF) + Latin Extended A/B (100-24F)
-		// These appear when Chinese UTF-8 bytes are decoded as Latin-1
-		if (r >= 0xC0 && r <= 0xFF) || (r >= 0x100 && r <= 0x24F) {
-			count++
+		if r >= 0x4E00 && r <= 0x9FFF {
+			return true
 		}
 	}
-	return count >= 3
-}
-
-// isAllASCIIName returns true if the name contains only ASCII characters.
-func isAllASCIIName(s string) bool {
-	for _, r := range s {
-		if r > 0x7F {
-			return false
-		}
-	}
-	return len(s) > 0
+	return false
 }
 
 // Built-in specialist agent definitions
