@@ -1,0 +1,80 @@
+# Cicada 🪰 蝉 — 电话机器人智能体配置
+
+server:
+  port: 8099
+  host: "0.0.0.0"
+
+# 云通信平台 (容联云)
+sip:
+  provider: "cloopen"
+  account_sid: ""
+  auth_token: ""
+  app_id: ""
+  rest_url: "https://app.cloopen.com:8883"
+  caller_numbers:
+    - number: ""
+      type: "landline"
+      region: "杭州"
+  trunk:
+    max_concurrent: 10
+    codec: "PCMA"
+  callback_url: "http://localhost:8099/callback/call-status"
+  recording_callback_url: "http://localhost:8099/callback/recording"
+
+# 语音服务 (DashScope)
+voice:
+  dashscope_api_key: ""
+  asr:
+    model: "paraformer-realtime-v2"
+    sample_rate: 16000
+    format: "pcm"
+    enable_punctuation: true
+    enable_disfluency_detection: true
+  tts:
+    model: "cosyvoice-v1"
+    voice: "longxiaochun"
+    sample_rate: 16000
+    format: "pcm"
+    speed: 1.0
+    volume: 50
+
+# LLM (StarAI / 本地)
+llm:
+  base_url: "https://api.star-ai.net/v1"
+  api_key: ""
+  model: "qwen-turbo"
+  temperature: 0.3
+  max_tokens: 200
+
+# Claw 节点
+claw:
+  url: "http://localhost:8081"
+  token: ""
+
+# 存储
+storage:
+  data_dir: "./data/cicada"
+  db_path: "./data/cicada/cicada.db"
+  recordings_dir: "./data/cicada/recordings"
+
+# 外呼调度
+scheduler:
+  daily_limit: 800
+  max_concurrent: 10
+  call_interval_seconds: 3
+  max_retries: 3
+  retry_intervals: [3600, 7200, 86400]
+  schedule_start: "09:00"
+  schedule_end: "18:00"
+  schedule_days: [1, 2, 3, 4, 5, 6]
+  lunch_break_start: "12:00"
+  lunch_break_end: "14:00"
+
+# 合规
+compliance:
+  per_number_daily: 1
+  per_number_monthly: 3
+  per_caller_hourly: 60
+  per_caller_daily: 200
+  blacklist_cooldown_days: 30
+  unsubscribe_sync_hours: 72

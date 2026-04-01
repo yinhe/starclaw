@@ -1,0 +1,41 @@
+name: "教育课程推广"
+industry: education
+voice: longxiaoxia
+
+greeting: |
+  您好，我是{company}的课程顾问，了解到您家孩子可能对{subject}感兴趣，
+  想跟您聊两分钟，看看我们能不能帮到您。
+
+key_points:
+  - "{subject}课程由资深老师授课，教龄均超过5年"
+  - "小班制教学，每班不超过{class_size}人，保证关注度"
+  - "免费试听一节课，满意再报名，零风险"
+
+qa_library:
+  - q: "多大的孩子适合"
+    a: "我们{subject}课程适合{age_range}岁的孩子，会根据年龄分班"
+  - q: "在哪里上课"
+    a: "我们在{location}有校区，距离您不远，也支持线上课程"
+  - q: "多少钱"
+    a: "{subject}课程{price}元/{unit}，现在报名享{discount}折优惠"
+  - q: "什么时候上课"
+    a: "周末和工作日晚上都有课，可以灵活选择适合的时间段"
+  - q: "效果怎么样"
+    a: "去年我们有{success_count}位学员取得了优异成绩，家长满意度{satisfaction}%"
+  - q: "可以退费吗"
+    a: "开课后7天内不满意可以全额退费，完全没有风险"
+
+objections:
+  - trigger: "太贵了"
+    response: "我们现在有试听优惠，先免费体验一节，觉得值再报名"
+  - trigger: "孩子不愿意"
+    response: "很多孩子试听后都很喜欢，我们老师很会引导，可以先来体验"
+  - trigger: "要和家人商量"
+    response: "没问题，我发份课程介绍给您，您和家人一起看看"
+  - trigger: "不需要"
+    response: "好的，打扰了，如果以后有需要可以联系我们，再见"
+
+closing:
+  positive: "那我帮您预约一节免费试听课，您看这周末方便吗？"
+  neutral: "我把课程介绍发您微信，您有空看看，有问题随时联系"
+  negative: "好的，祝您和孩子生活愉快，再见"

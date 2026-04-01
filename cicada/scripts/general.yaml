@@ -1,0 +1,34 @@
+name: "通用话术模板"
+industry: general
+voice: longxiaochun
+
+greeting: |
+  您好，我是{company}的客服，想跟您简单介绍下我们的{product}，
+  耽误您一分钟时间。
+
+key_points:
+  - "{product}目前正在做优惠活动，力度很大"
+  - "已有{user_count}位客户选择了我们，口碑非常好"
+
+qa_library:
+  - q: "多少钱"
+    a: "我们{product}现在{price}，原价{original_price}，限时优惠中"
+  - q: "在哪里"
+    a: "我们在{location}，您可以过来看看，也支持线上服务"
+  - q: "有什么优势"
+    a: "我们的核心优势是{advantage}，很多客户都是冲着这个来的"
+  - q: "可以退款吗"
+    a: "可以的，{refund_policy}，让您没有后顾之忧"
+
+objections:
+  - trigger: "太贵了"
+    response: "理解您的顾虑，我们现在有优惠活动，性价比很高"
+  - trigger: "再考虑"
+    response: "没问题，我发份详细资料给您参考，有问题随时联系"
+  - trigger: "不需要"
+    response: "好的，打扰了，祝您生活愉快，再见"
+
+closing:
+  positive: "那我帮您预约一下，您看什么时间方便？"
+  neutral: "我把详细资料发给您，有问题随时联系我们"
+  negative: "好的，感谢您的时间，祝您生活愉快，再见"

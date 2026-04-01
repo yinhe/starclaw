@@ -55,6 +55,9 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	// Seed Q8bot 麒博 marketplace template (replace old English version)
 	seedQ8botMarketplaceTemplate(db, ownerID)
 
+	// Seed Cicada 蝉·电话机器人 marketplace template
+	seedCicadaMarketplaceTemplate(db, ownerID)
+
 	// Seed/update specialist agents (MV, 视频, 音乐, etc.)
 	for _, def := range builtinAgents {
 		var agent model.Agent

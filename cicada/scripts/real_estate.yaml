@@ -1,0 +1,42 @@
+name: "房产新盘推广"
+industry: real_estate
+voice: longxiaochun
+
+greeting: |
+  您好，我是{company}的置业顾问，耽误您一分钟时间。
+  我们{project_name}最近推出了一批优质房源，想跟您简单介绍一下。
+
+key_points:
+  - "项目位于{location}，周边配套成熟"
+  - "户型从{min_area}到{max_area}平米，满足不同需求"
+  - "均价{price}元/平米，首付{down_payment}万起"
+  - "周边有{school}等优质学校"
+
+qa_library:
+  - q: "在什么位置"
+    a: "项目位于{location}，距离{landmark}约{distance}，交通非常方便"
+  - q: "多少钱"
+    a: "目前均价{price}元/平米，{min_area}平的户型总价约{total_price}万"
+  - q: "能分期吗"
+    a: "可以的，首付{down_payment_ratio}，月供大约{monthly_payment}元"
+  - q: "有学区吗"
+    a: "项目对口{school}，是本区重点学校"
+  - q: "什么时候交房"
+    a: "预计{delivery_date}交房，现在购买可享受早鸟优惠"
+  - q: "有样板间吗"
+    a: "有的，随时可以来看，我帮您预约一下"
+
+objections:
+  - trigger: "太贵了"
+    response: "理解您的顾虑，我们现在有特价房源，比正常售价优惠{discount}万，数量有限"
+  - trigger: "再考虑考虑"
+    response: "没问题，我加您微信发份详细资料，您方便时看看？"
+  - trigger: "已经买了"
+    response: "恭喜您，如果身边有朋友需要也可以推荐给我们，有推荐奖励"
+  - trigger: "不需要"
+    response: "好的，打扰了，祝您生活愉快，再见"
+
+closing:
+  positive: "那我安排我们的置业顾问跟您详细沟通，您看明天上午方便吗？"
+  neutral: "我把项目资料发到您手机上，您有空看一下，有问题随时联系我们"
+  negative: "好的，感谢您的时间，祝您生活愉快，再见"

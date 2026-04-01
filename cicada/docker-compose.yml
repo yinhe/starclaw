@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  bridge:
+    build: ./bridge
+    container_name: cicada-bridge
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    volumes:
+      - ./data:/app/data/cicada
+      - ./scripts:/app/../scripts
+    environment:
+      - CLOOPEN_ACCOUNT_SID=${CLOOPEN_ACCOUNT_SID:-}
+      - CLOOPEN_AUTH_TOKEN=${CLOOPEN_AUTH_TOKEN:-}
+      - CLOOPEN_APP_ID=${CLOOPEN_APP_ID:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.star-ai.net/v1}
+      - CICADA_PORT=8099
+      - CICADA_DATA_DIR=/app/data/cicada
+
+  web:
+    build: ./web
+    container_name: cicada-web
+    restart: unless-stopped
+    ports:
+      - "3099:80"
+    depends_on:
+      - bridge
