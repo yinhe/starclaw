@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Bot, ArrowLeft, MessageSquare, Dna, Wrench, Zap, Plug, GitBranch, Brain, Clock, ChevronDown, ChevronUp, Sparkles, ExternalLink, Search, Film, Code, FileText, Settings, Users } from 'lucide-react'
+import { Bot, ArrowLeft, MessageSquare, Dna, Wrench, Zap, Plug, GitBranch, Brain, Clock, ChevronDown, ChevronUp, Sparkles, ExternalLink, Search, Film, Code, FileText, Settings, Users, Monitor, Headset } from 'lucide-react'
 import { agentAPI, memoryAPI, workflowAPI, mcpAPI, activityAPI } from '../lib/api'
 
 // ── Types ──
@@ -110,6 +110,8 @@ const skillGroups: SkillGroup[] = [
   { key: 'create', label: '内容创作', icon: Film, color: 'text-blue-500', tools: ['video_generation', 'dubbing', 'mv_production', 'comic_production', 'music_generation', 'image_generation', 'audio_analysis'], desc: '视频/音乐/图片/漫剧全链路创作' },
   { key: 'dev', label: '编程开发', icon: Code, color: 'text-emerald-500', tools: ['code'], desc: '编写代码、运行调试、部署应用' },
   { key: 'doc', label: '文档处理', icon: FileText, color: 'text-cyan-500', tools: ['document'], desc: '对话总结、Word文档导出' },
+  { key: 'cs', label: '客服沟通', icon: Headset, color: 'text-teal-500', tools: ['wechat_cs', 'feishu'], desc: '微信/飞书客服自动回复与监控' },
+  { key: 'desktop', label: '桌面操控', icon: Monitor, color: 'text-indigo-500', tools: ['desktop'], desc: '截图、点击、输入，控制本地桌面应用' },
   { key: 'sys', label: '系统管理', icon: Settings, color: 'text-rose-500', tools: ['system'], desc: 'Agent编排、任务调度、委派' },
 ]
 
@@ -128,6 +130,7 @@ const toolMeta: Record<string, { label: string; icon: string; desc: string }> = 
   document: { label: '文档总结', icon: '📄', desc: '对话摘要 + Word 导出' },
   feishu: { label: '飞书', icon: '📱', desc: '消息发送与应用集成' },
   desktop: { label: '桌面操控', icon: '🖥️', desc: '截图/点击/输入桌面应用' },
+  wechat_cs: { label: '微信客服', icon: '💬', desc: '自动回复/监控/转人工/消息分类' },
   system: { label: '系统管理', icon: '⚙️', desc: 'Agent编排、任务调度、委派' },
 }
 
@@ -234,7 +237,7 @@ export default function AgentDetailPage() {
   const groupedSkillCount = skillGroups.reduce((n, g) => n + g.tools.filter(t => builtinTools.includes(t)).length, 0) + skills.length
   const tabCounts: Partial<Record<HexadTab, number>> = {
     skill: groupedSkillCount,
-    instinct: instincts.length + activities.length,
+    instinct: instincts.length + activities.length + (builtinTools.includes('wechat_cs') ? 5 : 0),
     mcp: mcpTools.length + mcpServers.length,
   }
 
@@ -317,9 +320,9 @@ export default function AgentDetailPage() {
         <div className="min-h-[400px]">
           {activeTab === 'gene' && <GeneTab agent={agent} config={agentConfig} />}
           {activeTab === 'skill' && <SkillTab builtinTools={builtinTools} skills={skills} />}
-          {activeTab === 'instinct' && <InstinctTab instincts={instincts} activities={activities} />}
+          {activeTab === 'instinct' && <InstinctTab instincts={instincts} activities={activities} builtinTools={builtinTools} />}
           {activeTab === 'mcp' && <MCPTab mcpTools={mcpTools} mcpServers={mcpServers} />}
-          {activeTab === 'workflow' && <WorkflowTab workflow={workflow} agentId={id || ''} navigate={navigate} isBuiltin={agent.is_builtin} />}
+          {activeTab === 'workflow' && <WorkflowTab workflow={workflow} agentId={id || ''} navigate={navigate} isBuiltin={agent.is_builtin} builtinTools={builtinTools} />}
           {activeTab === 'memory' && <MemoryTab memories={memories} memoryCount={memoryCount} agentId={id || ''} navigate={navigate} />}
         </div>
       </div>
@@ -470,13 +473,55 @@ function SkillTab({ builtinTools, skills }: { builtinTools: string[]; skills: Ag
 
 // ── Tab 3: 本能 (Instinct) — "我自己做" ──
 
-function InstinctTab({ instincts, activities }: { instincts: AgentSkill[]; activities: Activity[] }) {
-  if (!instincts.length && !activities.length) {
+function InstinctTab({ instincts, activities, builtinTools }: { instincts: AgentSkill[]; activities: Activity[]; builtinTools: string[] }) {
+  const hasWechatCS = builtinTools.includes('wechat_cs')
+
+  if (!instincts.length && !activities.length && !hasWechatCS) {
     return <EmptyState icon={Zap} text="暂无本能" desc="本能是智能体自动执行的能力，不需要用户触发" />
   }
 
+  const wechatInstincts = [
+    { id: 'auto_chat', icon: '🔄', title: '持续自动聊天', desc: '后台每5秒扫描微信未读消息，用 AI 理解上下文自动回复', trigger: '每 5 秒', type: 'monitor' },
+    { id: 'reply_all', icon: '💬', title: '一键回复所有未读', desc: '遍历所有未读会话，逐个用 AI 生成回复并发送', trigger: '用户触发', type: 'event' },
+    { id: 'watch', icon: '👁️', title: '群聊监控', desc: '定时截图对比微信窗口变化，检测到新消息自动创建客服任务', trigger: '每 20-30 秒', type: 'monitor' },
+    { id: 'classify', icon: '🏷️', title: '消息智能分类', desc: '对客户消息做意图分类（投诉/报价/下单/进度/多媒体），高风险自动转人工', trigger: '收到消息时', type: 'event' },
+    { id: 'handoff', icon: '🙋', title: '自动转人工', desc: '检测到投诉/退款/法律风险时自动标记转人工，附带优先级和原因', trigger: '高风险触发', type: 'event' },
+  ]
+
   return (
     <div className="space-y-6">
+      {/* WeChat CS built-in instincts */}
+      {hasWechatCS && (
+        <div className="bg-white border rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Zap className="w-4 h-4 text-teal-500" />
+            <h3 className="text-sm font-semibold text-gray-700">微信客服本能</h3>
+            <span className="text-[10px] text-gray-400 ml-1">自动化客服能力，无需手动触发</span>
+          </div>
+          <div className="space-y-2 mt-3">
+            {wechatInstincts.map(item => {
+              const typeInfo = activityTypeLabels[item.type] || { label: item.type, color: 'bg-gray-100 text-gray-600', icon: '⚡' }
+              return (
+                <div key={item.id} className="flex items-center gap-3 border rounded-xl p-3.5 transition-colors bg-teal-50/30 hover:border-teal-300">
+                  <span className="text-lg flex-shrink-0">{item.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-800 text-sm">{item.title}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${typeInfo.color}`}>{typeInfo.label}</span>
+                    </div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">{item.desc}</div>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-teal-600 bg-teal-100 px-2 py-0.5 rounded flex-shrink-0">
+                    <Clock className="w-3 h-3" />
+                    {item.trigger}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Activities (built-in instincts) */}
       {activities.length > 0 && (
         <div className="bg-white border rounded-2xl p-6">
@@ -616,7 +661,7 @@ function MCPTab({ mcpTools, mcpServers }: { mcpTools: string[]; mcpServers: MCPS
 
 // ── Tab 5: 工作流 (Workflow) ──
 
-function WorkflowTab({ workflow, agentId, navigate, isBuiltin }: { workflow: Workflow | null; agentId: string; navigate: (path: string) => void; isBuiltin: boolean }) {
+function WorkflowTab({ workflow, agentId, navigate, isBuiltin, builtinTools }: { workflow: Workflow | null; agentId: string; navigate: (path: string) => void; isBuiltin: boolean; builtinTools: string[] }) {
   const handleGo = async () => {
     try {
       const res = await agentAPI.getWorkflow(agentId)
@@ -627,6 +672,40 @@ function WorkflowTab({ workflow, agentId, navigate, isBuiltin }: { workflow: Wor
       }
     } catch {}
     navigate('/workflows/editor')
+  }
+
+  const hasWechatCS = builtinTools.includes('wechat_cs')
+
+  // For WeChat CS agent, show customer service decision flow
+  if (hasWechatCS && (!workflow || !workflow.nodes || workflow.nodes === '[]')) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white border rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <GitBranch className="w-4 h-4 text-teal-500" />
+            <h3 className="text-sm font-semibold text-gray-700">微信客服决策流程</h3>
+          </div>
+          <div className="space-y-3">
+            {[
+              { step: '1', label: '消息检测', desc: '定时截图/扫描微信窗口，对比 hash 判断是否有新消息', color: 'bg-teal-50 border-teal-200' },
+              { step: '2', label: '上下文抓取', desc: '聚焦微信窗口，截图并用视觉模型 OCR 读取聊天内容', color: 'bg-blue-50 border-blue-200' },
+              { step: '3', label: '意图分类', desc: '分析消息意图（投诉/报价/下单/进度/多媒体），评估风险等级', color: 'bg-amber-50 border-amber-200' },
+              { step: '4', label: '路由决策', desc: '低风险 → AI 自动回复；高风险 → 转人工并通知', color: 'bg-purple-50 border-purple-200' },
+              { step: '5', label: '执行回复', desc: '通过桌面自动化定位聊天窗口、输入回复内容并发送', color: 'bg-emerald-50 border-emerald-200' },
+              { step: '6', label: '状态更新', desc: '更新监控 hash、记录回复日志、创建任务通知', color: 'bg-pink-50 border-pink-200' },
+            ].map(item => (
+              <div key={item.step} className={`flex items-center gap-4 border rounded-xl p-3.5 ${item.color}`}>
+                <div className="w-8 h-8 rounded-full bg-white border flex items-center justify-center text-sm font-bold text-gray-600 flex-shrink-0">{item.step}</div>
+                <div>
+                  <div className="font-medium text-gray-800 text-sm">{item.label}</div>
+                  <div className="text-[11px] text-gray-500">{item.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // For builtin SuperAgent, show its decision flow even without workflow nodes

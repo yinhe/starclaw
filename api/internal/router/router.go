@@ -622,7 +622,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Generated images (public, secured by UUID filename)
 		apiV1.GET("/images/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
-			filePath := "/app/images/" + filename
+			filePath := filepath.Join(tool.ImagesDir(), filename)
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				c.JSON(404, gin.H{"error": "image not found"})
 				return

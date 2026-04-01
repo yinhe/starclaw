@@ -252,10 +252,31 @@ func Load() (*Config, error) {
 	// Spore integration: SPORE_DATA_DIR is the shared data directory that
 	// persists across version upgrades. When set, override storage.data_dir
 	// and sqlite_path so all data goes to the shared location.
-	if sporeDataDir := os.Getenv("SPORE_DATA_DIR"); sporeDataDir != "" {
-		cfg.Storage.DataDir = sporeDataDir
-		if cfg.Database.Driver == "sqlite" {
-			cfg.Database.SQLitePath = filepath.Join(sporeDataDir, "claw.db")
+	sporeDataDir := os.Getenv("SPORE_DATA_DIR")
+
+	// Auto-detect: if exe is inside a Spore install dir (.spore/installed/<name>/v<ver>/),
+	// derive shared data dir even without the env var (handles standalone restart).
+	if sporeDataDir == "" {
+		if ed := ExeDir(); ed != "" {
+			// Pattern: .../.spore/installed/<name>/v<version>
+			parent := filepath.Dir(ed)           // .../.spore/installed/<name>
+			grandparent := filepath.Dir(parent)  // .../.spore/installed
+			base := filepath.Base(ed)            // v<version>
+			gpBase := filepath.Base(grandparent) // installed
+			if gpBase == "installed" && len(base) > 1 && base[0] == 'v' && base[1] >= '0' && base[1] <= '9' {
+				sporeDataDir = filepath.Join(parent, "data")
+			}
+		}
+	}
+
+	if sporeDataDir != "" {
+		// Respect explicit config override: if user set storage.data_dir to something
+		// other than the default "/app", honor their choice over auto-detected Spore path.
+		if cfg.Storage.DataDir == "/app" || cfg.Storage.DataDir == "" {
+			cfg.Storage.DataDir = sporeDataDir
+		}
+		if cfg.Database.Driver == "sqlite" && cfg.Database.SQLitePath == "./data/claw.db" {
+			cfg.Database.SQLitePath = filepath.Join(cfg.Storage.DataDir, "claw.db")
 		}
 	}
 

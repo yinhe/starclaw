@@ -274,7 +274,7 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 	systemPrompt := agent.SystemPrompt + taskContext
 	userMessage := buildTaskUserMessage(task)
 	wechatObservation := ""
-	if shouldPreObserveWeChatTask(task) {
+	if w.shouldPreObserveWeChatTask(task) {
 		if observed, err := w.collectWeChatObservation(ctx, p, modelCfg.Provider, modelCfg.ModelName); err == nil && strings.TrimSpace(observed) != "" {
 			wechatObservation = observed
 			w.db.Model(task).Updates(map[string]interface{}{
@@ -381,9 +381,15 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 	log.Printf("[TaskWorker] Task %s completed: %d chars", task.ID, len(result.Content))
 }
 
-func shouldPreObserveWeChatTask(task *model.Task) bool {
+func (w *TaskWorker) shouldPreObserveWeChatTask(task *model.Task) bool {
 	text := task.Title + "\n" + task.Description + "\n" + task.Goal
-	return strings.Contains(text, "微信") || strings.Contains(text, "mcp_host_screen_inspect") || strings.Contains(text, "mcp_host_screen_capture")
+	if !strings.Contains(text, "微信") && !strings.Contains(text, "mcp_host_screen_inspect") && !strings.Contains(text, "mcp_host_screen_capture") {
+		return false
+	}
+	// Only pre-observe if user has an enabled WeChat watch — prevents unwanted window activation
+	var count int64
+	w.db.Model(&model.WeChatWatch{}).Where("user_id = ? AND enabled = ?", task.UserID, true).Count(&count)
+	return count > 0
 }
 
 func (w *TaskWorker) collectWeChatObservation(ctx context.Context, p provider.ModelProvider, providerName, currentModel string) (string, error) {
@@ -391,12 +397,9 @@ func (w *TaskWorker) collectWeChatObservation(ctx context.Context, p provider.Mo
 		return "", fmt.Errorf("tool registry unavailable")
 	}
 	var sections []string
-	if _, ok := w.toolRegistry.Get("mcp_host_open_app"); ok {
-		openArgs := `{"target":"微信"}`
-		if out, err := w.toolRegistry.Execute(ctx, "mcp_host_open_app", openArgs); err == nil && strings.TrimSpace(out) != "" {
-			sections = append(sections, "open_app:\n"+out)
-		}
-	}
+	// NOTE: Do NOT call mcp_host_open_app("微信") here — it forces the
+	// WeChat window to foreground, causing unwanted popups every poll cycle.
+	// The task AI can decide to open WeChat on its own if needed.
 	if _, ok := w.toolRegistry.Get("mcp_host_screen_capture"); !ok {
 		return "", fmt.Errorf("mcp_host_screen_capture not available")
 	}
