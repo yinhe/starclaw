@@ -84,6 +84,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/tmp/gopath"
 ENV CHROME_BIN=/usr/bin/chromium-browser
 
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 # These layers change on every code update (fast, no package installs)

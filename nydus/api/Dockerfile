@@ -8,7 +8,8 @@ COPY . .
 RUN CGO_ENABLED=1 go build -ldflags="-s -w -X main.version=$(date +%Y.%m%d.%H%M)" -o /nydus-server ./cmd/server/
 
 FROM alpine:3.19
-RUN apk add --no-cache git curl openssh-server openssh-client shadow bash && \
+ENV TZ=Asia/Shanghai
+RUN apk add --no-cache git curl openssh-server openssh-client shadow bash tzdata && \
     adduser -D -s /usr/bin/git-shell git && \
     mkdir -p /data/nydus/repos /home/git/.ssh && \
     chown -R git:git /data/nydus /home/git/.ssh && \

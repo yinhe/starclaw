@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=$(date +%Y.%m%d.
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /build/overlord-api .
 

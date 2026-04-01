@@ -9,7 +9,8 @@ COPY . .
 RUN CGO_ENABLED=1 go build -o forge-api ./cmd/server/
 
 FROM ${REGISTRY}/library/alpine:3.21
-RUN apk add --no-cache ca-certificates sqlite-libs
+RUN apk add --no-cache ca-certificates sqlite-libs tzdata
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /app/forge-api .
 EXPOSE 8099

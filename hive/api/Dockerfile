@@ -23,6 +23,7 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /build/hive-controller ./cmd/main
 
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata docker-cli util-linux
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /build/hive-controller .
 

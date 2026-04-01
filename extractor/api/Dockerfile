@@ -11,6 +11,7 @@ RUN CGO_ENABLED=0 go build -o extractor-api ./cmd/server
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 COPY --from=builder /app/extractor-api /usr/local/bin/extractor-api
 
 EXPOSE 8097

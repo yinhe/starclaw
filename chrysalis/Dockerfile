@@ -9,6 +9,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o chrysalis-server ./cmd/server
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /build/chrysalis-server .
 

@@ -7,7 +7,8 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o pheromone-api ./cmd/server
 
 FROM ${REGISTRY}/library/alpine:3.21
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /app/pheromone-api .
 EXPOSE 8100

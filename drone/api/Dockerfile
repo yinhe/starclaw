@@ -12,7 +12,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /drone-api ./cmd/server
 
 FROM ${REGISTRY}/alpine:latest
-RUN apk --no-cache add ca-certificates python3 py3-pip py3-requests py3-yaml
+RUN apk --no-cache add ca-certificates tzdata python3 py3-pip py3-requests py3-yaml
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 COPY --from=builder /drone-api .
