@@ -23,26 +23,6 @@ func HasEmbeddedAssets() bool {
 	return len(entries) > 0
 }
 
-// resolveFS returns the filesystem to serve web assets from.
-// Priority: external dist/ folder > embedded dist/ in binary.
-// This allows frontend hot-updates without recompiling the Go binary.
-func resolveFS() http.FileSystem {
-	// Check for external dist/ folder next to the binary
-	for _, dir := range []string{"dist", "web/dist", "../web/dist", "web"} {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			log.Printf("[web] Using external frontend: %s", dir)
-			return http.Dir(dir)
-		}
-	}
-	// Fallback to embedded
-	if HasEmbeddedAssets() {
-		log.Printf("[web] Using embedded frontend")
-		subFS, _ := fs.Sub(assets, "dist")
-		return http.FS(subFS)
-	}
-	return nil
-}
-
 // RegisterRoutes adds SPA static file serving to the gin engine.
 // Priority: external dist/ folder > embedded dist/ in binary.
 // SPA fallback: non-file paths return index.html for client-side routing.
