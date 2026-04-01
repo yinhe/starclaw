@@ -1078,9 +1078,45 @@ func performSporeUpdate(targetVersion string) error {
 
 	ulogSuccess("✅ 二进制已替换: %s，正在重启...", currentBin)
 
-	// Give the HTTP response time to flush, then exit.
-	// Spore runtime's restart loop (or systemd/launchd) will restart with new binary.
+	// Give the HTTP response time to flush, then restart.
 	time.Sleep(1 * time.Second)
+
+	// If supervised by Spore (SPORE_SUPERVISED=1), just exit — supervisor restarts automatically.
+	if os.Getenv("SPORE_SUPERVISED") == "1" {
+		ulogInfo("Spore 监控模式，退出后自动重启...")
+		os.Exit(0)
+		return nil
+	}
+
+	// Standalone: spawn a detached helper that waits for this process to exit
+	// (releasing the port), then starts the new binary.
+	cwd, _ := os.Getwd()
+	pid := os.Getpid()
+	argsStr := strings.Join(os.Args[1:], " ")
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// PowerShell: wait for old PID to exit, then start new binary
+		script := fmt.Sprintf(
+			`Start-Sleep -Seconds 2; `+
+				`try { Wait-Process -Id %d -Timeout 10 -ErrorAction SilentlyContinue } catch {}; `+
+				`Start-Process -FilePath '%s' -ArgumentList '%s' -WorkingDirectory '%s'`,
+			pid, currentBin, argsStr, cwd)
+		cmd = exec.Command("powershell", "-WindowStyle", "Hidden", "-Command", script)
+	} else {
+		// Unix: wait for old PID to exit, then start new binary
+		script := fmt.Sprintf(
+			`sleep 2; while kill -0 %d 2>/dev/null; do sleep 1; done; cd '%s' && '%s' %s &`,
+			pid, cwd, currentBin, argsStr)
+		cmd = exec.Command("sh", "-c", script)
+	}
+	cmd.SysProcAttr = detachedSysProcAttr()
+	if err := cmd.Start(); err != nil {
+		ulogError("重启失败: %v（请手动启动）", err)
+	} else {
+		ulogInfo("延迟重启已调度 (等待 PID %d 退出后启动新进程)...", pid)
+		cmd.Process.Release()
+	}
 	os.Exit(0)
 	return nil // unreachable
 }

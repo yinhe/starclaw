@@ -139,16 +139,33 @@ export default function MarketplaceDetailPage() {
     setPayModal({ open: true, pricing, polling: false, orderNo: '' })
   }
 
+  const [payUrl, setPayUrl] = useState('')
+  const [qrCodeUrl, setQrCodeUrl] = useState('')
+
   const startPayment = async (method: 'alipay' | 'wechatpay') => {
     if (!item || !payModal.pricing) return
+    // For Alipay: open blank window synchronously to avoid popup blocker
+    // For WeChat: no window needed, will show QR code in modal
+    const payWindow = method === 'alipay' ? window.open('about:blank', '_blank') : null
     setInstalling(true)
+    setQrCodeUrl('')
     try {
       const res = await queenMarketplaceAPI.purchase(item.id, method)
       const { pay_url, code_url, order_no } = res.data
-      const payUrl = pay_url || code_url
-      if (!payUrl) { showToast('未获取到支付链接', 'error'); setInstalling(false); setPayModal(p => ({ ...p, open: false })); return }
 
-      window.open(payUrl, '_blank')
+      if (method === 'wechatpay') {
+        // WeChat Native Pay: code_url is a QR code link, display as image
+        const wxUrl = code_url || pay_url
+        if (!wxUrl) { showToast('未获取到微信支付二维码', 'error'); setInstalling(false); setPayModal(p => ({ ...p, open: false })); return }
+        setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(wxUrl)}`)
+        setPayUrl(wxUrl)
+      } else {
+        // Alipay: open pay_url in new window
+        const url = pay_url || code_url
+        if (!url) { payWindow?.close(); showToast('未获取到支付链接', 'error'); setInstalling(false); setPayModal(p => ({ ...p, open: false })); return }
+        setPayUrl(url)
+        if (payWindow && !payWindow.closed) { payWindow.location.href = url } else { window.open(url, '_blank') }
+      }
       setPayModal(p => ({ ...p, polling: true, orderNo: order_no }))
 
       const pollInterval = setInterval(async () => {
@@ -276,9 +293,20 @@ export default function MarketplaceDetailPage() {
                 </div>
                 {payModal.polling ? (
                   <div className="text-center py-4">
-                    <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto mb-3" />
-                    <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">等待支付完成...</p>
-                    <p className="text-xs text-gray-400 mt-1">请在新窗口中完成支付，支付后自动安装</p>
+                    {qrCodeUrl ? (
+                      <>
+                        <img src={qrCodeUrl} alt="微信支付二维码" className="w-60 h-60 mx-auto rounded-lg border border-gray-200 dark:border-gray-600 mb-3" />
+                        <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">请用微信扫码支付</p>
+                        <p className="text-xs text-gray-400 mt-1">扫码完成后将自动安装</p>
+                      </>
+                    ) : (
+                      <>
+                        <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto mb-3" />
+                        <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">等待支付完成...</p>
+                        <p className="text-xs text-gray-400 mt-1">请在新窗口中完成支付，支付后自动安装</p>
+                        {payUrl && <a href={payUrl} target="_blank" rel="noreferrer" className="inline-block mt-3 text-sm text-amber-600 hover:text-amber-700 underline">窗口没弹出？点击这里打开支付页面 →</a>}
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -367,7 +395,7 @@ function SkillTab({ builtinTools, passiveSkills }: { builtinTools: string[]; pas
       })}
       {passiveSkills.length > 0 && (
         <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-6">
-          <div className="flex items-center gap-2 mb-1"><Sparkles className="w-4 h-4 text-blue-500" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">被动技能</h3><span className="text-[10px] text-gray-400 ml-1">用户提问时触发</span></div>
+          <div className="flex items-center gap-2 mb-1"><Sparkles className="w-4 h-4 text-blue-500" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">技能</h3><span className="text-[10px] text-gray-400 ml-1">用户提问时触发</span></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
             {passiveSkills.map(s => {
               const spec: SkillSpec = parseJSON(s.spec, { trigger: 'passive' })
@@ -392,7 +420,7 @@ function InstinctTab({ proactiveSkills }: { proactiveSkills: BundleSkill[] }) {
   if (!proactiveSkills.length) return <EmptyState icon={Zap} text="暂无本能" desc="本能是智能体自动执行的能力，不需要用户触发" />
   return (
     <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-6">
-      <div className="flex items-center gap-2 mb-1"><Zap className="w-4 h-4 text-amber-500" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">主动技能</h3><span className="text-[10px] text-gray-400 ml-1">定时自动执行</span></div>
+      <div className="flex items-center gap-2 mb-1"><Zap className="w-4 h-4 text-amber-500" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">本能</h3><span className="text-[10px] text-gray-400 ml-1">定时自动执行</span></div>
       <div className="space-y-2 mt-3">
         {proactiveSkills.map(s => {
           const spec: SkillSpec = parseJSON(s.spec, { trigger: 'proactive' })
