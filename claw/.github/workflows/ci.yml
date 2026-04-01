@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Build web frontend (for go:embed)
         run: cd web && npm ci --legacy-peer-deps && npm run build && cp -r dist ../api/internal/web/dist
       - uses: actions/setup-go@v5
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
       - run: cd web && npm ci --legacy-peer-deps
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Build web frontend (for go:embed)
         run: cd web && npm ci --legacy-peer-deps && npm run build && cp -r dist ../api/internal/web/dist
       - uses: actions/setup-go@v5
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Build web frontend (for go:embed)
         run: cd web && npm ci --legacy-peer-deps && npm run build && cp -r dist ../api/internal/web/dist
       - uses: actions/setup-go@v5
@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
       - run: cd web && npm ci --legacy-peer-deps
