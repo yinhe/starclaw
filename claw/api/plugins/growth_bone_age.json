@@ -1,0 +1,19 @@
+{
+  "name": "growth_bone_age",
+  "description": "Compare bone age vs chronological age. Assess skeletal maturity, growth potential, predict adult height (Bayley-Pinneau method). Detects bone age delay/advance.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "bone_age_compare" },
+      "gender": { "type": "string", "description": "male or female" },
+      "bone_age": { "type": "number", "description": "Bone age in years" },
+      "chrono_age": { "type": "number", "description": "Chronological age in years" },
+      "height": { "type": "number", "description": "Current height in cm (optional, for adult height prediction)" }
+    },
+    "required": ["action", "bone_age", "chrono_age"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

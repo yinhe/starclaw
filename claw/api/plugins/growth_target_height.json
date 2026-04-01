@@ -1,0 +1,18 @@
+{
+  "name": "growth_target_height",
+  "description": "Calculate genetic target height (遗传靶身高) from parents' heights. Formula: Male=(F+M+13)/2, Female=(F+M-13)/2. Returns target with ±8cm range.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "target_height" },
+      "gender": { "type": "string", "description": "male or female" },
+      "father_height": { "type": "number", "description": "Father height in cm" },
+      "mother_height": { "type": "number", "description": "Mother height in cm" }
+    },
+    "required": ["action", "gender", "father_height", "mother_height"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

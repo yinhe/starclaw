@@ -1,0 +1,36 @@
+{
+  "name": "growth_patient",
+  "description": "Patient record management — create, get, list, update patient profiles, and add growth data records. Auto-computes Z-scores and growth velocity on record insertion.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "patient_record" },
+      "operation": { "type": "string", "description": "create / get / list / update / add_record" },
+      "patient_id": { "type": "string", "description": "Patient ID (for get/update/add_record)" },
+      "name": { "type": "string", "description": "Patient name (create)" },
+      "gender": { "type": "string", "description": "male or female (create)" },
+      "birth_date": { "type": "string", "description": "YYYY-MM-DD (create)" },
+      "father_height": { "type": "number", "description": "Father height cm (create)" },
+      "mother_height": { "type": "number", "description": "Mother height cm (create)" },
+      "guardian_name": { "type": "string" },
+      "guardian_phone": { "type": "string" },
+      "height": { "type": "number", "description": "Height cm (add_record)" },
+      "weight": { "type": "number", "description": "Weight kg (add_record)" },
+      "bone_age": { "type": "number", "description": "Bone age years (add_record)" },
+      "tanner_stage": { "type": "string", "description": "Tanner stage (add_record)" },
+      "sleep_hours": { "type": "number" },
+      "sleep_time": { "type": "string", "description": "HH:MM" },
+      "exercise_minutes": { "type": "number" },
+      "exercise_weekly": { "type": "number" },
+      "exercise_type": { "type": "string" },
+      "diet_note": { "type": "string" },
+      "diagnosis": { "type": "string", "description": "(update)" },
+      "status": { "type": "string", "description": "active/paused/discharged (update)" }
+    },
+    "required": ["action", "operation"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

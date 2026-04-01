@@ -1,0 +1,19 @@
+{
+  "name": "growth_bmi_assess",
+  "description": "Assess BMI for a child — calculate BMI, Z-score, percentile, category (underweight/normal/overweight/obese), and ideal weight range.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "bmi_assess" },
+      "gender": { "type": "string", "description": "male or female" },
+      "age_months": { "type": "number", "description": "Age in months" },
+      "height": { "type": "number", "description": "Height in cm" },
+      "weight": { "type": "number", "description": "Weight in kg" }
+    },
+    "required": ["action", "height", "weight"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

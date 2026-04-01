@@ -83,6 +83,12 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.ServiceToken{},
 		&model.SwarmUnit{},
 		&model.StardustTransaction{},
+		&model.GCPatient{},
+		&model.GCFollowupPlan{},
+		&model.GCGrowthRecord{},
+		&model.GCAlert{},
+		&model.GCEducation{},
+		&model.GCAuditLog{},
 	); err != nil {
 		return err
 	}
