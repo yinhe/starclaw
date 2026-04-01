@@ -58,6 +58,9 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	// Seed Cicada 蝉·电话机器人 marketplace template
 	seedCicadaMarketplaceTemplate(db, ownerID)
 
+	// Seed 生长发育随访助手 marketplace template
+	seedGrowthClinicMarketplaceTemplate(db, ownerID)
+
 	// Clean up garbled and untranslated marketplace templates
 	cleanupMarketplaceTemplates(db)
 
