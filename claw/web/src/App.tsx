@@ -47,6 +47,7 @@ import HiveMindPage from './pages/HiveMindPage'
 import GrowthPage from './pages/GrowthPage'
 import ArenaPage from './pages/ArenaPage'
 import RecoveryPage from './pages/RecoveryPage'
+import GlandPage from './pages/GlandPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -133,6 +134,7 @@ export default function App() {
         <Route path="squads" element={<SquadPage />} />
         <Route path="hivemind" element={<HiveMindPage />} />
         <Route path="memories" element={<MemoryPage />} />
+        <Route path="glands" element={<GlandPage />} />
         <Route path="observe" element={<ObservePage />} />
         <Route path="webhooks" element={<WebhooksPage />} />
         <Route path="developer" element={<DeveloperPage />} />

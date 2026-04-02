@@ -19,11 +19,11 @@ import (
 type GoalStatus string
 
 const (
-	GoalPending    GoalStatus = "pending"
-	GoalActive     GoalStatus = "active"
-	GoalCompleted  GoalStatus = "completed"
-	GoalFailed     GoalStatus = "failed"
-	GoalCancelled  GoalStatus = "cancelled"
+	GoalPending   GoalStatus = "pending"
+	GoalActive    GoalStatus = "active"
+	GoalCompleted GoalStatus = "completed"
+	GoalFailed    GoalStatus = "failed"
+	GoalCancelled GoalStatus = "cancelled"
 )
 
 // Goal represents a high-level objective that an agent pursues autonomously.
@@ -219,8 +219,8 @@ func (e *ProactiveEngine) triggerLoop() {
 	case <-time.After(30 * time.Second):
 	}
 
-	log.Println("[Proactive] Trigger evaluation loop started (every 60s)")
-	ticker := time.NewTicker(60 * time.Second)
+	log.Println("[Proactive] Trigger evaluation loop started (every 5m)")
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
@@ -397,23 +397,23 @@ func safeDiv64(a, b float64) float64 {
 type CollaborationRole string
 
 const (
-	RoleLeader    CollaborationRole = "leader"
-	RoleWorker    CollaborationRole = "worker"
-	RoleReviewer  CollaborationRole = "reviewer"
-	RoleObserver  CollaborationRole = "observer"
+	RoleLeader   CollaborationRole = "leader"
+	RoleWorker   CollaborationRole = "worker"
+	RoleReviewer CollaborationRole = "reviewer"
+	RoleObserver CollaborationRole = "observer"
 )
 
 // Collaboration represents a multi-agent collaboration session.
 type Collaboration struct {
-	ID          string            `json:"id" gorm:"type:varchar(36);primaryKey"`
-	GoalID      string            `json:"goal_id" gorm:"type:varchar(36);index"`
-	Title       string            `json:"title" gorm:"type:varchar(500);not null"`
-	Status      string            `json:"status" gorm:"type:varchar(20);default:forming"` // forming, active, consensus, completed, failed
-	Protocol    string            `json:"protocol" gorm:"type:varchar(50);default:consensus"` // consensus, delegation, auction, voting
-	CreatorID   string            `json:"creator_id" gorm:"type:varchar(36);index;not null"`
-	MaxAgents   int               `json:"max_agents" gorm:"default:5"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ID        string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	GoalID    string    `json:"goal_id" gorm:"type:varchar(36);index"`
+	Title     string    `json:"title" gorm:"type:varchar(500);not null"`
+	Status    string    `json:"status" gorm:"type:varchar(20);default:forming"`     // forming, active, consensus, completed, failed
+	Protocol  string    `json:"protocol" gorm:"type:varchar(50);default:consensus"` // consensus, delegation, auction, voting
+	CreatorID string    `json:"creator_id" gorm:"type:varchar(36);index;not null"`
+	MaxAgents int       `json:"max_agents" gorm:"default:5"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (c *Collaboration) BeforeCreate(tx *gorm.DB) error {

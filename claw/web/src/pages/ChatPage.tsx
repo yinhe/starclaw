@@ -1631,6 +1631,14 @@ export default function ChatPage() {
                         <>
                           <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                              a({ href, children, ...props }) {
+                                const isFile = href && (href.startsWith('/v1/') || href.startsWith('/v1/docx/') || href.startsWith('/v1/uploads/') || href.startsWith('/v1/images/'))
+                                return <a href={href} {...(isFile ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className={isFile ? 'text-primary-600 dark:text-primary-400 underline' : undefined} {...props}>{children}</a>
+                              },
+                              img({ src, alt, ...props }) {
+                                const isClaw = src && src.startsWith('/v1/')
+                                return <img src={src} alt={alt || ''} {...props} className="max-w-full rounded-lg cursor-pointer" loading="lazy" onClick={isClaw ? () => window.open(src!, '_blank') : undefined} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                              },
                               code({ className, children, ...props }) {
                                 const match = /language-(\w+)/.exec(className || '')
                                 const text = String(children).replace(/\n$/, '')
@@ -1770,7 +1778,15 @@ export default function ChatPage() {
                 {streamingContent && (
                   <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
                     <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                        a({ href, children, ...props }) {
+                          const isFile = href && href.startsWith('/v1/')
+                          return <a href={href} {...(isFile ? { target: '_blank', rel: 'noopener noreferrer' } : {})} {...props}>{children}</a>
+                        },
+                        img({ src, alt, ...props }) {
+                          return <img src={src} alt={alt || ''} {...props} className="max-w-full rounded-lg" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                        }
+                      }}>{streamingContent}</ReactMarkdown>
                     </div>
                   </div>
                 )}

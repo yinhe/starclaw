@@ -304,7 +304,16 @@ export default function CodingAgentPage() {
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
               }`}>
                 {msg.role === 'assistant' ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock as any }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                    a({ href, children, ...props }: any) {
+                      const isFile = href && href.startsWith('/v1/')
+                      return <a href={href} {...(isFile ? { target: '_blank', rel: 'noopener noreferrer' } : {})} {...props}>{children}</a>
+                    },
+                    img({ src, alt, ...props }: any) {
+                      return <img src={src} alt={alt || ''} {...props} className="max-w-full rounded-lg" loading="lazy" onError={(e: any) => { e.target.style.display = 'none' }} />
+                    },
+                    code: CodeBlock as any
+                  }}>
                     {msg.content}
                   </ReactMarkdown>
                 ) : (
@@ -334,7 +343,16 @@ export default function CodingAgentPage() {
           {streamingContent && (
             <div className="flex justify-start">
               <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-gray-100 dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-800 dark:text-gray-200">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock as any }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                  a({ href, children, ...props }: any) {
+                    const isFile = href && href.startsWith('/v1/')
+                    return <a href={href} {...(isFile ? { target: '_blank', rel: 'noopener noreferrer' } : {})} {...props}>{children}</a>
+                  },
+                  img({ src, alt, ...props }: any) {
+                    return <img src={src} alt={alt || ''} {...props} className="max-w-full rounded-lg" loading="lazy" onError={(e: any) => { e.target.style.display = 'none' }} />
+                  },
+                  code: CodeBlock as any
+                }}>
                   {streamingContent}
                 </ReactMarkdown>
               </div>

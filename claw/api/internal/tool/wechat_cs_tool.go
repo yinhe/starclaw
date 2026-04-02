@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -209,7 +208,7 @@ func (t *WeChatCSTool) startAutoChat(ctx context.Context, a wechatCSArgs) (strin
 		return "", fmt.Errorf("write script failed: %w", err)
 	}
 
-	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptFile)
+	cmd := hiddenCmd("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptFile)
 	cmd.Dir = os.TempDir()
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("start auto_chat process failed: %w", err)

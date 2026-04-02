@@ -23,7 +23,7 @@ const (
 	SpanKindLLM      SpanKind = "llm"      // LLM provider call
 	SpanKindTool     SpanKind = "tool"     // tool execution
 	SpanKindRAG      SpanKind = "rag"      // RAG retrieval
-	SpanKindWorkflow SpanKind = "workflow"  // workflow step
+	SpanKindWorkflow SpanKind = "workflow" // workflow step
 	SpanKindAgent    SpanKind = "agent"    // agent reasoning step
 	SpanKindInternal SpanKind = "internal" // internal processing
 )
@@ -43,7 +43,7 @@ type TraceSpan struct {
 	EndTime       time.Time         `json:"end_time"`
 	DurationMs    int64             `json:"duration_ms" gorm:"index"`
 	Attributes    string            `json:"attributes" gorm:"type:json"` // JSON key-value pairs
-	Events        string            `json:"events" gorm:"type:json"`    // JSON array of timed events
+	Events        string            `json:"events" gorm:"type:json"`     // JSON array of timed events
 	tags          map[string]string // in-memory only, serialized to Attributes
 }
 
@@ -65,7 +65,7 @@ type AlertRule struct {
 	ID          string        `json:"id" gorm:"type:varchar(36);primaryKey"`
 	Name        string        `json:"name" gorm:"type:varchar(200);not null"`
 	Description string        `json:"description" gorm:"type:text"`
-	Metric      string        `json:"metric" gorm:"type:varchar(100);not null"` // e.g. error_rate, p99_latency, agent_failures
+	Metric      string        `json:"metric" gorm:"type:varchar(100);not null"`  // e.g. error_rate, p99_latency, agent_failures
 	Operator    string        `json:"operator" gorm:"type:varchar(10);not null"` // gt, lt, gte, lte, eq
 	Threshold   float64       `json:"threshold" gorm:"not null"`
 	WindowSec   int           `json:"window_sec" gorm:"default:300"` // evaluation window in seconds
@@ -81,17 +81,17 @@ type AlertRule struct {
 
 // AlertHistory records when an alert rule fired.
 type AlertHistory struct {
-	ID        string        `json:"id" gorm:"type:varchar(36);primaryKey"`
-	RuleID    string        `json:"rule_id" gorm:"type:varchar(36);index;not null"`
-	RuleName  string        `json:"rule_name" gorm:"type:varchar(200)"`
-	Severity  AlertSeverity `json:"severity" gorm:"type:varchar(20)"`
-	Metric    string        `json:"metric" gorm:"type:varchar(100)"`
-	Value     float64       `json:"value"`
-	Threshold float64       `json:"threshold"`
-	Message   string        `json:"message" gorm:"type:text"`
-	Resolved  bool          `json:"resolved" gorm:"default:false"`
-	ResolvedAt *time.Time   `json:"resolved_at"`
-	CreatedAt time.Time     `json:"created_at" gorm:"index"`
+	ID         string        `json:"id" gorm:"type:varchar(36);primaryKey"`
+	RuleID     string        `json:"rule_id" gorm:"type:varchar(36);index;not null"`
+	RuleName   string        `json:"rule_name" gorm:"type:varchar(200)"`
+	Severity   AlertSeverity `json:"severity" gorm:"type:varchar(20)"`
+	Metric     string        `json:"metric" gorm:"type:varchar(100)"`
+	Value      float64       `json:"value"`
+	Threshold  float64       `json:"threshold"`
+	Message    string        `json:"message" gorm:"type:text"`
+	Resolved   bool          `json:"resolved" gorm:"default:false"`
+	ResolvedAt *time.Time    `json:"resolved_at"`
+	CreatedAt  time.Time     `json:"created_at" gorm:"index"`
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -271,9 +271,9 @@ func (e *Engine) alertLoop() {
 	case <-time.After(20 * time.Second):
 	}
 
-	log.Println("[Observe] Alert evaluation loop started (every 60s)")
+	log.Println("[Observe] Alert evaluation loop started (every 5m)")
 
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
@@ -501,17 +501,17 @@ func (e *Engine) Stats() map[string]interface{} {
 	e.mu.RUnlock()
 
 	return map[string]interface{}{
-		"spans_last_hour":      spansHour,
-		"spans_last_24h":       spansDay,
-		"errors_last_hour":     errorsHour,
-		"errors_last_24h":      errorsDay,
-		"error_rate_hour":      safeDiv(float64(errorsHour), float64(spansHour)),
-		"logs_last_hour":       logsHour,
-		"logs_last_24h":        logsDay,
-		"alerts_last_24h":      alertsDay,
-		"active_alert_rules":   activeRules,
-		"avg_llm_latency_ms":   avgLatency.Avg,
-		"active_spans":         activeSpanCount,
+		"spans_last_hour":    spansHour,
+		"spans_last_24h":     spansDay,
+		"errors_last_hour":   errorsHour,
+		"errors_last_24h":    errorsDay,
+		"error_rate_hour":    safeDiv(float64(errorsHour), float64(spansHour)),
+		"logs_last_hour":     logsHour,
+		"logs_last_24h":      logsDay,
+		"alerts_last_24h":    alertsDay,
+		"active_alert_rules": activeRules,
+		"avg_llm_latency_ms": avgLatency.Avg,
+		"active_spans":       activeSpanCount,
 	}
 }
 

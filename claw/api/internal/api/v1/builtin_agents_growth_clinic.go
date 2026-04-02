@@ -61,6 +61,16 @@ func seedGrowthClinicMarketplaceTemplate(db *gorm.DB, ownerID string) {
 				{"name": "医生审核闭环", "description": "医生审核异常数据→制定方案→推送患者→更新随访计划"},
 				{"name": "复诊联动", "description": "患者复诊时自动关联既往档案，生成复诊摘要，医生更新后Agent自动适配新规则"},
 			},
+			"glands": []map[string]interface{}{
+				{"key": "clinic_name", "label": "诊所/科室名称", "category": "general", "encrypted": false, "required": true, "help_text": "用于报告抬头和宣教署名", "sort_order": 1},
+				{"key": "doctor_name", "label": "主治医生姓名", "category": "general", "encrypted": false, "required": true, "help_text": "随访报告中显示的负责医生", "sort_order": 2},
+				{"key": "notify_phone", "label": "医生通知手机", "category": "endpoint", "encrypted": false, "required": false, "help_text": "危急预警时短信通知的手机号", "sort_order": 3},
+				{"key": "notify_wechat", "label": "企微/公众号推送", "category": "endpoint", "encrypted": false, "required": false, "help_text": "家长端推送的企业微信或公众号配置", "sort_order": 4},
+				{"key": "alert_zscore_threshold", "label": "Z评分预警阈值", "category": "threshold", "encrypted": false, "required": false, "help_text": "Z评分低于此值触发预警（默认 -2）", "sort_order": 5},
+				{"key": "velocity_alert_threshold", "label": "生长速率预警阈值", "category": "threshold", "encrypted": false, "required": false, "help_text": "年增长速率低于此值(cm/年)触发预警（默认 5）", "sort_order": 6},
+				{"key": "auto_education", "label": "自动宣教推送", "category": "toggle", "encrypted": false, "required": false, "help_text": "是否自动向家长推送健康宣教内容（true/false）", "sort_order": 7},
+				{"key": "lost_followup_days", "label": "失访判定天数", "category": "threshold", "encrypted": false, "required": false, "help_text": "超过此天数未上报数据标记为失访（默认 14）", "sort_order": 8},
+			},
 		},
 	}
 	cfgBytes, _ := json.Marshal(cfg)

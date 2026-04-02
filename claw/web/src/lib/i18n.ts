@@ -25,6 +25,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.skills': '技能',
     'nav.instincts': '本能',
     'nav.workflows': '工作流',
+    'nav.glands': '腺体',
     'nav.tasks': '自主任务',
     'nav.activities': '本能',
     'nav.integrations': '通讯集成',
@@ -42,7 +43,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.billing': '星能',
     'nav.settings': '设置',
     'nav.docs': '文档',
-    'nav.mcp': 'MCP 工具',
+    'nav.mcp': 'MCP 外接',
     'nav.multi_agent': '多 Agent',
     // ── Sidebar groups ──
     'nav.group.agents': '智能体',
@@ -244,6 +245,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.knowledge': 'Knowledge',
     'nav.skills': 'Skills & MCP',
     'nav.workflows': 'Workflows',
+    'nav.glands': 'Glands',
     'nav.tasks': 'Tasks',
     'nav.activities': 'Activities',
     'nav.integrations': 'Integrations',
@@ -261,7 +263,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.billing': 'Star Energy',
     'nav.settings': 'Settings',
     'nav.docs': 'Docs',
-    'nav.mcp': 'MCP Tools',
+    'nav.mcp': 'MCP Services',
     'nav.multi_agent': 'Multi-Agent',
     // ── Sidebar groups ──
     'nav.group.swarm': 'Swarm',

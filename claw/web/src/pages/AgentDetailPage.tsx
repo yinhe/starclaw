@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Bot, ArrowLeft, MessageSquare, Dna, Wrench, Zap, Plug, GitBranch, Brain, Clock, ChevronDown, ChevronUp, Sparkles, ExternalLink, Search, Film, Code, FileText, Settings, Users, Monitor, Headset } from 'lucide-react'
-import { agentAPI, memoryAPI, workflowAPI, mcpAPI, activityAPI } from '../lib/api'
+import { Bot, ArrowLeft, MessageSquare, Dna, Wrench, Zap, Plug, GitBranch, Brain, Clock, ChevronDown, ChevronUp, Sparkles, ExternalLink, Search, Film, Code, FileText, Settings, Users, Monitor, Headset, Droplets, Lock, Gauge, ToggleLeft, Globe } from 'lucide-react'
+import { agentAPI, memoryAPI, workflowAPI, mcpAPI, activityAPI, glandAPI } from '../lib/api'
 
 // ── Types ──
 
@@ -84,7 +84,18 @@ interface Activity {
 
 // ── Constants ──
 
-type HexadTab = 'gene' | 'skill' | 'instinct' | 'mcp' | 'workflow' | 'memory'
+interface Gland {
+  id: string
+  key: string
+  value: string
+  category: string
+  encrypted: boolean
+  required: boolean
+  label: string
+  help_text: string
+}
+
+type HexadTab = 'gene' | 'skill' | 'instinct' | 'mcp' | 'workflow' | 'memory' | 'gland'
 
 const hexadTabs: { key: HexadTab; label: string; icon: typeof Dna; color: string; desc: string }[] = [
   { key: 'gene', label: '基因', icon: Dna, color: 'text-rose-500', desc: '人设与模型' },
@@ -93,6 +104,7 @@ const hexadTabs: { key: HexadTab; label: string; icon: typeof Dna; color: string
   { key: 'mcp', label: '外接服务', icon: Plug, color: 'text-purple-500', desc: '第三方扩展' },
   { key: 'workflow', label: '工作流', icon: GitBranch, color: 'text-emerald-500', desc: '流程编排' },
   { key: 'memory', label: '记忆', icon: Brain, color: 'text-pink-500', desc: '长期记忆' },
+  { key: 'gland', label: '腺体', icon: Droplets, color: 'text-emerald-500', desc: '运行配置' },
 ]
 
 // Skill grouping: tools organized by capability domain
@@ -167,6 +179,7 @@ export default function AgentDetailPage() {
   const [workflow, setWorkflow] = useState<Workflow | null>(null)
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
+  const [glands, setGlands] = useState<Gland[]>([])
 
   useEffect(() => {
     if (!id) return
@@ -199,6 +212,11 @@ export default function AgentDetailPage() {
     if (activeTab === 'mcp') {
       mcpAPI.listServers().then(res => {
         setMcpServers(res.data.servers || [])
+      }).catch(() => {})
+    }
+    if (activeTab === 'gland') {
+      glandAPI.list(id).then(res => {
+        setGlands(res.data.glands || [])
       }).catch(() => {})
     }
     if (activeTab === 'instinct') {
@@ -324,6 +342,7 @@ export default function AgentDetailPage() {
           {activeTab === 'mcp' && <MCPTab mcpTools={mcpTools} mcpServers={mcpServers} />}
           {activeTab === 'workflow' && <WorkflowTab workflow={workflow} agentId={id || ''} navigate={navigate} isBuiltin={agent.is_builtin} builtinTools={builtinTools} />}
           {activeTab === 'memory' && <MemoryTab memories={memories} memoryCount={memoryCount} agentId={id || ''} navigate={navigate} />}
+          {activeTab === 'gland' && <AgentGlandTab glands={glands} agentId={id || ''} navigate={navigate} />}
         </div>
       </div>
     </div>
@@ -840,6 +859,60 @@ function MemoryTab({ memories, memoryCount, agentId, navigate }: { memories: Mem
             <p className="text-xs text-gray-500 line-clamp-2">{m.content}</p>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Tab 7: 腺体 (Gland) ──
+
+const glandCatMeta: Record<string, { label: string; icon: typeof Lock; color: string }> = {
+  credential: { label: '凭证', icon: Lock, color: 'bg-red-100 text-red-700' },
+  threshold:  { label: '阈值', icon: Gauge, color: 'bg-amber-100 text-amber-700' },
+  toggle:     { label: '开关', icon: ToggleLeft, color: 'bg-green-100 text-green-700' },
+  endpoint:   { label: '端点', icon: Globe, color: 'bg-blue-100 text-blue-700' },
+  general:    { label: '通用', icon: Settings, color: 'bg-gray-100 text-gray-700' },
+}
+
+function AgentGlandTab({ glands, agentId, navigate }: { glands: Gland[]; agentId: string; navigate: (path: string) => void }) {
+  if (!glands.length) return (
+    <div className="space-y-4">
+      <EmptyState icon={Droplets} text="暂无腺体配置" desc="此智能体不需要额外运行配置" />
+      <div className="text-center">
+        <button onClick={() => navigate(`/glands?agent_id=${agentId}`)} className="text-xs text-primary-600 hover:text-primary-700">前往腺体页面添加 →</button>
+      </div>
+    </div>
+  )
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Droplets className="w-4 h-4 text-emerald-500" />
+          <span className="text-sm font-semibold text-gray-700">{glands.length} 项配置</span>
+        </div>
+        <button onClick={() => navigate(`/glands`)} className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700">
+          管理全部 <ExternalLink className="w-3 h-3" />
+        </button>
+      </div>
+      <div className="bg-white border rounded-2xl divide-y">
+        {glands.map(g => {
+          const meta = glandCatMeta[g.category] || glandCatMeta.general
+          const CatIcon = meta.icon
+          return (
+            <div key={g.id} className="p-4 flex items-center gap-3">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${meta.color}`}><CatIcon className="w-3 h-3" />{meta.label}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <code className="text-sm font-mono text-gray-800">{g.key}</code>
+                  {g.required && <span className="text-[10px] text-red-500 font-semibold">必填</span>}
+                  {g.encrypted && <Lock className="w-3 h-3 text-red-400" />}
+                </div>
+                {g.label && <div className="text-xs text-gray-400 mt-0.5">{g.label}{g.help_text ? ` — ${g.help_text}` : ''}</div>}
+              </div>
+              <span className="text-sm text-gray-400 font-mono">{g.encrypted ? '••••••••' : (g.value || '—')}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

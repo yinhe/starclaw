@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -179,7 +178,7 @@ func (t *ComicTool) composeComic(ctx context.Context, args comicArgs) (string, e
 	os.WriteFile(concatList, []byte(listContent.String()), 0644)
 
 	mergedPath := filepath.Join(tmpDir, "merged.mp4")
-	concatCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+	concatCmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
 		"-i", concatList, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", mergedPath)
 	if out, err := concatCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("concat failed: %v\n%s", err, string(out))
@@ -193,7 +192,7 @@ func (t *ComicTool) composeComic(ctx context.Context, args comicArgs) (string, e
 			log.Printf("[ComicTool] BGM resolve failed: %v (continuing without)", err)
 		} else {
 			bgmPath := filepath.Join(tmpDir, "final_bgm.mp4")
-			bgmCmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+			bgmCmd := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 				"-i", mergedPath, "-i", musicPath,
 				"-filter_complex", "[1:a]volume=0.15[bgm];[0:a][bgm]amix=inputs=2:duration=first[outa]",
 				"-map", "0:v", "-map", "[outa]",
@@ -211,7 +210,7 @@ func (t *ComicTool) composeComic(ctx context.Context, args comicArgs) (string, e
 	outputFilename := fmt.Sprintf("comic_%s.mp4", uuid.New().String()[:8])
 	outputPath := filepath.Join(outputDir, outputFilename)
 
-	cpCmd := exec.CommandContext(ctx, "cp", finalPath, outputPath)
+	cpCmd := hiddenCmdCtx(ctx, "cp", finalPath, outputPath)
 	if out, err := cpCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("copy failed: %v\n%s", err, string(out))
 	}
@@ -357,10 +356,10 @@ func (t *ComicTool) processAIVideoPanels(ctx context.Context, panels []ComicPane
 		if ttsPath != "" {
 			if err := overlayTTSOnClip(ctx, rawClipPath, ttsPath, allText, finalClipPath, subStyleHint); err != nil {
 				log.Printf("[ComicTool] panel %d overlay failed: %v, using raw", task.panelIdx+1, err)
-				exec.CommandContext(ctx, "cp", rawClipPath, finalClipPath).Run()
+				hiddenCmdCtx(ctx, "cp", rawClipPath, finalClipPath).Run()
 			}
 		} else {
-			exec.CommandContext(ctx, "cp", rawClipPath, finalClipPath).Run()
+			hiddenCmdCtx(ctx, "cp", rawClipPath, finalClipPath).Run()
 		}
 
 		clips = append(clips, finalClipPath)
@@ -408,10 +407,10 @@ func (t *ComicTool) generatePanelTTS(apiKey string, narrations []ComicNarration,
 	os.WriteFile(concatList, []byte(sb.String()), 0644)
 
 	combinedPath := filepath.Join(tmpDir, fmt.Sprintf("tts_combined_p%03d.mp3", panelIdx))
-	cmd := exec.CommandContext(context.Background(), "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+	cmd := hiddenCmdCtx(context.Background(), "ffmpeg", "-y", "-f", "concat", "-safe", "0",
 		"-i", concatList, "-c", "copy", combinedPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		cmd2 := exec.CommandContext(context.Background(), "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+		cmd2 := hiddenCmdCtx(context.Background(), "ffmpeg", "-y", "-f", "concat", "-safe", "0",
 			"-i", concatList, "-c:a", "libmp3lame", "-b:a", "192k", combinedPath)
 		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
 			return "", "", fmt.Errorf("concat TTS failed: %v\n%s\n%s", err2, string(out), string(out2))
@@ -531,7 +530,7 @@ func overlayTTSOnClip(ctx context.Context, videoPath, ttsPath, subtitleText, out
 		}
 		if speedRatio > 1.05 {
 			speedPath := filepath.Join(filepath.Dir(outputPath), fmt.Sprintf("speed_%s.mp3", filepath.Base(outputPath)))
-			spdCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", ttsPath,
+			spdCmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", ttsPath,
 				"-filter:a", fmt.Sprintf("atempo=%.3f", speedRatio), "-vn", speedPath)
 			if _, err := spdCmd.CombinedOutput(); err == nil {
 				finalTTS = speedPath
@@ -581,7 +580,7 @@ func overlayTTSOnClip(ctx context.Context, videoPath, ttsPath, subtitleText, out
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", ffmpegArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg overlay failed: %v\n%s", err, string(out))
 	}
@@ -632,7 +631,7 @@ func buildKenBurnsClip(ctx context.Context, imgPath, outputPath string, outW, ou
 			}
 			if speedRatio > 1.05 {
 				speedPath := filepath.Join(filepath.Dir(outputPath), fmt.Sprintf("speed_%s.mp3", filepath.Base(outputPath)))
-				spdCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", ttsPath,
+				spdCmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", ttsPath,
 					"-filter:a", fmt.Sprintf("atempo=%.3f", speedRatio), "-vn", speedPath)
 				if _, err := spdCmd.CombinedOutput(); err == nil {
 					finalTTS = speedPath
@@ -681,7 +680,7 @@ func buildKenBurnsClip(ctx context.Context, imgPath, outputPath string, outW, ou
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", ffmpegArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg Ken Burns failed: %v\n%s", err, string(out))
 	}

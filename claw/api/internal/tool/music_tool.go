@@ -8,15 +8,13 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/yinhe/starclaw/internal/model"
+	"gorm.io/gorm"
 )
 
 // MusicTool allows agents to generate music/songs via fal.ai models
@@ -81,18 +79,14 @@ func (t *MusicTool) Execute(ctx context.Context, argsJSON string) (string, error
 	}
 }
 
-func (t *MusicTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
-	return GetFalAPIKeyCtx(ctx, t.db, userID)
-}
-
 func (t *MusicTool) generateMusic(ctx context.Context, args musicArgs) (string, error) {
 	userID := ""
 	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
 		userID = uid
 	}
-	apiKey := t.getFalAPIKeyCtx(ctx, userID)
+	apiKey := GetFalAPIKeyCtx(ctx, t.db, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no fal.ai API key found. Please configure a fal provider or use StarAI")
+		return "", fmt.Errorf("no fal.ai API key found. Please use StarAI channel")
 	}
 
 	convID := ""
@@ -184,8 +178,8 @@ func (t *MusicTool) generateMusic(ctx context.Context, args musicArgs) (string, 
 		return "", fmt.Errorf("unsupported model: %s. Use: ace-step, minimax-music-v2, diffrhythm, stable-audio", args.Model)
 	}
 
-	// Submit to fal.ai queue API
-	requestID, err := t.submitToFal(apiKey, endpoint, body)
+	// Submit to fal.ai queue API (routes through StarAI proxy when available)
+	requestID, err := SubmitToFal(apiKey, endpoint, body)
 	if err != nil {
 		return "", fmt.Errorf("failed to submit music generation: %v", err)
 	}
@@ -294,7 +288,7 @@ func (t *MusicTool) probeAudioDuration(localURL string) float64 {
 		return 0
 	}
 
-	cmd := exec.CommandContext(context.Background(), "ffprobe", "-v", "quiet",
+	cmd := hiddenCmdCtx(context.Background(), "ffprobe", "-v", "quiet",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1", filePath)
 	out, err := cmd.Output()
@@ -346,153 +340,62 @@ func (t *MusicTool) listMusic(ctx context.Context) (string, error) {
 	}), nil
 }
 
-// submitToFal submits a request to fal.ai queue API and returns the request_id
-func (t *MusicTool) submitToFal(apiKey, endpoint string, body map[string]interface{}) (string, error) {
-	bodyBytes, _ := json.Marshal(body)
-	url := fmt.Sprintf("https://queue.fal.run/%s", endpoint)
-
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Key "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("fal API error (HTTP %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("failed to parse response: %s", string(respBody))
-	}
-
-	requestID, _ := result["request_id"].(string)
-	if requestID == "" {
-		return "", fmt.Errorf("no request_id in response: %s", string(respBody))
-	}
-	return requestID, nil
-}
-
-// pollAndDownload polls fal.ai queue status and downloads the result
+// pollAndDownload polls fal.ai queue status (via StarAI proxy) and downloads the result
 func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userID, genLogID string) {
-	deadline := time.Now().Add(15 * time.Minute)
-	interval := 5 * time.Second
-
-	for time.Now().Before(deadline) {
-		time.Sleep(interval)
-
-		// Check status
-		statusURL := fmt.Sprintf("https://queue.fal.run/%s/requests/%s/status?logs=1", endpoint, requestID)
-		req, _ := http.NewRequest("GET", statusURL, nil)
-		req.Header.Set("Authorization", "Key "+apiKey)
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Printf("[MusicTool] Poll error for %s: %v", requestID, err)
-			continue
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		var status map[string]interface{}
-		json.Unmarshal(body, &status)
-
-		statusStr, _ := status["status"].(string)
-		log.Printf("[MusicTool] Poll %s: status=%s", requestID, statusStr)
-
-		if statusStr == "COMPLETED" {
-			// Fetch result
-			audioURL, err := t.fetchResult(apiKey, endpoint, requestID)
-			if err != nil {
-				log.Printf("[MusicTool] Failed to fetch result for %s: %v", requestID, err)
-				t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-					"status":    "failed",
-					"error_msg": err.Error(),
-				})
-				UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
-				return
-			}
-
-			// Download audio file locally
-			localURL := t.downloadAudio(audioURL, recordID)
-
-			updates := map[string]interface{}{
-				"status":    "succeeded",
-				"audio_url": audioURL,
-			}
-			if localURL != "" {
-				updates["local_url"] = localURL
-			}
-			t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(updates)
-			UpdateGenLog(t.db, genLogID, "succeeded", localURL, "")
-			log.Printf("[MusicTool] Music %s completed: %s", recordID, localURL)
-			return
-		}
-
-		if statusStr != "IN_QUEUE" && statusStr != "IN_PROGRESS" {
-			// Unknown/error status
-			t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-				"status":    "failed",
-				"error_msg": fmt.Sprintf("unexpected status: %s", statusStr),
-			})
-			UpdateGenLog(t.db, genLogID, "failed", "", fmt.Sprintf("unexpected status: %s", statusStr))
-			return
-		}
+	result, err := PollFalStatus(apiKey, endpoint, requestID, 15*time.Minute)
+	if err != nil {
+		log.Printf("[MusicTool] Poll failed for %s: %v", requestID, err)
+		t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
+			"status":    "failed",
+			"error_msg": err.Error(),
+		})
+		UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
+		return
 	}
 
-	// Timeout
-	t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
-		"status":    "failed",
-		"error_msg": "generation timed out (15 min)",
-	})
-	UpdateGenLog(t.db, genLogID, "failed", "", "generation timed out (15 min)")
+	// Extract audio URL from result
+	audioURL := extractAudioURL(result)
+	if audioURL == "" {
+		errMsg := "no audio URL in result"
+		t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(map[string]interface{}{
+			"status":    "failed",
+			"error_msg": errMsg,
+		})
+		UpdateGenLog(t.db, genLogID, "failed", "", errMsg)
+		return
+	}
+
+	// Download audio file locally
+	localURL := t.downloadAudio(audioURL, recordID)
+
+	updates := map[string]interface{}{
+		"status":    "succeeded",
+		"audio_url": audioURL,
+	}
+	if localURL != "" {
+		updates["local_url"] = localURL
+	}
+	t.db.Model(&model.MusicRecord{}).Where("id = ?", recordID).Updates(updates)
+	UpdateGenLog(t.db, genLogID, "succeeded", localURL, "")
+	log.Printf("[MusicTool] Music %s completed: %s", recordID, localURL)
 }
 
-// fetchResult gets the completed result from fal.ai
-func (t *MusicTool) fetchResult(apiKey, endpoint, requestID string) (string, error) {
-	url := fmt.Sprintf("https://queue.fal.run/%s/requests/%s", endpoint, requestID)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Key "+apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("fal API error (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	var result map[string]interface{}
-	json.Unmarshal(body, &result)
-
-	// Different models return audio in different fields
-	// ace-step: result.audio.url
-	// minimax-music-v2: result.audio.url
-	// diffrhythm: result.audio.url
-	// stable-audio: result.audio_file.url
+// extractAudioURL extracts audio URL from fal.ai result map.
+// Different models return audio in different fields.
+func extractAudioURL(result map[string]interface{}) string {
+	// ace-step / minimax-music-v2 / diffrhythm: result.audio.url
 	if audio, ok := result["audio"].(map[string]interface{}); ok {
-		if url, ok := audio["url"].(string); ok && url != "" {
-			return url, nil
+		if u, ok := audio["url"].(string); ok && u != "" {
+			return u
 		}
 	}
+	// stable-audio: result.audio_file.url
 	if audioFile, ok := result["audio_file"].(map[string]interface{}); ok {
-		if url, ok := audioFile["url"].(string); ok && url != "" {
-			return url, nil
+		if u, ok := audioFile["url"].(string); ok && u != "" {
+			return u
 		}
 	}
-
-	return "", fmt.Errorf("no audio URL in result: %s", string(body))
+	return ""
 }
 
 // downloadAudio downloads the audio file to local storage and returns the local serve URL

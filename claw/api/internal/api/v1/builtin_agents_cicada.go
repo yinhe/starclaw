@@ -71,6 +71,18 @@ func seedCicadaMarketplaceTemplate(db *gorm.DB, ownerID string) {
 				{"name": "标准外呼工作流", "description": "导入号码 → 去重+合规检查 → 创建外呼任务 → 自动拨号 → 语音对话 → 意向分类 → 保存录音 → 更新CRM → A/B类客户通知业务员 → 日报"},
 				{"name": "客户跟进工作流", "description": "检查跟进队列 → 调取历史通话 → 生成个性化话术 → 拨号 → 对话 → 更新状态"},
 			},
+			"glands": []map[string]interface{}{
+				{"key": "cloopen_account_sid", "label": "容联云 Account SID", "category": "credential", "encrypted": true, "required": true, "help_text": "容联云通讯账号 SID", "sort_order": 1},
+				{"key": "cloopen_auth_token", "label": "容联云 Auth Token", "category": "credential", "encrypted": true, "required": true, "help_text": "容联云认证 Token", "sort_order": 2},
+				{"key": "cloopen_app_id", "label": "容联云 App ID", "category": "credential", "encrypted": true, "required": true, "help_text": "容联云应用 ID", "sort_order": 3},
+				{"key": "caller_number", "label": "外呼号码", "category": "endpoint", "encrypted": false, "required": true, "help_text": "对外显示的主叫号码", "sort_order": 4},
+				{"key": "dashscope_api_key", "label": "DashScope API Key", "category": "credential", "encrypted": true, "required": true, "help_text": "通义千问 API Key（用于 ASR/TTS/LLM）", "sort_order": 5},
+				{"key": "bridge_url", "label": "Cicada Bridge 地址", "category": "endpoint", "encrypted": false, "required": false, "help_text": "默认 http://localhost:8099", "sort_order": 6},
+				{"key": "max_concurrent_calls", "label": "最大并发呼叫数", "category": "threshold", "encrypted": false, "required": false, "help_text": "同时进行的通话上限（默认 3）", "sort_order": 7},
+				{"key": "call_rate_limit", "label": "每分钟呼叫频率", "category": "threshold", "encrypted": false, "required": false, "help_text": "每分钟最多发起呼叫数（默认 5）", "sort_order": 8},
+				{"key": "lunch_break", "label": "午休暂停", "category": "toggle", "encrypted": false, "required": false, "help_text": "12:00-13:30 自动暂停外呼（true/false）", "sort_order": 9},
+				{"key": "recording_enabled", "label": "录音开关", "category": "toggle", "encrypted": false, "required": false, "help_text": "是否保存通话录音（true/false）", "sort_order": 10},
+			},
 		},
 	}
 	cfgBytes, _ := json.Marshal(cfg)

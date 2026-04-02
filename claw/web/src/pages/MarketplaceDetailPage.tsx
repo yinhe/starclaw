@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Download, Check, Trash2, Loader2, Bot,
-  Wrench, Zap, GitBranch, Crown, Dna, Plug, Brain,
+  Wrench, Zap, GitBranch, Crown, Dna, Plug, Brain, Droplets,
   ChevronDown, ChevronUp, Clock, Sparkles, Search,
-  Film, Code, FileText, Settings,
+  Film, Code, FileText, Settings, Lock, Gauge, ToggleLeft, Globe,
 } from 'lucide-react'
 import { agentAPI, queenMarketplaceAPI } from '../lib/api'
 
@@ -20,6 +20,7 @@ interface SkillSpec {
 interface BundleSkill { name: string; spec: string }
 interface BundleMCP { name: string; base_url: string; description: string }
 interface BundleWorkflow { name: string; description: string }
+interface BundleGland { key: string; label?: string; category?: string; encrypted?: boolean; required?: boolean; help_text?: string; sort_order?: number }
 interface MarketplaceItem {
   id: string; name: string; description: string; icon: string; tags: string
   config: string; downloads: number; rating: number; version?: string
@@ -28,7 +29,7 @@ interface MarketplaceItem {
 
 // ── Constants ──
 
-type HexadTab = 'gene' | 'skill' | 'instinct' | 'mcp' | 'workflow' | 'memory'
+type HexadTab = 'gene' | 'skill' | 'instinct' | 'mcp' | 'workflow' | 'memory' | 'gland'
 const hexadTabs: { key: HexadTab; label: string; icon: typeof Dna; color: string }[] = [
   { key: 'gene', label: '基因', icon: Dna, color: 'text-rose-500' },
   { key: 'skill', label: '技能', icon: Wrench, color: 'text-blue-500' },
@@ -36,6 +37,7 @@ const hexadTabs: { key: HexadTab; label: string; icon: typeof Dna; color: string
   { key: 'mcp', label: '外接服务', icon: Plug, color: 'text-purple-500' },
   { key: 'workflow', label: '工作流', icon: GitBranch, color: 'text-emerald-500' },
   { key: 'memory', label: '记忆', icon: Brain, color: 'text-pink-500' },
+  { key: 'gland', label: '腺体', icon: Droplets, color: 'text-emerald-500' },
 ]
 
 const toolMeta: Record<string, { label: string; icon: string; desc: string }> = {
@@ -209,6 +211,7 @@ export default function MarketplaceDetailPage() {
   const proactiveSkills = bundleSkills.filter(s => { try { return parseJSON(s.spec, {} as any).trigger === 'proactive' } catch { return false } })
   const mcpServers: BundleMCP[] = bundle.mcp_servers || []
   const workflows: BundleWorkflow[] = bundle.workflows || []
+  const bundleGlands: BundleGland[] = bundle.glands || []
   const builtinTools = tools.filter(t => !t.startsWith('mcp_'))
   const mcpTools = tools.filter(t => t.startsWith('mcp_'))
 
@@ -216,6 +219,7 @@ export default function MarketplaceDetailPage() {
     skill: builtinTools.length + passiveSkills.length,
     instinct: proactiveSkills.length,
     mcp: mcpTools.length + mcpServers.length,
+    gland: bundleGlands.length,
   }
 
   return (
@@ -341,6 +345,7 @@ export default function MarketplaceDetailPage() {
           {activeTab === 'mcp' && <MCPTab mcpTools={mcpTools} mcpServers={mcpServers} />}
           {activeTab === 'workflow' && <WorkflowTab workflows={workflows} />}
           {activeTab === 'memory' && <EmptyState icon={Brain} text="暂无记忆" desc="安装后对话中自动积累记忆" />}
+          {activeTab === 'gland' && <GlandTab glands={bundleGlands} />}
         </div>
       </div>
     </div>
@@ -491,6 +496,78 @@ function WorkflowTab({ workflows }: { workflows: BundleWorkflow[] }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Tab 7: 腺体 (Gland) ──
+const glandCategoryMeta: Record<string, { label: string; icon: typeof Lock; color: string }> = {
+  credential: { label: '凭证', icon: Lock, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  threshold:  { label: '阈值', icon: Gauge, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  toggle:     { label: '开关', icon: ToggleLeft, color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  endpoint:   { label: '端点', icon: Globe, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  general:    { label: '通用', icon: Settings, color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
+}
+function GlandTab({ glands }: { glands: BundleGland[] }) {
+  if (!glands.length) return <EmptyState icon={Droplets} text="暂无腺体配置" desc="此智能体不需要额外运行配置" />
+  const required = glands.filter(g => g.required)
+  const optional = glands.filter(g => !g.required)
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Droplets className="w-4 h-4 text-emerald-500" />
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">运行配置</h3>
+          <span className="text-[10px] text-gray-400 ml-1">安装后需在「腺体」页面填写</span>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">凭证类配置将 AES-256 加密存储在您自己的节点上</p>
+        {required.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs font-semibold text-red-500 mb-2">必填项（{required.length}）</div>
+            <div className="space-y-2">
+              {required.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(g => {
+                const meta = glandCategoryMeta[g.category || 'general'] || glandCategoryMeta.general
+                const CatIcon = meta.icon
+                return (
+                  <div key={g.key} className="flex items-center gap-3 border dark:border-gray-700 rounded-xl p-3 bg-red-50/30 dark:bg-red-900/5">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${meta.color}`}><CatIcon className="w-3 h-3" />{meta.label}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono text-gray-800 dark:text-gray-200">{g.key}</code>
+                        {g.encrypted && <Lock className="w-3 h-3 text-red-400" />}
+                      </div>
+                      {(g.label || g.help_text) && <div className="text-xs text-gray-400 mt-0.5">{g.label}{g.help_text ? ` — ${g.help_text}` : ''}</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        {optional.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold text-gray-400 mb-2">可选项（{optional.length}）</div>
+            <div className="space-y-2">
+              {optional.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(g => {
+                const meta = glandCategoryMeta[g.category || 'general'] || glandCategoryMeta.general
+                const CatIcon = meta.icon
+                return (
+                  <div key={g.key} className="flex items-center gap-3 border dark:border-gray-700 rounded-xl p-3 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${meta.color}`}><CatIcon className="w-3 h-3" />{meta.label}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono text-gray-800 dark:text-gray-200">{g.key}</code>
+                        {g.encrypted && <Lock className="w-3 h-3 text-red-400" />}
+                      </div>
+                      {(g.label || g.help_text) && <div className="text-xs text-gray-400 mt-0.5">{g.label}{g.help_text ? ` — ${g.help_text}` : ''}</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

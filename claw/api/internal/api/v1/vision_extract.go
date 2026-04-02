@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yinhe/starclaw/internal/procutil"
 )
 
 // extractVisionFromFiles scans file attachments for images and videos,
@@ -109,7 +110,7 @@ func extractVideoFrames(f FileAttachment, maxFrames int) []string {
 		framePath := filepath.Join(tmpDir, fmt.Sprintf("starclaw_frame_%d_%d.jpg", time.Now().UnixMilli(), i))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+		cmd := procutil.CommandContext(ctx, "ffmpeg", "-y",
 			"-ss", fmt.Sprintf("%.2f", ts),
 			"-i", path,
 			"-frames:v", "1",
@@ -146,7 +147,7 @@ func getVideoDuration(path string) float64 {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "ffprobe",
+	cmd := procutil.CommandContext(ctx, "ffprobe",
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1",

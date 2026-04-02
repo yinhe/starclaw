@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/yinhe/starclaw/internal/procutil"
 )
 
 // AppProcess represents a running web application in a workspace
@@ -81,6 +83,7 @@ func (pm *ProcessManager) StartApp(sandbox *Manager, workspaceID, command string
 	// Inject PORT env var so the app knows which port to listen on
 	fullCmd := fmt.Sprintf("PORT=%d %s", port, command)
 	cmd := exec.CommandContext(ctx, "sh", "-c", fullCmd)
+	procutil.HideWindow(cmd)
 	cmd.Dir = ws.Path
 	cmd.Env = append(cmd.Environ(), fmt.Sprintf("PORT=%d", port))
 

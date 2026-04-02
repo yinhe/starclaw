@@ -107,6 +107,17 @@ export const agentAPI = {
   uninstallBySourceID: (sourceId: string) => api.delete(`/agents/uninstall/${sourceId}`),
 }
 
+// Glands (腺体 — agent runtime config)
+export const glandAPI = {
+  list: (agentId?: string) => api.get('/glands', { params: agentId ? { agent_id: agentId } : {} }),
+  get: (id: string) => api.get(`/glands/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/glands', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/glands/${id}`, data),
+  delete: (id: string) => api.delete(`/glands/${id}`),
+  batchUpsert: (data: Record<string, unknown>) => api.post('/glands/batch', data),
+  decrypt: (agentId: string, key: string) => api.get('/glands/decrypt', { params: { agent_id: agentId, key } }),
+}
+
 // Chat
 export const chatAPI = {
   send: (data: { agent_id: string; conversation_id?: string; message: string; stream?: boolean }) =>

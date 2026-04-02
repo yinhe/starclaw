@@ -709,19 +709,19 @@ func (e *Engine) launchPreview(mission model.Mission) string {
 	case fileExists(wsPath + "/package.json"):
 		// Node.js project — try npm run dev or npm start
 		if fileContains(wsPath+"/package.json", "\"dev\"") {
-			cmd = exec.Command("npm", "run", "dev", "--", "--port", fmt.Sprintf("%d", previewPort))
+			cmd = hiddenCmd("npm", "run", "dev", "--", "--port", fmt.Sprintf("%d", previewPort))
 		} else {
-			cmd = exec.Command("npm", "start")
+			cmd = hiddenCmd("npm", "start")
 		}
 	case fileExists(wsPath + "/main.go"):
 		// Go project
-		cmd = exec.Command("go", "run", "main.go")
+		cmd = hiddenCmd("go", "run", "main.go")
 	case fileExists(wsPath + "/requirements.txt"):
 		// Python project
-		cmd = exec.Command("python", "app.py")
+		cmd = hiddenCmd("python", "app.py")
 	case fileExists(wsPath + "/index.html"):
 		// Static site — use python http.server
-		cmd = exec.Command("python", "-m", "http.server", fmt.Sprintf("%d", previewPort))
+		cmd = hiddenCmd("python", "-m", "http.server", fmt.Sprintf("%d", previewPort))
 	default:
 		log.Printf("[preview] no recognized project type in %s", wsPath)
 		return ""

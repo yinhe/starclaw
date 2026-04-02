@@ -58,6 +58,17 @@ func seedQ8botMarketplaceTemplate(db *gorm.DB, ownerID string) {
 			"workflows": []map[string]string{
 				{"name": "Q8bot 全日交易工作流", "description": "完整的A股交易日工作流：盘前分析 → 方向判断 → 扫描选股 → AI确认 → 执行下单 → 持仓监控 → 日终复盘"},
 			},
+			"glands": []map[string]interface{}{
+				{"key": "qmt_account", "label": "QMT 交易账号", "category": "credential", "encrypted": true, "required": true, "help_text": "miniQMT 资金账号（如 27800348）", "sort_order": 1},
+				{"key": "qmt_password", "label": "QMT 密码", "category": "credential", "encrypted": true, "required": true, "help_text": "miniQMT 登录密码", "sort_order": 2},
+				{"key": "qmt_path", "label": "QMT 安装路径", "category": "endpoint", "encrypted": false, "required": true, "help_text": "QMT 客户端路径（如 D:\\中金财富QMT个人版模拟交易端）", "sort_order": 3},
+				{"key": "bridge_url", "label": "Trading Bridge 地址", "category": "endpoint", "encrypted": false, "required": false, "help_text": "默认 http://localhost:8098", "sort_order": 4},
+				{"key": "risk_threshold", "label": "AI 置信度阈值", "category": "threshold", "encrypted": false, "required": false, "help_text": "低于此值不执行交易（默认 0.6）", "sort_order": 5},
+				{"key": "max_position_pct", "label": "单只最大仓位 %", "category": "threshold", "encrypted": false, "required": false, "help_text": "单只股票占总资金比例上限（默认 10）", "sort_order": 6},
+				{"key": "stop_loss_pct", "label": "固定止损 %", "category": "threshold", "encrypted": false, "required": false, "help_text": "亏损达到此比例自动卖出（默认 -5）", "sort_order": 7},
+				{"key": "trailing_stop_pct", "label": "跟踪止盈回撤 %", "category": "threshold", "encrypted": false, "required": false, "help_text": "从最高点回撤此比例自动卖出（默认 8）", "sort_order": 8},
+				{"key": "auto_trade", "label": "自动交易开关", "category": "toggle", "encrypted": false, "required": false, "help_text": "关闭后仅推荐不执行（true/false）", "sort_order": 9},
+			},
 		},
 	}
 	cfgBytes, _ := json.Marshal(cfg)
