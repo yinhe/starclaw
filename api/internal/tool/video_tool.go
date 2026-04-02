@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -249,7 +248,7 @@ func (t *VideoTool) getLastFrameURL(recordOrTaskID string) (string, error) {
 	extractCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(extractCtx, "ffmpeg", "-y",
+	cmd := hiddenCmdCtx(extractCtx, "ffmpeg", "-y",
 		"-ss", fmt.Sprintf("%.2f", seekTime),
 		"-i", videoPath,
 		"-frames:v", "1", "-q:v", "2", framePath)
@@ -767,7 +766,7 @@ func (t *VideoTool) listModels() (string, error) {
 
 // probeResolution returns width, height of a video file using ffprobe.
 func probeResolution(path string) (int, int, error) {
-	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
+	out, err := hiddenCmd("ffprobe", "-v", "error", "-select_streams", "v:0",
 		"-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path).Output()
 	if err != nil {
 		return 0, 0, err
@@ -790,7 +789,7 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 	}
 	if len(clipPaths) == 1 {
 		// Single clip: just copy
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", clipPaths[0], "-c", "copy", outputPath)
+		cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", clipPaths[0], "-c", "copy", outputPath)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("ffmpeg copy failed: %v\n%s", err, string(out))
 		}
@@ -832,17 +831,17 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 		normPath := filepath.Join(tmpDir, fmt.Sprintf("norm_%03d.mp4", i))
 		if resolutions[i] == targetRes && len(resCounts) == 1 {
 			// Same resolution, but still need to re-encode for xfade compatibility
-			cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", p,
+			cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", p,
 				"-c:v", "libx264", "-c:a", "aac", "-preset", "fast", "-r", "30",
 				"-pix_fmt", "yuv420p", normPath)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				log.Printf("[VideoMerge] re-encode clip %d failed: %s, trying copy", i, string(out))
-				exec.CommandContext(ctx, "cp", p, normPath).Run()
+				hiddenCmdCtx(ctx, "cp", p, normPath).Run()
 			}
 		} else {
 			filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black",
 				targetRes.w, targetRes.h, targetRes.w, targetRes.h)
-			cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", p,
+			cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", p,
 				"-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", "-r", "30",
 				"-pix_fmt", "yuv420p", normPath)
 			if out, err := cmd.CombinedOutput(); err != nil {
@@ -922,7 +921,7 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 		"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
 		"-c:a", "aac", "-b:a", "192k", outputPath)
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", ffmpegArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// Fallback 1: video-only xfade (no audio crossfade)
@@ -956,7 +955,7 @@ func ffmpegMergeClips(ctx context.Context, clipPaths []string, outputPath string
 			"-map", "[outv]",
 			"-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
 			"-an", outputPath)
-		cmd2 := exec.CommandContext(ctx, "ffmpeg", args2...)
+		cmd2 := hiddenCmdCtx(ctx, "ffmpeg", args2...)
 		out2, err2 := cmd2.CombinedOutput()
 		if err2 != nil {
 			// Fallback 2: simple concat
@@ -979,7 +978,7 @@ func ffmpegSimpleConcat(ctx context.Context, clipPaths []string, outputPath stri
 	}
 	os.WriteFile(listPath, []byte(listContent.String()), 0644)
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
 		"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", outputPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg simple concat failed: %v\n%s", err, string(out))
@@ -1236,11 +1235,6 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 	t.db.Create(&mergedRecord)
 	ExtractThumbnail(t.db, mergedRecord.ID, downloadURL)
 	log.Printf("[VideoTool] Auto-merge succeeded: %d clips, %ds", len(usedRecords), totalDuration)
-}
-
-// RetryNarration is kept as stub for backward compatibility (narration moved to dubbing tool)
-func (t *VideoTool) RetryNarration(userID string) {
-	// No-op: narration is now handled by the dubbing tool
 }
 
 // ── List Videos ──

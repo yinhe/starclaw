@@ -1,0 +1,16 @@
+{
+  "name": "growth_velocity",
+  "description": "Calculate growth velocity (cm/year) over 3/6/12 months for a patient. Compares against age-appropriate normal ranges.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "growth_velocity" },
+      "patient_id": { "type": "string", "description": "Patient ID" }
+    },
+    "required": ["action", "patient_id"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

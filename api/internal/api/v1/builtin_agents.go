@@ -55,6 +55,15 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	// Seed Q8bot 麒博 marketplace template (replace old English version)
 	seedQ8botMarketplaceTemplate(db, ownerID)
 
+	// Seed Cicada 蝉·电话机器人 marketplace template
+	seedCicadaMarketplaceTemplate(db, ownerID)
+
+	// Seed 生长发育随访助手 marketplace template
+	seedGrowthClinicMarketplaceTemplate(db, ownerID)
+
+	// Clean up garbled and untranslated marketplace templates
+	cleanupMarketplaceTemplates(db)
+
 	// Seed/update specialist agents (MV, 视频, 音乐, etc.)
 	for _, def := range builtinAgents {
 		var agent model.Agent
@@ -114,6 +123,78 @@ func MigrateSystemToOwner(db *gorm.DB, ownerID string) {
 	// Delete the orphan system user record if it exists
 	db.Exec("DELETE FROM users WHERE id = ? AND owner_token IS NULL", model.SystemUserID)
 	log.Printf("[Migration] System user cleanup complete for owner %s", ownerID)
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Marketplace Cleanup: fix garbled + translate English → Chinese
+// ════════════════════════════════════════════════════════════════
+
+// cleanupMarketplaceTemplates removes garbled (mojibake) and untranslated
+// English templates from the marketplace — only Chinese content survives.
+func cleanupMarketplaceTemplates(db *gorm.DB) {
+	// Step 1: Translate known English templates to Chinese FIRST
+	// (so they gain CJK characters and survive the step-2 purge)
+	type zhTrans struct{ Name, Desc string }
+	translations := map[string]zhTrans{
+		"Animal Chefs":                 {"动物厨师", "趣味动物厨师，输入食物名称即可获取独特创意食谱。"},
+		"AI Doctor":                    {"AI 医生", "利用顶级医疗资源，提供经过验证的健康建议和医学信息查询。"},
+		"img2img":                      {"图生图", "上传一张图片，使用 DALL·E 3 进行风格转换和创意重绘。"},
+		"Briefly":                      {"一句话精简", "相同含义，更少文字。提交你的文本，帮你精炼浓缩。"},
+		"High-Quality Review Analyzer": {"高质量评论分析", "分析网页上的评论内容，提供可执行的反馈和改进建议。"},
+		"Prompt Perfect":               {"提示词优化", "自动优化你的 AI 提示词，获得更精准的回复。"},
+		"Code Copilot":                 {"代码副驾驶", "智能编程助手，帮你写代码、调试、解释和重构。"},
+		"Data Analyst":                 {"数据分析师", "专业数据分析，上传文件即可获得洞察和可视化。"},
+		"Creative Writing Coach":       {"创意写作教练", "提升你的写作技巧，从构思到润色全程指导。"},
+		"Logo Creator":                 {"Logo 设计师", "专业 Logo 设计，根据描述生成独特的品牌标识。"},
+		"SEO Mentor":                   {"SEO 导师", "搜索引擎优化专家，提升网站排名和流量。"},
+		"Copywriter":                   {"文案大师", "专业广告文案撰写，吸引眼球的营销内容。"},
+		"Math Mentor":                  {"数学导师", "数学学习助手，从基础到高等数学全面辅导。"},
+		"Resume Builder":               {"简历优化", "专业简历撰写和优化，助你脱颖而出。"},
+		"Travel Guide":                 {"旅行规划师", "全球旅行规划和推荐，打造完美旅程。"},
+		"Fitness Coach":                {"健身教练", "个性化健身计划和营养建议。"},
+		"Language Tutor":               {"语言学习导师", "多语言学习助手，口语练习和语法纠正。"},
+		"Excel Expert":                 {"Excel 专家", "Excel 公式、数据透视表、VBA 宏编程全能助手。"},
+		"SQL Expert":                   {"SQL 专家", "数据库查询优化、SQL 编写和数据建模。"},
+		"Email Writer":                 {"邮件写手", "专业邮件撰写，商务沟通和客户跟进。"},
+		"Presentation Expert":          {"PPT 专家", "专业演示文稿设计和内容策划。"},
+		"Story Teller":                 {"故事创作家", "创意故事和小说创作，从大纲到完稿。"},
+		"Diagram Wizard":               {"图表向导", "流程图、架构图、思维导图专业制作。"},
+		"API Docs":                     {"API 文档助手", "API 文档撰写、测试和交互式示例生成。"},
+	}
+	for oldName, tr := range translations {
+		result := db.Model(&model.AgentTemplate{}).Where("name = ?", oldName).
+			Updates(map[string]interface{}{"name": tr.Name, "description": tr.Desc})
+		if result.RowsAffected > 0 {
+			log.Printf("[Cleanup] Translated: %s → %s", oldName, tr.Name)
+		}
+	}
+
+	// Step 2: Delete ALL non-builtin templates whose name lacks CJK characters.
+	// This catches both garbled/mojibake (CP1252 artifacts) AND remaining English-only.
+	var templates []model.AgentTemplate
+	db.Where("is_builtin = ?", false).Select("id, name").Find(&templates)
+
+	deleted := 0
+	for _, t := range templates {
+		if !hasCJK(t.Name) {
+			db.Where("template_id = ?", t.ID).Delete(&model.AgentListing{})
+			db.Delete(&t)
+			deleted++
+		}
+	}
+	if deleted > 0 {
+		log.Printf("[Cleanup] Removed %d garbled/English-only marketplace templates", deleted)
+	}
+}
+
+// hasCJK returns true if s contains at least one CJK Unified Ideograph (U+4E00–U+9FFF).
+func hasCJK(s string) bool {
+	for _, r := range s {
+		if r >= 0x4E00 && r <= 0x9FFF {
+			return true
+		}
+	}
+	return false
 }
 
 // Built-in specialist agent definitions

@@ -49,6 +49,32 @@ type AgentSkill struct {
 	InstalledAt      time.Time `json:"installed_at"`
 }
 
+// AgentGland stores runtime configuration for an agent (Heptad: 腺体).
+// Examples: API keys, account credentials, thresholds, feature toggles.
+// Credential values are encrypted at rest.
+type AgentGland struct {
+	ID        string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	AgentID   string    `json:"agent_id" gorm:"type:varchar(36);index;not null"`
+	UserID    string    `json:"user_id" gorm:"type:varchar(36);index;not null"`
+	Key       string    `json:"key" gorm:"type:varchar(100);not null"`            // e.g. "qmt_account", "sip_server"
+	Value     string    `json:"value" gorm:"type:text"`                           // plaintext or encrypted
+	Category  string    `json:"category" gorm:"type:varchar(20);default:general"` // credential | threshold | toggle | endpoint | general
+	Encrypted bool      `json:"encrypted" gorm:"default:false"`
+	Required  bool      `json:"required" gorm:"default:false"`
+	Label     string    `json:"label" gorm:"type:varchar(100)"`     // display name, e.g. "QMT 账号"
+	HelpText  string    `json:"help_text" gorm:"type:varchar(500)"` // tooltip / placeholder
+	SortOrder int       `json:"sort_order" gorm:"default:0"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (g *AgentGland) BeforeCreate(tx *gorm.DB) error {
+	if g.ID == "" {
+		g.ID = uuid.New().String()
+	}
+	return nil
+}
+
 // AgentMCPBinding links an Agent to an MCP server (Hexad: 外接)
 type AgentMCPBinding struct {
 	ID        string    `json:"id" gorm:"type:varchar(36);primaryKey"`

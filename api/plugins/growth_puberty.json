@@ -1,0 +1,23 @@
+{
+  "name": "growth_puberty",
+  "description": "Assess puberty development (Tanner staging). Detect precocious puberty (girls <8y, boys <9y) and rapid progression (<6 months between stages).",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "puberty_assess" },
+      "gender": { "type": "string", "description": "male or female" },
+      "age_years": { "type": "number", "description": "Age in years" },
+      "tanner_breast": { "type": "string", "description": "B1-B5 (female only)" },
+      "tanner_genital": { "type": "string", "description": "G1-G5 (male only)" },
+      "tanner_pubic_hair": { "type": "string", "description": "PH1-PH5" },
+      "menarche": { "type": "boolean", "description": "Whether menarche has occurred (female)" },
+      "last_tanner_stage": { "type": "string", "description": "Previous Tanner stage for progression check" },
+      "last_assess_date": { "type": "string", "description": "Date of previous assessment (YYYY-MM-DD)" }
+    },
+    "required": ["action", "gender", "age_years"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "growth_alert",
+  "description": "Four-level alert evaluation for a patient: Normal / Mild / Moderate / Severe. Checks height Z-score, weight, BMI, bone age, growth velocity, and target height deviation. Persists alerts to DB.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "alert_evaluate" },
+      "patient_id": { "type": "string", "description": "Patient ID to evaluate" }
+    },
+    "required": ["action", "patient_id"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 15 }
+}

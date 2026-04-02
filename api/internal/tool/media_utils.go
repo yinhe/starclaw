@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -371,7 +370,7 @@ func FetchFalResult(apiKey, endpoint, requestID string) (map[string]interface{},
 func ProbeVideoDimensions(videoPath string) (int, int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "quiet", "-select_streams", "v:0",
+	cmd := hiddenCmdCtx(ctx, "ffprobe", "-v", "quiet", "-select_streams", "v:0",
 		"-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", videoPath)
 	out, err := cmd.Output()
 	if err != nil {
@@ -392,7 +391,7 @@ func ProbeVideoDimensions(videoPath string) (int, int) {
 func ProbeDuration(filePath string) float64 {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+	cmd := hiddenCmdCtx(ctx, "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1", filePath)
 	out, err := cmd.Output()
 	if err != nil {
@@ -408,7 +407,7 @@ func ProbeDuration(filePath string) float64 {
 func ProbeHasAudio(videoPath string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "quiet", "-select_streams", "a",
+	cmd := hiddenCmdCtx(ctx, "ffprobe", "-v", "quiet", "-select_streams", "a",
 		"-show_entries", "stream=codec_type", "-of", "csv=p=0", videoPath)
 	out, _ := cmd.Output()
 	return strings.TrimSpace(string(out)) != ""
@@ -416,20 +415,147 @@ func ProbeHasAudio(videoPath string) bool {
 
 // ── TTS ──
 
-// GenerateTTS calls DashScope CosyVoice TTS via Python SDK subprocess.
+// GenerateTTS calls DashScope CosyVoice TTS.
+// If apiKey is a StarAI proxy key (starai://qwen), routes through StarAI HTTP proxy.
+// Otherwise, calls DashScope via Python SDK subprocess.
 func GenerateTTS(apiKey, text, voice, outputPath string) error {
-	log.Printf("[TTS] request: voice=%s, text_len=%d, output=%s", voice, len(text), outputPath)
+	log.Printf("[TTS] request: voice=%s, text_len=%d, output=%s, via_starai=%v", voice, len(text), outputPath, isStarAIKey(apiKey))
 
+	if isStarAIKey(apiKey) {
+		return generateTTSViaStarAI(text, voice, outputPath)
+	}
+	return generateTTSViaPython(apiKey, text, voice, outputPath)
+}
+
+// generateTTSViaStarAI routes TTS through StarAI proxy using DashScope HTTP API.
+func generateTTSViaStarAI(text, voice, outputPath string) error {
+	client, _ := GetStarAIClient()
+	if client == nil {
+		return fmt.Errorf("StarAI proxy not initialized")
+	}
+
+	// DashScope CosyVoice TTS async endpoint
+	reqURL := StarAIProxyURL("dashscope", "/api/v1/services/aigc/text2audio/speech-synthesizer")
+	reqBody := map[string]interface{}{
+		"model": "cosyvoice-v1",
+		"input": map[string]interface{}{
+			"text": text,
+		},
+		"parameters": map[string]interface{}{
+			"voice":       voice,
+			"format":      "mp3",
+			"sample_rate": 22050,
+		},
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return fmt.Errorf("build TTS request failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-DashScope-Async", "enable")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("TTS submit failed: %v", err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("TTS submit error (HTTP %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var submitResult struct {
+		Output struct {
+			TaskID string `json:"task_id"`
+		} `json:"output"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(respBody, &submitResult); err != nil {
+		return fmt.Errorf("TTS submit parse failed: %s", string(respBody))
+	}
+	taskID := submitResult.Output.TaskID
+	if taskID == "" {
+		return fmt.Errorf("TTS submit: no task_id in response: %s", string(respBody))
+	}
+	log.Printf("[TTS/StarAI] submitted task_id=%s", taskID)
+
+	// Poll task status
+	pollURL := StarAIProxyURL("dashscope", "/api/v1/tasks/"+taskID)
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+
+		pollReq, _ := http.NewRequestWithContext(ctx, "GET", pollURL, nil)
+		pollResp, err := client.Do(pollReq)
+		if err != nil {
+			continue
+		}
+		pollBody, _ := io.ReadAll(pollResp.Body)
+		pollResp.Body.Close()
+
+		var taskResult struct {
+			Output struct {
+				TaskStatus string `json:"task_status"`
+				AudioURL   string `json:"audio_url"`
+				Results    []struct {
+					URL string `json:"url"`
+				} `json:"results"`
+			} `json:"output"`
+		}
+		json.Unmarshal(pollBody, &taskResult)
+
+		switch taskResult.Output.TaskStatus {
+		case "SUCCEEDED":
+			audioURL := taskResult.Output.AudioURL
+			if audioURL == "" && len(taskResult.Output.Results) > 0 {
+				audioURL = taskResult.Output.Results[0].URL
+			}
+			if audioURL == "" {
+				return fmt.Errorf("TTS succeeded but no audio URL: %s", string(pollBody))
+			}
+			// Download audio to output path
+			dlResp, err := http.Get(audioURL)
+			if err != nil {
+				return fmt.Errorf("TTS download failed: %v", err)
+			}
+			defer dlResp.Body.Close()
+			f, err := os.Create(outputPath)
+			if err != nil {
+				return fmt.Errorf("TTS create file failed: %v", err)
+			}
+			written, err := io.Copy(f, dlResp.Body)
+			f.Close()
+			if err != nil {
+				return fmt.Errorf("TTS write failed: %v", err)
+			}
+			log.Printf("[TTS/StarAI] succeeded: %d bytes → %s", written, outputPath)
+			return nil
+
+		case "FAILED":
+			return fmt.Errorf("TTS task failed: %s", string(pollBody))
+		}
+	}
+	return fmt.Errorf("TTS task timeout (90s)")
+}
+
+// generateTTSViaPython calls DashScope CosyVoice TTS via Python SDK subprocess (direct API key).
+func generateTTSViaPython(apiKey, text, voice, outputPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "python3", "/app/scripts/tts.py", apiKey, text, voice, outputPath)
+	cmd := hiddenCmdCtx(ctx, "python3", "/app/scripts/tts.py", apiKey, text, voice, outputPath)
 	cmdOutput, err := cmd.CombinedOutput()
 	outputStr := strings.TrimSpace(string(cmdOutput))
 
 	if err != nil {
 		log.Printf("[TTS] Python script failed: %v\n%s", err, outputStr)
-		return fmt.Errorf("TTS failed: %v  %s", err, outputStr)
+		return fmt.Errorf("TTS failed: %v  %s", err, outputStr)
 	}
 
 	if strings.HasPrefix(outputStr, "OK:") {
@@ -469,7 +595,7 @@ func FitTTSToWindow(inputAudio string, windowDuration float64, tmpDir string, in
 			outputPath := filepath.Join(tmpDir, fmt.Sprintf("fitted_%03d.mp3", index))
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", inputAudio,
+			cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", inputAudio,
 				"-af", fmt.Sprintf("atempo=%.4f", ratio),
 				"-c:a", "libmp3lame", "-q:a", "2", outputPath)
 			if _, err := cmd.CombinedOutput(); err != nil {
@@ -494,7 +620,7 @@ func FitTTSToWindow(inputAudio string, windowDuration float64, tmpDir string, in
 
 	if ratio <= maxTempoSpeedup {
 		// Speed up within intelligibility limit
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", inputAudio,
+		cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", inputAudio,
 			"-af", fmt.Sprintf("atempo=%.4f", ratio),
 			"-c:a", "libmp3lame", "-q:a", "2", outputPath)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -510,7 +636,7 @@ func FitTTSToWindow(inputAudio string, windowDuration float64, tmpDir string, in
 	}
 
 	// Ratio too high for pure atempo — speed up at max rate then hard-trim
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", inputAudio,
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", inputAudio,
 		"-af", fmt.Sprintf("atempo=%.4f", maxTempoSpeedup),
 		"-t", fmt.Sprintf("%.3f", windowDuration),
 		"-c:a", "libmp3lame", "-q:a", "2", outputPath)
@@ -786,13 +912,22 @@ func ExtractThumbnail(db *gorm.DB, recordID, videoSource string) string {
 		inputPath = filepath.Join(MergedVideosDir(), filename)
 	}
 
+	// Skip if input is a remote URL (ffmpeg can't reliably handle these on Windows)
+	if strings.HasPrefix(inputPath, "http://") || strings.HasPrefix(inputPath, "https://") {
+		return ""
+	}
+	// Skip if local file doesn't exist — avoids ffmpeg popup windows on Windows
+	if _, err := os.Stat(inputPath); err != nil {
+		return ""
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 		"-i", inputPath, "-ss", "1", "-frames:v", "1", "-q:v", "2", thumbPath)
 	if _, err := cmd.CombinedOutput(); err != nil {
-		cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y",
+		cmd2 := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 			"-i", inputPath, "-frames:v", "1", "-q:v", "2", thumbPath)
 		if _, err2 := cmd2.CombinedOutput(); err2 != nil {
 			log.Printf("[Thumbnail] extraction failed for %s: %v", recordID, err2)

@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -17,11 +16,12 @@ import (
 // via standard HTTP, supporting cross-network Git collaboration.
 //
 // Endpoints (relative to base path):
-//   GET  /{repo}/info/refs?service=git-upload-pack    - fetch advertisement
-//   GET  /{repo}/info/refs?service=git-receive-pack   - push advertisement
-//   POST /{repo}/git-upload-pack                       - fetch pack data
-//   POST /{repo}/git-receive-pack                      - push pack data
-//   GET  /{repo}/HEAD                                  - HEAD reference
+//
+//	GET  /{repo}/info/refs?service=git-upload-pack    - fetch advertisement
+//	GET  /{repo}/info/refs?service=git-receive-pack   - push advertisement
+//	POST /{repo}/git-upload-pack                       - fetch pack data
+//	POST /{repo}/git-receive-pack                      - push pack data
+//	GET  /{repo}/HEAD                                  - HEAD reference
 type GitHTTPHandler struct {
 	reposDir string // base directory for bare repos
 }
@@ -89,7 +89,7 @@ func (h *GitHTTPHandler) handleInfoRefs(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Run git service with --advertise-refs (stateless-rpc mode)
-	cmd := exec.Command("git", service, "--stateless-rpc", "--advertise-refs", repoDir)
+	cmd := hiddenCmd("git", service, "--stateless-rpc", "--advertise-refs", repoDir)
 	cmd.Env = os.Environ()
 
 	out, err := cmd.Output()
@@ -129,7 +129,7 @@ func (h *GitHTTPHandler) handleServiceRPC(w http.ResponseWriter, r *http.Request
 		body = gz
 	}
 
-	cmd := exec.Command("git", service, "--stateless-rpc", repoDir)
+	cmd := hiddenCmd("git", service, "--stateless-rpc", repoDir)
 	cmd.Env = os.Environ()
 	cmd.Stdin = body
 	cmd.Stdout = w
@@ -160,7 +160,7 @@ func (h *GitHTTPHandler) serveStaticFile(w http.ResponseWriter, filePath string)
 // EnableReceivePack enables git receive-pack (push) on a bare repo.
 // Required for the Smart HTTP push protocol.
 func EnableReceivePack(repoDir string) error {
-	cmd := exec.Command("git", "config", "--bool", "http.receivepack", "true")
+	cmd := hiddenCmd("git", "config", "--bool", "http.receivepack", "true")
 	cmd.Dir = repoDir
 	cmd.Env = os.Environ()
 	return cmd.Run()
@@ -169,7 +169,7 @@ func EnableReceivePack(repoDir string) error {
 // UpdateServerInfo runs git update-server-info on a bare repo
 // to ensure it can be served via dumb HTTP protocol as a fallback.
 func UpdateServerInfo(repoDir string) error {
-	cmd := exec.Command("git", "update-server-info")
+	cmd := hiddenCmd("git", "update-server-info")
 	cmd.Dir = repoDir
 	cmd.Env = os.Environ()
 	return cmd.Run()

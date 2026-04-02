@@ -29,6 +29,16 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func init() {
+	// Force China Standard Time globally so time.Now() returns CST
+	// everywhere — cron triggers, billing boundaries, dashboard stats, etc.
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
+	time.Local = loc
+}
+
 func main() {
 	// Handle CLI subcommands before starting the full server
 	if len(os.Args) > 1 {

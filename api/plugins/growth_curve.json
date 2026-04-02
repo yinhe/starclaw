@@ -1,0 +1,16 @@
+{
+  "name": "growth_curve",
+  "description": "Generate growth curve data for a patient — historical height/weight/BMI data points with WHO/China reference curves (P3/P10/P25/P50/P75/P90/P97). Use for charting.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "growth_curve" },
+      "patient_id": { "type": "string", "description": "Patient ID" }
+    },
+    "required": ["action", "patient_id"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

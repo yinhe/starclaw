@@ -7,7 +7,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -163,7 +162,7 @@ func (t *AudioTool) analyze(ctx context.Context, args audioArgs) (string, error)
 	log.Printf("[AudioTool] analyzing: %s", audioPath)
 
 	// ffprobe: duration, sample_rate, channels, codec, bit_rate
-	probeCmd := exec.CommandContext(ctx, "ffprobe",
+	probeCmd := hiddenCmdCtx(ctx, "ffprobe",
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
@@ -198,7 +197,7 @@ func (t *AudioTool) analyze(ctx context.Context, args audioArgs) (string, error)
 	duration, _ := strconv.ParseFloat(probeData.Format.Duration, 64)
 
 	// Get loudness/energy summary via EBU R128
-	loudCmd := exec.CommandContext(ctx, "ffmpeg",
+	loudCmd := hiddenCmdCtx(ctx, "ffmpeg",
 		"-i", audioPath,
 		"-af", "ebur128=framelog=verbose",
 		"-f", "null", "-",
@@ -224,7 +223,7 @@ func (t *AudioTool) analyze(ctx context.Context, args audioArgs) (string, error)
 
 	// Try BPM detection via aubio if available
 	bpm := 0.0
-	bpmCmd := exec.CommandContext(ctx, "aubio", "tempo", "-i", audioPath)
+	bpmCmd := hiddenCmdCtx(ctx, "aubio", "tempo", "-i", audioPath)
 	if bpmOut, err := bpmCmd.Output(); err == nil {
 		// aubio outputs one line per beat, last line is summary or we parse the tempo
 		lines := strings.Split(strings.TrimSpace(string(bpmOut)), "\n")
@@ -313,7 +312,7 @@ func (t *AudioTool) detectBeats(ctx context.Context, args audioArgs) (string, er
 	}
 
 	// Try aubio beat detection first
-	beatCmd := exec.CommandContext(ctx, "aubio", "beat", "-i", audioPath)
+	beatCmd := hiddenCmdCtx(ctx, "aubio", "beat", "-i", audioPath)
 	beatOut, err := beatCmd.Output()
 
 	var beats []float64
@@ -344,7 +343,7 @@ func (t *AudioTool) detectBeats(ctx context.Context, args audioArgs) (string, er
 		log.Printf("[AudioTool] aubio not available, using energy-based beat estimation")
 
 		// Fallback: get duration and estimate beats from ffprobe
-		probeCmd := exec.CommandContext(ctx, "ffprobe",
+		probeCmd := hiddenCmdCtx(ctx, "ffprobe",
 			"-v", "quiet", "-show_entries", "format=duration",
 			"-of", "default=noprint_wrappers=1:nokey=1", audioPath,
 		)
@@ -355,7 +354,7 @@ func (t *AudioTool) detectBeats(ctx context.Context, args audioArgs) (string, er
 		duration, _ := strconv.ParseFloat(strings.TrimSpace(string(durOut)), 64)
 
 		// Detect onsets via ffmpeg silencedetect as rough beat markers
-		onsetCmd := exec.CommandContext(ctx, "ffmpeg",
+		onsetCmd := hiddenCmdCtx(ctx, "ffmpeg",
 			"-i", audioPath,
 			"-af", "silencedetect=noise=-30dB:d=0.3",
 			"-f", "null", "-",
@@ -430,7 +429,7 @@ func (t *AudioTool) getEnergyCurve(ctx context.Context, args audioArgs) (string,
 	}
 
 	// Get duration
-	probeCmd := exec.CommandContext(ctx, "ffprobe",
+	probeCmd := hiddenCmdCtx(ctx, "ffprobe",
 		"-v", "quiet", "-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1", audioPath,
 	)
@@ -479,7 +478,7 @@ func (t *AudioTool) computeEnergyCurve(ctx context.Context, audioPath string, du
 			break
 		}
 
-		cmd := exec.CommandContext(ctx, "ffmpeg",
+		cmd := hiddenCmdCtx(ctx, "ffmpeg",
 			"-ss", fmt.Sprintf("%.3f", start),
 			"-t", fmt.Sprintf("%.3f", segDur),
 			"-i", audioPath,
@@ -576,7 +575,7 @@ func (t *AudioTool) detectVocalStart(ctx context.Context, args audioArgs) (strin
 	}
 
 	// Get total duration first
-	probe := exec.CommandContext(ctx, "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", audioPath)
+	probe := hiddenCmdCtx(ctx, "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", audioPath)
 	probeOut, err := probe.Output()
 	if err != nil {
 		return "", fmt.Errorf("ffprobe failed: %v", err)
@@ -590,14 +589,14 @@ func (t *AudioTool) detectVocalStart(ctx context.Context, args audioArgs) (strin
 	totalDuration, _ := strconv.ParseFloat(probeData.Format.Duration, 64)
 
 	// Extract per-second RMS for full band
-	fullCmd := exec.CommandContext(ctx, "ffmpeg", "-i", audioPath,
+	fullCmd := hiddenCmdCtx(ctx, "ffmpeg", "-i", audioPath,
 		"-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
 		"-f", "null", "-")
 	fullOut, _ := fullCmd.CombinedOutput()
 	fullLevels := parseRMSLevels(string(fullOut))
 
 	// Extract per-second RMS for vocal band (300-3000Hz)
-	vocalCmd := exec.CommandContext(ctx, "ffmpeg", "-i", audioPath,
+	vocalCmd := hiddenCmdCtx(ctx, "ffmpeg", "-i", audioPath,
 		"-af", "bandpass=f=1200:width_type=h:width=2700,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
 		"-f", "null", "-")
 	vocalOut, _ := vocalCmd.CombinedOutput()

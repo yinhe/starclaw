@@ -13,8 +13,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	"unicode/utf8"
 
+	"github.com/yinhe/starclaw/internal/procutil"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
@@ -454,6 +456,7 @@ func (m *Manager) Execute(ctx context.Context, workspaceID, language, code strin
 		return nil, fmt.Errorf("unsupported language: %s (supported: python, javascript, typescript, bun, bash, go, ruby, php, java, rust, c, cpp, perl, lua)", language)
 	}
 
+	procutil.HideWindow(cmd)
 	cmd.Dir = ws.Path
 
 	var stdout, stderr bytes.Buffer
@@ -508,6 +511,7 @@ func (m *Manager) RunCommand(ctx context.Context, workspaceID, command string, t
 	defer cancel()
 
 	cmd := exec.CommandContext(execCtx, "sh", "-c", command)
+	procutil.HideWindow(cmd)
 	cmd.Dir = ws.Path
 
 	var stdout, stderr bytes.Buffer

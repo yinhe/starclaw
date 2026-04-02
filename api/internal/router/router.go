@@ -537,7 +537,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		squadEngine.Start()
 
 		// Git HTTP Smart Protocol server (enables remote nodes to clone/push via HTTP)
-		gitHTTPHandler := squad.NewGitHTTPHandler("/app/repos")
+		gitHTTPHandler := squad.NewGitHTTPHandler(filepath.Join(tool.GetDataDir(), "repos"))
 		r.Any("/v1/git/*path", func(c *gin.Context) {
 			// Strip /v1/git/ prefix and forward to Git HTTP handler
 			c.Request.URL.Path = strings.TrimPrefix(c.Request.URL.Path, "/v1/git/")
@@ -692,7 +692,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Music files (public, secured by UUID filename)
 		apiV1.GET("/music/:filename", func(c *gin.Context) {
 			filename := c.Param("filename")
-			filePath := "/app/music/" + filename
+			filePath := filepath.Join(tool.MusicDir(), filename)
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				c.JSON(404, gin.H{"error": "music file not found"})
 				return
@@ -894,6 +894,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/agents/installed-source-ids", agentHandler.InstalledSourceIDs)
 			protected.POST("/agents/install-marketplace", agentHandler.InstallFromMarketplace)
 			protected.DELETE("/agents/uninstall/:source_id", agentHandler.UninstallBySourceID)
+
+			// Glands (腺体 — agent runtime configuration)
+			glandHandler := v1.NewGlandHandler(db)
+			protected.GET("/glands", glandHandler.List)
+			protected.GET("/glands/:id", glandHandler.Get)
+			protected.POST("/glands", glandHandler.Create)
+			protected.PUT("/glands/:id", glandHandler.Update)
+			protected.DELETE("/glands/:id", glandHandler.Delete)
+			protected.POST("/glands/batch", glandHandler.BatchUpsert)
+			protected.GET("/glands/decrypt", glandHandler.GetDecrypted)
 
 			// Swarm (虫群)
 			swarmHandler := v1.NewSwarmHandler(db)
@@ -1526,45 +1536,6 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				userID := c.GetString("user_id")
 				var records []model.VideoRecord
 				db.Where("user_id = ?", userID).Order("created_at DESC").Limit(500).Find(&records)
-
-				// Background: generate missing thumbnails, retry narration, check for stuck merges
-				go func() {
-					vt, ok := toolRegistry.Get("video_generation")
-					if !ok {
-						return
-					}
-					// Generate thumbnails for videos that don't have one
-					if vTool, ok := vt.(*tool.VideoTool); ok {
-						vTool.GenerateMissingThumbnails()
-					}
-					// Retry narration for clips with narration text but no narrated_url
-					if vTool, ok := vt.(*tool.VideoTool); ok {
-						vTool.RetryNarration(userID)
-					}
-					// Find conversations with succeeded clips but no merged video
-					type convRow struct{ ConversationID string }
-					var convs []convRow
-					db.Model(&model.VideoRecord{}).
-						Select("DISTINCT conversation_id").
-						Where("user_id = ? AND (type = 'clip' OR type = '') AND status = 'succeeded' AND conversation_id != ''", userID).
-						Find(&convs)
-					for _, cr := range convs {
-						var mergeCount int64
-						db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND type = 'merged'", userID, cr.ConversationID).Count(&mergeCount)
-						if mergeCount == 0 {
-							// No merged video yet  check if all clips are done
-							var running int64
-							db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND (type = 'clip' OR type = '') AND status IN ('running','pending')", userID, cr.ConversationID).Count(&running)
-							if running == 0 {
-								// All clips done, no merge  trigger via reflection
-								if vTool, ok := vt.(*tool.VideoTool); ok {
-									vTool.TryAutoMerge(userID, cr.ConversationID)
-								}
-							}
-						}
-					}
-				}()
-
 				c.JSON(200, gin.H{"videos": records})
 			})
 			protected.DELETE("/videos/:id", func(c *gin.Context) {

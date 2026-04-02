@@ -39,6 +39,14 @@ Thumbs.db
 # Logs
 *.log
 
+# Databases
+*.db
+*.db-shm
+*.db-wal
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
 # Temp files
 tmp_*
 
