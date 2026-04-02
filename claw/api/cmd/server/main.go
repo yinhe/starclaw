@@ -88,6 +88,11 @@ func main() {
 		}
 	}
 
+	// Hide console window on Windows (Spore launches claw-api.exe which
+	// otherwise shows a visible cmd window). CLI subcommands above already
+	// returned, so only the server path reaches here.
+	hideConsole()
+
 	// Anchor CWD to exe directory if needed (fixes Spore / manual-launch CWD mismatch)
 	anchorToExeDir()
 
