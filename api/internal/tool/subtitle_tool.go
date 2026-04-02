@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -133,7 +132,7 @@ func (t *SubtitleTool) addSubtitles(ctx context.Context, args subtitleArgs) (str
 	vf := fmt.Sprintf("subtitles='%s':force_style='%s'", escapedSrt, subStyle.ForceStyleString())
 
 	log.Printf("[SubtitleTool] Burning %d subtitles into video %s", len(segments), args.VideoID)
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", videoPath,
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", videoPath,
 		"-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "copy", outputPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("ffmpeg failed: %v\n%s", err, string(out))

@@ -1,0 +1,22 @@
+{
+  "name": "growth_followup",
+  "description": "Follow-up plan management — create, update, list plans, and check upcoming/overdue follow-ups. Supports smart frequency mode.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "followup_schedule" },
+      "operation": { "type": "string", "description": "create / update / list / next" },
+      "patient_id": { "type": "string" },
+      "plan_id": { "type": "string", "description": "For update" },
+      "frequency_mode": { "type": "string", "description": "manual or smart" },
+      "frequency_days": { "type": "number", "description": "Interval in days (default 90)" },
+      "status": { "type": "string", "description": "active / paused / terminated" },
+      "change_reason": { "type": "string" }
+    },
+    "required": ["action"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

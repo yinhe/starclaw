@@ -1,0 +1,16 @@
+{
+  "name": "growth_report",
+  "description": "Generate patient summary report for doctor review — includes latest measurements, Z-scores, growth velocity, pending alerts, follow-up status, and education history.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "report_summary" },
+      "patient_id": { "type": "string", "description": "Patient ID" }
+    },
+    "required": ["action", "patient_id"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

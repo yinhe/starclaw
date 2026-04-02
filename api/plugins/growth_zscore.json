@@ -1,0 +1,22 @@
+{
+  "name": "growth_zscore",
+  "description": "Calculate Z-score and percentile for height/weight/BMI based on WHO + China national growth standards. Input: gender, age_months, height(cm), weight(kg). Returns Z-scores, percentiles, and clinical interpretation.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "zscore" },
+      "gender": { "type": "string", "description": "male or female" },
+      "age_months": { "type": "number", "description": "Age in months" },
+      "height": { "type": "number", "description": "Height in cm" },
+      "weight": { "type": "number", "description": "Weight in kg" }
+    },
+    "required": ["action", "gender", "age_months"]
+  },
+  "handler": "growth_clinic",
+  "metadata": {
+    "category": "medical",
+    "timeout": 10
+  }
+}

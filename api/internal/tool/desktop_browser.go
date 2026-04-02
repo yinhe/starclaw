@@ -127,7 +127,7 @@ func ensureCDPBrowser(ctx context.Context, port int) error {
 				break
 			}
 			// exec.LookPath doesn't work for full paths, check directly
-			cmd := exec.Command("cmd", "/c", fmt.Sprintf(`if exist "%s" echo FOUND`, c))
+			cmd := hiddenCmd("cmd", "/c", fmt.Sprintf(`if exist "%s" echo FOUND`, c))
 			if out, _ := cmd.Output(); strings.Contains(string(out), "FOUND") {
 				browserPath = c
 				break
@@ -139,7 +139,7 @@ func ensureCDPBrowser(ctx context.Context, port int) error {
 		return fmt.Errorf("未找到 Chrome 或 Edge 浏览器")
 	}
 
-	cmd := exec.CommandContext(ctx, browserPath,
+	cmd := hiddenCmdCtx(ctx, browserPath,
 		fmt.Sprintf("--remote-debugging-port=%d", port),
 		"--no-first-run",
 		"--no-default-browser-check",

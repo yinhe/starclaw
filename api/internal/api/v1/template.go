@@ -346,37 +346,17 @@ func (h *TemplateHandler) InstallRemote(c *gin.Context) {
 	})
 }
 
-// CommunityList proxies the Queen marketplace API to avoid CORS issues.
-// Falls back to local agent templates if Queen is unreachable.
+// CommunityList returns marketplace items: local templates first (authoritative
+// pricing/bundle data), then merges Queen community items excluding duplicates.
 func (h *TemplateHandler) CommunityList(c *gin.Context) {
 	q := c.Query("q")
-	url := fmt.Sprintf("%s/items?type=agent&size=500", queenMarketplaceURL)
-	if q != "" {
-		url += "&q=" + q
-	}
 
-	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Get(url)
-	if err == nil {
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			body, err2 := io.ReadAll(resp.Body)
-			if err2 == nil {
-				var result map[string]interface{}
-				if json.Unmarshal(body, &result) == nil {
-					c.JSON(http.StatusOK, result)
-					return
-				}
-			}
-		}
-	}
-
-	// Fallback: return local published templates + builtin agents as marketplace items
+	// 1. Always load local templates first (builtin have pricing, bundle, etc.)
 	var items []gin.H
+	localNames := make(map[string]bool)
 
-	// Local published templates
 	var templates []model.AgentTemplate
-	tq := h.db.Preload("Author").Order("install_count DESC, created_at DESC").Limit(200)
+	tq := h.db.Preload("Author").Order("featured DESC, install_count DESC, created_at DESC").Limit(200)
 	if q != "" {
 		tq = tq.Where("name LIKE ? OR description LIKE ?", "%"+q+"%", "%"+q+"%")
 	}
@@ -389,6 +369,10 @@ func (h *TemplateHandler) CommunityList(c *gin.Context) {
 		if strings.Contains(t.Name, "Q8bot") || strings.Contains(t.Name, "麒博") {
 			authorName = "Q8bot官方"
 		}
+		if strings.Contains(t.Name, "Cicada") || strings.Contains(t.Name, "蝉") {
+			authorName = "StarClaw 官方"
+		}
+		localNames[t.Name] = true
 		items = append(items, gin.H{
 			"id": t.ID, "name": t.Name, "description": t.Description,
 			"icon": t.Icon, "tags": t.Tags, "config": t.Config,
@@ -397,19 +381,14 @@ func (h *TemplateHandler) CommunityList(c *gin.Context) {
 		})
 	}
 
-	// Always include builtin agents as installable items
-	existingNames := make(map[string]bool)
-	for _, item := range items {
-		if n, ok := item["name"].(string); ok {
-			existingNames[n] = true
-		}
-	}
+	// 2. Include builtin agents not already covered by templates
 	var agents []model.Agent
 	h.db.Where("is_builtin = ? AND is_public = ?", true, true).Find(&agents)
 	for _, a := range agents {
-		if existingNames[a.Name] || a.Name == "全能助手" {
-			continue // skip duplicates and the builtin SuperAgent
+		if localNames[a.Name] || a.Name == "全能助手" {
+			continue
 		}
+		localNames[a.Name] = true
 		items = append(items, gin.H{
 			"id": a.ID, "name": a.Name, "description": a.Description,
 			"icon": "", "tags": "[]", "config": fmt.Sprintf(`{"system_prompt":%q,"tools":%s}`, a.SystemPrompt, a.Tools),
@@ -418,39 +397,53 @@ func (h *TemplateHandler) CommunityList(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
-}
-
-// CommunityGet proxies a single item from Queen marketplace.
-// Falls back to local template or agent if Queen is unreachable.
-func (h *TemplateHandler) CommunityGet(c *gin.Context) {
-	id := c.Param("id")
-	url := fmt.Sprintf("%s/items/%s", queenMarketplaceURL, id)
-
+	// 3. Merge Queen community items (skip names that exist locally)
+	queenURL := fmt.Sprintf("%s/items?type=agent&size=500", queenMarketplaceURL)
+	if q != "" {
+		queenURL += "&q=" + q
+	}
 	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Get(url)
-	if err == nil {
+	if resp, err := client.Get(queenURL); err == nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
-			body, err2 := io.ReadAll(resp.Body)
-			if err2 == nil {
-				var result map[string]interface{}
+			if body, err2 := io.ReadAll(resp.Body); err2 == nil {
+				var result struct {
+					Items []json.RawMessage `json:"items"`
+				}
 				if json.Unmarshal(body, &result) == nil {
-					c.JSON(http.StatusOK, result)
-					return
+					for _, raw := range result.Items {
+						var peek struct {
+							Name string `json:"name"`
+						}
+						if json.Unmarshal(raw, &peek) == nil && !localNames[peek.Name] {
+							var item map[string]interface{}
+							if json.Unmarshal(raw, &item) == nil {
+								items = append(items, gin.H(item))
+								localNames[peek.Name] = true
+							}
+						}
+					}
 				}
 			}
 		}
 	}
 
-	// Fallback: try local template
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+}
+
+// CommunityGet returns a single marketplace item.
+// Local templates are checked FIRST (authoritative pricing/bundle data),
+// then Queen marketplace, then local agents as last fallback.
+func (h *TemplateHandler) CommunityGet(c *gin.Context) {
+	id := c.Param("id")
+
+	// 1. Try local template first (builtin templates have pricing, bundle, etc.)
 	var tpl model.AgentTemplate
 	if err := h.db.Preload("Author").Where("id = ?", id).First(&tpl).Error; err == nil {
 		authorName := "StarClaw 官方"
 		if tpl.Author.Username != "" {
 			authorName = tpl.Author.Username
 		}
-		// Override author for Q8bot
 		if strings.Contains(tpl.Name, "Q8bot") || strings.Contains(tpl.Name, "麒博") {
 			authorName = "Q8bot官方"
 		}
@@ -465,7 +458,7 @@ func (h *TemplateHandler) CommunityGet(c *gin.Context) {
 		return
 	}
 
-	// Fallback: try local agent
+	// 2. Try local agent
 	var agent model.Agent
 	if err := h.db.Where("id = ?", id).First(&agent).Error; err == nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -477,6 +470,22 @@ func (h *TemplateHandler) CommunityGet(c *gin.Context) {
 			},
 		})
 		return
+	}
+
+	// 3. Try Queen marketplace (for community items with Queen IDs)
+	queenURL := fmt.Sprintf("%s/items/%s", queenMarketplaceURL, id)
+	client := &http.Client{Timeout: 8 * time.Second}
+	if resp, err := client.Get(queenURL); err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			if body, err2 := io.ReadAll(resp.Body); err2 == nil {
+				var result map[string]interface{}
+				if json.Unmarshal(body, &result) == nil {
+					c.JSON(http.StatusOK, result)
+					return
+				}
+			}
+		}
 	}
 
 	c.JSON(http.StatusNotFound, gin.H{"error": "item not found"})

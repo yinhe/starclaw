@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -171,10 +170,10 @@ func (t *MVTool) composeMV(ctx context.Context, args mvArgs) (string, error) {
 			os.WriteFile(listPath, []byte(listContent.String()), 0644)
 
 			videoPath = filepath.Join(tmpDir, "merged_raw.mp4")
-			cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+			cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
 				"-i", listPath, "-c", "copy", videoPath)
 			if out, err := cmd.CombinedOutput(); err != nil {
-				cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+				cmd2 := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-f", "concat", "-safe", "0",
 					"-i", listPath, "-c:v", "libx264", "-c:a", "aac", "-preset", "fast", videoPath)
 				if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
 					return "", fmt.Errorf("merge failed: %v\n%s\n%s", err2, string(out), string(out2))
@@ -221,7 +220,7 @@ func (t *MVTool) composeMV(ctx context.Context, args mvArgs) (string, error) {
 	}
 
 	log.Printf("[MVTool] composing: video=%s, music=%s, clips=%d", videoPath, musicPath, totalClips)
-	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", ffmpegArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("FFmpeg compose failed: %v\n%s", err, string(out))
@@ -336,7 +335,7 @@ func (t *MVTool) composePro(ctx context.Context, args mvArgs) (string, error) {
 		clipDur := float64(video.Duration)
 		if scene.TrimDuration > 0 && scene.TrimDuration < clipDur {
 			trimPath := filepath.Join(tmpDir, fmt.Sprintf("trim_%03d.mp4", i))
-			trimCmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+			trimCmd := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 				"-i", clipPath,
 				"-t", fmt.Sprintf("%.3f", scene.TrimDuration),
 				"-c:v", "libx264", "-preset", "fast", "-an",
@@ -396,12 +395,12 @@ func (t *MVTool) composePro(ctx context.Context, args mvArgs) (string, error) {
 	}
 
 	log.Printf("[MVTool] compose_pro final: video=%s, audio=%s", assembledPath, audioPath)
-	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", ffmpegArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// Fallback: re-encode video if copy fails
 		ffmpegArgs[len(ffmpegArgs)-3] = "libx264"
-		cmd2 := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+		cmd2 := hiddenCmdCtx(ctx, "ffmpeg", ffmpegArgs...)
 		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
 			return "", fmt.Errorf("final compose failed: %v\n%s\n%s", err2, string(out), string(out2))
 		}
@@ -498,7 +497,7 @@ func (t *MVTool) assembleWithTransitions(ctx context.Context, tmpDir string, cli
 			// Simple concat
 			listPath := filepath.Join(tmpDir, fmt.Sprintf("list_%03d.txt", i))
 			os.WriteFile(listPath, []byte(fmt.Sprintf("file '%s'\nfile '%s'\n", current, next)), 0644)
-			cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+			cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 				"-f", "concat", "-safe", "0", "-i", listPath,
 				"-c:v", "libx264", "-preset", "fast", "-an",
 				outPath,
@@ -516,7 +515,7 @@ func (t *MVTool) assembleWithTransitions(ctx context.Context, tmpDir string, cli
 			if offset < 0 {
 				offset = 0
 			}
-			cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+			cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 				"-i", current, "-i", next,
 				"-filter_complex",
 				fmt.Sprintf("[0:v][1:v]xfade=transition=fadewhite:duration=%.3f:offset=%.3f[v]", transDur, offset),
@@ -537,7 +536,7 @@ func (t *MVTool) assembleWithTransitions(ctx context.Context, tmpDir string, cli
 			if offset < 0 {
 				offset = 0
 			}
-			cmd := exec.CommandContext(ctx, "ffmpeg", "-y",
+			cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 				"-i", current, "-i", next,
 				"-filter_complex",
 				fmt.Sprintf("[0:v][1:v]xfade=transition=%s:duration=%.3f:offset=%.3f[v]", xfadeType, transDur, offset),
@@ -549,7 +548,7 @@ func (t *MVTool) assembleWithTransitions(ctx context.Context, tmpDir string, cli
 				log.Printf("[MVTool] xfade %s failed for scene %d, falling back to concat: %v", xfadeType, i, err)
 				listPath := filepath.Join(tmpDir, fmt.Sprintf("list_%03d.txt", i))
 				os.WriteFile(listPath, []byte(fmt.Sprintf("file '%s'\nfile '%s'\n", current, next)), 0644)
-				cmd2 := exec.CommandContext(ctx, "ffmpeg", "-y",
+				cmd2 := hiddenCmdCtx(ctx, "ffmpeg", "-y",
 					"-f", "concat", "-safe", "0", "-i", listPath,
 					"-c:v", "libx264", "-preset", "fast", "-an",
 					outPath,

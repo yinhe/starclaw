@@ -140,8 +140,8 @@ func (e *FineTuneEngine) jobLoop() {
 	case <-time.After(30 * time.Second):
 	}
 
-	log.Println("[FineTune] Job loop started (every 60s)")
-	ticker := time.NewTicker(60 * time.Second)
+	log.Println("[FineTune] Job loop started (every 5m)")
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {

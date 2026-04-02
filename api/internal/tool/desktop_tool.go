@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -628,7 +627,7 @@ func (t *DesktopTool) launchApp(ctx context.Context, a desktopArgs) (string, err
 	}
 
 	// Try to launch the app
-	cmd := exec.CommandContext(ctx, "cmd", "/c", "start", "", appPath)
+	cmd := hiddenCmdCtx(ctx, "cmd", "/c", "start", "", appPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// Fallback: try PowerShell Start-Process
@@ -689,11 +688,11 @@ func isDockerEnv() bool {
 func runPowerShell(ctx context.Context, script string) (string, error) {
 	if runtime.GOOS == "windows" {
 		encoded := base64.StdEncoding.EncodeToString([]byte(stringsToUTF16LE(script)))
-		cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
+		cmd := hiddenCmdCtx(ctx, "powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd := hiddenCmdCtx(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

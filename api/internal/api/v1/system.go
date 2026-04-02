@@ -23,6 +23,7 @@ import (
 	"github.com/yinhe/starclaw/internal/molt"
 	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/overlord"
+	"github.com/yinhe/starclaw/internal/procutil"
 	"github.com/yinhe/starclaw/internal/swarm"
 )
 
@@ -452,9 +453,9 @@ func (h *SystemHandler) StopBridge(c *gin.Context) {
 	// Kill the bridge process directly (more reliable than JSON-RPC shutdown)
 	var killErr error
 	if runtime.GOOS == "windows" {
-		killErr = exec.Command("taskkill", "/F", "/IM", "mcp-bridge.exe").Run()
+		killErr = procutil.Command("taskkill", "/F", "/IM", "mcp-bridge.exe").Run()
 	} else {
-		killErr = exec.Command("pkill", "-f", "mcp-bridge").Run()
+		killErr = procutil.Command("pkill", "-f", "mcp-bridge").Run()
 	}
 
 	if killErr != nil {
@@ -762,7 +763,7 @@ func performDockerSocketUpdate(targetVersion string) error {
 	// Auto-detect host project dir from Docker Compose container labels
 	if hostDir == "" {
 		ulogInfo("自动检测宿主机项目目录...")
-		out, err := exec.Command("docker", "inspect", "starclaw-api",
+		out, err := procutil.Command("docker", "inspect", "starclaw-api",
 			"--format", `{{index .Config.Labels "com.docker.compose.project.working_dir"}}`).CombinedOutput()
 		if err == nil {
 			detected := strings.TrimSpace(string(out))
@@ -776,7 +777,7 @@ func performDockerSocketUpdate(targetVersion string) error {
 	// Fallback: search common host paths via Docker
 	if hostDir == "" {
 		for _, dir := range []string{"/opt/starclaw/claw", "/opt/starclaw", "/opt/claw"} {
-			if err := exec.Command("docker", "run", "--rm",
+			if err := procutil.Command("docker", "run", "--rm",
 				"-v", dir+":"+dir+":ro",
 				"alpine:latest", "test", "-d", filepath.Join(dir, "api")).Run(); err == nil {
 				hostDir = dir
@@ -879,7 +880,7 @@ echo "@@UPDATE_COMPLETE"
 `, hostDir, targetVersion, nydusURL)
 
 	ulogInfo("启动宿主机构建容器...")
-	cmd := exec.Command("docker", "run", "--rm",
+	cmd := procutil.Command("docker", "run", "--rm",
 		"-v", hostDir+":"+hostDir,
 		"-v", "/var/run/docker.sock:/var/run/docker.sock",
 		"--workdir", hostDir,
@@ -1102,13 +1103,13 @@ func performSporeUpdate(targetVersion string) error {
 				`try { Wait-Process -Id %d -Timeout 10 -ErrorAction SilentlyContinue } catch {}; `+
 				`Start-Process -FilePath '%s' -ArgumentList '%s' -WorkingDirectory '%s'`,
 			pid, currentBin, argsStr, cwd)
-		cmd = exec.Command("powershell", "-WindowStyle", "Hidden", "-Command", script)
+		cmd = procutil.Command("powershell", "-WindowStyle", "Hidden", "-Command", script)
 	} else {
 		// Unix: wait for old PID to exit, then start new binary
 		script := fmt.Sprintf(
 			`sleep 2; while kill -0 %d 2>/dev/null; do sleep 1; done; cd '%s' && '%s' %s &`,
 			pid, cwd, currentBin, argsStr)
-		cmd = exec.Command("sh", "-c", script)
+		cmd = procutil.Command("sh", "-c", script)
 	}
 	cmd.SysProcAttr = detachedSysProcAttr()
 	if err := cmd.Start(); err != nil {

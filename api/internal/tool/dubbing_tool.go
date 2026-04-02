@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -164,9 +163,9 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 		return "", fmt.Errorf("video has no URL (not yet completed?)")
 	}
 
-	apiKey, _ := GetDashScopeAPIKey(t.db, userID)
+	apiKey, _ := GetDashScopeAPIKeyCtx(ctx, t.db, userID)
 	if apiKey == "" {
-		return "", fmt.Errorf("no DashScope API key found for TTS")
+		return "", fmt.Errorf("no DashScope API key found for TTS. Please use StarAI channel")
 	}
 
 	voice := args.Voice
@@ -284,7 +283,7 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 	)
 
 	log.Printf("[DubbingTool] Running ffmpeg voiceover: %d segments, voice=%s", len(segments), voice)
-	cmd := exec.CommandContext(ctx, "ffmpeg", ffmpegArgs...)
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", ffmpegArgs...)
 	cmdOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("ffmpeg failed: %v\n%s", err, string(cmdOutput))

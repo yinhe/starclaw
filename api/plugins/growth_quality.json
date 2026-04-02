@@ -1,0 +1,21 @@
+{
+  "name": "growth_quality",
+  "description": "Three-level data quality check: range validation, change rate validation, source credibility scoring. Returns pass/suspect/invalid status with recommendations.",
+  "version": "1.0.0",
+  "author": "StarClaw Growth Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "data_quality_check" },
+      "height": { "type": "number", "description": "Height cm" },
+      "weight": { "type": "number", "description": "Weight kg" },
+      "age_months": { "type": "number" },
+      "prev_height": { "type": "number", "description": "Previous height cm" },
+      "prev_days_ago": { "type": "number", "description": "Days since previous measurement" },
+      "data_source": { "type": "string", "description": "device / his / ocr / manual" }
+    },
+    "required": ["action"]
+  },
+  "handler": "growth_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

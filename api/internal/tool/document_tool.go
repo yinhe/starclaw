@@ -80,9 +80,9 @@ func (t *DocumentTool) Execute(ctx context.Context, argsJSON string) (string, er
 	switch args.Action {
 	case "summarize":
 		return t.summarize(args)
-	case "export_word", "create_docx":
+	case "export_word", "create_docx", "create_document", "export_docx", "create_word":
 		return t.exportWord(ctx, args)
-	case "summary_to_word":
+	case "summary_to_word", "summarize_to_word", "summary_word":
 		return t.summaryToWord(ctx, args)
 	default:
 		return "", fmt.Errorf("unknown action: %s. Use: summarize, export_word, summary_to_word", args.Action)
@@ -277,6 +277,11 @@ func (t *DocumentTool) summaryToWord(ctx context.Context, args documentArgs) (st
 }
 
 // --- Minimal DOCX Generator (ZIP + XML, no external dependencies) ---
+
+// GenerateDocxPublic is the exported wrapper for generateDocx.
+func GenerateDocxPublic(title, content string) ([]byte, error) {
+	return generateDocx(title, content)
+}
 
 // generateDocx creates a valid .docx file from title and plain-text/markdown content.
 func generateDocx(title, content string) ([]byte, error) {
