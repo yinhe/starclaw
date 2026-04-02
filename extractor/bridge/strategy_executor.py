@@ -525,6 +525,30 @@ class StrategyExecutor:
         confirmed = self.request_claw_confirmation(candidates)
         logger.info(f"[executor] after Claw confirm: {len(confirmed)} stocks")
 
+        # 5.5 Team Agent review (hunter→risk→leader arbitration)
+        try:
+            from team_manager import TeamManager
+            import main as _main
+            if _main.team_mgr:
+                held_codes = self.positions.get_held_codes()
+                sentiment = None
+                try:
+                    sentiment = alpha_engine.analyze_sentiment()
+                except Exception:
+                    pass
+                team_approved = _main.team_mgr.process_candidates(
+                    confirmed,
+                    market_env=env,
+                    macro_data=macro,
+                    sentiment=sentiment,
+                    held_codes=held_codes,
+                )
+                logger.info(f"[executor] team review: {len(confirmed)}→{len(team_approved)} "
+                            f"(rejected {len(confirmed) - len(team_approved)})")
+                confirmed = team_approved
+        except Exception as e:
+            logger.warning(f"[executor] team review error (passthrough): {e}")
+
         # 6. Execute orders
         orders = self.execute_orders(confirmed)
 

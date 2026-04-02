@@ -17,5 +17,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&Settlement{},
 		&PredictMarket{},
 		&PredictPosition{},
+		&ClientAccount{},
+		&MonthlyBill{},
+		&NAVSnapshot{},
 	)
 }

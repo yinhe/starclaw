@@ -1,0 +1,40 @@
+[
+  {
+    "date": "2026-04-01",
+    "realized_pnl": 0,
+    "trades_count": 0,
+    "distribution": {
+      "reinvest": 0,
+      "star_energy_cny": 0,
+      "star_energy_units": 0,
+      "dividend": 0,
+      "reserve": 0
+    },
+    "queen_inject": null,
+    "account_snapshot": {
+      "total_assets": 154851.45,
+      "available": 27696.45,
+      "market_value": 127155.0
+    },
+    "settled_at": "2026-04-01 15:35:42"
+  },
+  {
+    "date": "2026-04-02",
+    "realized_pnl": 0,
+    "trades_count": 0,
+    "distribution": {
+      "reinvest": 0,
+      "star_energy_cny": 0,
+      "star_energy_units": 0,
+      "dividend": 0,
+      "reserve": 0
+    },
+    "queen_inject": null,
+    "account_snapshot": {
+      "total_assets": 151429.12,
+      "available": 75125.12,
+      "market_value": 76321.0
+    },
+    "settled_at": "2026-04-02 13:06:05"
+  }
+]

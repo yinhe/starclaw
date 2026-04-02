@@ -99,8 +99,8 @@ func (h *AgentHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var agents []model.Agent
-	// Return user's own agents + system built-in agents
-	if err := h.db.Where("user_id = ? OR (user_id = 'system' AND is_builtin = ?)", userID, true).Order("is_builtin DESC, created_at DESC").Find(&agents).Error; err != nil {
+	// Return user's own agents + all built-in public agents (regardless of owner)
+	if err := h.db.Where("user_id = ? OR (is_builtin = ? AND is_public = ?)", userID, true, true).Order("is_builtin DESC, created_at DESC").Find(&agents).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch agents"})
 		return
 	}

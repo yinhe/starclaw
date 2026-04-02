@@ -33,6 +33,7 @@ func Setup(r *gin.Engine, db *gorm.DB, bridgeURL string) {
 	callbackH := &CallbackHandler{DB: db, RiskCtrl: riskCtrl}
 	clawH := &ClawConfirmHandler{DB: db, Claw: clawClient}
 	scanH := &ScanHandler{DB: db, Bridge: bc}
+	billingH := &BillingHandler{DB: db, Bridge: bc}
 
 	// Health
 	r.GET("/health", func(c *gin.Context) {
@@ -88,6 +89,33 @@ func Setup(r *gin.Engine, db *gorm.DB, bridgeURL string) {
 		// Scan (trigger Python strategy executor)
 		v1.POST("/scan", scanH.TriggerScan)
 		v1.GET("/scan/status", scanH.ScanStatus)
+
+		// Billing: Client management
+		v1.GET("/clients", billingH.ListClients)
+		v1.POST("/clients", billingH.CreateClient)
+		v1.GET("/clients/:id", billingH.GetClient)
+		v1.PUT("/clients/:id", billingH.UpdateClient)
+
+		// Billing: NAV snapshots
+		v1.POST("/nav/snapshot", billingH.SnapshotNAV)
+
+		// Billing: Monthly bills
+		v1.POST("/bills/generate", billingH.GenerateBills)
+		v1.GET("/bills", billingH.ListBills)
+		v1.GET("/bills/:id", billingH.GetBill)
+		v1.POST("/bills/:id/send", billingH.SendBill)
+
+		// Billing: Payment (online Synapse + offline)
+		v1.POST("/bills/:id/pay", billingH.CreatePayment)
+		v1.GET("/bills/:id/pay/poll", billingH.PollPayment)
+		v1.POST("/bills/:id/confirm-offline", billingH.ConfirmOfflinePayment)
+
+		// Billing: Star energy injection retry (for testing / Queen offline)
+		v1.POST("/bills/:id/inject-retry", billingH.RetryInjectOne)
+		v1.POST("/billing/inject-retry-all", billingH.RetryInjectAll)
+
+		// Billing: Stats
+		v1.GET("/billing/stats", billingH.BillingStats)
 	}
 
 	// Callbacks from Python Bridge
@@ -98,6 +126,9 @@ func Setup(r *gin.Engine, db *gorm.DB, bridgeURL string) {
 		cb.POST("/risk_alert", callbackH.RiskAlert)
 		cb.POST("/strategy_signal", callbackH.StrategySignal)
 	}
+
+	// Marketplace webhook: Q8bot purchase → auto-create client
+	r.POST("/webhook/marketplace/purchase", billingH.OnMarketplacePurchase)
 
 	// Claw AI secondary confirmation
 	claw := r.Group("/v1/claw")

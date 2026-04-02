@@ -42,6 +42,7 @@ class QMTClient:
         self._connected = False
         self._trader: Optional[object] = None
         self._accounts: dict = {}  # account_id → StockAccount
+        self._last_asset: dict = {}  # cache last successful asset query per account
         self._config_accounts: list = self._load_config_accounts()
 
         if HAS_XTQUANT:
@@ -125,6 +126,13 @@ class QMTClient:
                             logger.info(f"Subscribed account: {acct_id}")
                         except Exception as e:
                             logger.warning(f"Account subscribe failed for {acct_id}: {e}")
+                    # Subscribe whole market quotes so get_full_tick returns
+                    # real-time data for ALL stocks (not just held positions)
+                    try:
+                        xtdata.subscribe_whole_quote(["SH", "SZ"])
+                        logger.info("Subscribed whole market quotes (SH+SZ)")
+                    except Exception as e:
+                        logger.warning(f"subscribe_whole_quote failed: {e}")
                     return
                 else:
                     logger.warning(f"QMT connect returned {connect_result} for {qmt_path}")
@@ -205,6 +213,153 @@ class QMTClient:
             logger.warning(f"get_open_orders error: {e}")
             return []
 
+    def get_all_orders(self, account: str) -> list:
+        """Get ALL orders (including filled/cancelled) for history import."""
+        if not HAS_XTQUANT:
+            return []
+        stock_account = StockAccount(account)
+        try:
+            orders = self._trader.query_stock_orders(stock_account)
+            result = []
+            for o in orders:
+                status = getattr(o, 'order_status', -1)
+                result.append({
+                    "order_id": str(getattr(o, 'order_id', '')),
+                    "code": getattr(o, 'stock_code', ''),
+                    "direction": "buy" if getattr(o, 'order_type', 0) == 23 else "sell",
+                    "price": getattr(o, 'price', 0),
+                    "order_volume": getattr(o, 'order_volume', 0),
+                    "traded_volume": getattr(o, 'traded_volume', 0),
+                    "traded_price": getattr(o, 'traded_price', 0),
+                    "status": status,
+                    "status_msg": getattr(o, 'status_msg', ''),
+                    "order_time": getattr(o, 'order_time', ''),
+                })
+            return result
+        except Exception as e:
+            logger.warning(f"get_all_orders error: {e}")
+            return []
+
+    def get_dealt_trades(self, account: str) -> list:
+        """Get all dealt/filled trades (成交记录) from QMT."""
+        if not HAS_XTQUANT:
+            return []
+        stock_account = StockAccount(account)
+        try:
+            # query_stock_trades returns filled trade records
+            if not hasattr(self._trader, 'query_stock_trades'):
+                logger.warning("[qmt] query_stock_trades not available")
+                return []
+            trades = self._trader.query_stock_trades(stock_account)
+            result = []
+            for t in trades:
+                result.append({
+                    "code": getattr(t, 'stock_code', ''),
+                    "direction": "buy" if getattr(t, 'order_type', 0) == 23 else "sell",
+                    "price": getattr(t, 'traded_price', 0),
+                    "volume": getattr(t, 'traded_volume', 0),
+                    "amount": getattr(t, 'traded_amount', 0),
+                    "order_id": str(getattr(t, 'order_id', '')),
+                    "traded_id": str(getattr(t, 'traded_id', '')),
+                    "traded_time": getattr(t, 'traded_time', ''),
+                })
+            return result
+        except Exception as e:
+            logger.warning(f"get_dealt_trades error: {e}")
+            return []
+
+    def export_history_deals(self, account: str, start_time: str = "", end_time: str = "") -> list:
+        """Export historical deal records using query_data/export_data (supports date range).
+
+        Unlike query_stock_trades which only returns today's deals,
+        this uses the generic export_data interface to get historical records.
+
+        Args:
+            account: Account ID string
+            start_time: Start date string like '20260101' (optional)
+            end_time: End date string like '20260402' (optional)
+
+        Returns:
+            list of dict with deal info, or empty list on failure
+        """
+        if not HAS_XTQUANT:
+            return []
+        import tempfile, os
+        stock_account = StockAccount(account)
+        tmp_path = os.path.join(tempfile.gettempdir(), f'qmt_deals_{account}.csv')
+        try:
+            # Try query_data first (returns DataFrame, auto-deletes csv)
+            if hasattr(self._trader, 'query_data'):
+                data = self._trader.query_data(stock_account, tmp_path, 'deal', start_time, end_time)
+                if isinstance(data, dict) and 'error' in data:
+                    logger.warning(f"[qmt] query_data error: {data}")
+                    return []
+                # data should be a DataFrame
+                import pandas as pd
+                if isinstance(data, pd.DataFrame) and not data.empty:
+                    result = []
+                    for _, row in data.iterrows():
+                        code = str(row.get('stock_code', row.get('instrument_id', '')))
+                        order_type = int(row.get('order_type', 0))
+                        direction = "buy" if order_type == 23 else "sell"
+                        result.append({
+                            "code": code,
+                            "direction": direction,
+                            "price": float(row.get('traded_price', 0)),
+                            "volume": int(row.get('traded_volume', 0)),
+                            "amount": float(row.get('traded_amount', 0)),
+                            "order_id": str(row.get('order_id', '')),
+                            "traded_id": str(row.get('traded_id', '')),
+                            "traded_time": str(row.get('traded_time', '')),
+                            "order_type": order_type,
+                            "offset_flag": int(row.get('offset_flag', 0)),
+                        })
+                    logger.info(f"[qmt] export_history_deals: got {len(result)} records via query_data")
+                    return result
+                else:
+                    logger.info(f"[qmt] query_data returned empty or non-DataFrame: {type(data)}")
+                    return []
+
+            # Fallback: export_data (writes to csv, we parse it)
+            elif hasattr(self._trader, 'export_data'):
+                resp = self._trader.export_data(stock_account, tmp_path, 'deal', start_time, end_time)
+                if isinstance(resp, dict) and 'error' in resp:
+                    logger.warning(f"[qmt] export_data error: {resp}")
+                    return []
+                if os.path.exists(tmp_path):
+                    import pandas as pd
+                    df = pd.read_csv(tmp_path, encoding='gbk')
+                    os.remove(tmp_path)
+                    result = []
+                    for _, row in df.iterrows():
+                        code = str(row.get('stock_code', row.get('instrument_id', '')))
+                        order_type = int(row.get('order_type', 0))
+                        direction = "buy" if order_type == 23 else "sell"
+                        result.append({
+                            "code": code,
+                            "direction": direction,
+                            "price": float(row.get('traded_price', 0)),
+                            "volume": int(row.get('traded_volume', 0)),
+                            "amount": float(row.get('traded_amount', 0)),
+                            "traded_time": str(row.get('traded_time', '')),
+                            "order_type": order_type,
+                        })
+                    logger.info(f"[qmt] export_history_deals: got {len(result)} records via export_data")
+                    return result
+                return []
+            else:
+                logger.warning("[qmt] Neither query_data nor export_data available")
+                return []
+        except Exception as e:
+            logger.error(f"[qmt] export_history_deals error: {e}", exc_info=True)
+            # Clean up temp file
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            return []
+
     def get_account_info(self, account: str) -> dict:
         """Get account balance info."""
         if not HAS_XTQUANT:
@@ -219,14 +374,40 @@ class QMTClient:
         stock_account = StockAccount(account)
         asset = self._trader.query_stock_asset(stock_account)
         if asset:
-            return {
+            total = asset.total_asset or 0
+            mv = asset.market_value or 0
+            cash = asset.cash or 0
+            frozen = asset.frozen_cash or 0
+            pos_ratio = (mv / total * 100) if total > 0 else 0
+            logger.info(f"[account] asset OK: acct={account} total={total} mv={mv} cash={cash}")
+            result = {
                 "account": account,
-                "total_assets": asset.total_asset,
-                "available": asset.cash,
-                "frozen": asset.frozen_cash,
-                "market_value": asset.market_value,
+                "total_assets": total,
+                "available": cash,
+                "frozen": frozen,
+                "market_value": mv,
+                "today_profit": getattr(asset, "today_profit", None) or getattr(asset, "m_dDayProfit", None) or 0,
+                "float_pnl": getattr(asset, "position_profit", None) or getattr(asset, "m_dPositionProfit", None) or 0,
+                "withdrawable": getattr(asset, "withdrawable", None) or getattr(asset, "m_dFetchBalance", None) or max(cash - frozen, 0),
+                "position_ratio": round(pos_ratio, 1),
             }
-        return {"account": account, "total_assets": 0, "available": 0, "frozen": 0, "market_value": 0}
+            self._last_asset[account] = result  # cache successful result
+            return result
+
+        # QMT SDK rate-limits query_stock_asset; return cached result if available
+        cached = self._last_asset.get(account)
+        if cached:
+            logger.info(f"[account] using cache for acct={account}")
+            return cached
+
+        # No cache available — true fallback
+        logger.warning(f"[account] query_stock_asset returned None, no cache, acct={account}, keys={list(self._last_asset.keys())}")
+        return {
+            "account": account,
+            "total_assets": 0, "available": 0, "frozen": 0, "market_value": 0,
+            "today_profit": 0, "float_pnl": 0, "withdrawable": 0, "position_ratio": 0,
+            "_fallback": True,
+        }
 
     def get_positions(self, account: str) -> list:
         """Get current positions with stock names and correct P&L."""
@@ -238,19 +419,70 @@ class QMTClient:
 
         stock_account = StockAccount(account)
         positions = self._trader.query_stock_positions(stock_account)
+
+        # Batch-fetch realtime prices for all held stocks via xtdata
+        codes = [p.stock_code for p in positions]
+        realtime_prices = {}
+        last_closes = {}
+        if codes:
+            # Try get_full_tick first (realtime snapshot)
+            try:
+                ticks = xtdata.get_full_tick(codes)
+                if ticks:
+                    sample_code = codes[0]
+                    sample = ticks.get(sample_code)
+                    if sample:
+                        logger.info(f"[positions] get_full_tick keys for {sample_code}: {list(sample.keys()) if isinstance(sample, dict) else type(sample)}")
+                    for code, tick in ticks.items():
+                        if tick and isinstance(tick, dict):
+                            price = float(tick.get("lastPrice", 0) or tick.get("last_price", 0) or tick.get("price", 0) or tick.get("close", 0))
+                            if price > 0:
+                                realtime_prices[code] = price
+                            lc = float(tick.get("lastClose", 0) or tick.get("last_close", 0) or 0)
+                            if lc > 0:
+                                last_closes[code] = lc
+            except Exception as e:
+                logger.warning(f"[positions] get_full_tick failed: {e}")
+            # Fallback: 1m bars for any missing
+            missing = [c for c in codes if c not in realtime_prices]
+            if missing:
+                try:
+                    md = xtdata.get_market_data_ex([], missing, period="1m", count=1)
+                    for code, df in md.items():
+                        if df is not None and len(df) > 0:
+                            price = float(df["close"].values[-1])
+                            if price > 0:
+                                realtime_prices[code] = price
+                except Exception as e:
+                    logger.warning(f"[positions] 1m bar fallback failed: {e}")
+            logger.info(f"[positions] realtime prices: {len(realtime_prices)}/{len(codes)} — {realtime_prices}")
+
         result = []
         for p in positions:
             vol = p.volume
+            if vol <= 0:
+                continue  # skip cleared positions
             cost = p.open_price
-            mkt_price = p.market_value / vol if vol > 0 else 0
+            # Use realtime price if available, otherwise fall back to QMT position data
+            if p.stock_code in realtime_prices:
+                mkt_price = realtime_prices[p.stock_code]
+            else:
+                mkt_price = p.market_value / vol if vol > 0 else 0
             pnl = round((mkt_price - cost) * vol, 2) if vol > 0 else 0
 
-            # Query stock name via xtdata
+            # Query stock name via xtdata (handle GBK encoding on Windows)
             name = ""
             try:
                 detail = xtdata.get_instrument_detail(p.stock_code)
                 if detail:
-                    name = detail.get("InstrumentName", "")
+                    raw = detail.get("InstrumentName", "")
+                    if isinstance(raw, bytes):
+                        name = raw.decode("gbk", errors="replace")
+                    elif isinstance(raw, str):
+                        try:
+                            name = raw.encode("latin1").decode("gbk", errors="replace")
+                        except (UnicodeDecodeError, UnicodeEncodeError):
+                            name = raw
             except Exception:
                 pass
 
@@ -261,6 +493,7 @@ class QMTClient:
                 "avail_volume": p.can_use_volume,
                 "cost_price": cost,
                 "market_price": round(mkt_price, 4),
+                "last_close": last_closes.get(p.stock_code, 0),
                 "pnl_float": pnl,
             })
         return result

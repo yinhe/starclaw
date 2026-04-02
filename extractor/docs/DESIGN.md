@@ -301,8 +301,8 @@ extractor/                          # 🏦 萃取器
 | **E4** | 风控系统完整实现 | ✅ 2026-03-31 (portfolio_risk.py 5层风控) |
 | **E5** | 回测框架 | ✅ 2026-03-31 (backtest.py) |
 | **E6** | React 量化仪表盘 | 🟡 Q8bot对话替代，20个trading工具 |
-| **E7** | 星能闭环: 日终结算→Queen 注入 | ⏳ |
-| **E8** | AI Agent: 市场分析/策略生成/风控/日报 | 🟡 Layer3+4已实现，缺Layer1+2 |
+| **E7** | 星能闭环: 客户月度账单→Synapse支付/线下→Queen星能注入 | ✅ 2026-04-01 (client.go+billing.go, 15个API端点) |
+| **E8** | AI Agent 5层分析体系 | ✅ 2026-04-01 (L1宏观+L2板块+L3情绪+L4个股研报+L5 Qwen LLM Master) |
 | **E9** | Polymarket 海外预测市场 | ⏳ |
 | **E10** | Nydus hook + nginx + 监控 + 上线 | ⏳ |
 
@@ -326,6 +326,20 @@ extractor/                          # 🏦 萃取器
 | 买入链路增强 | 预突破扫描+回踩确认(拒绝追涨>7%)+Kelly仓位 |
 | 挂单管理 | 5分钟未成交自动撤单追单 |
 
+### 2026-04-01 E8 AI Agent 5层分析体系
+
+| 层级 | 功能 | API端点 | 文件 |
+|------|------|---------|------|
+| **L1 宏观** | 大盘方向+仓位建议 | `GET /trading/macro` | `alpha_engine.py::analyze_macro()` |
+| **L2 板块** | 板块轮动+热度排名 | `GET /trading/sectors` | `alpha_engine.py::analyze_sectors()` |
+| **L3 情绪** | 恐贪指标+涨跌停+量能 | `GET /trading/sentiment` | `alpha_engine.py::analyze_sentiment()` |
+| **L4 个股** | 技术面+相对强度+风险 | `GET /trading/research?code=&cost_price=` | `alpha_engine.py::research_stock()` |
+| **L5 Master** | Qwen LLM综合研判 | `GET /trading/master` | `alpha_engine.py::master_analysis()` |
+
+辅助端点:
+- `GET /trading/research/portfolio` — 批量研报全部持仓
+- `GET /trading/premarket_v2` — 盘前综合报告 (L1+L2)
+
 ## 十四、环境变量
 
 ```bash
@@ -340,6 +354,11 @@ EXTRACTOR_CLAW_MODEL=qwen-max                 # 默认 LLM 模型
 # Queen (星能结算)
 QUEEN_URL=https://api.starclaw.net
 QUEEN_TOKEN=sc2026-xK9mWqL3vNpR7tYhBjF5sDcEaGiUoZ4
+
+# Qwen LLM (Master Analysis)
+QWEN_API_KEY=                                  # DashScope API Key
+QWEN_MODEL=qwen-plus                          # 模型 (qwen-plus/qwen-max)
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 # Python Bridge
 EXTRACTOR_BRIDGE_URL=http://localhost:8098

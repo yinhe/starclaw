@@ -200,9 +200,26 @@ class PositionManager:
             logger.warning(f"[position] sell {code} but not in positions")
             return
         pos = self.positions[code]
-        pnl_pct = (sell_price - pos.entry_price) / pos.entry_price * 100
+        pnl_pct = (sell_price - pos.entry_price) / pos.entry_price * 100 if pos.entry_price > 0 else 0.0
         logger.info(f"[position] SELL {code}: {sell_volume} @{sell_price:.2f} "
                      f"entry={pos.entry_price:.2f} pnl={pnl_pct:+.2f}% reason={sell_reason}")
+        # Record to TradeTracker (交割单) before position is deleted
+        try:
+            from trade_tracker import TradeTracker
+            tracker = TradeTracker()
+            tracker.record_trade(
+                code=code,
+                entry_price=pos.entry_price,
+                exit_price=sell_price,
+                volume=sell_volume,
+                entry_time=pos.entry_time,
+                entry_reason=pos.reason,
+                exit_reason=sell_reason,
+                signal_strength=0,
+                score=pos.score,
+            )
+        except Exception as e:
+            logger.warning(f"[position] Failed to record trade for {code}: {e}")
         pos.volume -= sell_volume
         if pos.volume <= 0:
             del self.positions[code]
@@ -243,22 +260,24 @@ class PositionManager:
             return 0
 
     def _get_ma_signal(self, code: str) -> str:
-        """Check M5/M8 moving average crossover on hourly chart.
+        """Check M5/M8/M34 moving average crossover on hourly chart.
 
         Checks last 3 bars to avoid missing crossovers between monitor cycles.
 
         Returns:
-          "death_cross" — M5 crossed below M8 within last 3 bars
-          "below"       — M5 is below M8 (bearish)
-          "above"       — M5 is above M8 (bullish, keep holding)
-          "unknown"     — insufficient data
+          "death_cross_m34" — M5 crossed below M34 (强制清仓)
+          "death_cross"     — M5 crossed below M8 within last 3 bars (减仓)
+          "below_m34"       — M5 is below M34 (extreme bearish)
+          "below"           — M5 is below M8 (bearish)
+          "above"           — M5 is above M8 (bullish, keep holding)
+          "unknown"         — insufficient data
         """
         try:
             from qmt_client import HAS_XTQUANT
             if not HAS_XTQUANT:
                 return "unknown"
             from xtquant import xtdata
-            md = xtdata.get_market_data_ex([], [code], period="60m", count=12)
+            md = xtdata.get_market_data_ex([], [code], period="60m", count=40)
             if code not in md:
                 return "unknown"
             closes = md[code]["close"].values.tolist()
@@ -266,14 +285,33 @@ class PositionManager:
                 return "unknown"
 
             def ma(data, n):
+                if len(data) < n:
+                    return None
                 return sum(data[-n:]) / n
 
-            # Check last 3 bars for crossover (covers 3-hour window)
+            # Check M5 vs M34 first (higher priority — forced liquidation)
+            if len(closes) >= 35:
+                for offset in range(3):
+                    seg = closes if offset == 0 else closes[:-offset]
+                    if len(seg) < 35:
+                        continue
+                    m5_now = ma(seg, 5)
+                    m34_now = ma(seg, 34)
+                    m5_prev = ma(seg[:-1], 5)
+                    m34_prev = ma(seg[:-1], 34)
+                    if m5_prev and m34_prev and m5_now and m34_now:
+                        if m5_prev >= m34_prev and m5_now < m34_now:
+                            logger.warning(f"[exit] {code} M5 CROSSED BELOW M34 — FORCE LIQUIDATION")
+                            return "death_cross_m34"
+                # Current state: M5 already below M34
+                m5_cur = ma(closes, 5)
+                m34_cur = ma(closes, 34)
+                if m5_cur and m34_cur and m5_cur < m34_cur:
+                    return "below_m34"
+
+            # Check M5 vs M8 (reduce position)
             for offset in range(3):
-                if offset == 0:
-                    seg = closes
-                else:
-                    seg = closes[:-offset]
+                seg = closes if offset == 0 else closes[:-offset]
                 if len(seg) < 8:
                     continue
                 m5_now = ma(seg, 5)
@@ -382,7 +420,7 @@ class PositionManager:
                 pos.highest_price = cur_price
                 changed = True
 
-            pnl_pct = (cur_price - pos.entry_price) / pos.entry_price * 100
+            pnl_pct = (cur_price - pos.entry_price) / pos.entry_price * 100 if pos.entry_price > 0 else 0.0
 
             # Calculate days held
             try:
@@ -397,7 +435,7 @@ class PositionManager:
             # --- 1. Hard stop-loss (ATR-based, absolute floor) ---
             atr = self._get_atr(code)
             if atr > 0:
-                atr_stop_pct = min((2 * atr / pos.entry_price) * 100, self.stop_loss_pct)
+                atr_stop_pct = min((2 * atr / pos.entry_price) * 100, self.stop_loss_pct) if pos.entry_price > 0 else self.stop_loss_pct
             else:
                 atr_stop_pct = self.stop_loss_pct
 
@@ -417,22 +455,26 @@ class PositionManager:
                     pos.stage_sold = new_stage
                     changed = True
 
-            # --- 4. MA trend exit: M5 crosses below M8 on hourly ---
+            # --- 4a. M34 forced liquidation: M5 crosses below M34 → sell ALL ---
             if not exit_reason:
                 ma_signal = self._get_ma_signal(code)
+                if ma_signal == "death_cross_m34":
+                    sell_volume = pos.volume  # forced full exit
+                    exit_reason = f"MA_M34_FORCE_LIQUIDATION(M5<M34, pnl={pnl_pct:+.1f}%)"
+                    logger.warning(f"[exit] {code} M5 下穿 M34 → 强制清仓 {sell_volume}股")
+                elif ma_signal == "below_m34":
+                    sell_volume = pos.volume  # already below M34 → full exit
+                    exit_reason = f"MA_below_M34(M5<M34, pnl={pnl_pct:+.1f}%)"
+                    logger.warning(f"[exit] {code} M5 持续低于 M34 → 清仓 {sell_volume}股")
+
+            # --- 4b. M8 reduce position: M5 crosses below M8 → sell half ---
+            if not exit_reason:
                 if ma_signal == "death_cross":
-                    if pos.stage_sold >= 1 and pnl_pct > 0:
-                        exit_reason = f"MA_death_cross(M5<M8, pnl={pnl_pct:+.1f}%, close_remaining)"
-                    elif pos.stage_sold == 0 and pnl_pct >= 5.0:
-                        # Profitable but no staged sell yet → partial (1/3)
-                        init_vol = pos.initial_volume
-                        sell_volume = max((init_vol // 3) // 100 * 100, 100)
-                        sell_volume = min(sell_volume, pos.volume)
-                        pos.stage_sold = 1
-                        changed = True
-                        exit_reason = f"MA_death_cross_partial(+{pnl_pct:.1f}%, sell 1/3)"
-                    else:
-                        exit_reason = f"MA_death_cross(M5<M8_hourly, pnl={pnl_pct:+.1f}%)"
+                    # M5 下穿 M8: 减仓50%（保留底仓观察）
+                    reduce_vol = max((pos.volume // 2) // 100 * 100, 100)
+                    sell_volume = min(reduce_vol, pos.volume)
+                    exit_reason = f"MA_death_cross_reduce(M5<M8, pnl={pnl_pct:+.1f}%, sell 50%)"
+                    logger.info(f"[exit] {code} M5 下穿 M8 → 减仓50% {sell_volume}股")
                 elif ma_signal == "below" and pnl_pct <= -1.0:
                     exit_reason = f"MA_bearish(M5<M8, losing {pnl_pct:+.1f}%)"
 

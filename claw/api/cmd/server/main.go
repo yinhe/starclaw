@@ -119,6 +119,9 @@ func main() {
 	// Seed system-level built-in agents (visible to all users)
 	v1.SeedBuiltinAgents(db)
 
+	// Seed marketplace templates (coding assistant, translator, etc.)
+	v1.SeedBuiltinTemplates(db)
+
 	// Auto-seed missing built-in activities for all users who have a SuperAgent
 	// This ensures new instinct templates are available even for existing users
 	go func() {

@@ -30,8 +30,12 @@ var UpdateSources = []UpdateSource{
 	{Name: "nydus", ReleaseURL: "https://nydus.starclaw.net/releases/latest", Timeout: 5 * time.Second},
 }
 
-// NydusSourceURL is the tarball URL for source-based updates (fallback when git fetch fails)
-const NydusSourceURL = "https://nydus.starclaw.net/releases/source.tar.gz"
+// SourceURLs are tarball URLs for source-based updates, tried in order.
+// GitHub archive is always available; Nydus is a China-network mirror.
+var SourceURLs = []string{
+	"https://github.com/yinhe/starclaw/archive/refs/heads/main.tar.gz",
+	"https://nydus.starclaw.net/releases/source.tar.gz",
+}
 
 type UpdateSource struct {
 	Name       string

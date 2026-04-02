@@ -797,18 +797,18 @@ func performDockerSocketUpdate(targetVersion string) error {
 	//  2. Use --project-directory → compose relative paths resolve correctly
 	//  3. Verify pull got real images → avoid false-positive when compose has build+image
 	//  4. Temp dir for tar → avoid overwrite conflicts
-	nydusURL := molt.NydusSourceURL
+	sourceURLs := strings.Join(molt.SourceURLs, " ")
 	script := fmt.Sprintf(`#!/bin/sh
 set -e
 
 # Setup mirrors for China network
 sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories 2>/dev/null || true
-apk add --no-cache curl docker-cli docker-cli-compose > /dev/null 2>&1
+apk add --no-cache curl git docker-cli docker-cli-compose > /dev/null 2>&1
 echo "@@TOOLS_READY"
 
 HOSTDIR="%s"
 VER="%s"
-NYDUS="%s"
+SOURCE_URLS="%s"
 cd "$HOSTDIR"
 
 # ── Detect project layout ──
@@ -858,12 +858,46 @@ fi
 
 # ── Build from source if needed ──
 if [ "$NEED_BUILD" = "true" ]; then
-  # Update source code from Nydus (temp dir avoids tar overwrite conflicts)
   echo "@@SOURCE_START"
   TMP=$(mktemp -d)
-  curl -sfL --connect-timeout 10 --max-time 120 "$NYDUS" | tar xz -C "$TMP" --strip-components=1
-  cp -rf "$TMP"/. "$SRCDIR"/
+  SRC_OK=false
+
+  # Try each source URL in order (GitHub archive → Nydus mirror)
+  for URL in $SOURCE_URLS; do
+    echo "@@SOURCE_TRY:$URL"
+    TARBALL="$TMP/source.tar.gz"
+    if curl -fSL --connect-timeout 15 --max-time 300 -o "$TARBALL" "$URL" 2>/dev/null; then
+      # Verify it's a valid gzip before extracting
+      if gzip -t "$TARBALL" 2>/dev/null; then
+        mkdir -p "$TMP/src"
+        tar xzf "$TARBALL" -C "$TMP/src" --strip-components=1 2>/dev/null
+        if [ $? -eq 0 ] && [ -d "$TMP/src/api" ]; then
+          cp -rf "$TMP/src"/. "$SRCDIR"/
+          SRC_OK=true
+          echo "@@SOURCE_OK_FROM:$URL"
+          break
+        fi
+      fi
+    fi
+    echo "@@SOURCE_FAIL:$URL"
+  done
+
+  # Last resort: git clone
+  if [ "$SRC_OK" = "false" ]; then
+    echo "@@SOURCE_GIT_CLONE"
+    if git clone --depth 1 https://github.com/yinhe/starclaw.git "$TMP/git" 2>/dev/null; then
+      cp -rf "$TMP/git"/. "$SRCDIR"/
+      SRC_OK=true
+    fi
+  fi
+
   rm -rf "$TMP"
+
+  if [ "$SRC_OK" = "false" ]; then
+    echo "@@SOURCE_ALL_FAILED"
+    echo "Warning: source not updated, building with existing code"
+  fi
+
   echo -n "$VER" > "$SRCDIR/api/.version"
   echo "@@SOURCE_OK"
 
@@ -877,7 +911,7 @@ fi
 echo "@@UP_START"
 BUILD_VERSION="$VER" STARCLAW_VERSION="$VER" $DC up -d --no-deps api web 2>&1
 echo "@@UPDATE_COMPLETE"
-`, hostDir, targetVersion, nydusURL)
+`, hostDir, targetVersion, sourceURLs)
 
 	ulogInfo("启动宿主机构建容器...")
 	cmd := procutil.Command("docker", "run", "--rm",
@@ -929,7 +963,17 @@ echo "@@UPDATE_COMPLETE"
 		case strings.HasPrefix(line, "@@PROJECT:"):
 			ulogInfo("项目名: %s", strings.TrimPrefix(line, "@@PROJECT:"))
 		case line == "@@SOURCE_START":
-			ulogInfo("正在从 Nydus 下载源码...")
+			ulogInfo("正在下载源码...")
+		case strings.HasPrefix(line, "@@SOURCE_TRY:"):
+			ulogInfo("尝试源码: %s", strings.TrimPrefix(line, "@@SOURCE_TRY:"))
+		case strings.HasPrefix(line, "@@SOURCE_OK_FROM:"):
+			ulogInfo("源码下载成功: %s", strings.TrimPrefix(line, "@@SOURCE_OK_FROM:"))
+		case strings.HasPrefix(line, "@@SOURCE_FAIL:"):
+			ulogInfo("源码下载失败: %s", strings.TrimPrefix(line, "@@SOURCE_FAIL:"))
+		case line == "@@SOURCE_GIT_CLONE":
+			ulogInfo("尝试 git clone 源码...")
+		case line == "@@SOURCE_ALL_FAILED":
+			ulogError("所有源码下载方式均失败，使用现有代码构建")
 		case line == "@@SOURCE_OK":
 			ulogInfo("源码已更新，版本写入完成")
 		case line == "@@BUILD_START":
@@ -1003,7 +1047,13 @@ func performSporeUpdate(targetVersion string) error {
 	// Try each URL until one succeeds
 	var tmpPath string
 	var lastErr error
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSHandshakeTimeout:   30 * time.Second,
+			ResponseHeaderTimeout: 60 * time.Second,
+		},
+		// No blanket Timeout — large binary downloads should not be cut off
+	}
 	for _, binaryURL := range urls {
 		ulogInfo("尝试下载: %s", binaryURL)
 		tmpFile, err := os.CreateTemp("", "starclaw-update-*")
@@ -1206,18 +1256,36 @@ func performDockerUpdate() error {
 		projectDir))
 	ulogInfo("源码更新: %.200s", pullResult)
 
-	// Fallback: if git fetch failed or no git, download tarball from Nydus mirror
+	// Fallback: if git fetch failed or no git, try source tarballs then git clone
 	gitFailed := strings.Contains(pullResult, "NO_GIT") || strings.Contains(pullResult, "fatal:") || strings.Contains(pullResult, "error:")
 	if gitFailed {
-		ulogInfo("Git 拉取失败，尝试 Nydus 源码包...")
-		nydusResult, nydusErr := execOnHostTimeout(client, fmt.Sprintf(
-			`cd "%s" && curl -sfL --connect-timeout 10 --max-time 120 "%s" | tar xz --strip-components=1 2>&1 && echo "NYDUS_OK"`,
-			projectDir, molt.NydusSourceURL), 180)
-		if nydusErr != nil || !strings.Contains(nydusResult, "NYDUS_OK") {
-			ulogError("Nydus 回退也失败: %v", nydusErr)
-			ulogError("警告: 源码未更新，将使用现有代码构建")
-		} else {
-			ulogInfo("源码已通过 Nydus 更新")
+		ulogInfo("Git 拉取失败，尝试源码包下载...")
+		srcOK := false
+		for _, srcURL := range molt.SourceURLs {
+			ulogInfo("尝试: %s", srcURL)
+			// Download to temp file first, then verify and extract
+			dlResult, dlErr := execOnHostTimeout(client, fmt.Sprintf(
+				`cd "%s" && TMP=$(mktemp /tmp/src-XXXXXX.tar.gz) && curl -fSL --connect-timeout 15 --max-time 300 -o "$TMP" "%s" 2>&1 && gzip -t "$TMP" 2>&1 && tar xzf "$TMP" --strip-components=1 2>&1 && rm -f "$TMP" && echo "SRC_OK"`,
+				projectDir, srcURL), 360)
+			if dlErr == nil && strings.Contains(dlResult, "SRC_OK") {
+				ulogInfo("源码已通过 %s 更新", srcURL)
+				srcOK = true
+				break
+			}
+			ulogInfo("下载失败: %s — %v", srcURL, dlErr)
+		}
+		if !srcOK {
+			// Last resort: git clone
+			ulogInfo("所有源码包失败，尝试 git clone...")
+			cloneResult, cloneErr := execOnHostTimeout(client, fmt.Sprintf(
+				`TMP=$(mktemp -d) && git clone --depth 1 https://github.com/yinhe/starclaw.git "$TMP" 2>&1 && cp -rf "$TMP"/. "%s"/ && rm -rf "$TMP" && echo "CLONE_OK"`,
+				projectDir), 300)
+			if cloneErr != nil || !strings.Contains(cloneResult, "CLONE_OK") {
+				ulogError("所有源码更新方式均失败")
+				ulogError("警告: 源码未更新，将使用现有代码构建")
+			} else {
+				ulogInfo("源码已通过 git clone 更新")
+			}
 		}
 	}
 
