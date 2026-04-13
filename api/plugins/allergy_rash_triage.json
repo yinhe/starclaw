@@ -1,0 +1,21 @@
+{
+  "name": "allergy_rash_triage",
+  "description": "Triage pediatric rash by fever, duration, morphology, distribution, itch severity, and red flag symptoms.",
+  "version": "1.0.0",
+  "author": "StarClaw Allergy Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "rash_triage" },
+      "age_months": { "type": "number" },
+      "duration_days": { "type": "number" },
+      "temperature_c": { "type": "number" },
+      "rash_areas": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "appearance": { "type": "string" },
+      "itch_severity": { "type": "string" }
+    }
+  },
+  "handler": "allergy_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

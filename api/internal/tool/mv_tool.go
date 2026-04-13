@@ -600,6 +600,16 @@ func (t *MVTool) resolveAudioURL(args mvArgs, tmpDir string) (string, error) {
 				return localPath, nil
 			}
 		}
+		// Relative paths like "data/music/xxx.mp3" that LLMs often generate
+		if strings.Contains(args.AudioURL, "music/") {
+			idx := strings.LastIndex(args.AudioURL, "music/")
+			filename := args.AudioURL[idx+len("music/"):]
+			localPath := filepath.Join(MusicDir(), filename)
+			if _, err := os.Stat(localPath); err == nil {
+				log.Printf("[MVTool] resolved relative audio path %q → %s", args.AudioURL, localPath)
+				return localPath, nil
+			}
+		}
 		// Remote URL
 		if strings.HasPrefix(args.AudioURL, "http://") || strings.HasPrefix(args.AudioURL, "https://") {
 			ext := ".wav"

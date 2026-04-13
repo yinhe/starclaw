@@ -23,7 +23,8 @@ type OpenAIProvider struct {
 type OpenAIConfig struct {
 	APIKey     string
 	BaseURL    string
-	AuthPrefix string // "Bearer" (default) or "Key" for fal.ai
+	AuthPrefix string   // "Bearer" (default) or "Key" for fal.ai
+	Models     []string // if non-nil, override default model list (use empty slice for no predefined models)
 }
 
 func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
@@ -35,65 +36,72 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 	if authPrefix == "" {
 		authPrefix = "Bearer"
 	}
+	defaultModels := []string{
+		// ── Reasoning ──
+		"o3",
+		"o3-mini",
+		"o4-mini",
+		"o1",
+		"o1-mini",
+		"o1-pro",
+
+		// ── GPT-4.1 ──
+		"gpt-4.1",
+		"gpt-4.1-mini",
+		"gpt-4.1-nano",
+
+		// ── GPT-4o ──
+		"gpt-4o",
+		"gpt-4o-mini",
+		"gpt-4o-audio-preview",
+		"gpt-4o-mini-audio-preview",
+		"gpt-4o-search-preview",
+		"gpt-4o-mini-search-preview",
+		"gpt-4o-transcribe",
+		"gpt-4o-mini-transcribe",
+		"chatgpt-4o-latest",
+
+		// ── GPT-4 ──
+		"gpt-4-turbo",
+		"gpt-4",
+
+		// ── GPT-3.5 ──
+		"gpt-3.5-turbo",
+
+		// ── Image Generation ──
+		"gpt-image-1",
+		"dall-e-3",
+		"dall-e-2",
+
+		// ── Audio / Speech ──
+		"tts-1",
+		"tts-1-hd",
+		"whisper-1",
+
+		// ── Embeddings ──
+		"text-embedding-3-large",
+		"text-embedding-3-small",
+		"text-embedding-ada-002",
+
+		// ── Moderation ──
+		"omni-moderation-latest",
+		"text-moderation-latest",
+
+		// ── Codex ──
+		"codex-mini-latest",
+	}
+
+	models := defaultModels
+	if cfg.Models != nil {
+		models = cfg.Models
+	}
+
 	return &OpenAIProvider{
 		apiKey:     cfg.APIKey,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		authPrefix: authPrefix,
-		models: []string{
-			// ── Reasoning ──
-			"o3",
-			"o3-mini",
-			"o4-mini",
-			"o1",
-			"o1-mini",
-			"o1-pro",
-
-			// ── GPT-4.1 ──
-			"gpt-4.1",
-			"gpt-4.1-mini",
-			"gpt-4.1-nano",
-
-			// ── GPT-4o ──
-			"gpt-4o",
-			"gpt-4o-mini",
-			"gpt-4o-audio-preview",
-			"gpt-4o-mini-audio-preview",
-			"gpt-4o-search-preview",
-			"gpt-4o-mini-search-preview",
-			"gpt-4o-transcribe",
-			"gpt-4o-mini-transcribe",
-			"chatgpt-4o-latest",
-
-			// ── GPT-4 ──
-			"gpt-4-turbo",
-			"gpt-4",
-
-			// ── GPT-3.5 ──
-			"gpt-3.5-turbo",
-
-			// ── Image Generation ──
-			"gpt-image-1",
-			"dall-e-3",
-			"dall-e-2",
-
-			// ── Audio / Speech ──
-			"tts-1",
-			"tts-1-hd",
-			"whisper-1",
-
-			// ── Embeddings ──
-			"text-embedding-3-large",
-			"text-embedding-3-small",
-			"text-embedding-ada-002",
-
-			// ── Moderation ──
-			"omni-moderation-latest",
-			"text-moderation-latest",
-
-			// ── Codex ──
-			"codex-mini-latest",
-		},
-		client: &http.Client{Timeout: 5 * time.Minute},
+		models:     models,
+		client:     &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 

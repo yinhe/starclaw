@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bot, Plus, Pencil, Trash2, X, Wrench, Sparkles, Download, Upload, Store } from 'lucide-react'
 import { agentAPI, modelAPI, toolAPI, knowledgeBaseAPI, superAgentAPI } from '../lib/api'
+import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 interface Agent {
   id: string
@@ -187,7 +188,7 @@ export default function AgentsPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-gray-900 text-lg">{superAgent.name}</h3>
+                      <h3 className="font-bold text-gray-900 text-lg">{formatAgentDisplayName(superAgent.name)}</h3>
                       <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 text-[10px] font-medium rounded">内置</span>
                     </div>
                     <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">{superAgent.description}</p>
@@ -263,7 +264,7 @@ export default function AgentsPage() {
                         )}
                       </div>
                     </div>
-                    <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">{agent.name}</h3>
+                    <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">{formatAgentDisplayName(agent.name)}</h3>
                     <p className="text-sm text-gray-500 mt-1 line-clamp-2">
                       {agent.description || '暂无描述'}
                     </p>

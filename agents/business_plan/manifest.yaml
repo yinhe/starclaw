@@ -1,0 +1,42 @@
+# StarClaw Agent Manifest v1 — 商业计划书Agent
+
+id: business_plan
+type: solo
+
+name:
+  zh: "商业计划书Agent"
+  en: "Business Plan Agent"
+description:
+  zh: "专业商业计划书撰写：市场调研、竞品分析、商业模式设计、财务预测、融资方案。输出投资人级别的BP文档。"
+  en: "Professional business plan writing: market research, competitor analysis, business model, financial projections, fundraising strategy."
+
+icon: "📊"
+category: marketing
+tags: ["business-plan", "BP", "fundraising", "market-research"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.3
+  max_tokens: 8192
+
+tools:
+  shared:
+    - web_search
+    - browser
+    - http_request
+    - code
+
+marketplace:
+  pricing:
+    type: free

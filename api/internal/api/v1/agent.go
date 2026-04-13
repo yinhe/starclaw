@@ -2,10 +2,12 @@ package v1
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/security"
 	"gorm.io/gorm"
 )
 
@@ -158,6 +160,11 @@ func (h *AgentHandler) Create(c *gin.Context) {
 
 	// Auto-create swarm unit (虫群成员) for this agent
 	CreateSwarmUnitFromAgent(h.db, userID, agent)
+
+	// Auto-set trust level: user-created agents get TrustBasic (can use standard + read_only tools)
+	if guard := security.GetGuard(); guard != nil {
+		guard.TrustRegistry.SetLevel(agent.ID, security.TrustBasic)
+	}
 
 	// Stardust reward for creating a new agent
 	go NewStardustEngine(h.db).RewardAgentCreated(userID)
@@ -482,7 +489,7 @@ func (h *AgentHandler) EnsureSuperAgent(c *gin.Context) {
 	ownerID := getOwnerOrSystemID(h.db)
 
 	superDesc := "智能路由编排 + 全能执行者。自动识别需求并委派给专业Agent（MV创作、视频、音乐、漫剧、编程、研究），也可直接执行任何任务。"
-	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","feishu"]`
+	superTools := `["code","system","browser","web_search","http_request","video_generation","dubbing","mv_production","comic_production","music_generation","image_generation","desktop","feishu"]`
 
 	// Ensure SuperAgent (system-level)
 	var superAgent model.Agent
@@ -599,6 +606,7 @@ func (h *AgentHandler) InstallFromMarketplace(c *gin.Context) {
 		SourceID:     req.SourceID,
 	}
 	if err := h.db.Create(&agent).Error; err != nil {
+		log.Printf("[InstallFromMarketplace] DB create error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "安装失败"})
 		return
 	}

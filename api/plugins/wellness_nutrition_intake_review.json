@@ -1,0 +1,21 @@
+{
+  "name": "wellness_nutrition_intake_review",
+  "description": "Review meal frequency, food variety, poor appetite, feeding difficulty, weight loss, and nutrition red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Wellness Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "nutrition_intake_review" },
+      "age_years": { "type": "number" },
+      "meals_per_day": { "type": "number" },
+      "food_variety_score": { "type": "number" },
+      "poor_appetite": { "type": "boolean" },
+      "weight_loss": { "type": "boolean" },
+      "feeding_difficulty": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "wellness_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

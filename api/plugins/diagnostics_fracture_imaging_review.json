@@ -1,0 +1,21 @@
+{
+  "name": "diagnostics_fracture_imaging_review",
+  "description": "Review fracture and injury imaging for displaced fracture, dislocation, growth plate injury, deformity, and neurovascular red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Diagnostics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "fracture_imaging_review" },
+      "age_years": { "type": "number" },
+      "injury_site": { "type": "string" },
+      "impression": { "type": "string" },
+      "swelling": { "type": "boolean" },
+      "deformity": { "type": "boolean" },
+      "neurovascular_concern": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "diagnostics_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

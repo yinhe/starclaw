@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_biobank_router",
+  "description": "Route biobank and cohort searches across UK Biobank, dbGaP, EGA, and BioSamples using trait, cohort, population, sample type, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "biobank_router" },
+      "trait": { "type": "string" },
+      "cohort": { "type": "string" },
+      "population": { "type": "string" },
+      "sample_type": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

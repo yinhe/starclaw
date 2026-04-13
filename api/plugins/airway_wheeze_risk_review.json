@@ -1,0 +1,20 @@
+{
+  "name": "airway_wheeze_risk_review",
+  "description": "Review recurrent wheeze risk using episode frequency, triggers, atopic clues, family history, and airway symptoms.",
+  "version": "1.0.0",
+  "author": "StarClaw Airway Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "wheeze_risk_review" },
+      "age_years": { "type": "number" },
+      "wheeze_episodes_12m": { "type": "number" },
+      "triggers": { "type": "array", "items": { "type": "string" } },
+      "eczema_or_allergy": { "type": "boolean" },
+      "family_history": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "airway_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

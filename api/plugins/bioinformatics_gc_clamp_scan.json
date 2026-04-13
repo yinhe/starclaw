@@ -1,0 +1,18 @@
+{
+  "name": "bioinformatics_gc_clamp_scan",
+  "description": "Summarize GC clamp strength near the 3' end of a nucleotide sequence for quick primer-end review.",
+  "version": "1.0.0",
+  "author": "StarClaw Bioinformatics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "gc_clamp_scan" },
+      "sequence": { "type": "string" },
+      "sequence_name": { "type": "string" },
+      "sequence_type_hint": { "type": "string" }
+    },
+    "required": ["sequence"]
+  },
+  "handler": "bioinformatics_clinic",
+  "metadata": { "category": "medical", "timeout": 20 }
+}

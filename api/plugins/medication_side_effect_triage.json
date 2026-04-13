@@ -1,0 +1,17 @@
+{
+  "name": "medication_side_effect_triage",
+  "description": "Triage reported medication side effects into urgent, common, or unclear symptom groups.",
+  "version": "1.0.0",
+  "author": "StarClaw Medication Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "side_effect_triage" },
+      "medication_name": { "type": "string", "description": "Medication name" },
+      "symptoms": { "type": "array", "items": { "type": "string" }, "description": "Reported symptoms" }
+    },
+    "required": ["action", "medication_name", "symptoms"]
+  },
+  "handler": "medication_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

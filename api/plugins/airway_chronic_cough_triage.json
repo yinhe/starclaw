@@ -1,0 +1,21 @@
+{
+  "name": "airway_chronic_cough_triage",
+  "description": "Triage chronic cough using duration, nocturnal pattern, exercise trigger, fever, weight loss, and airway red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Airway Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "chronic_cough_triage" },
+      "age_years": { "type": "number" },
+      "cough_duration_weeks": { "type": "number" },
+      "temperature_c": { "type": "number" },
+      "nocturnal_cough": { "type": "boolean" },
+      "exercise_trigger": { "type": "boolean" },
+      "weight_loss": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "airway_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

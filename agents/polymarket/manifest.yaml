@@ -1,0 +1,265 @@
+# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v1 — Polymarket Prediction Analyst
+# Production-ready: connects to live polymarket-agent (auth_api.py :8091)
+# ════════════════════════════════════════════════════════════
+
+id: polymarket
+type: solo
+
+name:
+  zh: "Polymarket 预测市场分析师"
+  en: "Polymarket Prediction Analyst"
+description:
+  zh: "全球最大预测市场实时扫描、动量+价值+流动性信号评分、自动交易。支持 Polygon 链 CLOB 下单、持仓风控、止盈止损、套利引擎监控。控制站: trade.q8bot.com"
+  en: "Real-time scanning of the world's largest prediction market. Momentum+value+liquidity signal scoring, auto-trading via Polygon CLOB, position risk management, TP/SL, arb engine. Control: trade.q8bot.com"
+
+icon: "🔮"
+category: finance
+tags: ["prediction-market", "polymarket", "crypto", "trading", "DeFi", "polygon", "arbitrage"]
+version: "1.1.0"
+status: stable
+visibility: public
+is_builtin: true
+featured: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  url: "https://starclaw.net"
+  verified: true
+
+# ② Prompt
+prompt_file: prompt.md
+prompt_files:
+  en: prompt.en.md
+
+# ③ Model
+model:
+  name: qwen-max
+  temperature: 0.2
+  max_tokens: 4096
+
+# ④ Tools — 9 own tools via bridge (polymarket/bridge/main.py :8099), 2 shared
+tools:
+  own:
+    - markets           # GET /markets — 活跃市场列表 (Gamma API)
+    - signals           # GET /signals — 信号状态 (含 top 排行)
+    - signals_top       # GET /signals/top — Top N 信号
+    - account           # GET /account — 链上账户权益 (Data API)
+    - account_positions # GET /account/positions — 链上持仓
+    - positions         # GET /positions — 本地持仓+PnL (risk manager)
+    - risk              # GET /risk — 风控状态
+    - order             # POST /order — 下单 {slug, side, usdc_amount, limit_price}
+    - sell              # POST /sell — 平仓 {slug}
+  shared:
+    - web_search
+    - code
+
+# ⑤ Skills — 3 passive + 3 proactive (bridge 内置后台任务 + Agent 对话触发)
+skills:
+  - name: { zh: "市场扫描与信号", en: "Market Scan & Signals" }
+    trigger: passive
+    description:
+      zh: "扫描 Polymarket 活跃市场 + 实时信号评分排行（动量+价值+流动性三维评分模型）"
+      en: "Scan active Polymarket markets + real-time signal scoring rankings (momentum+value+liquidity 3D model)"
+    tools: [markets, signals, signals_top]
+    example_triggers:
+      - "扫描市场"
+      - "有什么好的机会"
+      - "scan markets"
+      - "top signals"
+
+  - name: { zh: "持仓与盈亏", en: "Positions & PnL" }
+    trigger: passive
+    description:
+      zh: "查看链上真实持仓、账户权益、本地持仓追踪+盈亏"
+      en: "View on-chain positions, account equity, local position tracking + PnL"
+    tools: [account, account_positions, positions]
+    example_triggers:
+      - "持仓"
+      - "盈亏多少"
+      - "my positions"
+      - "PnL"
+
+  - name: { zh: "风控状态", en: "Risk Status" }
+    trigger: passive
+    description:
+      zh: "查看风控参数（止盈/止损/敞口/冷却）、持仓详情"
+      en: "View risk parameters (TP/SL/exposure/cooldowns), position details"
+    tools: [risk, positions]
+    example_triggers:
+      - "风控状态"
+      - "risk status"
+      - "敞口多少"
+
+  - name: { zh: "自动信号扫描", en: "Auto Signal Scan" }
+    trigger: proactive
+    schedule: "0 */60 * * * *"
+    description:
+      zh: "Bridge 内置：每60秒自动采集 Gamma API 市场数据并评分（signal_collector）"
+      en: "Built-in bridge task: collect Gamma API data & score every 60s (signal_collector)"
+    tools: [signals]
+    auto_execute: true
+    notify: true
+
+  - name: { zh: "持仓止盈止损", en: "Position TP/SL Monitor" }
+    trigger: proactive
+    schedule: "0 */30 * * * *"
+    description:
+      zh: "Bridge 内置：每30秒检查持仓盈亏，触及 TP/SL 自动平仓（position_monitor）"
+      en: "Built-in bridge task: check position PnL every 30s, auto-exit at TP/SL (position_monitor)"
+    tools: [positions, sell]
+    auto_execute: true
+    notify: true
+
+  - name: { zh: "自动交易周期", en: "Auto Trade Cycle" }
+    trigger: proactive
+    schedule: "0 */15 * * * *"
+    description:
+      zh: "Bridge 内置：每15分钟评估 Top 信号，风控通过后自动下单（trade_cycle）"
+      en: "Built-in bridge task: evaluate top signals every 15min, auto-order if risk allows (trade_cycle)"
+    tools: [signals_top, order]
+    auto_execute: true
+    notify: true
+
+# ⑥ Glands — 映射到 bridge/.env 真实配置
+glands:
+  - key: POLYMARKET_PRIVATE_KEY
+    label: { zh: "钱包私钥", en: "Wallet Private Key" }
+    category: credential
+    encrypted: true
+    required: true
+    help_text: { zh: "Polygon 链钱包私钥（0x...，用于签名 CLOB 交易）", en: "Polygon chain wallet private key (0x..., for signing CLOB orders)" }
+    sort_order: 1
+
+  - key: POLY_FUNDER
+    label: { zh: "Proxy 钱包地址", en: "Proxy Wallet Address" }
+    category: endpoint
+    encrypted: false
+    required: true
+    help_text: { zh: "Polymarket proxy 钱包地址（接收资金的链上地址）", en: "Polymarket proxy wallet address (on-chain funding address)" }
+    sort_order: 2
+
+  - key: POLYMARKET_API_KEY
+    label: { zh: "CLOB API Key", en: "CLOB API Key" }
+    category: credential
+    encrypted: true
+    required: false
+    help_text: { zh: "Polymarket CLOB API Key（可选，无则只读模式）", en: "Polymarket CLOB API Key (optional, read-only without)" }
+    sort_order: 3
+
+  - key: DRY_RUN
+    label: { zh: "模拟交易模式", en: "Dry Run Mode" }
+    category: toggle
+    encrypted: false
+    required: false
+    default_value: "true"
+    help_text: { zh: "true = 不真实下单，仅记录信号。生产前务必先用 true 验证", en: "true = no real orders, signals only. Always verify with true before going live" }
+    sort_order: 4
+
+  - key: MAX_PER_TRADE_USDC
+    label: { zh: "单笔最大金额 (USDC)", en: "Max Per Trade (USDC)" }
+    category: threshold
+    encrypted: false
+    default_value: "3"
+    help_text: { zh: "单笔下单上限", en: "Max single order amount" }
+    sort_order: 5
+
+  - key: MAX_TOTAL_EXPOSURE_USDC
+    label: { zh: "组合总敞口 (USDC)", en: "Total Max Exposure (USDC)" }
+    category: threshold
+    encrypted: false
+    default_value: "4"
+    help_text: { zh: "所有持仓总敞口上限", en: "Max total portfolio exposure" }
+    sort_order: 6
+
+  - key: TAKE_PROFIT_PCT
+    label: { zh: "止盈比例 %", en: "Take Profit %" }
+    category: threshold
+    encrypted: false
+    default_value: "5"
+    help_text: { zh: "盈利达到此比例自动平仓", en: "Auto-close when profit reaches this %" }
+    sort_order: 7
+
+  - key: STOP_LOSS_PCT
+    label: { zh: "止损比例 %", en: "Stop Loss %" }
+    category: threshold
+    encrypted: false
+    default_value: "3"
+    help_text: { zh: "亏损达到此比例自动平仓", en: "Auto-close when loss reaches this %" }
+    sort_order: 8
+
+  - key: BANKROLL_USD
+    label: { zh: "本金 (USD)", en: "Bankroll (USD)" }
+    category: threshold
+    encrypted: false
+    default_value: "100"
+    help_text: { zh: "总投入本金", en: "Total bankroll" }
+    sort_order: 9
+
+  - key: TRADE_ADMIN_KEY
+    label: { zh: "管理密钥", en: "Admin Key" }
+    category: credential
+    encrypted: true
+    required: false
+    help_text: { zh: "管理操作密钥（可选，用于远程控制站）", en: "Admin key (optional, for remote control station)" }
+    sort_order: 10
+
+# ⑦ Bridge — 指向 polymarket/bridge/ 生产版（内置信号引擎+风控+交易周期）
+bridge:
+  type: python
+  entry: ../../../polymarket/bridge/main.py
+  port: 8099
+  port_range: [8099, 8199]
+  health_check: /health
+  dashboard: /
+  requirements: ../../../polymarket/bridge/requirements.txt
+  auto_start: true
+
+# ⑧ Workflow — Trading Decision Loop
+workflow:
+  stages:
+    - name: { zh: "信号采集", en: "Signal Collection" }
+      tools: [markets, signals_top]
+      description: { zh: "Gamma API 扫描 → 动量+价值+流动性评分", en: "Gamma API scan → momentum+value+liquidity scoring" }
+    - name: { zh: "风控检查", en: "Risk Check" }
+      tools: [risk, account]
+      description: { zh: "检查敞口/余额/冷却 → 判断能否开仓", en: "Check exposure/balance/cooldown → determine if can open position" }
+    - name: { zh: "交易执行", en: "Trade Execution" }
+      tools: [order, sell]
+      description: { zh: "高分信号下单 / TP/SL 触发平仓", en: "Order on high signals / Close at TP/SL" }
+    - name: { zh: "持仓监控", en: "Position Monitor" }
+      tools: [positions, account_positions]
+      description: { zh: "实时追踪盈亏 → 风控退出", en: "Track PnL in real-time → risk exits" }
+
+# ── Marketplace ──
+marketplace:
+  pricing:
+    type: subscription
+    price: 99900
+    period: quarter
+    currency: USD
+    display: "$999/quarter"
+    trial_days: 7
+
+  screenshots:
+    - url: screenshots/dashboard.png
+      caption: { zh: "实时仪表盘", en: "Real-time Dashboard" }
+    - url: screenshots/signals.png
+      caption: { zh: "信号排名", en: "Signal Rankings" }
+    - url: screenshots/pnl.png
+      caption: { zh: "盈亏曲线", en: "PnL Curve" }
+
+  demo_url: "https://trade.q8bot.com"
+
+  docs:
+    readme: README.md
+    changelog: CHANGELOG.md
+
+  keywords:
+    zh: ["预测市场", "加密货币", "自动交易", "DeFi", "Polygon", "链上交易", "套利"]
+    en: ["prediction market", "crypto", "auto-trading", "DeFi", "Polygon", "on-chain", "arbitrage"]
+
+  compatibility:
+    claw_version: ">=2026.0401"
+    os: [windows, linux, macos]

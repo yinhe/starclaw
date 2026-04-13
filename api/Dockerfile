@@ -74,7 +74,7 @@ RUN apk --no-cache add \
       PIP_ARGS="-i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com"; \
       NPM_REG="https://registry.npmmirror.com"; \
     fi \
-    && python3 -m pip install --break-system-packages $PIP_ARGS flask fastapi uvicorn requests beautifulsoup4 aiohttp dashscope \
+    && python3 -m pip install --break-system-packages $PIP_ARGS flask fastapi uvicorn requests beautifulsoup4 aiohttp dashscope python-pptx openpyxl \
     && if [ -n "$NPM_REG" ]; then npm config set registry "$NPM_REG"; fi \
     && npm install -g yarn pnpm typescript ts-node
 
@@ -85,6 +85,7 @@ ENV GOPATH="/tmp/gopath"
 ENV CHROME_BIN=/usr/bin/chromium-browser
 
 ENV TZ=Asia/Shanghai
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 WORKDIR /app
 
 # These layers change on every code update (fast, no package installs)

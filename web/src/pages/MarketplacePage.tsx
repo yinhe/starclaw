@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bot, Download, Search, Check, Trash2, Loader2, Store, Crown } from 'lucide-react'
 import { agentAPI, queenMarketplaceAPI } from '../lib/api'
+import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 const CATEGORIES = [
   { id: 'all', label: '全部' },
@@ -119,19 +120,20 @@ export default function MarketplacePage() {
     }
     setInstalling(item.id)
     try {
-      let cfg: { system_prompt?: string; tools?: string; config?: string } = {}
+      let cfg: { system_prompt?: string; tools?: unknown; config?: string } = {}
       try { cfg = JSON.parse(item.config) } catch { /* ignore */ }
+      const tools = typeof cfg.tools === 'string' ? cfg.tools : JSON.stringify(cfg.tools || [])
       await agentAPI.installFromMarketplace({
         source_id: item.id,
         name: item.name,
         description: item.description,
         system_prompt: cfg.system_prompt || '',
-        tools: cfg.tools || '[]',
+        tools,
         config: cfg.config || '{}',
         icon: item.icon,
       })
       setInstalledIDs(prev => new Set([...prev, item.id]))
-      showToast(`已安装「${item.name}」`)
+      showToast(`已安装「${formatAgentDisplayName(item.name)}」`)
     } catch {
       showToast('安装失败', 'error')
     }
@@ -278,7 +280,7 @@ export default function MarketplacePage() {
                       )
                     })()}
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{item.name}</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">{formatAgentDisplayName(item.name)}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description || '暂无描述'}</p>
                   {parseTags(item.tags).length > 0 && (
                     <div className="flex gap-1 mt-2 flex-wrap">

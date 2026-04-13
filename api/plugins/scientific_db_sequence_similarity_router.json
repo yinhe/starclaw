@@ -1,0 +1,21 @@
+{
+  "name": "scientific_db_sequence_similarity_router",
+  "description": "Route accession and sequence-similarity searches across NCBI BLAST, UniProt BLAST, EMBL-EBI FASTA, BLAT, and related resources using accession, gene, organism, sequence type, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "sequence_similarity_router" },
+      "sequence": { "type": "string" },
+      "accession": { "type": "string" },
+      "gene": { "type": "string" },
+      "organism": { "type": "string" },
+      "sequence_type_hint": { "type": "string" },
+      "database_scope": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

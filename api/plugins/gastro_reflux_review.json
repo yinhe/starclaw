@@ -1,0 +1,22 @@
+{
+  "name": "gastro_reflux_review",
+  "description": "Review reflux using post-feed spit-up, back arching, poor weight gain, respiratory symptoms, and vomiting red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Gastro Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "reflux_review" },
+      "age_months": { "type": "number" },
+      "post_feed_spitup": { "type": "boolean" },
+      "back_arching": { "type": "boolean" },
+      "poor_weight_gain": { "type": "boolean" },
+      "respiratory_symptoms": { "type": "boolean" },
+      "bilious_vomiting": { "type": "boolean" },
+      "blood_in_vomit": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "gastro_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

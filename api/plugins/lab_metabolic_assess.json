@@ -1,0 +1,24 @@
+{
+  "name": "lab_metabolic_assess",
+  "description": "Interpret pediatric metabolic screening markers including glucose, liver enzymes, lipids, and uric acid.",
+  "version": "1.0.0",
+  "author": "StarClaw Lab Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "metabolic_assess" },
+      "report_text": { "type": "string", "description": "Optional pasted metabolic screening report text" },
+      "fasting_glucose": { "type": "number", "description": "Fasting glucose mmol/L" },
+      "alt": { "type": "number", "description": "ALT U/L" },
+      "ast": { "type": "number", "description": "AST U/L" },
+      "triglycerides": { "type": "number", "description": "Triglycerides mmol/L" },
+      "total_cholesterol": { "type": "number", "description": "Total cholesterol mmol/L" },
+      "ldl_c": { "type": "number", "description": "LDL-C mmol/L" },
+      "uric_acid": { "type": "number", "description": "Uric acid umol/L" },
+      "bmi_z_score": { "type": "number", "description": "Optional BMI Z score for contextual metabolic risk" }
+    },
+    "required": ["action"]
+  },
+  "handler": "lab_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

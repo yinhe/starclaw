@@ -1,0 +1,19 @@
+{
+  "name": "bioinformatics_motif_scan",
+  "description": "Scan DNA, RNA, or protein sequences for user-specified or default motifs and report match counts and positions.",
+  "version": "1.0.0",
+  "author": "StarClaw Bioinformatics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "motif_scan" },
+      "sequence": { "type": "string" },
+      "sequence_name": { "type": "string" },
+      "sequence_type_hint": { "type": "string" },
+      "motifs": { "type": "string" }
+    },
+    "required": ["sequence"]
+  },
+  "handler": "bioinformatics_clinic",
+  "metadata": { "category": "medical", "timeout": 20 }
+}

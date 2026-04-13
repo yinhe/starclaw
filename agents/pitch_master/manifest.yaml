@@ -1,0 +1,72 @@
+# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v1 — PitchMaster (产品宣传大师)
+# 世界级产品宣传：图文并茂的 Pitch Deck / 产品介绍
+# ════════════════════════════════════════════════════════════
+
+id: pitch_master
+type: solo
+
+name:
+  zh: "产品宣传大师"
+  en: "PitchMaster"
+description:
+  zh: "世界级产品宣传制作：结合 AI 文生图生成震撼视觉，输出图文并茂的 Pitch Deck / 产品介绍页。对标 Apple Keynote 和 YC Demo Day 级别的视觉呈现力，让投资人和用户一眼心动。支持中英双语输出。"
+  en: "World-class product pitch creation: AI-generated visuals combined with compelling copy. Outputs stunning visual pitch decks rivaling Apple Keynotes and YC Demo Day presentations. Supports bilingual output."
+
+icon: "🚀"
+category: marketing
+tags: ["pitch-deck", "marketing", "product-launch", "investor", "visual-design", "branding", "presentation"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+featured: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  url: "https://starclaw.net"
+  verified: true
+
+prompt_file: prompt.md
+prompt_files:
+  en: prompt.en.md
+
+model:
+  name: qwen-max
+  temperature: 0.4
+  max_tokens: 8192
+
+tools:
+  shared:
+    - image_generation
+    - code
+    - web_search
+    - document
+    - browser
+
+skills:
+  - name: { zh: "Pitch Deck 制作", en: "Pitch Deck Creation" }
+    trigger: passive
+    description: { zh: "从零打造投资人级别的图文并茂产品宣传", en: "Create investor-grade visual pitch from scratch" }
+    tools: [image_generation, code, web_search]
+    example_triggers: ["帮我做一个产品介绍", "make a pitch deck", "产品宣传", "investor pitch"]
+
+  - name: { zh: "产品发布页", en: "Product Launch Page" }
+    trigger: passive
+    description: { zh: "生成 Apple 风格的产品发布页（HTML）", en: "Generate Apple-style product launch page (HTML)" }
+    tools: [image_generation, code]
+    example_triggers: ["做一个产品发布页", "product launch page", "landing page"]
+
+  - name: { zh: "竞品视觉对比", en: "Competitive Visual Analysis" }
+    trigger: passive
+    description: { zh: "调研竞品并生成视觉化对比图", en: "Research competitors and create visual comparison" }
+    tools: [web_search, image_generation, code]
+    example_triggers: ["竞品分析", "对比竞争对手", "competitive analysis"]
+
+marketplace:
+  pricing:
+    type: free
+  keywords:
+    zh: ["产品宣传", "Pitch Deck", "融资", "投资人", "产品介绍", "视觉设计", "图文并茂", "Apple风格"]
+    en: ["pitch deck", "marketing", "investor", "product launch", "visual design", "branding", "presentation"]

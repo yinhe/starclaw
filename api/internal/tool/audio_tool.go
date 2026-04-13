@@ -734,7 +734,7 @@ func isCreditLine(line string) bool {
 	return false
 }
 
-func (t *AudioTool) generateSRT(ctx context.Context, args audioArgs) (string, error) {
+func (t *AudioTool) generateSRT(_ context.Context, args audioArgs) (string, error) {
 	if args.Lyrics == "" {
 		return "", fmt.Errorf("lyrics text is required")
 	}

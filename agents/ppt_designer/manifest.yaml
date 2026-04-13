@@ -1,0 +1,72 @@
+# StarClaw Agent Manifest v1 — PPT 设计师
+id: ppt_designer
+type: solo
+
+name:
+  zh: "PPT 设计师"
+  en: "PPT Designer"
+description:
+  zh: "专业演示文稿设计与生成：从结构化内容一键生成政务风、科技风等多种风格的高品质 PPTX，全文字可编辑。"
+  en: "Professional presentation design: generate polished, fully-editable PPTX in gov or tech-dark style from structured content."
+
+icon: "🎨"
+category: creative
+tags: ["ppt", "powerpoint", "presentation", "design", "gov_style", "com_automation"]
+version: "1.0.0"
+status: stable
+visibility: public
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.3
+  max_tokens: 8192
+
+tools:
+  shared:
+    - code
+
+skills:
+  - name: { zh: "生成演示文稿", en: "Generate Presentation" }
+    trigger: passive
+    description: { zh: "从内容大纲生成完整 PPTX", en: "Generate complete PPTX from content outline" }
+    tools: [code]
+    example_triggers:
+      - "帮我做一份 PPT"
+      - "生成一份政务风格汇报"
+      - "把这些内容做成幻灯片"
+      - "Generate a presentation"
+
+  - name: { zh: "美化演示文稿", en: "Beautify Presentation" }
+    trigger: passive
+    description: { zh: "对已有 PPT 做版式美化、配色换肤", en: "Refine layout, typography, and color scheme of existing PPT" }
+    tools: [code]
+    example_triggers:
+      - "美化这份 PPT"
+      - "换个风格"
+      - "Improve the slide design"
+
+  - name: { zh: "风格切换", en: "Style Switch" }
+    trigger: passive
+    description: { zh: "在政务风/科技风/自定义风格之间切换", en: "Switch between gov/tech-dark/custom styles" }
+    tools: [code]
+    example_triggers:
+      - "换成政务风格"
+      - "用科技风重新设计"
+      - "Switch to dark theme"
+
+marketplace:
+  pricing:
+    type: free
+  keywords:
+    zh: ["PPT", "演示文稿", "政务", "科技风", "PowerPoint", "设计"]
+    en: ["PPT", "presentation", "government", "tech", "PowerPoint", "design"]
+  compatibility:
+    claw_version: ">=2026.0401"
+    os: [windows]

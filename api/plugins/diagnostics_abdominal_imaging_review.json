@@ -1,0 +1,21 @@
+{
+  "name": "diagnostics_abdominal_imaging_review",
+  "description": "Review abdominal imaging for appendicitis, intussusception, obstruction, constipation patterns, and gastrointestinal red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Diagnostics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "abdominal_imaging_review" },
+      "age_years": { "type": "number" },
+      "modality": { "type": "string" },
+      "pain_location": { "type": "string" },
+      "impression": { "type": "string" },
+      "temperature_c": { "type": "number" },
+      "vomiting": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "diagnostics_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

@@ -30,17 +30,9 @@ func NewSetupHandler(db *gorm.DB, cfg *config.Config, identity *node.Identity) *
 }
 
 // Status returns whether the initial setup has been completed.
-// In opensource mode, setup is complete when an owner user exists.
-// In hosted mode, setup is always considered complete (multi-user registration).
+// Setup is complete when an owner user exists (same logic for all deploy modes).
+// In hosted mode (Hive), instances still go through Setup to generate an Owner Token.
 func (h *SetupHandler) Status(c *gin.Context) {
-	if h.cfg.Server.DeployMode == "hosted" {
-		c.JSON(http.StatusOK, gin.H{
-			"setup_completed": true,
-			"deploy_mode":     "hosted",
-		})
-		return
-	}
-
 	var count int64
 	h.db.Model(&model.User{}).Where("owner_token IS NOT NULL").Count(&count)
 	c.JSON(http.StatusOK, gin.H{
@@ -54,10 +46,6 @@ func (h *SetupHandler) Status(c *gin.Context) {
 // - Upgrade: promotes the first existing user to owner.
 // Only works once; rejects if an owner already exists.
 func (h *SetupHandler) Setup(c *gin.Context) {
-	if h.cfg.Server.DeployMode == "hosted" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "hosted 模式不支持 Setup，请使用注册登录"})
-		return
-	}
 
 	// Check if owner already exists
 	var ownerCount int64

@@ -1,0 +1,22 @@
+{
+  "name": "gastro_abdominal_pain_triage",
+  "description": "Triage abdominal pain using duration, location, severity, fever, vomiting, diarrhea, and abdominal red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Gastro Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "abdominal_pain_triage" },
+      "age_years": { "type": "number" },
+      "duration_hours": { "type": "number" },
+      "pain_location": { "type": "string" },
+      "pain_severity": { "type": "number" },
+      "temperature_c": { "type": "number" },
+      "vomiting": { "type": "boolean" },
+      "diarrhea": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "gastro_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

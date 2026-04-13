@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_sequence_record_router",
+  "description": "Route accession and sequence-record lookups across NCBI Nucleotide, RefSeq, NCBI Protein, ENA, Ensembl, UniProt, and genome browsers using accession, gene, organism, record type, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "sequence_record_router" },
+      "accession": { "type": "string" },
+      "gene": { "type": "string" },
+      "organism": { "type": "string" },
+      "record_type": { "type": "string" },
+      "database_scope": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

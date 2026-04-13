@@ -1,0 +1,20 @@
+{
+  "name": "infection_vaccine_review",
+  "description": "Review vaccine timing, missed doses, current illness clues, and contraindication hints for vaccination follow-up planning.",
+  "version": "1.0.0",
+  "author": "StarClaw Infection Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "vaccine_review" },
+      "age_months": { "type": "number" },
+      "vaccine_name": { "type": "string" },
+      "last_dose_months_ago": { "type": "number" },
+      "missed_doses": { "type": "number" },
+      "contraindications": { "type": "array", "items": { "type": "string" } },
+      "current_symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "infection_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

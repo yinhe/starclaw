@@ -1,0 +1,18 @@
+{
+  "name": "bioinformatics_fasta_sanity_check",
+  "description": "Check whether sequence input is FASTA-like, count records, validate headers, and summarize issues for downstream bioinformatics use.",
+  "version": "1.0.0",
+  "author": "StarClaw Bioinformatics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "fasta_sanity_check" },
+      "sequence": { "type": "string" },
+      "sequence_name": { "type": "string" },
+      "sequence_type_hint": { "type": "string" }
+    },
+    "required": ["sequence"]
+  },
+  "handler": "bioinformatics_clinic",
+  "metadata": { "category": "medical", "timeout": 20 }
+}

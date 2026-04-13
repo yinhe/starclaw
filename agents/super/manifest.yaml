@@ -1,0 +1,58 @@
+# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v1 — Super Agent (总管)
+# ════════════════════════════════════════════════════════════
+
+id: super
+type: solo
+
+name:
+  zh: "全能助手"
+  en: "Super Agent"
+description:
+  zh: "你的首席 AI 助手。统领全部专业 Agent，简单任务亲自执行，复杂任务智能委派。搜索研究、内容创作、编程开发、文档处理，无所不能。"
+  en: "Your chief AI assistant. Commands all specialist agents — handles simple tasks directly, delegates complex ones intelligently. Search, content creation, coding, document processing, and more."
+
+icon: "🧠"
+category: assistant
+tags: ["general", "delegation", "multi-tool"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+featured: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  url: "https://starclaw.net"
+  verified: true
+
+prompt_file: prompt.md
+prompt_files:
+  en: prompt.en.md
+
+model:
+  name: qwen-max
+  temperature: 0.3
+  max_tokens: 8192
+
+tools:
+  shared:
+    - code
+    - system
+    - browser
+    - web_search
+    - http_request
+    - video_generation
+    - dubbing
+    - mv_production
+    - comic_production
+    - music_generation
+    - image_generation
+    - audio_analysis
+    - document
+    - desktop
+
+marketplace:
+  pricing:
+    type: free

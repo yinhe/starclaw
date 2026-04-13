@@ -1,0 +1,16 @@
+{
+  "name": "clinical_handoff_brief",
+  "description": "Generate a concise handoff brief from a clinical note for doctor-to-doctor or clinic-to-family communication.",
+  "version": "1.0.0",
+  "author": "StarClaw Clinical Note Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "handoff_brief" },
+      "note_text": { "type": "string", "description": "Clinical note or discharge summary text" }
+    },
+    "required": ["action", "note_text"]
+  },
+  "handler": "clinical_note_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

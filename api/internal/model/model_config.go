@@ -19,6 +19,7 @@ type ModelConfig struct {
 	Temperature float64        `json:"temperature" gorm:"type:decimal(3,2);default:0.7"`
 	IsPlatform  bool           `json:"is_platform" gorm:"default:false"` // true = platform shared key
 	IsEnabled   bool           `json:"is_enabled" gorm:"default:true"`
+	HasKey      bool           `json:"has_key" gorm:"-"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`

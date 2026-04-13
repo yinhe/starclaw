@@ -48,6 +48,7 @@ type Task struct {
 	MaxRetries     int          `json:"max_retries" gorm:"default:3"`
 	RetryCount     int          `json:"retry_count" gorm:"default:0"`
 	ScheduledAt    *time.Time   `json:"scheduled_at" gorm:"index"`                 // nil = run immediately
+	ToolsOverride  string       `json:"tools_override" gorm:"type:text"`           // JSON array of tool names; if set, overrides agent's tools list
 	ScheduleID     string       `json:"schedule_id" gorm:"type:varchar(36);index"` // from which schedule
 	StartedAt      *time.Time   `json:"started_at"`
 	CompletedAt    *time.Time   `json:"completed_at"`

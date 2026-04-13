@@ -1,0 +1,22 @@
+{
+  "name": "medication_safety_review",
+  "description": "Review medication safety risks for common pediatric follow-up medications using deterministic rules for symptoms, interactions, and lab red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Medication Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "safety_review" },
+      "medication_name": { "type": "string", "description": "Medication name, e.g. 生长激素 / 左甲状腺素 / 铁剂 / 维生素D / 二甲双胍 / GnRHa" },
+      "concurrent_meds": { "type": "array", "items": { "type": "string" }, "description": "Concurrent medications or supplements" },
+      "symptoms": { "type": "array", "items": { "type": "string" }, "description": "Reported symptoms after medication use" },
+      "risk_factors": { "type": "array", "items": { "type": "string" }, "description": "Medication-related risk factors or warning clues" },
+      "dose_iu": { "type": "number", "description": "Optional vitamin D daily dose in IU" },
+      "fasting_glucose": { "type": "number", "description": "Optional fasting glucose mmol/L" },
+      "serum_calcium": { "type": "number", "description": "Optional serum calcium mmol/L" }
+    },
+    "required": ["action", "medication_name"]
+  },
+  "handler": "medication_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

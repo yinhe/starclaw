@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_pubmed_query_builder",
+  "description": "Build structured PubMed and literature database queries from disease, population, intervention, outcome, keywords, and study type filters.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "pubmed_query_builder" },
+      "disease": { "type": "string" },
+      "population": { "type": "string" },
+      "intervention": { "type": "string" },
+      "outcome": { "type": "string" },
+      "study_types": { "type": "array", "items": { "type": "string" } },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

@@ -1,0 +1,106 @@
+# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v1 — Template
+# Copy this directory, rename it, and customize.
+# ════════════════════════════════════════════════════════════
+
+# ① Metadata
+id: my_agent                          # Must match directory name
+type: solo                            # solo | team
+
+name:
+  zh: "我的智能体"
+  en: "My Agent"
+description:
+  zh: "一句话描述"
+  en: "One-line description"
+
+icon: "🤖"
+category: assistant                   # assistant|coding|creative|finance|data|research|support|marketing|content|ecommerce|ops|sales|development
+tags: ["demo"]
+version: "0.1.0"
+status: draft                         # draft | beta | stable | deprecated
+visibility: public                    # public | private | unlisted
+
+author:
+  id: your_id
+  name: { zh: "你的名字", en: "Your Name" }
+  # email: you@example.com
+  # url: https://your.site
+  # verified: false
+
+# ② Prompt
+prompt_file: prompt.md
+# prompt_files:
+#   en: prompt.en.md
+
+# ③ Model
+model:
+  name: qwen-max
+  temperature: 0.3
+  max_tokens: 4096
+
+# ④ Tools
+tools:
+  # own:                              # Bridge-provided tools (auto-namespaced)
+  #   - scan
+  #   - buy
+  shared:                             # Claw built-in tools
+    - web_search
+  # foreign:                          # Cross-agent references
+  #   - q8bot:macro
+
+# ⑤ Skills (optional)
+# skills:
+#   - name: { zh: "技能名", en: "Skill Name" }
+#     trigger: passive                # passive | proactive
+#     description: { zh: "描述", en: "Description" }
+#     tools: [web_search]
+#     example_triggers: ["触发词", "trigger phrase"]
+#
+#   - name: { zh: "定时任务", en: "Scheduled Task" }
+#     trigger: proactive
+#     schedule: "0 */30 9-17 * * 1-5"
+#     tools: [web_search]
+#     auto_execute: true
+#     notify: true
+
+# ⑥ Glands (optional)
+# glands:
+#   - key: api_key
+#     label: { zh: "API 密钥", en: "API Key" }
+#     category: credential            # credential | threshold | toggle | endpoint | general
+#     encrypted: true
+#     required: true
+#     help_text: { zh: "帮助文字", en: "Help text" }
+#     sort_order: 1
+
+# ⑦ Bridge (optional)
+# bridge:
+#   type: python                      # python | node | go | external
+#   entry: bridge/main.py
+#   port: 8099
+#   port_range: [8099, 8199]
+#   health_check: /health
+#   dashboard: /
+#   requirements: bridge/requirements.txt
+#   auto_start: true
+
+# ⑧ Workflow (optional — auto-generated from tools if absent)
+# workflow_file: workflow.json
+
+# ── Marketplace (optional) ──
+# marketplace:
+#   pricing:
+#     type: free                      # free | one_time | subscription
+#   screenshots:
+#     - url: screenshots/main.png
+#       caption: { zh: "截图", en: "Screenshot" }
+#   docs:
+#     readme: README.md
+#     changelog: CHANGELOG.md
+#   keywords:
+#     zh: ["关键词"]
+#     en: ["keyword"]
+#   compatibility:
+#     claw_version: ">=2026.0401"
+#     os: [windows, linux, macos]

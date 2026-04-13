@@ -1,0 +1,19 @@
+{
+  "name": "scientific_db_protein_structure_router",
+  "description": "Route protein and structure searches across AlphaFold DB, RCSB PDB, UniProt, and PDBe-KB using gene, protein, organism, mutation, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "protein_structure_router" },
+      "gene": { "type": "string" },
+      "protein": { "type": "string" },
+      "organism": { "type": "string" },
+      "mutation": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

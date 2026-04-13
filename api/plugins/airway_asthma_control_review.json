@@ -1,0 +1,21 @@
+{
+  "name": "airway_asthma_control_review",
+  "description": "Review asthma control using daytime and nighttime symptoms, reliever use, activity limitation, and recent exacerbation history.",
+  "version": "1.0.0",
+  "author": "StarClaw Airway Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "asthma_control_review" },
+      "daytime_symptom_days_per_week": { "type": "number" },
+      "nighttime_symptom_nights_per_month": { "type": "number" },
+      "reliever_days_per_week": { "type": "number" },
+      "activity_limitation": { "type": "string" },
+      "recent_oral_steroid_courses": { "type": "number" },
+      "recent_ed_visits": { "type": "number" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "airway_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

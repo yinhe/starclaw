@@ -1,0 +1,19 @@
+{
+  "name": "medication_adherence_review",
+  "description": "Review adherence quality for daily medications or periodic injections and suggest next follow-up actions.",
+  "version": "1.0.0",
+  "author": "StarClaw Medication Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "adherence_review" },
+      "medication_name": { "type": "string", "description": "Medication name" },
+      "missed_doses": { "type": "number", "description": "Missed doses count" },
+      "missed_days": { "type": "number", "description": "Days with missed medication" },
+      "late_days": { "type": "number", "description": "Days late for scheduled injection follow-up" }
+    },
+    "required": ["action", "medication_name"]
+  },
+  "handler": "medication_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

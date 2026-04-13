@@ -1,0 +1,21 @@
+{
+  "name": "wellness_sleep_habit_review",
+  "description": "Review sleep duration, awakenings, snoring, apnea risk, daytime sleepiness, and sleep-related red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Wellness Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "sleep_habit_review" },
+      "age_years": { "type": "number" },
+      "sleep_hours": { "type": "number" },
+      "night_awakenings_per_week": { "type": "number" },
+      "snoring": { "type": "boolean" },
+      "witnessed_apnea": { "type": "boolean" },
+      "daytime_sleepiness": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "wellness_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

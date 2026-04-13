@@ -1,0 +1,19 @@
+{
+  "name": "scientific_db_ortholog_router",
+  "description": "Route ortholog and comparative genomics searches across Ensembl Compara, NCBI Gene, OMA, OrthoDB, and Alliance Genome using gene, source organism, target organism, ortholog scope, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "ortholog_router" },
+      "gene": { "type": "string" },
+      "organism": { "type": "string" },
+      "target_organism": { "type": "string" },
+      "ortholog_scope": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

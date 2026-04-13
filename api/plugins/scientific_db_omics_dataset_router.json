@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_omics_dataset_router",
+  "description": "Route omics dataset searches across GEO, SRA, BioStudies, BioProject, PRIDE, MetaboLights, ENCODE, and related portals using gene, disease, tissue, organism, omics type, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "omics_dataset_router" },
+      "gene": { "type": "string" },
+      "disease": { "type": "string" },
+      "tissue": { "type": "string" },
+      "organism": { "type": "string" },
+      "omics_type": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

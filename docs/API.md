@@ -477,7 +477,7 @@ scripts\deploy.bat "commit message" all
 
 ```
 本地 (e:\starclaw\claw)
-  → robocopy → OSS 仓库 (e:\starclaw-oss)
+  → robocopy → OSS 仓库 (e:\claw-oss)
   → git push → GitHub (yinhe/starclaw)
   → SSH 服务器: bash /opt/starclaw/deploy-update.sh [api|web|all]
   → git pull → docker compose build → restart → health check

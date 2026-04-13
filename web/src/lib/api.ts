@@ -292,6 +292,17 @@ export const integrationAPI = {
   test: (id: string) => api.post(`/integrations/${id}/test`),
 }
 
+// Glands (腺体 — agent runtime config)
+export const glandAPI = {
+  list: (agentId?: string) => api.get('/glands', { params: agentId ? { agent_id: agentId } : {} }),
+  get: (id: string) => api.get(`/glands/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/glands', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/glands/${id}`, data),
+  delete: (id: string) => api.delete(`/glands/${id}`),
+  batchUpsert: (data: { agent_id: string; glands: Record<string, unknown>[] }) => api.post('/glands/batch', data),
+  decrypt: (agentId: string, key: string) => api.get('/glands/decrypt', { params: { agent_id: agentId, key } }),
+}
+
 // MCP Servers
 export const mcpAPI = {
   listServers: () => api.get('/mcp/servers'),

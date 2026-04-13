@@ -1,0 +1,20 @@
+{
+  "name": "wellness_activity_screen_review",
+  "description": "Review daily activity, screen time, outdoor activity, exercise limitation, and exercise-related red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Wellness Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "activity_screen_review" },
+      "age_years": { "type": "number" },
+      "daily_activity_minutes": { "type": "number" },
+      "screen_time_hours": { "type": "number" },
+      "outdoor_days_per_week": { "type": "number" },
+      "exercise_limitation": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "wellness_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

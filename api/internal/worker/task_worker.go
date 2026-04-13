@@ -255,7 +255,10 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 	// Create provider and runtime
 	p := provider.CreateFromConfig(w.providerRegistry, modelCfg)
 	var enabledTools []string
-	if agent.Tools != "" {
+	if task.ToolsOverride != "" {
+		json.Unmarshal([]byte(task.ToolsOverride), &enabledTools)
+		log.Printf("[TaskWorker] Task %s using tools override: %v", task.ID, enabledTools)
+	} else if agent.Tools != "" {
 		json.Unmarshal([]byte(agent.Tools), &enabledTools)
 	}
 
@@ -350,35 +353,107 @@ func (w *TaskWorker) executeTask(task *model.Task) {
 		return
 	}
 
-	// Success
+	// Determine real task outcome from agent result
+	finalStatus, failReason := w.classifyTaskResult(result)
+
 	now := time.Now()
-	w.db.Model(task).Updates(map[string]interface{}{
-		"status":   model.TaskStatusCompleted,
-		"result":   result.Content,
-		"progress": 100,
-		"progress_note": func() string {
-			if wechatObservation != "" {
-				return truncate("已完成。微信窗口观测结果已记录。", 1000)
-			}
-			if visionSummary != "" {
-				return truncate("已完成。截图提取结果已记录。", 1000)
-			}
-			return task.ProgressNote
-		}(),
-		"completed_at": &now,
-		"updated_at":   now,
-	})
+	switch finalStatus {
+	case model.TaskStatusFailed:
+		// Agent returned a response but couldn't actually do the work
+		w.db.Model(task).Updates(map[string]interface{}{
+			"status":       model.TaskStatusFailed,
+			"result":       result.Content,
+			"error_msg":    failReason,
+			"completed_at": &now,
+			"updated_at":   now,
+		})
+		w.db.Create(&model.Notification{
+			UserID:  task.UserID,
+			TaskID:  task.ID,
+			Type:    model.NotifyTaskFailed,
+			Title:   fmt.Sprintf("任务未完成: %s", task.Title),
+			Content: truncate(failReason+"\n\n"+result.Content, 2000),
+		})
+		log.Printf("[TaskWorker] Task %s not completed (agent indicated failure): %s", task.ID, failReason)
 
-	// Auto-notify user on completion
-	w.db.Create(&model.Notification{
-		UserID:  task.UserID,
-		TaskID:  task.ID,
-		Type:    model.NotifyTaskComplete,
-		Title:   fmt.Sprintf("任务完成: %s", task.Title),
-		Content: truncate(result.Content, 2000),
-	})
+	case model.TaskStatusRunning:
+		// Agent created sub-tasks — keep parent running until they finish
+		w.db.Model(task).Updates(map[string]interface{}{
+			"status":        model.TaskStatusRunning,
+			"result":        result.Content,
+			"progress_note": truncate("已委派子任务，等待完成", 1000),
+			"updated_at":    now,
+		})
+		log.Printf("[TaskWorker] Task %s has pending sub-tasks, staying running", task.ID)
 
-	log.Printf("[TaskWorker] Task %s completed: %d chars", task.ID, len(result.Content))
+	default:
+		// Genuinely completed
+		w.db.Model(task).Updates(map[string]interface{}{
+			"status":   model.TaskStatusCompleted,
+			"result":   result.Content,
+			"progress": 100,
+			"progress_note": func() string {
+				if wechatObservation != "" {
+					return truncate("已完成。微信窗口观测结果已记录。", 1000)
+				}
+				if visionSummary != "" {
+					return truncate("已完成。截图提取结果已记录。", 1000)
+				}
+				return task.ProgressNote
+			}(),
+			"completed_at": &now,
+			"updated_at":   now,
+		})
+		w.db.Create(&model.Notification{
+			UserID:  task.UserID,
+			TaskID:  task.ID,
+			Type:    model.NotifyTaskComplete,
+			Title:   fmt.Sprintf("任务完成: %s", task.Title),
+			Content: truncate(result.Content, 2000),
+		})
+		log.Printf("[TaskWorker] Task %s completed: %d chars", task.ID, len(result.Content))
+	}
+}
+
+// classifyTaskResult examines the agent's response to determine the real outcome.
+// Returns (status, failReason). If the agent couldn't do the work, status=Failed.
+// If sub-tasks were created, status=Running. Otherwise status=Completed.
+func (w *TaskWorker) classifyTaskResult(result *agentpkg.RunResult) (model.TaskStatus, string) {
+	content := result.Content
+
+	// 1. Check if agent created async sub-tasks (create_task tool was called)
+	for _, msg := range result.Messages {
+		for _, tc := range msg.ToolCalls {
+			if tc.Function.Name == "system" && strings.Contains(tc.Function.Arguments, `"create_task"`) {
+				return model.TaskStatusRunning, ""
+			}
+		}
+	}
+
+	// 2. Check if agent's final response indicates it could NOT complete the work.
+	//    These are strong indicators that the agent gave up or hit a blocker.
+	failPatterns := []struct {
+		pattern string
+		reason  string
+	}{
+		{"尚未配置", "所需配置缺失"},
+		{"未配置", "所需配置缺失"},
+		{"无法访问", "无法访问所需资源"},
+		{"无法连接", "无法连接所需服务"},
+		{"无法完成", "Agent 表示无法完成任务"},
+		{"无法执行", "Agent 表示无法执行"},
+		{"暂时无法", "Agent 表示暂时无法完成"},
+		{"not configured", "required configuration missing"},
+		{"无权限", "权限不足"},
+		{"权限不足", "权限不足"},
+	}
+	for _, fp := range failPatterns {
+		if strings.Contains(content, fp.pattern) {
+			return model.TaskStatusFailed, fp.reason + "：" + truncate(content, 200)
+		}
+	}
+
+	return model.TaskStatusCompleted, ""
 }
 
 func (w *TaskWorker) shouldPreObserveWeChatTask(task *model.Task) bool {

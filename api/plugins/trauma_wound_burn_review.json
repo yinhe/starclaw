@@ -1,0 +1,20 @@
+{
+  "name": "trauma_wound_burn_review",
+  "description": "Review wound or burn depth, area, special locations, bleeding, and infection clues for pediatric trauma follow-up.",
+  "version": "1.0.0",
+  "author": "StarClaw Trauma Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "wound_burn_review" },
+      "injury_type": { "type": "string" },
+      "burn_area_percent": { "type": "number" },
+      "wound_depth": { "type": "string" },
+      "location": { "type": "string" },
+      "bleeding_status": { "type": "string" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "trauma_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

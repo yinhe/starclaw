@@ -1,0 +1,39 @@
+# StarClaw Agent Manifest v1 — 编程Agent
+
+id: coding
+type: solo
+
+name:
+  zh: "编程Agent"
+  en: "Coding Agent"
+description:
+  zh: "全栈编程：编写代码、创建网站、调试程序、部署应用。支持14种编程语言。"
+  en: "Full-stack coding: write code, build websites, debug programs, deploy apps. Supports 14 languages."
+
+icon: "💻"
+category: coding
+tags: ["coding", "programming", "fullstack", "deploy"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.3
+  max_tokens: 8192
+
+tools:
+  shared:
+    - code
+
+marketplace:
+  pricing:
+    type: free

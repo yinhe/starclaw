@@ -1,0 +1,39 @@
+# StarClaw Agent Manifest v1 — 音乐创作Agent
+
+id: music_creator
+type: solo
+
+name:
+  zh: "音乐创作Agent"
+  en: "Music Creator Agent"
+description:
+  zh: "专业音乐创作：作词、作曲、生成带演唱的歌曲或纯音乐。支持ACE-Step、MiniMax、DiffRhythm等模型。"
+  en: "Professional music creation: lyrics, composition, vocal songs and instrumentals. Supports ACE-Step, MiniMax, DiffRhythm."
+
+icon: "🎵"
+category: creative
+tags: ["music", "songwriting", "AI-music", "lyrics"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.5
+  max_tokens: 8192
+
+tools:
+  shared:
+    - music_generation
+
+marketplace:
+  pricing:
+    type: free

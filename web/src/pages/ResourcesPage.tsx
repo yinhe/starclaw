@@ -16,6 +16,7 @@ interface VideoRecord {
   scene: string
   status: string
   type: string
+  conversation_id: string
   created_at: string
 }
 
@@ -237,7 +238,14 @@ export default function ResourcesPage() {
   const getImageUrl = (img: ImageRecord) => img.local_url || img.image_url || ''
   const getMusicUrl = (m: MusicRecord) => m.local_url || m.audio_url || ''
 
-  const succeededVideos = videos.filter(v => v.status === 'succeeded' && (v.type === 'merged' || v.type === 'comic' || v.type === 'mv'))
+  // Hide intermediate merged videos when an MV exists in the same conversation (matches VideosPage logic)
+  const mvConvIds = new Set(videos.filter(v => v.type === 'mv' && v.status === 'succeeded').map(v => v.conversation_id))
+  const succeededVideos = videos.filter(v => {
+    if (v.status !== 'succeeded') return false
+    if (v.type === 'mv' || v.type === 'comic') return true
+    if (v.type === 'merged') return !mvConvIds.has(v.conversation_id)
+    return false
+  })
   const succeededImages = images.filter(i => i.status === 'succeeded')
   const succeededMusic = music.filter(m => m.status === 'succeeded')
 

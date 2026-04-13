@@ -1,0 +1,40 @@
+# StarClaw Agent Manifest v1 — 视频创作Agent
+
+id: video_creator
+type: solo
+
+name:
+  zh: "视频创作Agent"
+  en: "Video Creator Agent"
+description:
+  zh: "专业视频制作：编写分镜脚本、生成AI视频、配音字幕、合成最终视频。支持多种视频模型。"
+  en: "Professional video production: storyboard, AI video generation, dubbing & subtitles, final compositing."
+
+icon: "🎥"
+category: creative
+tags: ["video", "short-film", "AI-video", "dubbing"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.5
+  max_tokens: 8192
+
+tools:
+  shared:
+    - video_generation
+    - dubbing
+
+marketplace:
+  pricing:
+    type: free

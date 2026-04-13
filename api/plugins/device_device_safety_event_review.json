@@ -1,0 +1,20 @@
+{
+  "name": "device_device_safety_event_review",
+  "description": "Review home device safety events using device type, failure description, therapy impact, interruption time, harm, and red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Device Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "device_safety_event_review" },
+      "device_type": { "type": "string" },
+      "event_description": { "type": "string" },
+      "medication_connection": { "type": "boolean" },
+      "injury_occurred": { "type": "boolean" },
+      "interruption_hours": { "type": "number" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "device_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

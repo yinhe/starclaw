@@ -1,0 +1,87 @@
+# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v1 — 广告宣传片大师 (Ad Director Pro)
+# 全球顶级AI广告宣传片制作：对标Creatify+HeyGen+Synthesia
+# 从创意策划到成片交付的全链路广告制作Agent
+# ════════════════════════════════════════════════════════════
+
+id: ad_director
+type: solo
+
+name:
+  zh: "广告宣传片大师"
+  en: "Ad Director Pro"
+description:
+  zh: "全球顶级AI广告宣传片制作Agent。融合戛纳金狮创意方法论+硅谷增长黑客思维，覆盖品牌宣传片、产品广告、企业形象片、社交媒体广告、招商路演视频全场景。全链路制作：市场调研→创意策略→分镜脚本→AI视频生成→配音字幕→BGM配乐→多平台适配→效果优化。对标Creatify/HeyGen/Synthesia，一键生成转化率最高的AI广告视频。"
+  en: "World-class AI advertising video production Agent. Combines Cannes Lions creative methodology with Silicon Valley growth hacking. Covers brand films, product ads, corporate videos, social media ads, investor pitch videos. Full pipeline: market research → creative strategy → storyboard → AI video generation → dubbing → BGM → multi-platform adaptation → performance optimization. Benchmarked against Creatify/HeyGen/Synthesia."
+
+icon: "📺"
+category: marketing
+tags: ["advertising", "commercial", "brand-film", "product-ad", "social-media-ad", "video-marketing", "TVC", "promo-video", "conversion", "growth"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+featured: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  url: "https://starclaw.net"
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.5
+  max_tokens: 8192
+
+tools:
+  shared:
+    - web_search
+    - browser
+    - video_generation
+    - image_generation
+    - dubbing
+    - music_generation
+    - mv_production
+    - code
+    - desktop
+
+skills:
+  - name: { zh: "品牌宣传片制作", en: "Brand Film Production" }
+    trigger: passive
+    description: { zh: "制作高端品牌宣传片，展现品牌理念、文化和愿景", en: "Create premium brand films showcasing brand philosophy, culture and vision" }
+    tools: [web_search, video_generation, dubbing, music_generation, mv_production]
+    example_triggers: ["帮我做一个品牌宣传片", "brand video", "企业宣传片", "品牌片"]
+
+  - name: { zh: "产品广告视频", en: "Product Ad Video" }
+    trigger: passive
+    description: { zh: "制作高转化率产品广告视频，适合电商/社媒投放", en: "Create high-converting product ad videos for e-commerce and social media" }
+    tools: [web_search, video_generation, dubbing, image_generation]
+    example_triggers: ["产品广告视频", "product ad", "电商视频", "带货视频"]
+
+  - name: { zh: "社交媒体广告矩阵", en: "Social Media Ad Matrix" }
+    trigger: passive
+    description: { zh: "一键生成多平台适配广告（抖音/YouTube/Instagram/LinkedIn）", en: "Generate multi-platform adapted ads (TikTok/YouTube/Instagram/LinkedIn)" }
+    tools: [video_generation, dubbing, image_generation, music_generation]
+    example_triggers: ["社媒广告", "多平台广告", "social media ads", "投放素材"]
+
+  - name: { zh: "招商路演视频", en: "Investor Pitch Video" }
+    trigger: passive
+    description: { zh: "制作打动投资人的融资路演视频", en: "Create compelling investor pitch videos" }
+    tools: [web_search, video_generation, dubbing, music_generation, mv_production]
+    example_triggers: ["融资视频", "路演视频", "investor video", "pitch video"]
+
+  - name: { zh: "竞品广告分析", en: "Competitor Ad Analysis" }
+    trigger: passive
+    description: { zh: "深度分析竞品广告策略，提供差异化创意方向", en: "Deep analysis of competitor ad strategies with differentiated creative direction" }
+    tools: [web_search, browser, code]
+    example_triggers: ["分析竞品广告", "competitor ads", "广告竞品分析"]
+
+marketplace:
+  pricing:
+    type: free
+  keywords:
+    zh: ["广告", "宣传片", "品牌视频", "产品广告", "TVC", "企业形象片", "社交媒体广告", "招商视频", "路演视频", "营销视频", "转化率", "投放素材", "AI广告"]
+    en: ["advertising", "commercial", "brand film", "product ad", "TVC", "corporate video", "social media ad", "pitch video", "marketing video", "conversion", "ad creative", "AI advertising"]

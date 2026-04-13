@@ -294,7 +294,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	}
 
 	// Submit to fal.ai queue (supports StarAI proxy)
-	requestID, err := SubmitToFal(apiKey, endpoint, body)
+	requestID, statusEndpoint, err := SubmitToFal(apiKey, endpoint, body)
 	if err != nil {
 		return "", fmt.Errorf("failed to submit image generation: %v", err)
 	}
@@ -325,7 +325,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	})
 
 	// Block and wait for result (up to 3 min) to prevent LLM hallucinating fake URLs
-	result, err := PollFalStatus(apiKey, endpoint, requestID, 3*time.Minute)
+	result, err := PollFalStatus(apiKey, statusEndpoint, requestID, 3*time.Minute)
 	if err != nil {
 		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
 		UpdateGenLog(t.db, genLogID, "failed", "", err.Error())
@@ -446,7 +446,7 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 			"num_images": 1,
 		}
 
-		requestID, err := SubmitToFal(apiKey, endpoint, body)
+		requestID, _, err := SubmitToFal(apiKey, endpoint, body)
 		if err != nil {
 			log.Printf("[ImageTool] batch: failed to submit %s: %v", scene, err)
 			continue

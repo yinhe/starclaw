@@ -1,13 +1,19 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/sandbox"
@@ -103,6 +109,128 @@ func isHostedMode() bool {
 	return os.Getenv("STARCLAW_SERVER_DEPLOY_MODE") == "hosted"
 }
 
+// isRunningInDocker checks if we're inside a Docker container
+func isRunningInDocker() bool {
+	_, err := os.Stat("/.dockerenv")
+	return err == nil
+}
+
+// isHostAbsPath detects if a path is an absolute path on the host machine
+// (not a relative sandbox path). Examples: E:\foo, /home/user, /opt/data
+func isHostAbsPath(p string) bool {
+	if p == "" || p == "." || p == "/" {
+		return false
+	}
+	// Windows drive letter: C:\ or C:/
+	if len(p) >= 3 && unicode.IsLetter(rune(p[0])) && p[1] == ':' && (p[2] == '\\' || p[2] == '/') {
+		return true
+	}
+	// Absolute Unix paths (but not workspace-relative paths like /data inside sandbox)
+	if strings.HasPrefix(p, "/home/") || strings.HasPrefix(p, "/opt/") ||
+		strings.HasPrefix(p, "/root/") || strings.HasPrefix(p, "/tmp/") ||
+		strings.HasPrefix(p, "/var/") || strings.HasPrefix(p, "/etc/") ||
+		strings.HasPrefix(p, "/usr/") || strings.HasPrefix(p, "/mnt/") ||
+		strings.HasPrefix(p, "/media/") || strings.HasPrefix(p, "/Users/") {
+		return true
+	}
+	return false
+}
+
+// detectBridgeURL returns the MCP Bridge URL (same logic as mcp.DetectBridgeURL but avoids import cycle)
+func detectBridgeURL() string {
+	port := 9101
+	if v := os.Getenv("STARCLAW_BRIDGE_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			port = p
+		}
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return fmt.Sprintf("http://host.docker.internal:%d", port)
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", port)
+}
+
+// callBridgeTool invokes a tool on the MCP Bridge via JSON-RPC (avoids import cycle with mcp package)
+func callBridgeTool(ctx context.Context, toolName string, arguments interface{}) (string, error) {
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      toolName,
+			"arguments": arguments,
+		},
+	})
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, detectBridgeURL(), bytes.NewReader(reqBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("MCP Bridge unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("MCP Bridge error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var rpcResp struct {
+		Result struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			IsError bool `json:"isError"`
+		} `json:"result"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
+		return "", fmt.Errorf("invalid bridge response: %w", err)
+	}
+	if rpcResp.Error != nil {
+		return "", fmt.Errorf("bridge RPC error: %s", rpcResp.Error.Message)
+	}
+	if rpcResp.Result.IsError {
+		for _, c := range rpcResp.Result.Content {
+			if c.Type == "text" {
+				return "", fmt.Errorf("%s", c.Text)
+			}
+		}
+		return "", fmt.Errorf("bridge tool returned error")
+	}
+
+	var texts []string
+	for _, c := range rpcResp.Result.Content {
+		if c.Type == "text" {
+			texts = append(texts, c.Text)
+		}
+	}
+	return strings.Join(texts, "\n"), nil
+}
+
+// bridgeHostFileList proxies a list_files call through the MCP Bridge on the host
+func bridgeHostFileList(ctx context.Context, path string) (string, error) {
+	return callBridgeTool(ctx, "file_list", map[string]string{"path": path})
+}
+
+// bridgeHostFileRead proxies a read_file call through the MCP Bridge on the host
+func bridgeHostFileRead(ctx context.Context, path string) (string, error) {
+	return callBridgeTool(ctx, "file_read", map[string]string{"path": path})
+}
+
+// bridgeHostFileWrite proxies a write_file call through the MCP Bridge on the host
+func bridgeHostFileWrite(ctx context.Context, path, content string) (string, error) {
+	return callBridgeTool(ctx, "file_write", map[string]string{"path": path, "content": content})
+}
+
 func (t *CodeTool) Execute(ctx context.Context, args string) (string, error) {
 	var a codeArgs
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
@@ -142,6 +270,14 @@ func (t *CodeTool) Execute(ctx context.Context, args string) (string, error) {
 
 	switch a.Action {
 	case "read_file":
+		// Host path in Docker → proxy through MCP Bridge
+		if isHostAbsPath(a.Path) && isRunningInDocker() {
+			result, err := bridgeHostFileRead(ctx, a.Path)
+			if err != nil {
+				return toJSON(map[string]interface{}{"action": "read_file", "error": "MCP Bridge: " + err.Error()}), nil
+			}
+			return toJSON(map[string]interface{}{"action": "read_file", "path": a.Path, "content": result, "via": "host"}), nil
+		}
 		content, err := t.sandbox.ReadFile(effectiveWS, a.Path)
 		if err != nil {
 			return toJSON(map[string]interface{}{"action": "read_file", "error": err.Error()}), nil
@@ -159,6 +295,14 @@ func (t *CodeTool) Execute(ctx context.Context, args string) (string, error) {
 		if a.Content == "" {
 			log.Printf("[CodeTool] write_file called with empty content for path=%q workspace=%s — rejecting", a.Path, effectiveWS)
 			return toJSON(map[string]interface{}{"action": "write_file", "error": "content is empty — please provide the file content"}), nil
+		}
+		// Host path in Docker → proxy through MCP Bridge
+		if isHostAbsPath(a.Path) && isRunningInDocker() {
+			result, err := bridgeHostFileWrite(ctx, a.Path, a.Content)
+			if err != nil {
+				return toJSON(map[string]interface{}{"action": "write_file", "error": "MCP Bridge: " + err.Error()}), nil
+			}
+			return toJSON(map[string]interface{}{"action": "write_file", "path": a.Path, "status": "success", "result": result, "via": "host"}), nil
 		}
 		err := t.sandbox.WriteFile(effectiveWS, a.Path, a.Content)
 		if err != nil {
@@ -181,6 +325,14 @@ func (t *CodeTool) Execute(ctx context.Context, args string) (string, error) {
 		}), nil
 
 	case "list_files":
+		// Host path in Docker → proxy through MCP Bridge
+		if isHostAbsPath(a.Path) && isRunningInDocker() {
+			result, err := bridgeHostFileList(ctx, a.Path)
+			if err != nil {
+				return toJSON(map[string]interface{}{"action": "list_files", "error": "MCP Bridge: " + err.Error()}), nil
+			}
+			return toJSON(map[string]interface{}{"action": "list_files", "path": a.Path, "result": result, "via": "host"}), nil
+		}
 		files, err := t.sandbox.ListFiles(effectiveWS, a.Path)
 		if err != nil {
 			return toJSON(map[string]interface{}{"action": "list_files", "error": err.Error()}), nil

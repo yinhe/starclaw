@@ -7,12 +7,30 @@ interface Skill {
   description: string
   type: 'builtin' | 'plugin' | 'mcp'
   status: string
+  category: string
+  category_label: string
+  subcategory?: string
+  subcategory_label?: string
+  industry: string
+  tags?: string[]
 }
 
 const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
   builtin: { label: '内置', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
   plugin:  { label: '插件', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   mcp:     { label: 'MCP', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+}
+
+const CATEGORY_BADGE: Record<string, string> = {
+  medical_clinical: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  bioinformatics: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+  research: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+  engineering: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+  creative_media: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+  platform_system: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400',
+  integration: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
+  finance_trading: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  general_tools: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
 }
 
 const SKILL_ICON: Record<string, string> = {
@@ -31,6 +49,7 @@ export default function SkillsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   useEffect(() => { load() }, [])
@@ -46,9 +65,24 @@ export default function SkillsPage() {
 
   const toggle = (name: string) => setExpanded(prev => { const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n })
 
+  const categoryOptions = Array.from(new Map(skills.map(skill => [skill.category, skill.category_label || skill.category])).entries())
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+
   const filtered = skills.filter(s => {
     if (typeFilter !== 'all' && s.type !== typeFilter) return false
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.description.toLowerCase().includes(search.toLowerCase())) return false
+    if (categoryFilter !== 'all' && s.category !== categoryFilter) return false
+    if (search) {
+      const haystack = [
+        s.name,
+        s.description,
+        s.category_label,
+        s.subcategory_label || '',
+        s.industry,
+        ...(s.tags || []),
+      ].join(' ').toLowerCase()
+      if (!haystack.includes(search.toLowerCase())) return false
+    }
     return true
   })
 
@@ -93,6 +127,24 @@ export default function SkillsPage() {
             className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white" />
         </div>
 
+        <div className="flex flex-wrap gap-2 mb-6">
+          <button
+            onClick={() => setCategoryFilter('all')}
+            className={`px-3 py-1.5 rounded-full text-xs transition ${categoryFilter === 'all' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'}`}
+          >
+            全部分类
+          </button>
+          {categoryOptions.map(category => (
+            <button
+              key={category.value}
+              onClick={() => setCategoryFilter(category.value)}
+              className={`px-3 py-1.5 rounded-full text-xs transition ${categoryFilter === category.value ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'}`}
+            >
+              {category.label}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="text-center py-16 text-gray-400">加载中...</div>
         ) : filtered.length === 0 ? (
@@ -104,6 +156,7 @@ export default function SkillsPage() {
           <div className="space-y-2">
             {filtered.map(skill => {
               const badge = SOURCE_BADGE[skill.type] || SOURCE_BADGE.builtin
+              const categoryBadge = CATEGORY_BADGE[skill.category] || CATEGORY_BADGE.general_tools
               const emoji = SKILL_ICON[skill.name] || '🔧'
               const isOpen = expanded.has(skill.name)
               return (
@@ -114,9 +167,14 @@ export default function SkillsPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm text-gray-900 dark:text-white">{skill.name}</span>
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.color}`}>{badge.label}</span>
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${categoryBadge}`}>{skill.category_label || skill.category}</span>
                         <span className={`w-1.5 h-1.5 rounded-full flex-none ${skill.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{skill.description.split('\n')[0].slice(0, 120)}</p>
+                      <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+                        {skill.subcategory_label && <span>{skill.subcategory_label}</span>}
+                        <span>{skill.industry}</span>
+                      </div>
                     </div>
                     {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400 flex-none" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-none" />}
                   </div>
@@ -127,8 +185,19 @@ export default function SkillsPage() {
                       </pre>
                       <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400">
                         <span>来源: <strong>{badge.label}</strong></span>
+                        <span>分类: <strong>{skill.category_label || skill.category}</strong></span>
+                        {skill.subcategory_label && <span>子类: <strong>{skill.subcategory_label}</strong></span>}
                         <span>状态: <strong className={skill.status === 'active' ? 'text-green-500' : ''}>{skill.status}</strong></span>
                       </div>
+                      {!!skill.tags?.length && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {skill.tags.map(tag => (
+                            <span key={`${skill.name}-${tag}`} className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

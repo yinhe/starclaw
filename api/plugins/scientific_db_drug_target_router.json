@@ -1,0 +1,19 @@
+{
+  "name": "scientific_db_drug_target_router",
+  "description": "Route drug-target evidence searches across DrugBank, ChEMBL, BindingDB, DGIdb, and DailyMed using drug, target, disease, mechanism, and biomarkers.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "drug_target_router" },
+      "drug": { "type": "string" },
+      "target": { "type": "string" },
+      "disease": { "type": "string" },
+      "mechanism": { "type": "string" },
+      "biomarkers": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

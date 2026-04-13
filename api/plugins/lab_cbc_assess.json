@@ -1,0 +1,22 @@
+{
+  "name": "lab_cbc_assess",
+  "description": "Interpret pediatric CBC results for anemia, leukocyte, neutrophil, platelet, and MCV abnormalities with deterministic screening rules.",
+  "version": "1.0.0",
+  "author": "StarClaw Lab Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "cbc_assess" },
+      "report_text": { "type": "string", "description": "Optional pasted CBC report text" },
+      "age_years": { "type": "number", "description": "Patient age in years" },
+      "hemoglobin": { "type": "number", "description": "Hemoglobin g/L" },
+      "wbc": { "type": "number", "description": "White blood cell count x10^9/L" },
+      "neutrophil_abs": { "type": "number", "description": "Absolute neutrophil count x10^9/L" },
+      "platelets": { "type": "number", "description": "Platelet count x10^9/L" },
+      "mcv": { "type": "number", "description": "Mean corpuscular volume fL" }
+    },
+    "required": ["action"]
+  },
+  "handler": "lab_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

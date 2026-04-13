@@ -1,0 +1,19 @@
+{
+  "name": "lab_thyroid_assess",
+  "description": "Interpret TSH, FT4, and FT3 for thyroid dysfunction screening related to growth delay, obesity, or fatigue scenarios.",
+  "version": "1.0.0",
+  "author": "StarClaw Lab Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "thyroid_assess" },
+      "report_text": { "type": "string", "description": "Optional pasted thyroid lab report text" },
+      "tsh": { "type": "number", "description": "TSH mIU/L" },
+      "ft4": { "type": "number", "description": "Free T4 pmol/L" },
+      "ft3": { "type": "number", "description": "Free T3 pmol/L" }
+    },
+    "required": ["action"]
+  },
+  "handler": "lab_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

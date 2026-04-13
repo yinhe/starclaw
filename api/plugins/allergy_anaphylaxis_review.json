@@ -1,0 +1,19 @@
+{
+  "name": "allergy_anaphylaxis_review",
+  "description": "Recognize red flags for severe allergic reaction or anaphylaxis using exposure timing, breathing status, blood pressure concerns, and symptoms.",
+  "version": "1.0.0",
+  "author": "StarClaw Allergy Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "anaphylaxis_review" },
+      "trigger": { "type": "string" },
+      "minutes_since_exposure": { "type": "number" },
+      "bp_concern": { "type": "string" },
+      "breathing_status": { "type": "string" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "allergy_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

@@ -27,6 +27,7 @@ const (
 	EventHiveSprint      = "hive_sprint"
 	EventHiveStepUpdate  = "hive_step_update"
 	EventMemoryExtracted = "memory_extracted"
+	EventLiveMission     = "live_mission" // Real-time chat tool activity → HiveMind 3D visualization
 )
 
 // Message is the envelope sent over WebSocket

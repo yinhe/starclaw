@@ -1,0 +1,21 @@
+{
+  "name": "infection_fever_triage",
+  "description": "Deterministically triage pediatric fever by age, temperature, duration, red flags, mental status, intake, and urine output.",
+  "version": "1.0.0",
+  "author": "StarClaw Infection Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "fever_triage" },
+      "age_months": { "type": "number", "description": "Patient age in months" },
+      "temperature_c": { "type": "number", "description": "Body temperature in Celsius" },
+      "fever_days": { "type": "number", "description": "Fever duration in days" },
+      "symptoms": { "type": "array", "items": { "type": "string" }, "description": "Associated symptoms" },
+      "mental_status": { "type": "string", "description": "Mental status hint" },
+      "intake_status": { "type": "string", "description": "Fluid intake status" },
+      "urine_output": { "type": "string", "description": "Urine output status" }
+    }
+  },
+  "handler": "infection_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

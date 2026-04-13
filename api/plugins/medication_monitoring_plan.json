@@ -1,0 +1,16 @@
+{
+  "name": "medication_monitoring_plan",
+  "description": "Generate a deterministic monitoring and follow-up checklist for common pediatric follow-up medications.",
+  "version": "1.0.0",
+  "author": "StarClaw Medication Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "monitoring_plan" },
+      "medication_name": { "type": "string", "description": "Medication name" }
+    },
+    "required": ["action", "medication_name"]
+  },
+  "handler": "medication_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

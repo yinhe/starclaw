@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_epigenomics_router",
+  "description": "Route epigenomics and regulatory assay searches across ENCODE, Roadmap Epigenomics, GEO, UCSC, and MethBank using gene, region, tissue, assay, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "epigenomics_router" },
+      "gene": { "type": "string" },
+      "region": { "type": "string" },
+      "tissue": { "type": "string" },
+      "assay": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

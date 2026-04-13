@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,13 +20,20 @@ import (
 	"github.com/redis/go-redis/v9"
 	agentpkg "github.com/yinhe/starclaw/internal/agent"
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
-	"github.com/yinhe/starclaw/internal/billing"
-	"github.com/yinhe/starclaw/internal/browser"
+	"github.com/yinhe/starclaw/internal/api/v1/auth"
+	billingpkg "github.com/yinhe/starclaw/internal/api/v1/billing"
+	"github.com/yinhe/starclaw/internal/api/v1/game"
+	"github.com/yinhe/starclaw/internal/api/v1/infra"
+	"github.com/yinhe/starclaw/internal/api/v1/knowledge"
+	"github.com/yinhe/starclaw/internal/api/v1/market"
+	"github.com/yinhe/starclaw/internal/api/v1/media"
+	network "github.com/yinhe/starclaw/internal/api/v1/net"
+	"github.com/yinhe/starclaw/internal/api/v1/ops"
+	squadapi "github.com/yinhe/starclaw/internal/api/v1/squad"
+	wf "github.com/yinhe/starclaw/internal/api/v1/workflow"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/forge"
 	"github.com/yinhe/starclaw/internal/inference"
-	"github.com/yinhe/starclaw/internal/instinct"
-	"github.com/yinhe/starclaw/internal/mcp"
 	"github.com/yinhe/starclaw/internal/memory"
 	"github.com/yinhe/starclaw/internal/middleware"
 	"github.com/yinhe/starclaw/internal/model"
@@ -35,17 +41,12 @@ import (
 	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/observe"
 	"github.com/yinhe/starclaw/internal/overlord"
-	"github.com/yinhe/starclaw/internal/provider"
-	"github.com/yinhe/starclaw/internal/rag"
-	"github.com/yinhe/starclaw/internal/sandbox"
 	"github.com/yinhe/starclaw/internal/security"
 	"github.com/yinhe/starclaw/internal/squad"
 	"github.com/yinhe/starclaw/internal/swarm"
 	"github.com/yinhe/starclaw/internal/tool"
-	"github.com/yinhe/starclaw/internal/trading"
 	"github.com/yinhe/starclaw/internal/web"
 	"github.com/yinhe/starclaw/internal/webhook"
-	"github.com/yinhe/starclaw/internal/worker"
 	"github.com/yinhe/starclaw/internal/ws"
 	"gorm.io/gorm"
 )
@@ -90,177 +91,23 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	// Rate limiting
 	r.Use(middleware.RateLimit(300, time.Minute, rdb))
 
-	// Node identity (created early so star-ai provider can use it)
-	identity := node.LoadOrCreateIdentity()
-
-	// Provider registry
-	providerRegistry := provider.NewRegistry()
-
-	// Register star-ai provider with node identity (Ed25519 signature auth, no API key needed)
-	providerRegistry.Register("star-ai", provider.NewStarAIProvider(provider.StarAIConfig{
-		Identity: identity,
-	}))
-
-	// Initialize StarAI proxy for tools (video/image/music route through StarAI Router)
-	starAIBaseURL := "https://api.star-ai.net/v1"
-	if envURL := os.Getenv("STAR_AI_BASE_URL"); envURL != "" {
-		starAIBaseURL = envURL
-	}
-	tool.InitStarAIProxy(identity, starAIBaseURL, db)
-
-	// Tool registry
-	browserMgr := browser.NewManager()
-	// Initialize data directory from config (must be before tool creation)
-	tool.SetDataDir(cfg.Storage.DataDir)
-	sandbox.SetDataDir(cfg.Storage.DataDir)
-
-	sandboxMgr := sandbox.NewManager()
-	processMgr := sandbox.NewProcessManager()
-	toolRegistry := tool.NewRegistry()
-	toolRegistry.Register(tool.NewWebSearchTool(tool.WebSearchConfig{}))
-	toolRegistry.Register(tool.NewHTTPRequestTool())
-	toolRegistry.Register(tool.NewBrowserTool(browserMgr))
-	toolRegistry.Register(tool.NewCodeTool(sandboxMgr, processMgr, db))
-	toolRegistry.Register(tool.NewGitTool())
-	videoTool := tool.NewVideoTool(db)
-	toolRegistry.Register(videoTool)
-	toolRegistry.Register(tool.NewDubbingTool(db))
-	toolRegistry.Register(tool.NewSubtitleTool(db))
-	toolRegistry.Register(tool.NewMVTool(db))
-	toolRegistry.Register(tool.NewComicTool(db))
-	toolRegistry.Register(tool.NewMusicTool(db))
-	toolRegistry.Register(tool.NewAudioTool(db))
-	toolRegistry.Register(tool.NewImageTool(db))
-	toolRegistry.Register(tool.NewDocumentTool(db))
-	toolRegistry.Register(tool.NewBountyTool(cfg.Swarm))
-	toolRegistry.Register(tool.NewArenaTool(cfg.Swarm))
-	toolRegistry.Register(tool.NewDeployWebTool())
-	toolRegistry.Register(tool.NewBindDomainTool())
-	toolRegistry.Register(tool.NewVerifyOnlineTool())
-	toolRegistry.Register(tool.NewFeishuTool(db))
-	toolRegistry.Register(tool.NewDingtalkTool(db))
-	toolRegistry.Register(tool.NewWeComTool(db))
-	toolRegistry.Register(tool.NewSlackTool(db))
-	toolRegistry.Register(tool.NewDiscordTool(db))
-	toolRegistry.Register(tool.NewTelegramTool(db))
-	toolRegistry.Register(tool.NewWeChatCSTool(db, cfg.JWT.Secret, cfg.Server.Port))
-	toolRegistry.Register(tool.NewDesktopTool())
-
-	// Generate thumbnails for existing videos on startup
-	go videoTool.GenerateMissingThumbnails()
-
-	// Build delegate function for agent-to-agent delegation (breaks circular import)
-	delegateFunc := func(ctx context.Context, ag model.Agent, modelCfg model.ModelConfig, message string) (*tool.DelegateResult, error) {
-		p := provider.CreateFromConfig(providerRegistry, modelCfg)
-		var enabledTools []string
-		if ag.Tools != "" {
-			json.Unmarshal([]byte(ag.Tools), &enabledTools)
-		}
-		messages := []provider.ChatMessage{
-			{Role: "system", Content: ag.SystemPrompt},
-			{Role: "user", Content: message},
-		}
-		rt := agentpkg.NewRuntime(p, toolRegistry)
-		runReq := &agentpkg.RunRequest{
-			Model:       modelCfg.ModelName,
-			Messages:    messages,
-			Tools:       enabledTools,
-			Temperature: modelCfg.Temperature,
-			MaxTokens:   modelCfg.MaxTokens,
-		}
-		result, err := rt.Run(ctx, runReq)
-		if err != nil {
-			return &tool.DelegateResult{Error: err.Error()}, nil
-		}
-		return &tool.DelegateResult{Content: result.Content}, nil
-	}
-	toolRegistry.Register(tool.NewSystemTool(db, providerRegistry, delegateFunc))
-
-	// Load JSON tool plugins from plugins/ directory (includes trading_*.json when present)
-	_ = tool.LoadPluginsFromDir(toolRegistry, "plugins")
-
-	// Trading plugin (Extractor quantitative trading)
-	if cfg.Trading.Enabled {
-		tradingCfg := trading.Config{
-			Enabled:   cfg.Trading.Enabled,
-			Role:      cfg.Trading.Role,
-			BridgeURL: cfg.Trading.BridgeURL,
-			Mode:      cfg.Trading.Mode,
-			Master: trading.MasterConfig{
-				HeartbeatURL:      cfg.Trading.Master.HeartbeatURL,
-				HeartbeatInterval: cfg.Trading.Master.HeartbeatInterval,
-				HeartbeatTimeout:  cfg.Trading.Master.HeartbeatTimeout,
-				AutoAutonomous:    cfg.Trading.Master.AutoAutonomous,
-			},
-			Auto: trading.AutoPolicy{
-				AllowNewPositions: cfg.Trading.Auto.AllowNewPositions,
-				MaxPositionPct:    cfg.Trading.Auto.MaxPositionPct,
-				StopLossPct:       cfg.Trading.Auto.StopLossPct,
-				MinConfidence:     cfg.Trading.Auto.MinConfidence,
-				ScanInterval:      cfg.Trading.Auto.ScanInterval,
-			},
-		}
-		tradingPlugin := trading.NewPlugin(tradingCfg)
-		tradingPlugin.Start()
-		log.Printf("[router] trading plugin started: role=%s mode=%s", tradingCfg.Role, tradingCfg.Mode)
-	}
-
-	// Auto-detect and register MCP Bridge (host control) + Dev Bridge (development tools)
-	mcp.AutoRegisterBridge(toolRegistry)
-	mcp.AutoRegisterDevBridge(toolRegistry)
-
-	// Reload user-saved MCP servers from DB (survives restarts)
-	v1.ReloadSavedServers(db, toolRegistry)
-
-	// Billing Gateway: wraps all tool execution with cost tracking + revenue split
-	// Prefer dedicated swarm.node_token for Queen internal API; fall back to jwt.secret
-	queenNodeToken := cfg.Swarm.NodeToken
-	if queenNodeToken == "" {
-		queenNodeToken = cfg.JWT.Secret
-	}
-	queenClient := billing.NewQueenClient(cfg.Swarm.QueenURL, queenNodeToken, identity.NodeID)
-	billingGW := billing.NewGateway(db, queenClient, identity.NodeID)
-	if billingGW.IsEnabled() {
-		toolRegistry.SetExecuteHook(billingGW.ExecuteHook)
-		v1.SetBillingQueenClient(queenClient)
-		log.Printf("[router] Billing gateway enabled for node %s", identity.NodeID)
-	}
-
-	// Auto-migrate task & notification tables
-	db.AutoMigrate(&model.Task{}, &model.Notification{}, &model.MusicRecord{}, &model.ImageRecord{}, &model.AgentTemplate{}, &model.Peer{}, &model.Memory{}, &model.Activity{}, &model.ActivityLog{}, &model.Squad{}, &model.SquadMember{}, &model.Mission{}, &model.MissionStep{}, &model.Sprint{}, &model.StepReview{}, &model.WeChatWatch{}, &billing.ToolUsageRecord{}, &model.NodeGrowth{}, &model.Milestone{}, &model.MarketplacePurchase{})
-
-	// Drop FK constraint on agents.model_id so agents can be created without a model
-	db.Exec("ALTER TABLE agents DROP FOREIGN KEY fk_agents_model")
-
-	// NOTE: Built-in agent templates are now in Queen marketplace (seed_marketplace.go).
-	// Local SeedBuiltinTemplates is no longer called.
-
-	// NOTE: star-ai model seeding now only happens on user creation (setup.go).
-	// Removed SeedStarAIForAllUsers from startup — it was re-creating configs
-	// that users intentionally deleted.
-
-	// Start background task worker (7x24 autonomous execution)
-	taskWorker := worker.NewTaskWorker(db, providerRegistry, toolRegistry, 2)
-	taskWorker.Start()
-	// WeChatWatcher disabled — causes focus stealing on desktop
-	// wechatWatcher := worker.NewWeChatWatcher(db)
-	// wechatWatcher.Start()
-
-	// Start Instinct engine (proactive behavior system)
-	instinctEngine := instinct.NewEngine(db)
-	instinctEngine.Start()
-
-	// RAG embedding provider (configured via env or config)
-	embedder := rag.NewOpenAIEmbedding(rag.OpenAIEmbeddingConfig{
-		APIKey: cfg.OpenAI.APIKey,
-		Model:  "text-embedding-3-small",
-	})
-	pipeline := rag.NewPipeline(db, embedder)
+	// Initialize all engines, registries, and services
+	deps := initDeps(cfg, db)
+	identity := deps.Identity
+	providerRegistry := deps.ProviderRegistry
+	toolRegistry := deps.ToolRegistry
+	sandboxMgr := deps.SandboxMgr
+	processMgr := deps.ProcessMgr
+	taskWorker := deps.TaskWorker
+	instinctEngine := deps.InstinctEngine
+	embedder := deps.Embedder
+	pipeline := deps.Pipeline
+	queenClient := deps.QueenClient
 
 	r.Use(middleware.RequestLogger())
 
 	// A2A Agent Card discovery (must be at root, not under /v1)
-	a2aCardHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
+	a2aCardHandler := network.NewA2AHandler(db, providerRegistry, toolRegistry)
 	r.GET("/.well-known/agent.json", a2aCardHandler.AgentCardHandler)
 
 	// Prometheus metrics endpoint
@@ -268,6 +115,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 
 	// Health check
 	startTime := time.Now()
+	var oc *overlord.Client
 	r.GET("/health", func(c *gin.Context) {
 		dbOk := true
 		sqlDB, err := db.DB()
@@ -279,11 +127,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			dbOk = false
 		}
 		c.JSON(200, gin.H{
-			"status":    "ok",
-			"service":   "starclaw",
-			"version":   molt.Version,
-			"uptime_s":  int(time.Since(startTime).Seconds()),
-			"db_status": dbOk,
+			"status":        "ok",
+			"service":       "starclaw",
+			"version":       molt.Version,
+			"uptime_s":      int(time.Since(startTime).Seconds()),
+			"qmt_connected": false,
+			"db_status":     dbOk,
 		})
 	})
 
@@ -291,7 +140,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	apiV1 := r.Group("/v1")
 	{
 		// Public routes
-		authHandler := v1.NewAuthHandler(db, cfg, identity)
+		authHandler := auth.NewAuthHandler(db, cfg, identity)
 		apiV1.POST("/auth/register", authHandler.Register)
 		apiV1.POST("/auth/login", authHandler.Login)
 		apiV1.POST("/auth/phone/register", authHandler.PhoneRegister)
@@ -308,7 +157,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/auth/owner-login", setupHandler.PasswordLogin)
 
 		// OAuth routes (public)
-		oauthHandler := v1.NewOAuthHandler(db, cfg)
+		oauthHandler := auth.NewOAuthHandler(db, cfg)
 		apiV1.GET("/auth/oauth/providers", oauthHandler.GetOAuthConfig)
 		apiV1.POST("/auth/oauth/github", oauthHandler.GitHubCallback)
 		apiV1.POST("/auth/oauth/google", oauthHandler.GoogleCallback)
@@ -326,12 +175,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		if cfg.Swarm.QueenURL != "" {
 			recoveryQueenURL = strings.TrimSuffix(cfg.Swarm.QueenURL, "/api") + "/api"
 		}
-		recoveryHandler := v1.NewRecoveryHandler(db, identity, recoveryQueenURL)
+		recoveryHandler := auth.NewRecoveryHandler(db, identity, recoveryQueenURL)
 		apiV1.POST("/recovery/verify-mnemonic", recoveryHandler.VerifyMnemonic)
 		apiV1.POST("/recovery/restore", recoveryHandler.Restore)
 
 		// Auth request endpoints (MetaMask-style: public create+poll, protected approve)
-		authReqHandler := v1.NewAuthRequestHandler(identity, db)
+		authReqHandler := auth.NewAuthRequestHandler(identity, db)
 		apiV1.POST("/identity/auth-request", authReqHandler.Create)
 		apiV1.GET("/identity/auth-request/:id", authReqHandler.GetStatus)
 
@@ -348,7 +197,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		})
 
 		// Drone marketplace import (internal, secret-protected)
-		droneImportHandler := v1.NewMarketplaceHandler(db)
+		droneImportHandler := market.NewMarketplaceHandler(db)
 		apiV1.POST("/marketplace/import", func(c *gin.Context) {
 			secret := c.GetHeader("X-Drone-Secret")
 			if secret == "" {
@@ -364,13 +213,13 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		})
 
 		// P9: Developer portal (public — OpenAPI + Swagger UI)
-		devHandler := v1.NewDeveloperHandler(db)
+		devHandler := market.NewDeveloperHandler(db)
 		apiV1.GET("/developer/openapi.json", devHandler.GetOpenAPISpec)
 		apiV1.GET("/developer/docs", devHandler.SwaggerUI)
 		apiV1.GET("/developer/plugins/categories", devHandler.PluginCategories)
 
 		// Peer-to-Peer inter-node endpoints (public, signature-verified)
-		peerPublicHandler := v1.NewPeerHandler(db, cfg)
+		peerPublicHandler := network.NewPeerHandler(db, cfg)
 		apiV1.GET("/peer/handshake", peerPublicHandler.HandleHandshake)
 		apiV1.GET("/peer/resolve", peerPublicHandler.HandleResolve)
 		apiV1.POST("/peer/gossip", peerPublicHandler.HandleGossip)
@@ -400,7 +249,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		hivemindEngine.Start(30 * time.Second)
 		evolutionEngine := node.NewEvolutionEngine(node.DefaultEvolutionConfig())
 		evolutionEngine.Start()
-		p2pHandler := v1.NewP2PHandler(dhtEngine, creepEngine, hivemindEngine, evolutionEngine)
+		p2pHandler := network.NewP2PHandler(dhtEngine, creepEngine, hivemindEngine, evolutionEngine)
 
 		// P8: Observability engine
 		observeEngine := observe.NewEngine(db)
@@ -441,7 +290,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		apiV1.POST("/forge/nydus/webhook", forge.HandleNydusWebhook(db))
 
 		// Squad inter-node (public, signature-verified)
-		squadPeerHandler := v1.NewSquadPeerHandler(db, identity)
+		squadPeerHandler := network.NewSquadPeerHandler(db, identity)
 		apiV1.POST("/peer/squad/invite", squadPeerHandler.HandleInvite)
 		apiV1.POST("/peer/squad/agents", squadPeerHandler.HandleAgents)
 		apiV1.POST("/peer/squad/execute", squadPeerHandler.HandleExecute)
@@ -450,7 +299,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		squadPeerHandler.StartCallbackWatcher()
 
 		// Overlord internal endpoints (token-authenticated, for Team Agent orchestration)
-		overlordH := v1.NewOverlordInternalHandler(db, identity, cfg)
+		overlordH := squadapi.NewOverlordInternalHandler(db, identity, cfg)
 		overlordH.SetProviderRegistry(providerRegistry)
 		overlordH.SetToolRegistry(toolRegistry)
 		internal := apiV1.Group("/internal")
@@ -485,7 +334,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		// Inference Router (public status + signed contributor endpoints)
 		inferenceRouter := inference.NewInferenceRouter(identity)
 		spotChecker := inference.NewSpotChecker(inferenceRouter.Registry, inferenceRouter, 0.01) // 1% spot-check rate
-		inferenceHandler := v1.NewInferenceHandler(inferenceRouter, providerRegistry, spotChecker)
+		inferenceHandler := infra.NewInferenceHandler(inferenceRouter, providerRegistry, spotChecker)
 		apiV1.GET("/inference/status", inferenceHandler.RouterStatus)
 
 		// Node-signed endpoints (protected by Ed25519 signature middleware)
@@ -565,141 +414,20 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		}
 
 		// A2A (Agent-to-Agent) protocol endpoints (public)
-		a2aHandler := v1.NewA2AHandler(db, providerRegistry, toolRegistry)
+		a2aHandler := network.NewA2AHandler(db, providerRegistry, toolRegistry)
 		apiV1.POST("/a2a", a2aHandler.HandleRPC)
 
 		// Seed platform model configs in hosted mode
 		if cfg.Server.DeployMode == "hosted" {
-			v1.SeedPlatformModels(db)
+			infra.SeedPlatformModels(db)
 		}
 
 		// Public webhook trigger (no auth)
-		workflowHandler := v1.NewWorkflowHandler(db, providerRegistry, toolRegistry)
+		workflowHandler := wf.NewWorkflowHandler(db, providerRegistry, toolRegistry)
 		apiV1.POST("/webhooks/workflow/:token", workflowHandler.Webhook)
 
-		// Uploaded files (public, secured by UUID filename)
-		apiV1.GET("/uploads/:filename", v1.ServeUploadedFile)
-
-		// Browser screenshots (public, secured by UUID)
-		apiV1.GET("/screenshots/:id", v1.ServeScreenshot)
-
-		// Video clips (individual generated clips, public, secured by UUID filename)
-		apiV1.GET("/videos/clips/:filename", func(c *gin.Context) {
-			filename := c.Param("filename")
-			filePath := filepath.Join(tool.VideosDir(), filename)
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				c.JSON(404, gin.H{"error": "video clip not found"})
-				return
-			}
-			c.Header("Content-Disposition", "attachment; filename="+filename)
-			c.File(filePath)
-		})
-
-		// Merged videos (public, secured by UUID filename)
-		apiV1.GET("/videos/merged/:filename", func(c *gin.Context) {
-			filename := c.Param("filename")
-			filePath := filepath.Join(tool.MergedVideosDir(), filename)
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				c.JSON(404, gin.H{"error": "merged video not found"})
-				return
-			}
-			c.Header("Content-Disposition", "attachment; filename="+filename)
-			c.File(filePath)
-		})
-
-		// Video thumbnails (public, secured by UUID filename)
-		apiV1.GET("/videos/thumbnails/:filename", func(c *gin.Context) {
-			filename := c.Param("filename")
-			filePath := filepath.Join(tool.ThumbnailsDir(), filename)
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				c.JSON(404, gin.H{"error": "thumbnail not found"})
-				return
-			}
-			c.Header("Cache-Control", "public, max-age=86400")
-			c.File(filePath)
-		})
-
-		// Generated images (public, secured by UUID filename)
-		apiV1.GET("/images/:filename", func(c *gin.Context) {
-			filename := c.Param("filename")
-			filePath := filepath.Join(tool.ImagesDir(), filename)
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				c.JSON(404, gin.H{"error": "image not found"})
-				return
-			}
-			c.Header("Cache-Control", "public, max-age=86400")
-			c.File(filePath)
-		})
-
-		// Generated Word documents (public, secured by UUID filename)
-		apiV1.GET("/docx/:filename", func(c *gin.Context) {
-			filename := c.Param("filename")
-			if !strings.HasSuffix(filename, ".docx") {
-				c.JSON(400, gin.H{"error": "invalid document format"})
-				return
-			}
-			filePath := filepath.Join(tool.GetDataDir(), "documents", filename)
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				c.JSON(404, gin.H{"error": "document not found"})
-				return
-			}
-			c.Header("Content-Disposition", "attachment; filename="+filename)
-			c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-			c.File(filePath)
-		})
-
-		// MCP Bridge binary download (public, no auth — users need this before logging in)
-		apiV1.GET("/mcp-bridge/download/:platform", func(c *gin.Context) {
-			platform := c.Param("platform")
-			filePath, filename := mcp.BridgeBinaryPath(platform)
-			if filePath == "" {
-				c.JSON(404, gin.H{"error": "unsupported platform, use: windows_amd64, darwin_amd64, darwin_arm64, linux_amd64"})
-				return
-			}
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				c.JSON(404, gin.H{"error": "binary not available, rebuild with: docker compose build api"})
-				return
-			}
-			c.Header("Content-Disposition", "attachment; filename="+filename)
-			c.File(filePath)
-		})
-
-		// MCP Bridge one-line installer script (macOS/Linux)
-		apiV1.GET("/mcp-bridge/install.sh", func(c *gin.Context) {
-			// Determine the server's external URL from the request
-			scheme := "http"
-			if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
-				scheme = "https"
-			}
-			serverURL := scheme + "://" + c.Request.Host
-			script := mcp.GenerateInstallScript(serverURL)
-			c.Header("Content-Type", "text/plain; charset=utf-8")
-			c.String(200, script)
-		})
-
-		// MCP Bridge one-line installer script (Windows PowerShell)
-		apiV1.GET("/mcp-bridge/install.ps1", func(c *gin.Context) {
-			scheme := "http"
-			if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
-				scheme = "https"
-			}
-			serverURL := scheme + "://" + c.Request.Host
-			script := mcp.GeneratePowerShellInstallScript(serverURL)
-			c.Header("Content-Type", "text/plain; charset=utf-8")
-			c.String(200, script)
-		})
-
-		// Music files (public, secured by UUID filename)
-		apiV1.GET("/music/:filename", func(c *gin.Context) {
-			filename := c.Param("filename")
-			filePath := filepath.Join(tool.MusicDir(), filename)
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				c.JSON(404, gin.H{"error": "music file not found"})
-				return
-			}
-			c.Header("Cache-Control", "public, max-age=86400")
-			c.File(filePath)
-		})
+		// Static file serving (uploads, screenshots, videos, images, docs, MCP bridge)
+		registerStaticServeRoutes(apiV1)
 
 		// Sandbox workspace preview (serve static files from workspace)
 		// For .md files, render as styled HTML; for others, serve as-is
@@ -896,7 +624,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.DELETE("/agents/uninstall/:source_id", agentHandler.UninstallBySourceID)
 
 			// Glands (腺体 — agent runtime configuration)
-			glandHandler := v1.NewGlandHandler(db)
+			glandHandler := infra.NewGlandHandler(db)
 			protected.GET("/glands", glandHandler.List)
 			protected.GET("/glands/:id", glandHandler.Get)
 			protected.POST("/glands", glandHandler.Create)
@@ -919,18 +647,18 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/stardust/hatch", stardustHandler.Hatch)
 
 			// Evolution path + realm choice
-			growthChoiceH := v1.NewGrowthChoiceHandler(db)
+			growthChoiceH := game.NewGrowthChoiceHandler(db)
 			protected.POST("/growth/choose-path", growthChoiceH.ChoosePath)
 			protected.POST("/growth/choose-realm", growthChoiceH.ChooseRealm)
 
 			// Endgame (awakening, fusion, rebirth)
-			endgameH := v1.NewEndgameHandler(db)
+			endgameH := game.NewEndgameHandler(db)
 			protected.POST("/growth/awaken", endgameH.Awaken)
 			protected.POST("/growth/fuse", endgameH.Fuse)
 			protected.POST("/growth/rebirth", endgameH.Rebirth)
 
 			// Agent Templates (Creep Marketplace)
-			tplHandler := v1.NewTemplateHandler(db, queenClient)
+			tplHandler := billingpkg.NewTemplateHandler(db, queenClient)
 			protected.GET("/templates", tplHandler.List)
 			protected.GET("/templates/categories", tplHandler.Categories)
 			protected.GET("/templates/:id", tplHandler.Get)
@@ -967,109 +695,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/conversations/:id/context", convCtxHandler.GetContext)
 
 			// Tools / Skills
-			protected.GET("/tools", func(c *gin.Context) {
-				c.JSON(200, gin.H{"tools": toolRegistry.List()})
-			})
-			protected.GET("/skills", func(c *gin.Context) {
-				type SkillInfo struct {
-					Name        string `json:"name"`
-					Description string `json:"description"`
-					Type        string `json:"type"`
-					Status      string `json:"status"`
-				}
-				var skills []SkillInfo
-
-				// Built-in tools
-				builtinNames := []string{"system", "code", "web_search", "http_request", "browser", "video_generation", "deploy_web", "bind_domain", "verify_online"}
-				for _, name := range toolRegistry.List() {
-					t, ok := toolRegistry.Get(name)
-					if !ok {
-						continue
-					}
-					typ := "builtin"
-					for _, bn := range builtinNames {
-						if name == bn {
-							typ = "builtin"
-							break
-						}
-					}
-					// Check if it's a plugin (starts with plugin prefix or not in builtin list)
-					isBuiltin := false
-					for _, bn := range builtinNames {
-						if name == bn {
-							isBuiltin = true
-							break
-						}
-					}
-					if !isBuiltin && name != "system" {
-						if strings.HasPrefix(name, "mcp_") {
-							typ = "mcp"
-						} else {
-							typ = "plugin"
-						}
-					}
-					skills = append(skills, SkillInfo{
-						Name:        name,
-						Description: t.Description(),
-						Type:        typ,
-						Status:      "active",
-					})
-				}
-
-				// MCP server tools (user-configured)
-				userID := c.GetString("user_id")
-				var mcpServers []model.MCPServer
-				db.Where("user_id = ?", userID).Find(&mcpServers)
-				for _, srv := range mcpServers {
-					skills = append(skills, SkillInfo{
-						Name:        "mcp:" + srv.Name,
-						Description: fmt.Sprintf("MCP 外部服务: %s (%s)", srv.Name, srv.BaseURL),
-						Type:        "mcp",
-						Status:      srv.Status,
-					})
-				}
-
-				// MCP Bridge tools (host bridge — auto-detected)
-				bridgeStatus := mcp.BridgeStatus()
-				if connected, ok := bridgeStatus["connected"].(bool); ok && connected {
-					if toolNames, ok := bridgeStatus["tool_names"].([]string); ok {
-						for _, tn := range toolNames {
-							skills = append(skills, SkillInfo{
-								Name:        "host." + tn,
-								Description: fmt.Sprintf("宿主机工具: %s (MCP Bridge)", tn),
-								Type:        "mcp",
-								Status:      "active",
-							})
-						}
-					}
-				}
-
-				// Count by type
-				builtinCount, pluginCount, mcpCount := 0, 0, 0
-				for _, s := range skills {
-					switch s.Type {
-					case "builtin":
-						builtinCount++
-					case "plugin":
-						pluginCount++
-					case "mcp":
-						mcpCount++
-					}
-				}
-
-				c.JSON(200, gin.H{
-					"skills": skills,
-					"summary": gin.H{
-						"total":   len(skills),
-						"builtin": builtinCount,
-						"plugin":  pluginCount,
-						"mcp":     mcpCount,
-					},
-				})
-			})
+			skillsHandler := v1.NewSkillsHandler(db, toolRegistry)
+			protected.GET("/tools", skillsHandler.ListTools)
+			protected.GET("/skills", skillsHandler.ListSkills)
 
 			// Models
-			modelHandler := v1.NewModelHandler(db, providerRegistry, cfg.Server.DeployMode)
+			modelHandler := infra.NewModelHandler(db, providerRegistry, cfg.Server.DeployMode)
 			protected.GET("/models", modelHandler.List)
 			protected.GET("/models/available", modelHandler.AvailableModels)
 			protected.POST("/models", modelHandler.Create)
@@ -1088,7 +719,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/workflows/:id/webhook/disable", workflowHandler.DisableWebhook)
 
 			// Knowledge Bases (RAG)
-			kbHandler := v1.NewKnowledgeHandler(db, pipeline, embedder)
+			kbHandler := knowledge.NewKnowledgeHandler(db, pipeline, embedder)
 			protected.GET("/knowledge-bases", kbHandler.ListKBs)
 			protected.POST("/knowledge-bases", kbHandler.CreateKB)
 			protected.GET("/knowledge-bases/:id", kbHandler.GetKB)
@@ -1099,14 +730,14 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/knowledge-bases/:id/search", kbHandler.Search)
 
 			// MCP Servers
-			mcpHandler := v1.NewMCPHandler(db, toolRegistry)
+			mcpHandler := infra.NewMCPHandler(db, toolRegistry)
 			protected.GET("/mcp/servers", mcpHandler.ListServers)
 			protected.POST("/mcp/servers", mcpHandler.AddServer)
 			protected.DELETE("/mcp/servers/:id", mcpHandler.DeleteServer)
 			protected.POST("/mcp/servers/:id/test", mcpHandler.TestServer)
 
 			// Integrations (messaging platforms: Feishu, DingTalk, Slack, etc.)
-			integrationHandler := v1.NewIntegrationHandler(db)
+			integrationHandler := infra.NewIntegrationHandler(db)
 			protected.GET("/integrations", integrationHandler.List)
 			protected.POST("/integrations", integrationHandler.Create)
 			protected.PUT("/integrations/:id", integrationHandler.Update)
@@ -1118,7 +749,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/multi-agent/run", multiAgentHandler.Run)
 
 			// Teams — local multi-agent collaboration (Hexad layer)
-			teamHandler := v1.NewTeamHandler(db)
+			teamHandler := squadapi.NewTeamHandler(db)
 			protected.GET("/teams", teamHandler.List)
 			protected.POST("/teams", teamHandler.Create)
 			protected.GET("/team-templates", teamHandler.ListTemplates)
@@ -1129,7 +760,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.DELETE("/teams/:id/members/:member_id", teamHandler.RemoveMember)
 
 			// Squads (multi-node team collaboration)
-			squadHandler := v1.NewSquadHandler(db, identity)
+			squadHandler := squadapi.NewSquadHandler(db, identity)
 			protected.POST("/squads", squadHandler.CreateSquad)
 			protected.GET("/squads", squadHandler.ListSquads)
 			protected.GET("/squads/:id", squadHandler.GetSquad)
@@ -1156,7 +787,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 				log.Printf("[router] forge proxy mode → %s", cfg.Forge.URL)
 				protected.Any("/forge/*path", forgeProxy(cfg.Forge.URL))
 			} else {
-				forgeHandler := v1.NewForgeHandler(db)
+				forgeHandler := infra.NewForgeHandler(db)
 				protected.POST("/forge/projects", forgeHandler.CreateProject)
 				protected.GET("/forge/projects", forgeHandler.ListProjects)
 				protected.GET("/forge/projects/:id", forgeHandler.GetProject)
@@ -1173,11 +804,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			}
 
 			// Dashboard
-			dashboardHandler := v1.NewDashboardHandler(db)
+			dashboardHandler := infra.NewDashboardHandler(db)
 			protected.GET("/dashboard/stats", dashboardHandler.Stats)
 
 			// Node Growth System (one pet per Claw node)
-			growthHandler := v1.NewGrowthHandler(db, providerRegistry, identity)
+			growthHandler := game.NewGrowthHandler(db, providerRegistry, identity)
 			protected.GET("/growth", growthHandler.GetGrowth)
 			protected.GET("/growth/milestones", growthHandler.GetMilestones)
 			protected.GET("/growth/milestones/new", growthHandler.GetNewMilestones)
@@ -1224,7 +855,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			})
 
 			// Settings
-			settingsHandler := v1.NewSettingsHandler(db)
+			settingsHandler := infra.NewSettingsHandler(db)
 			protected.GET("/settings/profile", settingsHandler.GetProfile)
 			protected.PUT("/settings/profile", settingsHandler.UpdateProfile)
 			protected.PUT("/settings/password", settingsHandler.ChangePassword)
@@ -1239,7 +870,6 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			if len(swarmClient) > 0 {
 				sc = swarmClient[0]
 			}
-			var oc *overlord.Client
 			if cfg.Overlord.Enabled && cfg.Overlord.OverlordURL != "" {
 				oc = overlord.NewClient(cfg.Overlord)
 				if identity != nil {
@@ -1258,9 +888,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 					return overlord.TaskStats{Running: int(running), Queued: int(queued)}
 				}
 				oc.Start()
-				log.Printf("[router] overlord client started: url=%s", cfg.Overlord.OverlordURL)
+				log.Printf("[router] overlord client started: url=%s trading=%v", cfg.Overlord.OverlordURL, cfg.Trading.Enabled)
 			}
-			systemHandler := v1.NewSystemHandler(cfg, sc, identity, oc)
+			systemHandler := v1.NewSystemHandler(cfg, db, sc, identity, oc)
 			protected.GET("/system/update", systemHandler.GetUpdateInfo)
 			protected.POST("/system/update", systemHandler.TriggerUpdate)
 			protected.POST("/system/update/check", systemHandler.ForceCheck)
@@ -1283,14 +913,14 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/system/mining/toggle", systemHandler.ToggleMining)
 
 			// Device Management
-			deviceHandler := v1.NewDeviceHandler(db)
+			deviceHandler := auth.NewDeviceHandler(db)
 			protected.GET("/devices", deviceHandler.ListDevices)
 			protected.POST("/devices/:id/approve", deviceHandler.ApproveDevice)
 			protected.POST("/devices/:id/reject", deviceHandler.RejectDevice)
 			protected.POST("/devices/:id/revoke", deviceHandler.RevokeDevice)
 
 			// Queen Account Linking
-			queenHandler := v1.NewQueenAccountHandler(cfg, sc, identity)
+			queenHandler := billingpkg.NewQueenAccountHandler(cfg, sc, identity)
 			protected.GET("/queen/status", queenHandler.GetStatus)
 			protected.POST("/queen/link", queenHandler.Link)
 			protected.POST("/queen/link-claw", queenHandler.LinkWithClaw)
@@ -1302,7 +932,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			if len(swarmClient) > 0 && swarmClient[0] != nil {
 				scOpt = append(scOpt, swarmClient[0])
 			}
-			peerHandler := v1.NewPeerHandler(db, cfg, scOpt...)
+			peerHandler := network.NewPeerHandler(db, cfg, scOpt...)
 			protected.GET("/node/info", peerHandler.GetNodeInfo)
 			protected.PUT("/node/config", peerHandler.UpdateNodeConfig)
 			protected.POST("/node/auto-setup", peerHandler.AutoSetupNode)
@@ -1327,7 +957,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/p2p/evolution/stats", p2pHandler.HandleEvolutionStats)
 
 			// P8: Agent Economy (marketplace listings, purchases, revenue, ratings)
-			marketplaceHandler := v1.NewMarketplaceHandler(db)
+			marketplaceHandler := market.NewMarketplaceHandler(db)
 			// Public-ish browse (still auth required for user context)
 			protected.GET("/marketplace/listings", marketplaceHandler.ListPublished)
 			protected.GET("/marketplace/listings/:id", marketplaceHandler.GetListing)
@@ -1349,7 +979,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/marketplace/creator/listings/:id/version", marketplaceHandler.PublishVersion)
 
 			// P8: Observability (traces, alerts, logs)
-			observeHandler := v1.NewObserveHandler(observeEngine, db)
+			observeHandler := ops.NewObserveHandler(observeEngine, db)
 			protected.GET("/observe/stats", observeHandler.ObserveStats)
 			protected.GET("/observe/traces/:trace_id", observeHandler.GetTrace)
 			protected.GET("/observe/spans", observeHandler.QuerySpans)
@@ -1365,7 +995,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/observe/alerts/history/:id/resolve", observeHandler.ResolveAlert)
 
 			// P8: Webhook orchestration (event rules, logs, dead letter queue)
-			webhookRuleHandler := v1.NewWebhookRuleHandler(webhookEngine, db)
+			webhookRuleHandler := ops.NewWebhookRuleHandler(webhookEngine, db)
 			protected.GET("/webhooks/rules", webhookRuleHandler.ListRules)
 			protected.POST("/webhooks/rules", webhookRuleHandler.CreateRule)
 			protected.PUT("/webhooks/rules/:id", webhookRuleHandler.UpdateRule)
@@ -1391,7 +1021,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/developer/stats", devHandler.DeveloperStats)
 
 			// P9: Security (encryption, audit chain, GDPR, compliance)
-			securityHandler := v1.NewSecurityHandler(db, keyMgr, auditChain)
+			securityHandler := ops.NewSecurityHandler(db, keyMgr, auditChain)
 			protected.GET("/security/encryption", securityHandler.EncryptionStatus)
 			protected.GET("/security/overview", securityHandler.SecurityOverview)
 			protected.GET("/security/audit", securityHandler.AuditChainQuery)
@@ -1426,7 +1056,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/collaborations/:id/vote", advancedHandler.SubmitVote)
 
 			// P10: Fine-tuning & Knowledge Distillation
-			fineTuneHandler := v1.NewFineTuneHandler(db, fineTuneEngine)
+			fineTuneHandler := infra.NewFineTuneHandler(db, fineTuneEngine)
 			protected.GET("/finetune/adapters", fineTuneHandler.ListAdapters)
 			protected.POST("/finetune/adapters", fineTuneHandler.CreateAdapter)
 			protected.GET("/finetune/adapters/:id", fineTuneHandler.GetAdapter)
@@ -1445,21 +1075,21 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/finetune/stats", fineTuneHandler.FineTuneStats)
 
 			// Workflow Templates (Marketplace)
-			wfTemplateHandler := v1.NewWorkflowTemplateHandler(db)
+			wfTemplateHandler := wf.NewWorkflowTemplateHandler(db)
 			protected.GET("/workflow-templates", wfTemplateHandler.List)
 			protected.POST("/workflow-templates", wfTemplateHandler.Publish)
 			protected.POST("/workflow-templates/:id/clone", wfTemplateHandler.Clone)
 			protected.DELETE("/workflow-templates/:id", wfTemplateHandler.Delete)
 
 			// Schedules (Cron)
-			scheduleHandler := v1.NewScheduleHandler(db)
+			scheduleHandler := wf.NewScheduleHandler(db)
 			protected.GET("/schedules", scheduleHandler.List)
 			protected.POST("/schedules", scheduleHandler.Create)
 			protected.POST("/schedules/:id/toggle", scheduleHandler.Toggle)
 			protected.DELETE("/schedules/:id", scheduleHandler.Delete)
 
 			// Activities (Instinct — proactive behavior system)
-			activityHandler := v1.NewActivityHandler(db, instinctEngine)
+			activityHandler := wf.NewActivityHandler(db, instinctEngine)
 			protected.GET("/activities", activityHandler.List)
 			protected.GET("/activities/templates", activityHandler.Templates)
 			protected.POST("/activities/seed", activityHandler.Seed)
@@ -1472,11 +1102,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/activities/events/:event", activityHandler.FireEvent)
 
 			// Audit Logs
-			auditHandler := v1.NewAuditHandler(db)
+			auditHandler := ops.NewAuditHandler(db)
 			protected.GET("/audit-logs", auditHandler.List)
 
 			// Agent Evaluation
-			evalHandler := v1.NewEvalHandler(db, providerRegistry, toolRegistry)
+			evalHandler := infra.NewEvalHandler(db, providerRegistry, toolRegistry)
 			protected.GET("/eval/test-cases", evalHandler.ListTestCases)
 			protected.POST("/eval/test-cases", evalHandler.CreateTestCase)
 			protected.DELETE("/eval/test-cases/:id", evalHandler.DeleteTestCase)
@@ -1484,7 +1114,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/eval/runs", evalHandler.ListTestRuns)
 
 			// Long-term Memory
-			memoryHandler := v1.NewMemoryHandler(db)
+			memoryHandler := knowledge.NewMemoryHandler(db)
 			protected.GET("/memories", memoryHandler.List)
 			protected.POST("/memories", memoryHandler.Create)
 			protected.PUT("/memories/:id", memoryHandler.Update)
@@ -1494,16 +1124,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/memories/recall/:agent_id", memoryHandler.Recall)
 
 			// Multimodal (image upload, STT, TTS)
-			multimodalHandler := v1.NewMultimodalHandler(cfg, db)
+			multimodalHandler := media.NewMultimodalHandler(cfg, db)
 			protected.POST("/multimodal/upload-image", multimodalHandler.UploadImage)
 			protected.POST("/multimodal/stt", multimodalHandler.SpeechToText)
 			protected.POST("/multimodal/tts", multimodalHandler.TextToSpeech)
 
 			// File upload (general: documents, audio, video, code, etc.)
-			protected.POST("/upload", v1.UploadFile)
+			protected.POST("/upload", media.UploadFile)
 
 			// Coding Agent
-			codingHandler := v1.NewCodingHandler(db, sandboxMgr, providerRegistry, toolRegistry)
+			codingHandler := infra.NewCodingHandler(db, sandboxMgr, providerRegistry, toolRegistry)
 			protected.POST("/coding/run", codingHandler.Run)
 			protected.POST("/coding/execute", codingHandler.ExecuteCode)
 			protected.POST("/coding/run-file", codingHandler.RunFile)
@@ -1513,7 +1143,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/coding/workspace/:workspace_id/file", codingHandler.ReadWorkspaceFile)
 
 			// Tasks (autonomous background execution)
-			taskHandler := v1.NewTaskHandler(db, taskWorker)
+			taskHandler := wf.NewTaskHandler(db, taskWorker)
 			protected.GET("/tasks", taskHandler.ListTasks)
 			protected.POST("/tasks", taskHandler.CreateTask)
 			protected.GET("/tasks/visualization", taskHandler.Visualization)
@@ -1532,493 +1162,29 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/notifications/unread-count", taskHandler.UnreadCount)
 
 			// Videos (generated video gallery)
-			protected.GET("/videos", func(c *gin.Context) {
-				userID := c.GetString("user_id")
-				var records []model.VideoRecord
-				db.Where("user_id = ?", userID).Order("created_at DESC").Limit(500).Find(&records)
-				c.JSON(200, gin.H{"videos": records})
-			})
-			protected.DELETE("/videos/:id", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-				result := db.Where("id = ? AND user_id = ?", id, userID).Delete(&model.VideoRecord{})
-				if result.RowsAffected == 0 {
-					c.JSON(404, gin.H{"error": "video not found"})
-					return
-				}
-				c.JSON(200, gin.H{"message": "deleted"})
-			})
-			protected.POST("/videos/:id/cancel", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-				result := db.Model(&model.VideoRecord{}).
-					Where("id = ? AND user_id = ? AND status IN ?", id, userID, []string{"running", "pending"}).
-					Update("status", "cancelled")
-				if result.RowsAffected == 0 {
-					c.JSON(400, gin.H{"error": "video not found or cannot be cancelled"})
-					return
-				}
-				c.JSON(200, gin.H{"status": "cancelled"})
-			})
-			protected.POST("/videos/:id/retry", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-				var rec model.VideoRecord
-				if err := db.Where("id = ? AND user_id = ? AND status IN ?", id, userID, []string{"failed", "cancelled"}).First(&rec).Error; err != nil {
-					c.JSON(400, gin.H{"error": "video not found or cannot be retried"})
-					return
-				}
-				// Resubmit to the video tool
-				videoTool, ok := toolRegistry.Get("video_generation")
-				if !ok {
-					c.JSON(500, gin.H{"error": "video tool not available"})
-					return
-				}
-				// Reset status
-				db.Model(&rec).Updates(map[string]interface{}{"status": "running", "video_url": ""})
-				// Re-generate in background
-				go func() {
-					argsJSON := fmt.Sprintf(`{"action":"generate_video","prompt":%q,"model":%q,"size":%q,"duration":"%d","scene":%q}`,
-						rec.Prompt, rec.Model, rec.Size, rec.Duration, rec.Scene)
-					ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, rec.UserID)
-					ctx = context.WithValue(ctx, tool.CtxKeyConversationID, rec.ConversationID)
-					// Delete old record before re-generating (new one will be created)
-					db.Where("id = ?", rec.ID).Delete(&model.VideoRecord{})
-					videoTool.Execute(ctx, argsJSON)
-				}()
-				c.JSON(200, gin.H{"status": "retrying"})
-			})
+			videoHandler := media.NewVideoHandler(db, toolRegistry)
+			protected.GET("/videos", videoHandler.List)
+			protected.DELETE("/videos/:id", videoHandler.Delete)
+			protected.POST("/videos/:id/cancel", videoHandler.Cancel)
+			protected.POST("/videos/:id/retry", videoHandler.Retry)
+			protected.POST("/videos/:id/regenerate", videoHandler.Regenerate)
+			protected.POST("/videos/:id/remerge", videoHandler.Remerge)
+			protected.POST("/videos/:id/dub", videoHandler.Dub)
+			protected.POST("/videos/:id/add-music", videoHandler.AddMusic)
+			protected.GET("/videos/voices", videoHandler.ListVoices)
 
-			// Regenerate a clip (works for any status including succeeded)
-			protected.POST("/videos/:id/regenerate", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-				var rec model.VideoRecord
-				if err := db.Where("id = ? AND user_id = ?", id, userID).First(&rec).Error; err != nil {
-					c.JSON(400, gin.H{"error": "video not found"})
-					return
-				}
-				if rec.Type == "merged" || rec.Type == "mv" || rec.Type == "narrated" {
-					c.JSON(400, gin.H{"error": "cannot regenerate a merged/mv/narrated video, use remerge instead"})
-					return
-				}
-				videoTool, ok := toolRegistry.Get("video_generation")
-				if !ok {
-					c.JSON(500, gin.H{"error": "video tool not available"})
-					return
-				}
-				// Delete old record and re-generate with same params
-				oldConvID := rec.ConversationID
-				oldUserID := rec.UserID
-				go func() {
-					argsJSON := fmt.Sprintf(`{"action":"generate_video","prompt":%q,"model":%q,"size":%q,"duration":"%d","scene":%q}`,
-						rec.Prompt, rec.Model, rec.Size, rec.Duration, rec.Scene)
-					ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, oldUserID)
-					ctx = context.WithValue(ctx, tool.CtxKeyConversationID, oldConvID)
-					db.Where("id = ?", rec.ID).Delete(&model.VideoRecord{})
-					videoTool.Execute(ctx, argsJSON)
-				}()
-				c.JSON(200, gin.H{"status": "regenerating", "message": "片段正在重新生成"})
-			})
-
-			// Re-merge a composite video (only the original clip_ids, not all clips in conversation)
-			protected.POST("/videos/:id/remerge", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-				var rec model.VideoRecord
-				if err := db.Where("id = ? AND user_id = ? AND type IN ?", id, userID, []string{"merged", "mv"}).First(&rec).Error; err != nil {
-					c.JSON(400, gin.H{"error": "merged video not found"})
-					return
-				}
-				videoTool, ok := toolRegistry.Get("video_generation")
-				if !ok {
-					c.JSON(500, gin.H{"error": "video tool not available"})
-					return
-				}
-				convID := rec.ConversationID
-				if convID == "" {
-					c.JSON(400, gin.H{"error": "no conversation_id on this merged video"})
-					return
-				}
-				// Parse original clip IDs from the merged record
-				var clipIDs []string
-				if err := json.Unmarshal([]byte(rec.ClipIDs), &clipIDs); err != nil || len(clipIDs) == 0 {
-					c.JSON(400, gin.H{"error": "no clip_ids found in merged video"})
-					return
-				}
-				// Get task_ids for these specific clips
-				var clips []model.VideoRecord
-				db.Where("id IN ?", clipIDs).Find(&clips)
-				var taskIDs []string
-				for _, clip := range clips {
-					if clip.TaskID != "" {
-						taskIDs = append(taskIDs, clip.TaskID)
-					}
-				}
-				if len(taskIDs) == 0 {
-					c.JSON(400, gin.H{"error": "no valid clips found for remerge"})
-					return
-				}
-				// Delete old merged record
-				db.Where("id = ?", rec.ID).Delete(&model.VideoRecord{})
-				// Re-merge in background with specific task_ids
-				taskIDsStr := strings.Join(taskIDs, ",")
-				go func() {
-					argsJSON := fmt.Sprintf(`{"action":"merge_videos","task_ids":%q}`, taskIDsStr)
-					ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, userID)
-					ctx = context.WithValue(ctx, tool.CtxKeyConversationID, convID)
-					videoTool.Execute(ctx, argsJSON)
-				}()
-				c.JSON(200, gin.H{"status": "remerging", "message": "正在重新合成视频"})
-			})
-
-			// Dub a video clip (add voiceover + subtitles)
-			protected.POST("/videos/:id/dub", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-
-				var req struct {
-					Text          string `json:"text"`
-					Voice         string `json:"voice"`
-					SubtitleStyle string `json:"subtitle_style"`
-				}
-				if err := c.ShouldBindJSON(&req); err != nil || req.Text == "" {
-					c.JSON(400, gin.H{"error": "text (配音文案) is required"})
-					return
-				}
-
-				var rec model.VideoRecord
-				if err := db.Where("id = ? AND user_id = ?", id, userID).First(&rec).Error; err != nil {
-					c.JSON(400, gin.H{"error": "video not found"})
-					return
-				}
-				if rec.Status != "succeeded" || rec.VideoURL == "" {
-					c.JSON(400, gin.H{"error": "video not ready yet"})
-					return
-				}
-
-				dubbingTool, ok := toolRegistry.Get("dubbing")
-				if !ok {
-					c.JSON(500, gin.H{"error": "dubbing tool not available"})
-					return
-				}
-
-				// Auto-split text into timed segments
-				segments := tool.SplitNarrationToSegments(req.Text, 0, float64(rec.Duration), 15)
-				segJSON, _ := json.Marshal(segments)
-
-				voice := req.Voice
-				if voice == "" {
-					voice = "longyuan"
-				}
-				subStyle := req.SubtitleStyle
-				if subStyle == "" {
-					subStyle = "auto"
-				}
-
-				go func() {
-					argsJSON := fmt.Sprintf(`{"action":"add_voiceover","video_id":%q,"narrations":%s,"voice":%q,"subtitle_style":%q}`,
-						rec.ID, string(segJSON), voice, subStyle)
-					ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, userID)
-					ctx = context.WithValue(ctx, tool.CtxKeyConversationID, rec.ConversationID)
-					result, err := dubbingTool.Execute(ctx, argsJSON)
-					if err != nil {
-						log.Printf("[DubAPI] failed for video %s: %v", rec.ID, err)
-					} else {
-						log.Printf("[DubAPI] success for video %s: %s", rec.ID, result)
-					}
-				}()
-
-				c.JSON(200, gin.H{
-					"status":   "dubbing",
-					"message":  fmt.Sprintf("配音任务已开始，音色: %s，共%d段旁白", voice, len(segments)),
-					"segments": len(segments),
-				})
-			})
-
-			// Add music to a video (compose MV)
-			protected.POST("/videos/:id/add-music", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-
-				var req struct {
-					MusicID       string `json:"music_id"`
-					LyricsSRT     string `json:"lyrics_srt"`
-					SubtitleStyle string `json:"subtitle_style"`
-				}
-				if err := c.ShouldBindJSON(&req); err != nil || req.MusicID == "" {
-					c.JSON(400, gin.H{"error": "music_id is required"})
-					return
-				}
-
-				var rec model.VideoRecord
-				if err := db.Where("id = ? AND user_id = ?", id, userID).First(&rec).Error; err != nil {
-					c.JSON(400, gin.H{"error": "video not found"})
-					return
-				}
-				if rec.Status != "succeeded" || rec.VideoURL == "" {
-					c.JSON(400, gin.H{"error": "video not ready yet"})
-					return
-				}
-
-				mvTool, ok := toolRegistry.Get("mv_production")
-				if !ok {
-					c.JSON(500, gin.H{"error": "mv tool not available"})
-					return
-				}
-
-				go func() {
-					argsJSON := fmt.Sprintf(`{"action":"compose_mv","video_id":%q,"music_id":%q,"lyrics_srt":%q,"subtitle_style":%q}`,
-						rec.ID, req.MusicID, req.LyricsSRT, req.SubtitleStyle)
-					ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, userID)
-					ctx = context.WithValue(ctx, tool.CtxKeyConversationID, rec.ConversationID)
-					result, err := mvTool.Execute(ctx, argsJSON)
-					if err != nil {
-						log.Printf("[AddMusicAPI] failed for video %s: %v", rec.ID, err)
-					} else {
-						log.Printf("[AddMusicAPI] success for video %s: %s", rec.ID, result)
-					}
-				}()
-
-				c.JSON(200, gin.H{"status": "composing", "message": "正在合成配乐视频"})
-			})
-
-			// List available voices for dubbing
-			protected.GET("/videos/voices", func(c *gin.Context) {
-				dubbingTool, ok := toolRegistry.Get("dubbing")
-				if !ok {
-					c.JSON(500, gin.H{"error": "dubbing tool not available"})
-					return
-				}
-				result, err := dubbingTool.Execute(context.Background(), `{"action":"list_voices"}`)
-				if err != nil {
-					c.JSON(500, gin.H{"error": err.Error()})
-					return
-				}
-				var data map[string]interface{}
-				json.Unmarshal([]byte(result), &data)
-				c.JSON(200, data)
-			})
-
-			// Images (generated image gallery)
-			protected.GET("/images", func(c *gin.Context) {
-				userID := c.GetString("user_id")
-				var records []model.ImageRecord
-				db.Where("user_id = ?", userID).Order("created_at DESC").Limit(500).Find(&records)
-				c.JSON(200, gin.H{"images": records})
-			})
-			protected.DELETE("/images/:id", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-				result := db.Where("id = ? AND user_id = ?", id, userID).Delete(&model.ImageRecord{})
-				if result.RowsAffected == 0 {
-					c.JSON(404, gin.H{"error": "image not found"})
-					return
-				}
-				c.JSON(200, gin.H{"message": "deleted"})
-			})
-
-			// Music (generated music gallery)
-			protected.GET("/music", func(c *gin.Context) {
-				userID := c.GetString("user_id")
-				var records []model.MusicRecord
-				db.Where("user_id = ?", userID).Order("created_at DESC").Limit(500).Find(&records)
-				c.JSON(200, gin.H{"music": records})
-			})
-			protected.DELETE("/music/:id", func(c *gin.Context) {
-				id := c.Param("id")
-				userID := c.GetString("user_id")
-				result := db.Where("id = ? AND user_id = ?", id, userID).Delete(&model.MusicRecord{})
-				if result.RowsAffected == 0 {
-					c.JSON(404, gin.H{"error": "music not found"})
-					return
-				}
-				c.JSON(200, gin.H{"message": "deleted"})
-			})
-
-			// Documents (workspace files) - DB-backed with filesystem fallback
-			protected.GET("/documents", func(c *gin.Context) {
-				baseDir := sandbox.WorkspacesDir()
-				userID := c.GetString("user_id")
-				convFilter := c.Query("conversation_id")
-
-				type DocFile struct {
-					Name           string `json:"name"`
-					Path           string `json:"path"`
-					Workspace      string `json:"workspace"`
-					Size           int64  `json:"size"`
-					ModTime        string `json:"mod_time"`
-					URL            string `json:"url"`
-					Category       string `json:"category"`
-					ConversationID string `json:"conversation_id"`
-					ConvTitle      string `json:"conv_title"`
-				}
-
-				type ConvSummary struct {
-					ID    string `json:"id"`
-					Title string `json:"title"`
-				}
-
-				// 1. Query tracked files from DB (user-isolated)
-				var dbFiles []model.WorkspaceFile
-				q := db.Where("user_id = ?", userID).Order("created_at DESC")
-				if convFilter != "" {
-					q = q.Where("conversation_id = ?", convFilter)
-				}
-				q.Find(&dbFiles)
-
-				// Build a set of tracked file keys (workspace:path) for dedup
-				trackedKeys := map[string]bool{}
-				// Collect unique conversation IDs
-				convIDs := map[string]bool{}
-				var docs []DocFile
-
-				cst := time.FixedZone("CST", 8*3600)
-
-				for _, f := range dbFiles {
-					key := f.WorkspaceID + ":" + f.Path
-					trackedKeys[key] = true
-					if f.ConversationID != "" {
-						convIDs[f.ConversationID] = true
-					}
-
-					// Get actual file size and mod_time from filesystem
-					absPath := filepath.Join(baseDir, f.WorkspaceID, f.Path)
-					modTime := f.UpdatedAt.In(cst).Format("2006-01-02 15:04:05")
-					size := f.Size
-					if info, err := os.Stat(absPath); err == nil {
-						size = info.Size()
-						modTime = info.ModTime().In(cst).Format("2006-01-02 15:04:05")
-					}
-
-					docs = append(docs, DocFile{
-						Name:           f.Name,
-						Path:           f.Path,
-						Workspace:      f.WorkspaceID,
-						Size:           size,
-						ModTime:        modTime,
-						URL:            fmt.Sprintf("/v1/documents/%s/%s", f.WorkspaceID, f.Path),
-						Category:       f.Category,
-						ConversationID: f.ConversationID,
-					})
-				}
-
-				// 2. If no conversation filter, also scan filesystem for untracked files (user's workspace only)
-				if convFilter == "" {
-					skipExts := map[string]bool{
-						".pyc": true, ".class": true, ".o": true, ".exe": true,
-					}
-					codeExts := map[string]bool{
-						".py": true, ".js": true, ".ts": true, ".jsx": true, ".tsx": true,
-						".go": true, ".java": true, ".c": true, ".cpp": true, ".h": true,
-						".rs": true, ".rb": true, ".php": true, ".sh": true, ".bat": true,
-						".ps1": true, ".sql": true, ".r": true, ".m": true, ".swift": true,
-						".kt": true, ".scala": true, ".lua": true, ".pl": true, ".dart": true,
-						".css": true, ".scss": true, ".less": true, ".vue": true, ".svelte": true,
-						".json": true, ".yaml": true, ".yml": true, ".toml": true, ".xml": true,
-						".ini": true, ".cfg": true, ".conf": true, ".env": true,
-						".html": true, ".htm": true,
-					}
-					// Only scan user's own workspace directory
-					wsID := userID
-					wsPath := filepath.Join(baseDir, wsID)
-					if _, err := os.Stat(wsPath); err == nil {
-						filepath.Walk(wsPath, func(path string, info os.FileInfo, err error) error {
-							if err != nil || info.IsDir() {
-								return nil
-							}
-							name := info.Name()
-							if strings.HasPrefix(name, "_exec") || name == "Main.class" {
-								return nil
-							}
-							ext := strings.ToLower(filepath.Ext(name))
-							if skipExts[ext] {
-								return nil
-							}
-							relPath, _ := filepath.Rel(wsPath, path)
-							key := wsID + ":" + relPath
-							if trackedKeys[key] {
-								return nil // already from DB
-							}
-							category := "document"
-							if codeExts[ext] {
-								category = "code"
-							}
-							docs = append(docs, DocFile{
-								Name:      name,
-								Path:      relPath,
-								Workspace: wsID,
-								Size:      info.Size(),
-								ModTime:   info.ModTime().In(cst).Format("2006-01-02 15:04:05"),
-								URL:       fmt.Sprintf("/v1/documents/%s/%s", wsID, relPath),
-								Category:  category,
-							})
-							return nil
-						})
-					}
-				}
-
-				// 3. Fetch conversation titles for grouping
-				var conversations []ConvSummary
-				if len(convIDs) > 0 {
-					ids := make([]string, 0, len(convIDs))
-					for id := range convIDs {
-						ids = append(ids, id)
-					}
-					var convs []model.Conversation
-					db.Where("id IN ?", ids).Find(&convs)
-					convMap := map[string]string{}
-					for _, cv := range convs {
-						convMap[cv.ID] = cv.Title
-						conversations = append(conversations, ConvSummary{ID: cv.ID, Title: cv.Title})
-					}
-					// Backfill conv_title into docs
-					for i := range docs {
-						if docs[i].ConversationID != "" {
-							docs[i].ConvTitle = convMap[docs[i].ConversationID]
-						}
-					}
-				}
-
-				c.JSON(200, gin.H{
-					"documents":     docs,
-					"conversations": conversations,
-				})
-			})
-			protected.GET("/documents/:workspace/*filepath", func(c *gin.Context) {
-				wsID := c.Param("workspace")
-				filePath := strings.TrimPrefix(c.Param("filepath"), "/")
-				baseDir := sandbox.WorkspacesDir()
-				absPath := filepath.Join(baseDir, wsID, filePath)
-				// Security: ensure path stays within workspace
-				if !strings.HasPrefix(absPath, filepath.Join(baseDir, wsID)) {
-					c.JSON(403, gin.H{"error": "forbidden"})
-					return
-				}
-				if _, err := os.Stat(absPath); os.IsNotExist(err) {
-					c.JSON(404, gin.H{"error": "file not found"})
-					return
-				}
-				c.File(absPath)
-			})
-			protected.DELETE("/documents/:workspace/*filepath", func(c *gin.Context) {
-				wsID := c.Param("workspace")
-				filePath := strings.TrimPrefix(c.Param("filepath"), "/")
-				baseDir := sandbox.WorkspacesDir()
-				absPath := filepath.Join(baseDir, wsID, filePath)
-				if !strings.HasPrefix(absPath, filepath.Join(baseDir, wsID)) {
-					c.JSON(403, gin.H{"error": "forbidden"})
-					return
-				}
-				if err := os.Remove(absPath); err != nil {
-					c.JSON(404, gin.H{"error": "file not found"})
-					return
-				}
-				c.JSON(200, gin.H{"message": "deleted"})
-			})
+			// Images, Music, Documents (media gallery)
+			mediaHandler := media.NewMediaHandler(db)
+			protected.GET("/images", mediaHandler.ListImages)
+			protected.DELETE("/images/:id", mediaHandler.DeleteImage)
+			protected.GET("/music", mediaHandler.ListMusic)
+			protected.DELETE("/music/:id", mediaHandler.DeleteMusic)
+			protected.GET("/documents", mediaHandler.ListDocuments)
+			protected.GET("/documents/:workspace/*filepath", mediaHandler.GetDocument)
+			protected.DELETE("/documents/:workspace/*filepath", mediaHandler.DeleteDocument)
 
 			// Workspace folders (document tree browsing)
-			wsHandler := v1.NewWorkspaceHandler(db)
+			wsHandler := infra.NewWorkspaceHandler(db)
 			protected.GET("/doc-folders", wsHandler.ListFolders)
 			protected.GET("/doc-folders/:conv_id", wsHandler.ListFolderFiles)
 			protected.DELETE("/doc-folders/:conv_id", wsHandler.DeleteFolder)
@@ -2044,7 +1210,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			admin := protected.Group("")
 			admin.Use(middleware.RequireAdmin())
 			{
-				adminHandler := v1.NewAdminHandler(db)
+				adminHandler := ops.NewAdminHandler(db)
 				admin.GET("/admin/users", adminHandler.ListUsers)
 				admin.PUT("/admin/users/:id/role", adminHandler.UpdateUserRole)
 				admin.DELETE("/admin/users/:id", adminHandler.DeleteUser)

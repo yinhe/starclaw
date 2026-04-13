@@ -179,7 +179,7 @@ func (t *MusicTool) generateMusic(ctx context.Context, args musicArgs) (string, 
 	}
 
 	// Submit to fal.ai queue API (routes through StarAI proxy when available)
-	requestID, err := SubmitToFal(apiKey, endpoint, body)
+	requestID, _, err := SubmitToFal(apiKey, endpoint, body)
 	if err != nil {
 		return "", fmt.Errorf("failed to submit music generation: %v", err)
 	}
@@ -341,7 +341,7 @@ func (t *MusicTool) listMusic(ctx context.Context) (string, error) {
 }
 
 // pollAndDownload polls fal.ai queue status (via StarAI proxy) and downloads the result
-func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, userID, genLogID string) {
+func (t *MusicTool) pollAndDownload(apiKey, endpoint, requestID, recordID, _, genLogID string) {
 	result, err := PollFalStatus(apiKey, endpoint, requestID, 15*time.Minute)
 	if err != nil {
 		log.Printf("[MusicTool] Poll failed for %s: %v", requestID, err)

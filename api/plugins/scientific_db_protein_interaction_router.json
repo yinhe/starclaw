@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_protein_interaction_router",
+  "description": "Route protein interaction and network searches across STRING, BioGRID, IntAct, SIGNOR, and UniProt using gene, protein, organism, interaction type, disease context, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "protein_interaction_router" },
+      "gene": { "type": "string" },
+      "protein": { "type": "string" },
+      "organism": { "type": "string" },
+      "interaction_type": { "type": "string" },
+      "disease": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

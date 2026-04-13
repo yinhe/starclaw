@@ -1,0 +1,19 @@
+{
+  "name": "neurodev_autism_flag_screen",
+  "description": "Screen autism-related red flags using social communication, repetitive behaviors, language features, and regression clues.",
+  "version": "1.0.0",
+  "author": "StarClaw Neurodevelopment Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "autism_flag_screen" },
+      "age_months": { "type": "number" },
+      "social_flags": { "type": "array", "items": { "type": "string" } },
+      "repetitive_behaviors": { "type": "array", "items": { "type": "string" } },
+      "language_flags": { "type": "array", "items": { "type": "string" } },
+      "regression": { "type": "boolean" }
+    }
+  },
+  "handler": "neurodev_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

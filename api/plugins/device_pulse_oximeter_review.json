@@ -1,0 +1,19 @@
+{
+  "name": "device_pulse_oximeter_review",
+  "description": "Review pulse oximeter readings using SpO2, heart rate, signal quality, extremity perfusion, and urgent respiratory symptoms.",
+  "version": "1.0.0",
+  "author": "StarClaw Device Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "pulse_oximeter_review" },
+      "spo2": { "type": "number" },
+      "heart_rate": { "type": "number" },
+      "poor_signal": { "type": "boolean" },
+      "cold_extremities": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "device_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

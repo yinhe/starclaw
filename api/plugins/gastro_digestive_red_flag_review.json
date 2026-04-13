@@ -1,0 +1,21 @@
+{
+  "name": "gastro_digestive_red_flag_review",
+  "description": "Review digestive red flags using poor intake, reduced urine, weight loss, distension, medication history, and alarm symptoms.",
+  "version": "1.0.0",
+  "author": "StarClaw Gastro Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "digestive_red_flag_review" },
+      "age_years": { "type": "number" },
+      "poor_intake": { "type": "boolean" },
+      "urine_reduction": { "type": "boolean" },
+      "weight_loss": { "type": "boolean" },
+      "abdominal_distension": { "type": "boolean" },
+      "recent_medications": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "gastro_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}
