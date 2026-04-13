@@ -11,7 +11,7 @@ import (
 )
 
 func InitMySQL(cfg *config.Config) (*gorm.DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=True&loc=Local",
 		cfg.Database.User,
 		cfg.Database.Password,
 		cfg.Database.Host,
@@ -34,6 +34,12 @@ func InitMySQL(cfg *config.Config) (*gorm.DB, error) {
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
+	}
+	if err := sqlDB.Ping(); err != nil {
+		return nil, err
+	}
+	if _, err := sqlDB.Exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"); err != nil {
+		return nil, fmt.Errorf("failed to set MySQL session charset: %w", err)
 	}
 
 	sqlDB.SetMaxIdleConns(20)

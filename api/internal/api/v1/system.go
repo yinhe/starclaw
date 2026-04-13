@@ -81,6 +81,31 @@ func (h *SystemHandler) GetSwarmStatus(c *gin.Context) {
 	})
 }
 
+func requestBaseURL(c *gin.Context) string {
+	host := strings.TrimSpace(c.Request.Host)
+	if host == "" {
+		host = strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	}
+	if host == "" {
+		return ""
+	}
+
+	proto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto"))
+	if i := strings.Index(proto, ","); i >= 0 {
+		proto = strings.TrimSpace(proto[:i])
+	}
+	proto = strings.ToLower(proto)
+	if proto != "https" && proto != "http" {
+		if c.Request.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+
+	return proto + "://" + host
+}
+
 // JoinSwarm enables swarm and connects to Queen
 func (h *SystemHandler) JoinSwarm(c *gin.Context) {
 	var req struct {
@@ -106,7 +131,14 @@ func (h *SystemHandler) JoinSwarm(c *gin.Context) {
 		h.cfg.Swarm.Region = req.Region
 	}
 
-	// Persist to config file (store normalized URL)
+	nodeAddress := strings.TrimSpace(h.cfg.Node.Address)
+	if nodeAddress == "" {
+		nodeAddress = requestBaseURL(c)
+		if nodeAddress != "" {
+			h.cfg.Node.Address = nodeAddress
+			viper.Set("node.address", nodeAddress)
+		}
+	}
 	viper.Set("swarm.enabled", true)
 	viper.Set("swarm.queen_url", queenURL)
 	if req.NodeName != "" {
@@ -125,8 +157,8 @@ func (h *SystemHandler) JoinSwarm(c *gin.Context) {
 	if h.identity != nil {
 		h.swarmClient.SetIdentity(h.identity)
 	}
-	if h.cfg.Node.Address != "" {
-		h.swarmClient.SetAddress(h.cfg.Node.Address)
+	if nodeAddress != "" {
+		h.swarmClient.SetAddress(nodeAddress)
 	}
 	h.swarmClient.Start()
 
