@@ -1,0 +1,19 @@
+{
+  "name": "scientific_db_guideline_router",
+  "description": "Route guideline searches across WHO, NICE, CDC, and specialty sources using topic, specialty, population, region, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "guideline_router" },
+      "topic": { "type": "string" },
+      "specialty": { "type": "string" },
+      "population": { "type": "string" },
+      "region": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

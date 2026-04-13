@@ -1,0 +1,20 @@
+{
+  "name": "lab_vitamin_assess",
+  "description": "Interpret vitamin D and bone metabolism markers such as calcium, phosphorus, and ALP.",
+  "version": "1.0.0",
+  "author": "StarClaw Lab Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "vitamin_assess" },
+      "report_text": { "type": "string", "description": "Optional pasted vitamin D or bone metabolism report text" },
+      "vitamin_d": { "type": "number", "description": "25-OH vitamin D ng/mL" },
+      "calcium": { "type": "number", "description": "Serum calcium mmol/L" },
+      "phosphorus": { "type": "number", "description": "Serum phosphorus mmol/L" },
+      "alp": { "type": "number", "description": "Alkaline phosphatase U/L" }
+    },
+    "required": ["action"]
+  },
+  "handler": "lab_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

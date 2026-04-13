@@ -16,13 +16,24 @@ import (
 	"gorm.io/gorm"
 )
 
+// StarAIBalance holds cached star-ai.net credit balance (from Queen via Synapse)
+type StarAIBalance struct {
+	Balance    float64   `json:"balance"`     // star energy display value (⚡)
+	BalanceRaw int64     `json:"balance_raw"` // internal units (1⚡ = 10000)
+	StarStatus string    `json:"star_status"` // active / hibernated
+	UserID     string    `json:"user_id"`
+	ClawID     string    `json:"claw_id"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 // StarAI proxy singleton — set once during router init, used by all tools
 var (
 	staraiMu      sync.RWMutex
-	staraiClient  *http.Client // HTTP client with SignedTransport for StarAI Router
-	staraiBaseURL string       // e.g. "https://api.star-ai.net/v1"
-	staraiAPIKey  string       // provisioned API key (sk-star-xxx)
-	staraiDB      *gorm.DB     // DB for syncing API key to model_configs
+	staraiClient  *http.Client   // HTTP client with SignedTransport for StarAI Router
+	staraiBaseURL string         // e.g. "https://api.star-ai.net/v1"
+	staraiAPIKey  string         // provisioned API key (sk-star-xxx)
+	staraiDB      *gorm.DB       // DB for syncing API key to model_configs
+	staraiBalance *StarAIBalance // cached balance from star-ai.net
 )
 
 // InitStarAIProxy initializes the shared StarAI proxy client.
@@ -75,6 +86,80 @@ func StarAIProxyURL(subProvider, path string) string {
 // RefreshStarAIKey forces re-provisioning of the API key (called on 401).
 func RefreshStarAIKey() {
 	go autoProvisionAPIKey()
+}
+
+// GetStarAIBalance returns the cached star-ai.net balance.
+// If cache is stale (>2min) or force=true, refreshes from star-ai.net synchronously.
+// Returns nil if star-ai proxy is not initialized or unreachable.
+func GetStarAIBalance(force bool) *StarAIBalance {
+	staraiMu.RLock()
+	cached := staraiBalance
+	client := staraiClient
+	baseURL := staraiBaseURL
+	staraiMu.RUnlock()
+
+	if client == nil || baseURL == "" {
+		return nil
+	}
+
+	// Return cache if fresh enough
+	if !force && cached != nil && time.Since(cached.UpdatedAt) < 2*time.Minute {
+		return cached
+	}
+
+	// Refresh via /v1/claw/sync which returns real Queen star energy
+	syncURL := strings.TrimSuffix(baseURL, "/v1") + "/v1/claw/sync"
+	req, err := http.NewRequest("GET", syncURL, nil)
+	if err != nil {
+		return cached // return stale cache on error
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[StarAI] balance refresh failed: %v", err)
+		return cached
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	var result struct {
+		StarEnergyDisplay *float64 `json:"star_energy_display"` // real Queen balance in ⚡
+		StarEnergy        *int64   `json:"star_energy"`         // internal units
+		StarStatus        string   `json:"star_status"`
+		Balance           float64  `json:"balance"` // local Synapse balance (fallback)
+		UserID            string   `json:"user_id"`
+		ClawID            string   `json:"claw_id"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("[StarAI] sync response parse failed: %v", err)
+		return cached
+	}
+
+	bal := &StarAIBalance{
+		UserID:    result.UserID,
+		ClawID:    result.ClawID,
+		UpdatedAt: time.Now(),
+	}
+	// Prefer real Queen star energy; fall back to local Synapse balance
+	if result.StarEnergyDisplay != nil {
+		bal.Balance = *result.StarEnergyDisplay
+		bal.StarStatus = result.StarStatus
+		if result.StarEnergy != nil {
+			bal.BalanceRaw = *result.StarEnergy
+		}
+		log.Printf("[StarAI] sync balance: %.1f⚡ (status=%s, user=%s)", bal.Balance, bal.StarStatus, bal.UserID)
+	} else {
+		bal.Balance = result.Balance / 100.0 // cents → yuan as fallback
+		log.Printf("[StarAI] sync balance (local fallback): %.2f (user=%s)", bal.Balance, bal.UserID)
+	}
+	staraiMu.Lock()
+	staraiBalance = bal
+	staraiMu.Unlock()
+	return bal
 }
 
 // autoProvisionAPIKey calls Router /v1/claw/provision to get or verify API key.

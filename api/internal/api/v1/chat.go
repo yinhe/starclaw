@@ -327,8 +327,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	}
 
 	maxTok := modelCfg.MaxTokens
-	if maxTok < 16384 {
-		maxTok = 16384
+	if maxTok == 0 {
+		maxTok = 4096
 	}
 	runReq := &agentpkg.RunRequest{
 		Model:       chatModel,
@@ -336,6 +336,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		Tools:       enabledTools,
 		Temperature: modelCfg.Temperature,
 		MaxTokens:   maxTok,
+		AgentID:     agent.ID,
+		UserID:      userID,
 	}
 
 	// Inject user_id, conversation_id, and provider into context so tools can access them
@@ -411,6 +413,56 @@ func toolDisplayName(name string) string {
 	return name
 }
 
+// ── Live Mission: tool → HiveMind virtual agent role mapping ──
+
+// liveMissionRole maps a tool name to a virtual agent role for HiveMind 3D visualization.
+type liveMissionRole struct {
+	Role     string `json:"role"`
+	Building string `json:"building"` // Zerg building name for 3D
+	Icon     string `json:"icon"`
+}
+
+var toolToRole = map[string]liveMissionRole{
+	"image_generation": {Role: "Designer", Building: "Evolution Chamber", Icon: "🎨"},
+	"video_generation": {Role: "VideoMaker", Building: "Greater Spire", Icon: "🎬"},
+	"music_generation": {Role: "Musician", Building: "Spire", Icon: "🎵"},
+	"mv_production":    {Role: "VideoMaker", Building: "Greater Spire", Icon: "🎬"},
+	"comic_production": {Role: "Designer", Building: "Evolution Chamber", Icon: "🎨"},
+	"dubbing":          {Role: "Musician", Building: "Spire", Icon: "🎵"},
+	"web_search":       {Role: "Researcher", Building: "Hydralisk Den", Icon: "🔍"},
+	"browser":          {Role: "Researcher", Building: "Hydralisk Den", Icon: "🔍"},
+	"http_request":     {Role: "Researcher", Building: "Hydralisk Den", Icon: "🔍"},
+	"code":             {Role: "Engineer", Building: "Spawning Pool", Icon: "💻"},
+	"desktop":          {Role: "DesktopPilot", Building: "Nydus Network", Icon: "🖥️"},
+	"system":           {Role: "Operator", Building: "Roach Warren", Icon: "⚙️"},
+	"document":         {Role: "Copywriter", Building: "Roach Warren", Icon: "✍️"},
+}
+
+func getToolRole(toolName string) liveMissionRole {
+	if r, ok := toolToRole[toolName]; ok {
+		return r
+	}
+	// MCP tools → DesktopPilot
+	if strings.HasPrefix(toolName, "mcp_") {
+		return liveMissionRole{Role: "DesktopPilot", Building: "Nydus Network", Icon: "🖥️"}
+	}
+	return liveMissionRole{Role: "Agent", Building: "Hatchery", Icon: "🔧"}
+}
+
+// broadcastLiveMission sends a live mission event to the HiveMind 3D page via WebSocket.
+// action: "start" | "tool_start" | "tool_done" | "content" | "done"
+func broadcastLiveMission(userID string, convID string, action string, payload map[string]interface{}) {
+	data := map[string]interface{}{
+		"action":          action,
+		"conversation_id": convID,
+		"timestamp":       time.Now().UnixMilli(),
+	}
+	for k, v := range payload {
+		data[k] = v
+	}
+	ws.GetHub().SendToUser(userID, ws.EventLiveMission, data)
+}
+
 func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime, req *agentpkg.RunRequest, convID string) {
 	ch, err := rt.StreamRun(c.Request.Context(), req)
 	if err != nil {
@@ -426,6 +478,8 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 	startTime := time.Now()
 	var fullContent string
 	saved := false
+	liveMissionStarted := false // Track whether we've broadcast mission start
+	toolIndex := 0              // Sequential index for HiveMind node ordering
 
 	// Track tool calls for persistence
 	type toolRecord struct {
@@ -510,6 +564,32 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				if flusher != nil {
 					flusher.Flush()
 				}
+
+				// Live Mission → HiveMind 3D: broadcast tool_start
+				go func(uid, cid, tc string, idx int, started bool) {
+					// Extract tool name from "tool_name({...})" format
+					tName := tc
+					if paren := strings.Index(tc, "("); paren > 0 {
+						tName = tc[:paren]
+					}
+					role := getToolRole(tName)
+					if !started {
+						broadcastLiveMission(uid, cid, "start", map[string]interface{}{
+							"title": "AI 创作任务",
+						})
+					}
+					broadcastLiveMission(uid, cid, "tool_start", map[string]interface{}{
+						"tool_name": tName,
+						"tool_call": tc,
+						"role":      role.Role,
+						"building":  role.Building,
+						"icon":      role.Icon,
+						"index":     idx,
+					})
+				}(userID, convID, chunk.ToolCall, toolIndex, liveMissionStarted)
+				liveMissionStarted = true
+				toolIndex++
+
 				continue
 			}
 
@@ -533,6 +613,23 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 						Content: resultPreview,
 					})
 				}(userID, convID, chunk.ToolName, chunk.ToolResult)
+
+				// Live Mission → HiveMind 3D: broadcast tool_done
+				go func(uid, cid, tName, tResult string) {
+					role := getToolRole(tName)
+					resultPreview := tResult
+					if len(resultPreview) > 300 {
+						resultPreview = resultPreview[:300] + "..."
+					}
+					broadcastLiveMission(uid, cid, "tool_done", map[string]interface{}{
+						"tool_name": tName,
+						"role":      role.Role,
+						"building":  role.Building,
+						"icon":      role.Icon,
+						"result":    resultPreview,
+					})
+				}(userID, convID, chunk.ToolName, chunk.ToolResult)
+
 				// Extract screenshot URL from browser tool results
 				sseFields := gin.H{"tool_result": chunk.ToolResult, "tool_name": chunk.ToolName, "conversation_id": convID}
 				var parsed map[string]interface{}
@@ -565,6 +662,23 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 				}
 				h.db.Create(&assistantMsg)
 				saved = true
+
+				// Live Mission → HiveMind 3D: mark Copywriter done + broadcast mission done
+				if liveMissionStarted {
+					if fullContent != "" {
+						go broadcastLiveMission(userID, convID, "tool_done", map[string]interface{}{
+							"tool_name": "text_generation",
+							"role":      "Copywriter",
+							"building":  "Roach Warren",
+							"icon":      "✍️",
+							"result":    truncate(fullContent, 200),
+						})
+					}
+					go broadcastLiveMission(userID, convID, "done", map[string]interface{}{
+						"total_tools": len(toolRecords),
+						"duration_ms": time.Since(startTime).Milliseconds(),
+					})
+				}
 
 				// Stardust reward for streaming chat
 				go NewStardustEngine(h.db).RewardChat(c.GetString("user_id"))
@@ -607,6 +721,21 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 			}
 
 			fullContent += chunk.Content
+
+			// Live Mission → HiveMind 3D: broadcast "content" once when text generation starts
+			// This makes a "Copywriter" node appear on the 3D scene
+			if liveMissionStarted && len(fullContent) > 20 && len(fullContent)-len(chunk.Content) <= 20 {
+				go broadcastLiveMission(userID, convID, "tool_start", map[string]interface{}{
+					"tool_name": "text_generation",
+					"tool_call": "Writing content...",
+					"role":      "Copywriter",
+					"building":  "Roach Warren",
+					"icon":      "✍️",
+					"index":     toolIndex,
+				})
+				toolIndex++
+			}
+
 			sseFields := gin.H{"content": chunk.Content, "conversation_id": convID}
 			if chunk.Reasoning != "" {
 				sseFields["reasoning"] = chunk.Reasoning
@@ -805,6 +934,66 @@ func buildProviderMessages(systemPrompt string, history []model.Message, images 
 	}
 
 	for i, msg := range history {
+		// Reconstruct assistant messages that had tool calls
+		// The ToolCalls field stores [{tool_call, tool_result, tool_name, reasoning}, ...]
+		if msg.Role == "assistant" && msg.ToolCalls != "" && msg.ToolCalls != "[]" {
+			type storedToolRecord struct {
+				ToolCall   string `json:"tool_call"`
+				ToolResult string `json:"tool_result"`
+				ToolName   string `json:"tool_name"`
+				Reasoning  string `json:"reasoning"`
+			}
+			var records []storedToolRecord
+			if err := json.Unmarshal([]byte(msg.ToolCalls), &records); err == nil && len(records) > 0 {
+				log.Printf("[buildProviderMessages] msg[%d] assistant: reconstructing %d tool records (content=%d chars)", i, len(records), len(msg.Content))
+				// For each tool call+result pair, add assistant (with tool_calls) + tool (with result)
+				for j, rec := range records {
+					var tc provider.ToolCall
+					if err := json.Unmarshal([]byte(rec.ToolCall), &tc); err != nil {
+						log.Printf("[buildProviderMessages] msg[%d] rec[%d] FAILED to parse tool_call: %v (raw=%d chars)", i, j, err, len(rec.ToolCall))
+						continue
+					}
+					log.Printf("[buildProviderMessages] msg[%d] rec[%d] OK: tool=%s id=%s reasoning=%d chars result=%d chars", i, j, tc.Function.Name, tc.ID, len(rec.Reasoning), len(rec.ToolResult))
+					if tc.ID == "" {
+						tc.ID = fmt.Sprintf("hist_%d", i)
+					}
+					if tc.Type == "" {
+						tc.Type = "function"
+					}
+					// Assistant message with the tool call
+					messages = append(messages, provider.ChatMessage{
+						Role:      "assistant",
+						Content:   rec.Reasoning,
+						ToolCalls: []provider.ToolCall{tc},
+					})
+					// Tool result message
+					toolResult := rec.ToolResult
+					if toolResult == "" {
+						toolResult = "{}"
+					}
+					// Truncate very large tool results in history to save tokens
+					if len(toolResult) > 4000 {
+						toolResult = toolResult[:4000] + "...[truncated in history]"
+					}
+					messages = append(messages, provider.ChatMessage{
+						Role:       "tool",
+						Content:    toolResult,
+						ToolCallID: tc.ID,
+					})
+				}
+				// If there's also final text content, add it as a separate assistant message
+				if msg.Content != "" {
+					messages = append(messages, provider.ChatMessage{
+						Role:    "assistant",
+						Content: msg.Content,
+					})
+				}
+				continue
+			} else if err != nil {
+				log.Printf("[buildProviderMessages] msg[%d] FAILED to parse tool_calls JSON: %v (len=%d)", i, err, len(msg.ToolCalls))
+			}
+		}
+
 		pm := provider.ChatMessage{
 			Role:    msg.Role,
 			Content: msg.Content,
@@ -826,6 +1015,7 @@ func buildProviderMessages(systemPrompt string, history []model.Message, images 
 		messages = append(messages, pm)
 	}
 
+	log.Printf("[buildProviderMessages] Built %d provider messages from %d history messages", len(messages), len(history))
 	return messages
 }
 

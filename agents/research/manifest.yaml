@@ -1,0 +1,41 @@
+# StarClaw Agent Manifest v1 — 研究分析Agent
+
+id: research
+type: solo
+
+name:
+  zh: "研究分析Agent"
+  en: "Research & Analysis Agent"
+description:
+  zh: "互联网研究：搜索信息、浏览网页、抓取数据、整理分析报告。"
+  en: "Internet research: search, browse, scrape data, compile structured reports."
+
+icon: "🔍"
+category: research
+tags: ["research", "search", "analysis", "web-scraping"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.3
+  max_tokens: 8192
+
+tools:
+  shared:
+    - web_search
+    - browser
+    - http_request
+
+marketplace:
+  pricing:
+    type: free

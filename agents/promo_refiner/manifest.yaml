@@ -1,0 +1,107 @@
+id: promo_refiner
+type: solo
+
+name:
+  zh: "宣传片精修Agent"
+  en: "Promo Refiner Agent"
+description:
+  zh: "专门接手已有宣传片做精修迭代：素材盘点复用、旁白节奏校准、新镜头植入与叙事对齐（含无人机/机器人等案例）、尾声余韵收束，以及成片发布与可见性核验。"
+  en: "A specialist for refining existing promo films: asset audit and reuse, voiceover pacing calibration, new shot integration with narrative alignment, ending polish, and publishing/visibility verification."
+
+icon: "🎞️"
+category: marketing
+tags: ["promo-video", "brand-film", "post-production", "voiceover", "timeline", "drone", "robot", "ending-polish", "jianying"]
+version: "0.1.0"
+status: beta
+visibility: public
+
+author:
+  id: local
+  name: { zh: "本地工作区", en: "Local Workspace" }
+
+prompt_file: prompt.md
+workflow_file: workflow.json
+
+model:
+  name: qwen-max
+  temperature: 0.3
+  max_tokens: 8192
+
+tools:
+  shared:
+    - browser
+    - video_generation
+    - image_generation
+    - dubbing
+    - music_generation
+    - mv_production
+    - code
+    - desktop
+
+skills:
+  - name: { zh: "素材盘点与版本梳理", en: "Asset Audit & Version Mapping" }
+    trigger: passive
+    description:
+      zh: "盘点现有 clip、成片、会话关系与当前可见版本，优先复用已有素材与底片，而不是从零重做。"
+      en: "Audit existing clips, masters, conversation lineage, and the currently visible version. Reuse existing assets before regenerating from scratch."
+    tools: [code, browser]
+    example_triggers:
+      - "先盘点一下现有宣传片素材和当前可见版本"
+      - "看看这条宣传片现在有哪些底片和成片"
+      - "audit the current promo assets"
+
+  - name: { zh: "旁白节奏与情绪精修", en: "Voiceover Pace & Tone Refinement" }
+    trigger: passive
+    description:
+      zh: "对已有宣传片进行旁白精修：手动分段、校准时窗、软化标点、稳定语速，避免最后一版出现突然加速或播音腔过重。"
+      en: "Refine narration for existing promo videos with manual segmentation, timing calibration, softened punctuation, and stable pacing to avoid abrupt speed-ups or overly broadcast-like delivery."
+    tools: [dubbing, code, mv_production]
+    example_triggers:
+      - "把这版旁白再温柔一点，别突然加速"
+      - "优化最后这句的节奏和停顿"
+      - "refine the narration pacing"
+
+  - name: { zh: "镜头植入与叙事对齐", en: "Shot Integration & Narrative Alignment" }
+    trigger: passive
+    description:
+      zh: "在现有宣传片中插入或替换新镜头，并让旁白、字幕与画面语义保持一致；无人机、机器人、机器狗、城市航拍等只是常见案例。"
+      en: "Insert or replace new shots in an existing promo while keeping narration, subtitles, and visuals semantically aligned; drones, robots, robot dogs, and aerial city shots are common examples rather than requirements."
+    tools: [video_generation, mv_production, code]
+    example_triggers:
+      - "把这一段换成更贴旁白的画面"
+      - "加上无人机和机器人的片段"
+      - "把物理世界那段再丰富一点"
+      - "replace this section with shots that fit the narration better"
+
+  - name: { zh: "尾声收束与品牌余韵", en: "Ending Tail & Brand Finish" }
+    trigger: passive
+    description:
+      zh: "精修宣传片结尾：最后一帧适度延长、尾音乐柔和淡出、logo 留白更从容，避免最后一句说完就被硬切断。"
+      en: "Polish the ending of a promo film with a slightly longer final frame, smoother audio fade-out, and more graceful logo hold so the final line does not cut off abruptly."
+    tools: [mv_production, music_generation, code]
+    example_triggers:
+      - "最后几秒再稍微延长一点"
+      - "最后一句说完就断了，修一下尾声"
+      - "make the ending breathe a bit more"
+
+  - name: { zh: "成片发布与可见性核验", en: "Publishing & Visibility Verification" }
+    trigger: passive
+    description:
+      zh: "生成新版成片后，核验文件、时长、版本切换与前端可见性，避免多个近似版本同时暴露或新片生成后前端不可见。"
+      en: "After generating a revised master, verify file output, duration, version switching, and frontend visibility to avoid duplicate visible versions or newly generated videos remaining hidden."
+    tools: [browser, code, mv_production]
+    example_triggers:
+      - "生成好以后帮我确认视频画廊能看到"
+      - "把旧版隐藏，只保留最新版可见"
+      - "verify this version is visible in the gallery"
+
+  - name: { zh: "剪映桌面接管", en: "Jianying Desktop Takeover" }
+    trigger: passive
+    description:
+      zh: "当需要 GUI 级微调时接管剪映桌面流程：聚焦窗口、截图确认、优先 ui_tree、一步一操作，完成导入、剪辑、字幕、转场和导出。"
+      en: "Take over Jianying desktop editing for GUI-level refinements: focus the window, confirm with screenshots, prefer ui_tree targeting, perform one step at a time, and complete import, editing, subtitles, transitions, and export."
+    tools: [desktop]
+    example_triggers:
+      - "直接去剪映里帮我调一下"
+      - "用桌面操控做最后导出"
+      - "edit this in Jianying for me"

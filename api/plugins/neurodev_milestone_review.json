@@ -1,0 +1,19 @@
+{
+  "name": "neurodev_milestone_review",
+  "description": "Review age-based developmental milestones, regression clues, motor concerns, and neurologic red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Neurodevelopment Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "developmental_milestone_review" },
+      "age_months": { "type": "number" },
+      "missing_milestones": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "motor_concerns": { "type": "string" },
+      "regression": { "type": "boolean" }
+    }
+  },
+  "handler": "neurodev_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

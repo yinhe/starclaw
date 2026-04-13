@@ -23,6 +23,8 @@ type Agent struct {
 	IsBuiltin       bool           `json:"is_builtin" gorm:"default:false"`
 	SourceID        string         `json:"source_id" gorm:"type:varchar(36);index"`        // marketplace item ID if installed from Queen
 	SourceVersion   string         `json:"source_version" gorm:"type:varchar(20)"`         // installed bundle version
+	ManifestID      string         `json:"manifest_id" gorm:"type:varchar(100);index"`     // manifest ID from discovery (e.g. "devclaw", "douyin_viral/director")
+	BridgePort      int            `json:"bridge_port" gorm:"default:0"`                   // MCP bridge port if agent has a bridge
 	RoleCode        string         `json:"role_code" gorm:"type:varchar(50);index"`        // team role code (e.g. architect, drone, tester)
 	TeamInstanceID  string         `json:"team_instance_id" gorm:"type:varchar(36);index"` // Overlord team instance ID
 	CreatedAt       time.Time      `json:"created_at"`
@@ -109,6 +111,9 @@ func (a *Agent) BeforeCreate(tx *gorm.DB) error {
 	}
 	if a.Config == "" {
 		a.Config = "{}"
+	}
+	if a.Gene == "" {
+		a.Gene = "{}"
 	}
 	return nil
 }

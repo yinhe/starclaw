@@ -1,0 +1,21 @@
+{
+  "name": "trauma_fall_impact_review",
+  "description": "Review fall height, impact surface, body regions, ability to walk, and post-fall symptoms for pediatric trauma triage.",
+  "version": "1.0.0",
+  "author": "StarClaw Trauma Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "fall_impact_review" },
+      "age_years": { "type": "number" },
+      "fall_height_cm": { "type": "number" },
+      "landing_surface": { "type": "string" },
+      "body_regions": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "able_to_walk": { "type": "boolean" },
+      "behavior_change": { "type": "string" }
+    }
+  },
+  "handler": "trauma_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_single_cell_router",
+  "description": "Route single-cell atlas searches across CELLxGENE, Single Cell Expression Atlas, Human Cell Atlas, PanglaoDB, and TISCH using gene, cell type, tissue, disease, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "single_cell_router" },
+      "gene": { "type": "string" },
+      "cell_type": { "type": "string" },
+      "tissue": { "type": "string" },
+      "disease": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

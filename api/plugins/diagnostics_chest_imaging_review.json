@@ -1,0 +1,19 @@
+{
+  "name": "diagnostics_chest_imaging_review",
+  "description": "Review chest imaging impressions for pneumonia, effusion, pneumothorax, airway patterns, and urgent respiratory red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Diagnostics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "chest_imaging_review" },
+      "age_years": { "type": "number" },
+      "modality": { "type": "string" },
+      "impression": { "type": "string" },
+      "findings": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "diagnostics_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

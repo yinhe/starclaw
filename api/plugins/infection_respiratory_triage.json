@@ -1,0 +1,19 @@
+{
+  "name": "infection_respiratory_triage",
+  "description": "Triage pediatric respiratory infection risk using symptoms, respiratory rate, oxygen saturation, and fever clues.",
+  "version": "1.0.0",
+  "author": "StarClaw Infection Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "respiratory_triage" },
+      "age_months": { "type": "number" },
+      "respiratory_rate": { "type": "number" },
+      "spo2": { "type": "number" },
+      "temperature_c": { "type": "number" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "infection_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

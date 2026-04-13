@@ -1,0 +1,20 @@
+{
+  "name": "allergy_reaction_review",
+  "description": "Review acute allergic reaction timing, suspected exposure, systemic symptoms, and fever clues.",
+  "version": "1.0.0",
+  "author": "StarClaw Allergy Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "allergic_reaction_review" },
+      "age_months": { "type": "number" },
+      "exposure": { "type": "string" },
+      "onset_minutes": { "type": "number" },
+      "temperature_c": { "type": "number" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "history": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "allergy_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

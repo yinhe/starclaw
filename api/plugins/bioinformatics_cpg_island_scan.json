@@ -1,0 +1,19 @@
+{
+  "name": "bioinformatics_cpg_island_scan",
+  "description": "Scan DNA sequences for CpG island-like regions using GC content and observed/expected CpG thresholds.",
+  "version": "1.0.0",
+  "author": "StarClaw Bioinformatics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "cpg_island_scan" },
+      "sequence": { "type": "string" },
+      "sequence_name": { "type": "string" },
+      "sequence_type_hint": { "type": "string" },
+      "window_size": { "type": "integer" }
+    },
+    "required": ["sequence"]
+  },
+  "handler": "bioinformatics_clinic",
+  "metadata": { "category": "medical", "timeout": 20 }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "medication_interaction_check",
+  "description": "Check common administration conflicts and interaction reminders for pediatric follow-up medications and supplements.",
+  "version": "1.0.0",
+  "author": "StarClaw Medication Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "interaction_check" },
+      "medication_name": { "type": "string", "description": "Primary medication name" },
+      "concurrent_meds": { "type": "array", "items": { "type": "string" }, "description": "Concurrent medications or supplements" }
+    },
+    "required": ["action", "medication_name"]
+  },
+  "handler": "medication_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

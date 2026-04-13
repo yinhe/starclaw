@@ -1,0 +1,41 @@
+# StarClaw Agent Manifest v1 — 漫剧创作Agent
+
+id: comic_creator
+type: solo
+
+name:
+  zh: "漫剧创作Agent"
+  en: "Comic Drama Agent"
+description:
+  zh: "AI漫剧制作：编写剧本、生成漫画风格图片、多角色配音、组装成漫剧视频。支持多种漫画风格。"
+  en: "AI comic drama production: script writing, comic-style image generation, multi-character dubbing, video assembly."
+
+icon: "📚"
+category: creative
+tags: ["comic", "manga", "drama", "dubbing", "animation"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.5
+  max_tokens: 8192
+
+tools:
+  shared:
+    - image_generation
+    - comic_production
+    - music_generation
+
+marketplace:
+  pricing:
+    type: free

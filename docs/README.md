@@ -72,6 +72,51 @@ docker compose up -d
 
 访问 `http://localhost` 即可使用。
 
+## 本地 claw-demo 同步脚本
+
+如果本地演示环境运行在 `E:\claw-demo`，可使用 `scripts/sync-claw-demo.ps1` 将当前工作区里的 agent 和关键 API 文件同步过去，并重建 `claw-demo-api`。
+
+默认用法：
+
+```powershell
+powershell -File E:\starclaw\claw\scripts\sync-claw-demo.ps1
+```
+
+默认会执行以下动作：
+
+- 同步 `promo_refiner`
+- 同步 `api\internal\agent\discovery.go` 与 `api\cmd\claw-cli\main.go`
+- 执行 `docker compose -f E:\claw-demo\docker-compose.prod.yml up -d --build --force-recreate api`
+- 等待 API 启动后检查数据库中的 agent / workflow 计数
+- 输出 `claw-demo-api` 最近日志
+
+常见用法：
+
+```powershell
+# 同步多个 agent
+powershell -File E:\starclaw\claw\scripts\sync-claw-demo.ps1 -Agents promo_refiner,sense_claw,test_claw
+
+# 同步全部 agent
+powershell -File E:\starclaw\claw\scripts\sync-claw-demo.ps1 -AllAgents
+
+# 只同步文件，不重建容器
+powershell -File E:\starclaw\claw\scripts\sync-claw-demo.ps1 -SkipRecreate -SkipDbCheck -SkipLogTail
+
+# 重建后多等待几秒，并多看一些日志
+powershell -File E:\starclaw\claw\scripts\sync-claw-demo.ps1 -StartupWaitSeconds 10 -LogTailLines 200
+```
+
+常用参数：
+
+- `-Agents`：指定要同步的 agent 列表
+- `-AllAgents`：同步 `agents/` 下全部 agent
+- `-SkipApiFiles`：跳过关键 API 文件同步
+- `-SkipRecreate`：跳过 `api` 服务重建
+- `-SkipDbCheck`：跳过数据库计数校验
+- `-SkipLogTail`：重建后不输出 API 日志
+- `-StartupWaitSeconds`：API 重建后的等待秒数
+- `-LogTailLines`：日志输出行数
+
 ## 虫群网络（可选）
 
 每只小龙虾可以独立运行，也可以加入虫群网络获得集体增益：

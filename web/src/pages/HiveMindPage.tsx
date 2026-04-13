@@ -52,6 +52,37 @@ interface NodeData {
   lastAction: string
 }
 
+// Live Mission: dynamic node from chat tool calls
+interface LiveNode {
+  role: string
+  building: string
+  icon: string
+  status: 'idle' | 'running' | 'done'
+  toolName: string
+  toolCall: string
+  result: string
+  index: number
+}
+
+// Geometry factory for live mission roles
+const ROLE_GEOMETRY: Record<string, () => THREE.BufferGeometry> = {
+  Designer: () => new THREE.IcosahedronGeometry(0.7, 0),
+  VideoMaker: () => new THREE.ConeGeometry(0.6, 1.5, 6),
+  Musician: () => new THREE.TorusKnotGeometry(0.5, 0.18, 64, 8),
+  Researcher: () => new THREE.OctahedronGeometry(0.8, 0),
+  Engineer: () => new THREE.TorusKnotGeometry(0.6, 0.2, 64, 8),
+  DesktopPilot: () => new THREE.TorusGeometry(0.6, 0.25, 8, 16),
+  Copywriter: () => new THREE.TetrahedronGeometry(0.8, 0),
+  Operator: () => new THREE.DodecahedronGeometry(0.6, 0),
+}
+
+// Compute dynamic positions for N nodes around captain in a circle
+function liveNodePosition(index: number, total: number): [number, number, number] {
+  const radius = 4.5
+  const angle = (index / Math.max(total, 1)) * Math.PI * 2 - Math.PI / 2
+  return [radius * Math.cos(angle), 0, radius * Math.sin(angle)]
+}
+
 interface SprintData {
   number: number
   goal: string
@@ -88,6 +119,11 @@ const FLOW_COLORS: Record<string, string> = {
   code: '#00ff88',
   test: '#ffcc00',
   deploy: '#4488ff',
+  design: '#ff66cc',
+  desktop: '#ff8800',
+  write: '#aa88ff',
+  research: '#00ccff',
+  music: '#ff44aa',
   git_push: '#ffd700',
   error: '#ff3344',
 }
@@ -142,6 +178,7 @@ function ZergNode({ config, data, selected, onClick }: {
 
   const geometry = useMemo(() => {
     if (isCaptain) return new THREE.DodecahedronGeometry(1, 1)
+    // Squad dev roles
     switch (config.role) {
       case 'Backend': return new THREE.TorusKnotGeometry(0.6, 0.2, 64, 8)
       case 'Frontend': return new THREE.OctahedronGeometry(0.8, 0)
@@ -149,8 +186,12 @@ function ZergNode({ config, data, selected, onClick }: {
       case 'PM': return new THREE.TetrahedronGeometry(0.8, 0)
       case 'Design': return new THREE.IcosahedronGeometry(0.7, 0)
       case 'DevOps': return new THREE.TorusGeometry(0.6, 0.25, 8, 16)
-      default: return new THREE.SphereGeometry(0.7, 16, 16)
+      default: break
     }
+    // Live Mission creative roles
+    const factory = ROLE_GEOMETRY[config.role]
+    if (factory) return factory()
+    return new THREE.SphereGeometry(0.7, 16, 16)
   }, [config.role, isCaptain])
 
   return (
@@ -431,17 +472,19 @@ function FloatingParticles({ count = 200 }: { count?: number }) {
   )
 }
 
-function HiveScene({ nodes, sprint, selectedNode, onSelectNode, bursts }: {
+function HiveScene({ nodes, sprint, selectedNode, onSelectNode, bursts, configs }: {
   nodes: NodeData[]
   sprint: SprintData | null
   selectedNode: string | null
   onSelectNode: (name: string | null) => void
   bursts: BurstEvent[]
+  configs?: typeof NODE_CONFIGS
 }) {
+  const activeConfigs = configs || NODE_CONFIGS
   const coverage = sprint ? (sprint.totalSteps > 0 ? sprint.doneSteps / sprint.totalSteps : 0) : 0
 
   // Generate canals between captain and all other nodes
-  const captainPos = NODE_CONFIGS[0].pos
+  const captainPos = activeConfigs[0]?.pos || [0, 0, 0] as [number, number, number]
   const nodeMap = new Map(nodes.map(n => [n.name, n]))
 
   return (
@@ -458,22 +501,31 @@ function HiveScene({ nodes, sprint, selectedNode, onSelectNode, bursts }: {
       <gridHelper args={[20, 20, '#1a1a3a', '#111128']} position={[0, -0.49, 0]} />
 
       {/* Nydus canals (lines from captain to each node) */}
-      {NODE_CONFIGS.slice(1).map((cfg) => {
+      {activeConfigs.slice(1).map((cfg) => {
         const nodeData = nodeMap.get(cfg.name)
         const active = nodeData?.status === 'running' || nodeData?.status === 'reviewing'
+        // Map role to flow color type
+        const roleFlowMap: Record<string, string> = {
+          Designer: 'design', VideoMaker: 'design', Musician: 'music',
+          Researcher: 'research', Engineer: 'code', DesktopPilot: 'desktop',
+          Copywriter: 'write', Operator: 'code',
+          Backend: 'code', Frontend: 'code', QA: 'test', PM: 'deploy',
+          Design: 'design', DevOps: 'deploy',
+        }
+        const flowType = active ? (roleFlowMap[cfg.role] || 'code') : undefined
         return (
           <NydusCanal
             key={cfg.name}
             from={captainPos}
             to={cfg.pos}
             active={active}
-            flowType={active ? 'code' : undefined}
+            flowType={flowType}
           />
         )
       })}
 
       {/* Zerg nodes */}
-      {NODE_CONFIGS.map((cfg) => (
+      {activeConfigs.map((cfg) => (
         <ZergNode
           key={cfg.name}
           config={cfg}
@@ -1007,6 +1059,13 @@ export default function HiveMindPage() {
   const [bursts, setBursts] = useState<BurstEvent[]>([])
   const clockRef = useRef(0)
 
+  // Live Mission mode: driven by real-time chat tool calls
+  const [liveMode, setLiveMode] = useState(false)
+  const [liveTitle, setLiveTitle] = useState('')
+  const [liveNodes, setLiveNodes] = useState<Map<string, LiveNode>>(new Map())
+  const [liveDone, setLiveDone] = useState(false)
+  const [liveDuration, setLiveDuration] = useState(0)
+
   // Trigger a burst effect at a node position
   const triggerBurst = useCallback((nodeName: string, color: string, count: number, duration: number) => {
     const cfg = NODE_CONFIGS.find(c => c.name === nodeName)
@@ -1250,8 +1309,145 @@ export default function HiveMindPage() {
       }
     })
 
-    return () => { unsubStep(); unsubSprint() }
+    // Live Mission: real-time chat tool activity → dynamic 3D nodes
+    const unsubLive = starclawWS.on('live_mission', (data: any) => {
+      if (!data?.action) return
+
+      if (data.action === 'start') {
+        setLiveMode(true)
+        setLiveDone(false)
+        setLiveTitle(data.title || 'AI 创作任务')
+        setLiveNodes(new Map())
+        setLiveDuration(0)
+        setMission({
+          id: data.conversation_id || 'live',
+          title: data.title || 'AI 创作任务',
+          status: 'executing',
+          currentSprint: 1,
+          maxSprints: 1,
+          totalSteps: 0,
+          doneSteps: 0,
+        })
+      }
+
+      if (data.action === 'tool_start') {
+        setLiveNodes(prev => {
+          const next = new Map(prev)
+          next.set(data.role, {
+            role: data.role,
+            building: data.building,
+            icon: data.icon || '🔧',
+            status: 'running',
+            toolName: data.tool_name,
+            toolCall: data.tool_call || '',
+            result: '',
+            index: data.index ?? prev.size,
+          })
+          return next
+        })
+        setMission(prev => prev ? { ...prev, totalSteps: (prev.totalSteps || 0) + 1 } : prev)
+      }
+
+      if (data.action === 'tool_done') {
+        setLiveNodes(prev => {
+          const next = new Map(prev)
+          const existing = next.get(data.role)
+          if (existing) {
+            next.set(data.role, { ...existing, status: 'done', result: data.result || '' })
+          }
+          return next
+        })
+        setMission(prev => prev ? { ...prev, doneSteps: (prev.doneSteps || 0) + 1 } : prev)
+      }
+
+      if (data.action === 'done') {
+        setLiveDone(true)
+        setLiveDuration(data.duration_ms || 0)
+        setMission(prev => prev ? { ...prev, status: 'completed' } : prev)
+      }
+    })
+
+    return () => { unsubStep(); unsubSprint(); unsubLive() }
   }, [triggerBurst])
+
+  // Derive nodes, configs, and bursts from liveNodes when in live mode
+  const activeConfigs = useMemo(() => {
+    if (!liveMode || liveNodes.size === 0) return NODE_CONFIGS
+    const total = liveNodes.size
+    const configs: typeof NODE_CONFIGS = [
+      { name: 'captain', role: 'Captain', port: 0, building: 'Hatchery', pos: [0, 0, 0] as [number, number, number], scale: 1.8 },
+    ]
+    let i = 0
+    liveNodes.forEach((ln) => {
+      const pos = liveNodePosition(i, total)
+      configs.push({
+        name: ln.role,
+        role: ln.role,
+        port: 0,
+        building: ln.building,
+        pos,
+        scale: 1.2,
+      })
+      i++
+    })
+    return configs
+  }, [liveMode, liveNodes])
+
+  // Sync nodes state from liveNodes
+  useEffect(() => {
+    if (!liveMode || liveNodes.size === 0) return
+    const prevNodes = nodes
+    const liveNodeArr: NodeData[] = [
+      { id: 'captain', name: 'captain', role: 'Captain', port: 0, status: 'running', currentTask: liveTitle || 'Orchestrating', progress: 50, branch: '', lastAction: '' },
+    ]
+    liveNodes.forEach((ln) => {
+      liveNodeArr.push({
+        id: ln.role,
+        name: ln.role,
+        role: ln.role,
+        port: 0,
+        status: ln.status === 'running' ? 'running' : ln.status === 'done' ? 'done' : 'idle',
+        currentTask: ln.status === 'done' ? `${ln.icon} ${ln.toolName}` : ln.toolCall,
+        progress: ln.status === 'running' ? 50 : ln.status === 'done' ? 100 : 0,
+        branch: '',
+        lastAction: ln.icon,
+      })
+    })
+    setNodes(liveNodeArr)
+
+    // Detect newly completed nodes → trigger gold burst
+    const prevMap = new Map(prevNodes.map(n => [n.name, n]))
+    liveNodeArr.forEach((n, idx) => {
+      const prev = prevMap.get(n.name)
+      if (prev && prev.status !== 'done' && n.status === 'done' && idx > 0) {
+        const cfg = activeConfigs[idx]
+        if (cfg) {
+          setBursts(prev => [...prev.slice(-10), {
+            id: burstIdCounter++,
+            position: cfg.pos,
+            color: '#ffd700',
+            count: 30,
+            startTime: clockRef.current,
+            duration: 2,
+          }])
+        }
+      }
+    })
+
+    // Mission complete celebration
+    if (liveDone) {
+      activeConfigs.forEach((cfg) => {
+        setBursts(prev => [...prev.slice(-10), {
+          id: burstIdCounter++,
+          position: cfg.pos,
+          color: cfg.role === 'Captain' ? '#ffd700' : '#ffffff',
+          count: cfg.role === 'Captain' ? 50 : 25,
+          startTime: clockRef.current,
+          duration: 3,
+        }])
+      })
+    }
+  }, [liveMode, liveNodes, liveTitle, liveDone, activeConfigs])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1277,6 +1473,16 @@ export default function HiveMindPage() {
       {/* Status bar */}
       <StatusBar mission={mission} sprint={currentSprint || null} />
 
+      {/* Live Mission duration badge */}
+      {liveMode && liveDone && liveDuration > 0 && (
+        <div className="absolute top-16 left-3 z-10">
+          <div className="bg-black/70 backdrop-blur-md rounded-lg border border-green-500/40 px-3 py-1.5 flex items-center gap-2 text-xs">
+            <span className="text-green-400 font-bold">✅ 任务完成</span>
+            <span className="text-gray-400 font-mono">{(liveDuration / 1000).toFixed(1)}s</span>
+          </div>
+        </div>
+      )}
+
       {/* 3D Canvas */}
       <CanvasErrorBoundary>
         <Canvas
@@ -1291,6 +1497,7 @@ export default function HiveMindPage() {
             selectedNode={selectedNode}
             onSelectNode={setSelectedNode}
             bursts={bursts}
+            configs={activeConfigs}
           />
         </Canvas>
       </CanvasErrorBoundary>

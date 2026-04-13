@@ -1,0 +1,19 @@
+{
+  "name": "bioinformatics_kmer_profile",
+  "description": "Count and summarize top k-mers from a nucleotide or protein sequence for quick composition profiling.",
+  "version": "1.0.0",
+  "author": "StarClaw Bioinformatics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "kmer_profile" },
+      "sequence": { "type": "string" },
+      "sequence_name": { "type": "string" },
+      "sequence_type_hint": { "type": "string" },
+      "k": { "type": "integer" }
+    },
+    "required": ["sequence"]
+  },
+  "handler": "bioinformatics_clinic",
+  "metadata": { "category": "medical", "timeout": 20 }
+}

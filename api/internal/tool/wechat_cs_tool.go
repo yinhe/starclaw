@@ -232,7 +232,7 @@ func (t *WeChatCSTool) startAutoChat(ctx context.Context, a wechatCSArgs) (strin
 	}), nil
 }
 
-func (t *WeChatCSTool) stopAutoChat(ctx context.Context, a wechatCSArgs) (string, error) {
+func (t *WeChatCSTool) stopAutoChat(_ context.Context, _ wechatCSArgs) (string, error) {
 	t.autoChatMu.Lock()
 	defer t.autoChatMu.Unlock()
 

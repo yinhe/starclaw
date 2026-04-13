@@ -1,0 +1,21 @@
+{
+  "name": "scientific_db_proteomics_router",
+  "description": "Route proteomics and mass spectrometry searches across PRIDE, ProteomicsDB, PeptideAtlas, MassIVE, and Human Protein Atlas using gene, protein, tissue, disease, assay, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "proteomics_router" },
+      "gene": { "type": "string" },
+      "protein": { "type": "string" },
+      "tissue": { "type": "string" },
+      "disease": { "type": "string" },
+      "assay": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

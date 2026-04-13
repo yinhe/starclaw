@@ -1,6 +1,7 @@
 package instinct
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -218,6 +219,19 @@ func (e *Engine) fire(act model.Activity, now time.Time) {
 		Goal:     buildActivityGoal(act),
 		Status:   model.TaskStatusPending,
 		Priority: model.TaskPriorityLow,
+	}
+
+	// If the builtin template specifies ToolsOnly, lock down the task's tool access
+	if act.Template != "" {
+		for _, tmpl := range BuiltinTemplates() {
+			if tmpl.Name == act.Template && len(tmpl.ToolsOnly) > 0 {
+				if b, err := json.Marshal(tmpl.ToolsOnly); err == nil {
+					task.ToolsOverride = string(b)
+					log.Printf("[Instinct] Activity %s locked to tools: %v", act.Name, tmpl.ToolsOnly)
+				}
+				break
+			}
+		}
 	}
 
 	if err := e.db.Create(&task).Error; err != nil {

@@ -17,7 +17,6 @@ def main():
     output_path = sys.argv[4]
 
     os.environ["DASHSCOPE_API_KEY"] = api_key
-
     import dashscope
     dashscope.api_key = api_key
 
@@ -28,7 +27,7 @@ def main():
     try:
         synthesizer = SpeechSynthesizer(model=model, voice=voice)
         audio_data = synthesizer.call(text)
-        
+
         if audio_data and len(audio_data) > 0:
             with open(output_path, "wb") as f:
                 f.write(audio_data)

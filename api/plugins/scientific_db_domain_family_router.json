@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_domain_family_router",
+  "description": "Route protein domain and family searches across InterPro, Pfam, CDD, SMART, PROSITE, and UniProt using gene, protein, domain, family, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "domain_family_router" },
+      "gene": { "type": "string" },
+      "protein": { "type": "string" },
+      "domain": { "type": "string" },
+      "family": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

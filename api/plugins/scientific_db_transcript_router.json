@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_transcript_router",
+  "description": "Route transcript, isoform, exon, and transcript accession searches across NCBI Gene, RefSeq, Ensembl Transcript, ENA, and genome browsers using gene, transcript ID, accession, organism, exon hints, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "transcript_router" },
+      "gene": { "type": "string" },
+      "transcript_id": { "type": "string" },
+      "accession": { "type": "string" },
+      "organism": { "type": "string" },
+      "exon_hint": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

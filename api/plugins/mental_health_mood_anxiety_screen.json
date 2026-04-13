@@ -1,0 +1,20 @@
+{
+  "name": "mental_health_mood_anxiety_screen",
+  "description": "Screen mood and anxiety concerns using duration, functional impact, panic-like symptoms, somatic symptoms, and mental health red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Mental Health Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "mood_anxiety_screen" },
+      "age_years": { "type": "number" },
+      "duration_weeks": { "type": "number" },
+      "functional_impact": { "type": "string" },
+      "panic_like_episodes": { "type": "boolean" },
+      "physical_symptoms": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "mental_health_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

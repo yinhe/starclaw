@@ -1,0 +1,20 @@
+{
+  "name": "referral_visit_checklist",
+  "description": "Generate specialty-specific visit preparation checklists and documents to bring before referral or specialist review.",
+  "version": "1.0.0",
+  "author": "StarClaw Referral Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "visit_checklist" },
+      "target_specialty": { "type": "string", "description": "Optional explicit target specialty" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "findings": { "type": "array", "items": { "type": "string" } },
+      "diagnoses": { "type": "array", "items": { "type": "string" } },
+      "concerns": { "type": "array", "items": { "type": "string" } },
+      "note_text": { "type": "string" }
+    }
+  },
+  "handler": "referral_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

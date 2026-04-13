@@ -1,0 +1,20 @@
+{
+  "name": "bioinformatics_primer_check",
+  "description": "Check primer length, GC%, Wallace Tm, simple self-complementarity, pair compatibility, and optional amplicon size against a template sequence.",
+  "version": "1.0.0",
+  "author": "StarClaw Bioinformatics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "primer_check" },
+      "forward_primer": { "type": "string" },
+      "reverse_primer": { "type": "string" },
+      "template_sequence": { "type": "string" },
+      "target_name": { "type": "string" },
+      "sequence_type_hint": { "type": "string" }
+    },
+    "required": ["forward_primer"]
+  },
+  "handler": "bioinformatics_clinic",
+  "metadata": { "category": "medical", "timeout": 20 }
+}

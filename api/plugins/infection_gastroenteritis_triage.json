@@ -1,0 +1,21 @@
+{
+  "name": "infection_gastroenteritis_triage",
+  "description": "Review vomiting, diarrhea, stool frequency, dehydration clues, and red flags for pediatric gastroenteritis triage.",
+  "version": "1.0.0",
+  "author": "StarClaw Infection Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "gastroenteritis_triage" },
+      "age_months": { "type": "number" },
+      "vomiting_days": { "type": "number" },
+      "diarrhea_days": { "type": "number" },
+      "stool_count_per_day": { "type": "number" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "intake_status": { "type": "string" },
+      "urine_output": { "type": "string" }
+    }
+  },
+  "handler": "infection_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

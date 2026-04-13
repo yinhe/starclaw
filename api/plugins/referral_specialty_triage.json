@@ -1,0 +1,20 @@
+{
+  "name": "referral_specialty_triage",
+  "description": "Route symptoms, findings, diagnoses, or note text to the most relevant pediatric specialty using deterministic triage rules.",
+  "version": "1.0.0",
+  "author": "StarClaw Referral Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "specialty_triage" },
+      "symptoms": { "type": "array", "items": { "type": "string" }, "description": "Reported symptoms" },
+      "findings": { "type": "array", "items": { "type": "string" }, "description": "Objective findings or abnormal indicators" },
+      "diagnoses": { "type": "array", "items": { "type": "string" }, "description": "Known diagnoses or suspected diagnoses" },
+      "concerns": { "type": "array", "items": { "type": "string" }, "description": "Parent or clinician concerns" },
+      "note_text": { "type": "string", "description": "Optional clinical note text" },
+      "severity_hint": { "type": "string", "description": "Optional urgency hint, e.g. urgent / moderate / routine" }
+    }
+  },
+  "handler": "referral_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

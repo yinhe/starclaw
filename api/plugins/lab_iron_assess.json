@@ -1,0 +1,22 @@
+{
+  "name": "lab_iron_assess",
+  "description": "Interpret ferritin and iron panel markers for iron deficiency and iron deficiency anemia screening.",
+  "version": "1.0.0",
+  "author": "StarClaw Lab Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "iron_assess" },
+      "report_text": { "type": "string", "description": "Optional pasted iron panel report text" },
+      "ferritin": { "type": "number", "description": "Ferritin ng/mL" },
+      "serum_iron": { "type": "number", "description": "Serum iron umol/L or compatible lab unit" },
+      "tibc": { "type": "number", "description": "Total iron binding capacity in same unit as serum iron" },
+      "hemoglobin": { "type": "number", "description": "Hemoglobin g/L" },
+      "mcv": { "type": "number", "description": "Mean corpuscular volume fL" },
+      "crp": { "type": "number", "description": "C-reactive protein mg/L" }
+    },
+    "required": ["action"]
+  },
+  "handler": "lab_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

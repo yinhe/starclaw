@@ -49,6 +49,21 @@ tsconfig.tsbuildinfo
 
 # Temp files
 tmp_*
+*.bak*
+.tmp/
 
 # Node identity keys (generated at runtime)
 .node_key
+
+# Binaries (built locally)
+claw-node*
+*.exe
+*.exe~
+
+# Runtime configs (closed-source, live in monorepo root)
+config.yaml
+config-local-follower.yaml
+Sporefile.yaml
+nydus.pipeline.yml
+docker-compose.prod.yml
+community.json

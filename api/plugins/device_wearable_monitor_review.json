@@ -1,0 +1,19 @@
+{
+  "name": "device_wearable_monitor_review",
+  "description": "Review wearable device alerts using alert type, reading summaries, symptoms, recurrent alerts, and data gaps.",
+  "version": "1.0.0",
+  "author": "StarClaw Device Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "wearable_monitor_review" },
+      "alert_type": { "type": "string" },
+      "readings": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "recurrent_alerts_7d": { "type": "number" },
+      "device_removed_during_event": { "type": "boolean" }
+    }
+  },
+  "handler": "device_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

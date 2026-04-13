@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	slackPostMessageURL  = "https://slack.com/api/chat.postMessage"
-	slackChannelsURL     = "https://slack.com/api/conversations.list"
-	slackChannelInfoURL  = "https://slack.com/api/conversations.info"
+	slackPostMessageURL = "https://slack.com/api/chat.postMessage"
+	slackChannelsURL    = "https://slack.com/api/conversations.list"
+	// slackChannelInfoURL  = "https://slack.com/api/conversations.info"
 )
 
 // SlackTool provides Slack messaging capabilities for AI agents.

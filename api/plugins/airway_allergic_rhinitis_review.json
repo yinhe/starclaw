@@ -1,0 +1,21 @@
+{
+  "name": "airway_allergic_rhinitis_review",
+  "description": "Review allergic rhinitis using nasal symptoms, seasonality, eye symptoms, snoring, mouth breathing, and sleep impact.",
+  "version": "1.0.0",
+  "author": "StarClaw Airway Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "allergic_rhinitis_review" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "seasonality": { "type": "string" },
+      "sleep_impact": { "type": "string" },
+      "eye_symptoms": { "type": "boolean" },
+      "snoring": { "type": "boolean" },
+      "mouth_breathing": { "type": "boolean" },
+      "school_impact": { "type": "string" }
+    }
+  },
+  "handler": "airway_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

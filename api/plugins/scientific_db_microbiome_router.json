@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_microbiome_router",
+  "description": "Route microbiome and metagenomics searches across MGnify, GMrepo, Human Microbiome Project, NCBI Taxonomy, and Disbiome using taxon, body site, disease, cohort, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "microbiome_router" },
+      "taxon": { "type": "string" },
+      "body_site": { "type": "string" },
+      "disease": { "type": "string" },
+      "cohort": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

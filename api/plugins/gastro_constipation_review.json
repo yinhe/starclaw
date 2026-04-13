@@ -1,0 +1,21 @@
+{
+  "name": "gastro_constipation_review",
+  "description": "Review constipation severity using stool interval, painful defecation, withholding behavior, blood, distension, and red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Gastro Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "constipation_review" },
+      "age_years": { "type": "number" },
+      "days_between_stools": { "type": "number" },
+      "painful_defecation": { "type": "boolean" },
+      "blood_on_stool": { "type": "boolean" },
+      "withholding_behavior": { "type": "boolean" },
+      "abdominal_distension": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "gastro_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

@@ -23,6 +23,16 @@ const (
 	MemScopeGlobal = "global" // 全局记忆，所有 Agent 可见
 )
 
+// Memory Palace rooms
+const (
+	MemRoomUser    = "user"
+	MemRoomProject = "project"
+	MemRoomTask    = "task"
+	MemRoomSkill   = "skill"
+	MemRoomOrg     = "org"
+	MemRoomPolicy  = "policy"
+)
+
 // Memory represents a cross-session memory entry (Cerebrate L1/L2)
 type Memory struct {
 	ID             string    `json:"id" gorm:"type:varchar(36);primaryKey"`
@@ -33,6 +43,9 @@ type Memory struct {
 	Category       string    `json:"category" gorm:"type:varchar(50);index"`                  // preference, fact, context, skill, instruct, summary
 	Source         string    `json:"source" gorm:"type:varchar(50)"`                          // auto_extract, user_explicit, system
 	Scope          string    `json:"scope" gorm:"type:varchar(20);default:agent;index"`       // agent, global
+	Room           string    `json:"room,omitempty" gorm:"type:varchar(50);index"`            // user, project, task, skill, org, policy
+	Anchor         string    `json:"anchor,omitempty" gorm:"type:varchar(255);index"`         // stable entity anchor, e.g. project/starclaw
+	Path           string    `json:"path,omitempty" gorm:"type:varchar(500)"`                 // palace path, e.g. user/default > project/starclaw
 	ConversationID string    `json:"conversation_id,omitempty" gorm:"type:varchar(36);index"` // 来源会话
 	Tags           string    `json:"tags,omitempty" gorm:"type:json"`                         // JSON array
 	Importance     float64   `json:"importance" gorm:"default:0.5"`                           // 0.0 - 1.0

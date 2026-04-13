@@ -20,7 +20,7 @@ import (
 const (
 	dingtalkTokenURL   = "https://oapi.dingtalk.com/gettoken"
 	dingtalkMessageURL = "https://oapi.dingtalk.com/topapi/message/corpconversation/asyncsend_v2"
-	dingtalkChatSendURL = "https://oapi.dingtalk.com/chat/send"
+	// dingtalkChatSendURL = "https://oapi.dingtalk.com/chat/send"
 	dingtalkDeptListURL = "https://oapi.dingtalk.com/topapi/v2/department/listsub"
 )
 
@@ -177,7 +177,7 @@ func (t *DingtalkTool) getAccessToken(ctx context.Context, cfg *model.DingtalkCo
 	return result.AccessToken, nil
 }
 
-func (t *DingtalkTool) sendMessage(ctx context.Context, integration *model.Integration, cfg *model.DingtalkConfig, args dingtalkArgs) (string, error) {
+func (t *DingtalkTool) sendMessage(ctx context.Context, _ *model.Integration, cfg *model.DingtalkConfig, args dingtalkArgs) (string, error) {
 	token, err := t.getAccessToken(ctx, cfg)
 	if err != nil {
 		return "", err
@@ -316,7 +316,7 @@ func (t *DingtalkTool) sendWebhook(ctx context.Context, cfg *model.DingtalkConfi
 	return "钉钉 Webhook 消息发送成功", nil
 }
 
-func (t *DingtalkTool) listDepartments(ctx context.Context, integration *model.Integration, cfg *model.DingtalkConfig) (string, error) {
+func (t *DingtalkTool) listDepartments(ctx context.Context, _ *model.Integration, cfg *model.DingtalkConfig) (string, error) {
 	token, err := t.getAccessToken(ctx, cfg)
 	if err != nil {
 		return "", err

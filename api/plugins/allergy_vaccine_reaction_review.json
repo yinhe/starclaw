@@ -1,0 +1,19 @@
+{
+  "name": "allergy_vaccine_reaction_review",
+  "description": "Review common and high-risk vaccine reaction clues including fever, timing, local reaction, and systemic symptoms.",
+  "version": "1.0.0",
+  "author": "StarClaw Allergy Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "vaccine_reaction_review" },
+      "vaccine_name": { "type": "string" },
+      "hours_since_shot": { "type": "number" },
+      "temperature_c": { "type": "number" },
+      "injection_site_reaction": { "type": "string" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "allergy_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

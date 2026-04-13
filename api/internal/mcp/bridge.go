@@ -297,57 +297,149 @@ Write-Host "StarClaw MCP Bridge Installer" -ForegroundColor Cyan
 Write-Host "================================="
 
 $InstallDir = "$env:USERPROFILE\.starclaw"
-$Binary = "mcp-bridge.exe"
-$BinaryPath = "$InstallDir\$Binary"
+$BridgeDir = "$InstallDir\mcp-bridge"
+$BinaryName = "mcp-bridge.exe"
+$BinaryPath = "$BridgeDir\$BinaryName"
 $DownloadURL = "%s/v1/mcp-bridge/download/windows_amd64"
+$HealthURL = "http://127.0.0.1:9101/health"
 
-if (!(Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
+if (!(Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
 
 # Stop existing bridge
-try { Invoke-RestMethod -Uri "http://127.0.0.1:9101/shutdown" -Method POST -ErrorAction SilentlyContinue } catch {}
+try { Invoke-RestMethod -Uri "http://127.0.0.1:9101/shutdown" -Method POST -TimeoutSec 3 -ErrorAction SilentlyContinue } catch {}
 Start-Sleep -Seconds 1
 
+# Also kill any leftover process
+Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @("mcp-bridge", "mcp-bridge-windows-amd64") } | Stop-Process -Force -ErrorAction SilentlyContinue
+
 # Download
+$downloaded = $false
 Write-Host "Downloading MCP Bridge..." -ForegroundColor Yellow
-Invoke-WebRequest -Uri $DownloadURL -OutFile $BinaryPath -UseBasicParsing
+try {
+    Invoke-WebRequest -Uri $DownloadURL -OutFile $BinaryPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+    if ((Test-Path $BinaryPath) -and (Get-Item $BinaryPath).Length -gt 1000) {
+        $downloaded = $true
+        Write-Host "Download OK" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Red
+}
+
+# Fallback: search for existing binary
+if (-not $downloaded) {
+    Write-Host "Searching for existing MCP Bridge binary..." -ForegroundColor Yellow
+    $candidates = @(
+        "$BridgeDir\mcp-bridge-windows-amd64.exe",
+        "$BridgeDir\$BinaryName",
+        "$InstallDir\mcp-bridge-windows-amd64.exe",
+        "$InstallDir\$BinaryName"
+    )
+    # Also search Spore install directories
+    $sporeBase = "$env:USERPROFILE\.spore\installed\claw"
+    if (Test-Path $sporeBase) {
+        Get-ChildItem $sporeBase -Recurse -Filter "mcp-bridge*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $candidates += $_.FullName
+        }
+    }
+    foreach ($c in $candidates) {
+        if ((Test-Path $c) -and (Get-Item $c).Length -gt 1000) {
+            if ($c -ne $BinaryPath) {
+                Copy-Item $c $BinaryPath -Force
+                Write-Host "Using existing binary: $c" -ForegroundColor Green
+            } else {
+                Write-Host "Using existing binary at: $BinaryPath" -ForegroundColor Green
+            }
+            $downloaded = $true
+            break
+        }
+    }
+}
+
+if (-not $downloaded -or -not (Test-Path $BinaryPath)) {
+    Write-Host ""
+    Write-Host "ERROR: Could not obtain MCP Bridge binary." -ForegroundColor Red
+    Write-Host "Manual download: $DownloadURL" -ForegroundColor Yellow
+    Write-Host "Save to: $BinaryPath" -ForegroundColor Yellow
+    exit 1
+}
 
 # Auto-start: create startup shortcut
 $StartupDir = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
 $ShortcutPath = "$StartupDir\MCP Bridge.lnk"
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut($ShortcutPath)
-$Shortcut.TargetPath = $BinaryPath
-$Shortcut.Arguments = "-port 9101"
-$Shortcut.WorkingDirectory = $InstallDir
-$Shortcut.WindowStyle = 7  # minimized
-$Shortcut.Save()
-Write-Host "Auto-start shortcut created" -ForegroundColor Green
+try {
+    $WshShell = New-Object -ComObject WScript.Shell
+    $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+    $Shortcut.TargetPath = $BinaryPath
+    $Shortcut.Arguments = "-port 9101"
+    $Shortcut.WorkingDirectory = $BridgeDir
+    $Shortcut.WindowStyle = 7  # minimized
+    $Shortcut.Save()
+    Write-Host "Auto-start shortcut created" -ForegroundColor Green
+} catch {
+    Write-Host "Warning: could not create auto-start shortcut: $($_.Exception.Message)" -ForegroundColor Yellow
+}
 
 # Start as background process
-Start-Process -FilePath $BinaryPath -ArgumentList "-port","9101" -WorkingDirectory $InstallDir -WindowStyle Hidden
-
-Write-Host ""
-Write-Host "Done! MCP Bridge is running in the background." -ForegroundColor Green
-Write-Host "It will auto-start whenever you log in."
-Write-Host "Go back to your Claw settings page - it should show Connected."
+try {
+    Start-Process -FilePath $BinaryPath -ArgumentList "-port","9101" -WorkingDirectory $BridgeDir -WindowStyle Hidden -ErrorAction Stop
+    Start-Sleep -Seconds 2
+    # Verify it is the expected MCP Bridge service
+    $healthy = $false
+    $serviceName = ""
+    try {
+        $health = Invoke-RestMethod -Uri $HealthURL -TimeoutSec 3 -ErrorAction Stop
+        if ($health) {
+            $serviceName = [string]$health.service
+            if ($health.status -eq "ok" -and $serviceName -eq "mcp-bridge") {
+                $healthy = $true
+            }
+        }
+    } catch {}
+    if ($healthy) {
+        Write-Host ""
+        Write-Host "Done! MCP Bridge is running in the background." -ForegroundColor Green
+        Write-Host "It will auto-start whenever you log in."
+        Write-Host "Go back to your Claw settings page - it should show Connected."
+    } else {
+        Write-Host ""
+        if ($serviceName -ne "") {
+            Write-Host "Warning: Port 9101 is occupied by another service: $serviceName" -ForegroundColor Yellow
+            Write-Host "Please stop or remap the service using port 9101, then run the installer again." -ForegroundColor Yellow
+        } else {
+            Write-Host "Warning: MCP Bridge started but may have exited." -ForegroundColor Yellow
+        }
+        Write-Host "Try running manually: $BinaryPath -port 9101" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host ""
+    Write-Host "ERROR: Failed to start MCP Bridge: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Try running manually: $BinaryPath -port 9101" -ForegroundColor Yellow
+    exit 1
+}
 `, serverURL)
 }
 
 // BridgeBinaryPath returns the local file path for a given platform binary.
 // Searches multiple directories to work in both Docker and Spore/local modes.
 func BridgeBinaryPath(platform string) (string, string) {
-	m := map[string]string{
+	platformFile := map[string]string{
 		"windows_amd64": "mcp-bridge-windows-amd64.exe",
 		"darwin_amd64":  "mcp-bridge-darwin-amd64",
 		"darwin_arm64":  "mcp-bridge-darwin-arm64",
 		"linux_amd64":   "mcp-bridge-linux-amd64",
 	}
-	filename, ok := m[platform]
+	filename, ok := platformFile[platform]
 	if !ok {
 		return "", ""
 	}
 
-	// Search order: Docker path → executable dir → working dir → SPORE_DATA_DIR
+	// Platform-agnostic name (used by Spore installs)
+	generic := "mcp-bridge"
+	if strings.Contains(platform, "windows") {
+		generic = "mcp-bridge.exe"
+	}
+
+	// Search order: Docker → exe dir → working dir → .starclaw → SPORE_DATA_DIR
 	candidates := []string{
 		"/app/mcp-bridge/" + filename,
 	}
@@ -357,19 +449,36 @@ func BridgeBinaryPath(platform string) (string, string) {
 		dir := filepath.Dir(exe)
 		candidates = append(candidates,
 			filepath.Join(dir, "mcp-bridge", filename),
+			filepath.Join(dir, "mcp-bridge", generic),
 			filepath.Join(dir, filename),
+			filepath.Join(dir, generic),
 		)
 	}
 
 	// Working directory
 	candidates = append(candidates,
 		filepath.Join("mcp-bridge", filename),
+		filepath.Join("mcp-bridge", generic),
 		filename,
+		generic,
 	)
+
+	// User home .starclaw directory (where PS1 installer puts the binary)
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(home, ".starclaw", "mcp-bridge", filename),
+			filepath.Join(home, ".starclaw", "mcp-bridge", generic),
+			filepath.Join(home, ".starclaw", filename),
+			filepath.Join(home, ".starclaw", generic),
+		)
+	}
 
 	// SPORE_DATA_DIR
 	if sporeDir := os.Getenv("SPORE_DATA_DIR"); sporeDir != "" {
-		candidates = append(candidates, filepath.Join(sporeDir, "mcp-bridge", filename))
+		candidates = append(candidates,
+			filepath.Join(sporeDir, "mcp-bridge", filename),
+			filepath.Join(sporeDir, "mcp-bridge", generic),
+		)
 	}
 
 	for _, path := range candidates {

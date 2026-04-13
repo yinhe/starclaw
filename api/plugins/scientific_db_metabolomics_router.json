@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_metabolomics_router",
+  "description": "Route metabolomics searches across HMDB, MetaboLights, Metabolomics Workbench, MassIVE, and KEGG using metabolite, pathway, disease, specimen, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "metabolomics_router" },
+      "metabolite": { "type": "string" },
+      "pathway": { "type": "string" },
+      "disease": { "type": "string" },
+      "specimen": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

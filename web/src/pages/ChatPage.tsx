@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Loader2, Plus, Search, Globe, Wrench, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, Volume2, X as XIcon, Terminal, FileText, FileEdit, ChevronDown, ChevronRight, Eye, CheckCircle2, Settings, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, Clock, AlertCircle, ChevronUp, User, Paperclip, File, FileAudio, FileVideo, FileCode, BookOpen, Brain, Lightbulb, Star } from 'lucide-react'
+import { Send, Loader2, Plus, Search, Globe, MoreHorizontal, Pencil, Trash2, Download, ThumbsUp, ThumbsDown, Pin, ImagePlus, Mic, Volume2, X as XIcon, ChevronDown, ChevronRight, CheckCircle2, ExternalLink, Bot, StopCircle, Copy, Check, PanelRightOpen, PanelRightClose, ListTodo, Workflow, Video, PlayCircle, ChevronUp, User, Paperclip, BookOpen, Lightbulb } from 'lucide-react'
 
 const CrawfishIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -15,10 +15,13 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
 )
 import { useChatStore } from '../stores/chatStore'
 import { chatAPI, agentAPI, conversationAPI, multimodalAPI, superAgentAPI, codingAPI, fileAPI, knowledgeBaseAPI, memoryAPI } from '../lib/api'
+import { formatAgentDisplayName } from '../lib/agentDisplay'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import CodeBlock from '../components/CodeBlock'
 import Skeleton from '../components/Skeleton'
+import ContextPanel from '../components/chat/ContextPanel'
+import { buildToolDescription as buildToolDesc, getToolTypeInfo, formatToolResult, extractMediaFromToolResult, formatSize, getFileIcon, isRunnableFile } from '../components/chat/chatUtils'
 
 interface Agent {
   id: string
@@ -294,23 +297,6 @@ export default function ChatPage() {
       }
     }
     setFileUploading(false)
-  }
-
-  const getFileIcon = (category: string) => {
-    switch (category) {
-      case 'audio': return FileAudio
-      case 'video': return FileVideo
-      case 'document': return FileText
-      case 'code': return FileCode
-      case 'archive': return File
-      default: return FileText
-    }
-  }
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -627,102 +613,14 @@ export default function ChatPage() {
   }
 
   const buildToolDescription = (toolName: string, action: string, args: Record<string, any>): string => {
-    if (toolName === 'code') {
-      switch (action) {
-        case 'read_file': return `读取文件 ${args.path || ''}`
-        case 'write_file': return `写入文件 ${args.path || ''} (${(args.content || '').length} chars)`
-        case 'list_files': return `列出目录 ${args.path || '.'}`
-        case 'search_files': return `搜索文件 ${args.pattern || ''}`
-        case 'grep': return `搜索内容 "${args.pattern || ''}"`
-        case 'execute': return `执行 ${args.language || ''} 代码`
-        case 'run_command': return `运行命令 \`${(args.command || '').slice(0, 60)}${(args.command || '').length > 60 ? '...' : ''}\``
-        case 'start_app': return `启动应用 \`${(args.command || '').slice(0, 40)}\``
-        case 'stop_app': return `停止应用`
-        case 'list_apps': return `查看运行中的应用`
-        default: return `code.${action}`
-      }
-    }
-    if (toolName === 'browser') {
-      switch (action) {
-        case 'navigate': return `打开网页 ${args.url || ''}`
-        case 'click': return `点击 "${args.selector || ''}"`
-        case 'type': return `输入文本`
-        case 'screenshot': return '截取屏幕'
-        case 'extract_text': return '提取文本'
-        case 'scroll': return `滚动页面 ${args.direction || ''}`
-        default: return `browser.${action}`
-      }
-    }
-    if (toolName === 'web_search') return `搜索网络 "${args.query || ''}"`
-    if (toolName === 'http_request') return `HTTP ${args.method || 'GET'} ${args.url || ''}`
-    if (toolName === 'system') {
-      switch (action) {
-        case 'create_agent': return `创建 Agent "${args.name || ''}"`
-        case 'delegate_to_agent': {
-          const targetAgent = agents.find(a => a.id === args.agent_id)
-          return `委派任务给「${targetAgent?.name || args.agent_id?.slice(0, 8) + '...'}」`
-        }
-        case 'create_task': return `创建后台任务 "${args.title || ''}"`
-        case 'update_task': return `更新任务进度 ${args.progress || ''}%`
-        case 'list_tasks': return '查看后台任务'
-        case 'notify_user': return `通知用户: ${args.title || ''}`
-        case 'list_agents': return '列出所有 Agent'
-        case 'list_models': return '列出可用模型'
-        case 'create_workflow': return `创建工作流 "${args.name || ''}"`
-        case 'schedule_task': return `创建定时任务 ${args.cron_expr || ''}`
-        case 'list_schedules': return '列出定时任务'
-        default: return `system.${action}`
-      }
-    }
-    return `${toolName}${action ? '.' + action : ''}`
+    return buildToolDesc(toolName, action, args, agents)
   }
 
-  const getToolTypeInfo = (toolName: string, action: string) => {
-    if (toolName === 'code') {
-      switch (action) {
-        case 'read_file': return { icon: FileText, label: 'Read', color: 'text-blue-600 bg-blue-50 border-blue-200' }
-        case 'write_file': return { icon: FileEdit, label: 'Write', color: 'text-green-600 bg-green-50 border-green-200' }
-        case 'execute': return { icon: Terminal, label: 'Exec', color: 'text-purple-600 bg-purple-50 border-purple-200' }
-        case 'run_command': return { icon: Terminal, label: 'Exec', color: 'text-purple-600 bg-purple-50 border-purple-200' }
-        case 'start_app': return { icon: Globe, label: 'Deploy', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' }
-        case 'stop_app': return { icon: XIcon, label: 'Stop', color: 'text-red-600 bg-red-50 border-red-200' }
-        case 'list_apps': return { icon: Eye, label: 'Apps', color: 'text-cyan-600 bg-cyan-50 border-cyan-200' }
-        case 'grep': case 'search_files': return { icon: Search, label: 'Search', color: 'text-amber-600 bg-amber-50 border-amber-200' }
-        case 'list_files': return { icon: Eye, label: 'List', color: 'text-cyan-600 bg-cyan-50 border-cyan-200' }
-        default: return { icon: Wrench, label: 'Tool', color: 'text-gray-600 bg-gray-50 border-gray-200' }
-      }
-    }
-    if (toolName === 'browser') return { icon: Globe, label: 'Browser', color: 'text-indigo-600 bg-indigo-50 border-indigo-200' }
-    if (toolName === 'web_search') return { icon: Search, label: 'Search', color: 'text-amber-600 bg-amber-50 border-amber-200' }
-    if (toolName === 'http_request') return { icon: Globe, label: 'HTTP', color: 'text-teal-600 bg-teal-50 border-teal-200' }
-    if (toolName === 'music_generation') return { icon: Bot, label: 'Music', color: 'text-pink-600 bg-pink-50 border-pink-200' }
-    if (toolName === 'image_generation') return { icon: Bot, label: 'Image', color: 'text-cyan-600 bg-cyan-50 border-cyan-200' }
-    if (toolName === 'dubbing') return { icon: Bot, label: 'Dubbing', color: 'text-purple-600 bg-purple-50 border-purple-200' }
-    if (toolName === 'mv_production') return { icon: Bot, label: 'MV', color: 'text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200' }
-    if (toolName === 'comic_production') return { icon: Bot, label: 'Comic', color: 'text-orange-600 bg-orange-50 border-orange-200' }
-    if (toolName === 'system') {
-      switch (action) {
-        case 'create_agent': return { icon: Bot, label: 'Agent', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' }
-        case 'delegate_to_agent': return { icon: Bot, label: 'Delegate', color: 'text-violet-600 bg-violet-50 border-violet-200' }
-        case 'create_task': return { icon: Bot, label: 'Task', color: 'text-violet-600 bg-violet-50 border-violet-200' }
-        case 'update_task': return { icon: Bot, label: 'Progress', color: 'text-blue-600 bg-blue-50 border-blue-200' }
-        case 'list_tasks': return { icon: Bot, label: 'Tasks', color: 'text-violet-600 bg-violet-50 border-violet-200' }
-        case 'notify_user': return { icon: Bot, label: 'Notify', color: 'text-amber-600 bg-amber-50 border-amber-200' }
-        case 'list_agents': return { icon: Bot, label: 'Agent', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' }
-        case 'create_workflow': case 'schedule_task': case 'list_schedules': return { icon: Settings, label: 'System', color: 'text-rose-600 bg-rose-50 border-rose-200' }
-        case 'list_models': return { icon: Settings, label: 'Models', color: 'text-rose-600 bg-rose-50 border-rose-200' }
-        default: return { icon: Settings, label: 'System', color: 'text-rose-600 bg-rose-50 border-rose-200' }
-      }
-    }
-    return { icon: Wrench, label: 'Tool', color: 'text-gray-600 bg-gray-50 border-gray-200' }
-  }
 
   const toggleToolExpanded = (id: string) => {
     setToolInteractions(prev => prev.map(t => t.id === id ? { ...t, expanded: !t.expanded } : t))
   }
 
-  // Detect if a file is runnable based on extension
-  const isRunnableFile = (path: string) => /\.(py|js|ts|go|sh|rb|php|java|rs|c|cpp|cxx|cc|pl|lua)$/i.test(path)
 
   const handleRunFile = async (tiId: string, workspaceId: string, filePath: string) => {
     setRunningFileId(tiId)
@@ -740,44 +638,6 @@ export default function ChatPage() {
   const handleStopFile = async () => {
     try { await codingAPI.stop() } catch { /* ignore */ }
     setRunningFileId(null)
-  }
-
-  const formatToolResult = (result: string): string => {
-    try {
-      const parsed = JSON.parse(result)
-      if (parsed.result?.stdout || parsed.result?.stderr) {
-        const parts = []
-        if (parsed.result.stdout) parts.push(parsed.result.stdout)
-        if (parsed.result.stderr) parts.push(`stderr: ${parsed.result.stderr}`)
-        if (parsed.result.exit_code !== undefined) parts.push(`Exit code: ${parsed.result.exit_code} (${parsed.result.duration || ''})`)
-        return parts.join('\n')
-      }
-      if (parsed.content) return parsed.content.length > 500 ? parsed.content.slice(0, 500) + '\n... [truncated]' : parsed.content
-      if (parsed.files) return parsed.files.map((f: any) => `${f.is_dir ? '📁' : '📄'} ${f.path} ${f.is_dir ? '' : `(${f.size}B)`}`).join('\n')
-      if (parsed.matches) return parsed.matches.map((m: any) => `${m.file}:${m.line} ${m.content}`).join('\n')
-      if (parsed.status === 'success' && parsed.bytes !== undefined) return `✓ ${parsed.action} ${parsed.path || ''} (${parsed.bytes} bytes)`
-      if (parsed.status === 'success' && parsed.agents) return `✓ ${parsed.action}: ${parsed.count} 个Agent`
-      if (parsed.status === 'success' && parsed.count !== undefined) return `✓ ${parsed.action}: ${parsed.count} 项`
-      if (parsed.status === 'success' && parsed.message) return `✓ ${parsed.message}`
-      if (parsed.status === 'success') return `✓ ${parsed.action || 'done'}`
-      if (parsed.error) return `✗ ${parsed.error}`
-      if (parsed.message) return parsed.message
-      return JSON.stringify(parsed, null, 2).slice(0, 500)
-    } catch {
-      return result.length > 500 ? result.slice(0, 500) + '\n... [truncated]' : result
-    }
-  }
-
-  // Extract media URLs from tool result JSON
-  const extractMediaFromToolResult = (result: string | undefined): { type: 'image' | 'video' | 'audio'; url: string } | null => {
-    if (!result) return null
-    try {
-      const parsed = JSON.parse(result)
-      if (parsed.image_url) return { type: 'image', url: parsed.image_url }
-      if (parsed.video_url) return { type: 'video', url: parsed.video_url }
-      if (parsed.audio_url) return { type: 'audio', url: parsed.audio_url }
-    } catch { /* ignore */ }
-    return null
   }
 
   // Render inline media preview below tool cards
@@ -1439,7 +1299,7 @@ export default function ChatPage() {
           {mentionedAgent && (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium border border-primary-200">
               <Bot className="w-3 h-3" />
-              {mentionedAgent.name}
+              {formatAgentDisplayName(mentionedAgent.name)}
               <button onClick={() => setMentionedAgent(null)} className="ml-0.5 hover:text-primary-900">
                 <XIcon className="w-3 h-3" />
               </button>
@@ -2090,7 +1950,7 @@ export default function ChatPage() {
                       className={`w-full text-left px-3 py-2 flex items-center gap-2 text-sm transition-colors ${idx === mentionIndex ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50 text-gray-700'}`}>
                       <Bot className="w-4 h-4 text-primary-500 flex-shrink-0" />
                       <div className="min-w-0">
-                        <div className="font-medium truncate">{agent.name}</div>
+                        <div className="font-medium truncate">{formatAgentDisplayName(agent.name)}</div>
                         {agent.description && <div className="text-xs text-gray-400 truncate">{agent.description}</div>}
                       </div>
                     </button>
@@ -2147,250 +2007,16 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Context Panel - right sidebar (overlay on small screens, inline on xl+) */}
+      {/* Context Panel - right sidebar */}
       {contextPanelOpen && currentConversationId && (
-        <div className="fixed xl:relative right-0 top-0 xl:top-auto h-full z-30 xl:z-auto w-80 border-l bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden shadow-xl xl:shadow-none">
-          <div className="px-4 py-3 border-b bg-white dark:bg-gray-800 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">关联面板</h3>
-            <button onClick={() => setContextPanelOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 rounded">
-              <XIcon className="w-4 h-4" />
-            </button>
-          </div>
-
-          {contextLoading && !convContext ? (
-            <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
-            </div>
-          ) : !convContext ? (
-            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">无数据</div>
-          ) : (
-            <div className="flex-1 overflow-y-auto scrollbar-thin">
-              {/* Stats summary */}
-              <div className="px-4 py-3 border-b grid grid-cols-3 gap-2">
-                <div className="text-center">
-                  <div className="text-lg font-bold text-primary-600">{convContext.stats?.tasks_total || 0}</div>
-                  <div className="text-[10px] text-gray-400">任务</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-violet-600">{convContext.stats?.workflows_total || 0}</div>
-                  <div className="text-[10px] text-gray-400">工作流</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-emerald-600">{convContext.stats?.videos_total || 0}</div>
-                  <div className="text-[10px] text-gray-400">视频</div>
-                </div>
-              </div>
-
-              {/* Tasks section */}
-              <div className="border-b">
-                <button
-                  onClick={() => setContextExpandedSection(contextExpandedSection === 'tasks' ? '' : 'tasks')}
-                  className="w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <ListTodo className="w-4 h-4 text-primary-500" />
-                  <span>任务</span>
-                  <span className="text-xs text-gray-400 ml-1">
-                    {convContext.stats?.tasks_running > 0 && <span className="text-amber-500">{convContext.stats.tasks_running} 运行中</span>}
-                    {convContext.stats?.tasks_running > 0 && convContext.stats?.tasks_completed > 0 && ' · '}
-                    {convContext.stats?.tasks_completed > 0 && <span className="text-green-500">{convContext.stats.tasks_completed} 完成</span>}
-                  </span>
-                  <div className="flex-1" />
-                  {contextExpandedSection === 'tasks' ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-                </button>
-                {contextExpandedSection === 'tasks' && (
-                  <div className="px-3 pb-3 space-y-2">
-                    {(convContext.tasks || []).length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-2">暂无任务</p>
-                    ) : (
-                      (convContext.tasks || []).map((task: any) => (
-                        <div
-                          key={task.id}
-                          onClick={() => navigate('/tasks')}
-                          className="p-2.5 bg-white dark:bg-gray-800 rounded-lg border cursor-pointer hover:border-primary-300 transition-colors"
-                        >
-                          <div className="flex items-center gap-1.5 mb-1">
-                            {task.status === 'running' && <Loader2 className="w-3 h-3 text-amber-500 animate-spin" />}
-                            {task.status === 'completed' && <CheckCircle2 className="w-3 h-3 text-green-500" />}
-                            {task.status === 'failed' && <AlertCircle className="w-3 h-3 text-red-500" />}
-                            {task.status === 'pending' && <Clock className="w-3 h-3 text-gray-400" />}
-                            <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate flex-1">{task.title}</span>
-                            <ExternalLink className="w-3 h-3 text-gray-300" />
-                          </div>
-                          {task.progress > 0 && (
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-1">
-                              <div className="bg-primary-500 h-1 rounded-full transition-all" style={{ width: `${task.progress}%` }} />
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Workflows section */}
-              <div className="border-b">
-                <button
-                  onClick={() => setContextExpandedSection(contextExpandedSection === 'workflows' ? '' : 'workflows')}
-                  className="w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <Workflow className="w-4 h-4 text-violet-500" />
-                  <span>工作流</span>
-                  <span className="text-xs text-gray-400 ml-1">{convContext.stats?.workflows_total || 0}</span>
-                  <div className="flex-1" />
-                  {contextExpandedSection === 'workflows' ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-                </button>
-                {contextExpandedSection === 'workflows' && (
-                  <div className="px-3 pb-3 space-y-2">
-                    {(convContext.workflows || []).length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-2">暂无工作流</p>
-                    ) : (
-                      (convContext.workflows || []).map((wf: any) => (
-                        <div
-                          key={wf.id}
-                          onClick={() => navigate(`/workflows/${wf.id}`)}
-                          className="p-2.5 bg-white dark:bg-gray-800 rounded-lg border cursor-pointer hover:border-violet-300 transition-colors"
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <Workflow className="w-3 h-3 text-violet-500" />
-                            <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate flex-1">{wf.name}</span>
-                            <ExternalLink className="w-3 h-3 text-gray-300" />
-                          </div>
-                          {wf.description && (
-                            <p className="text-[10px] text-gray-400 mt-1 truncate">{wf.description}</p>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Videos section */}
-              <div className="border-b">
-                <button
-                  onClick={() => setContextExpandedSection(contextExpandedSection === 'videos' ? '' : 'videos')}
-                  className="w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <Video className="w-4 h-4 text-emerald-500" />
-                  <span>视频</span>
-                  <span className="text-xs text-gray-400 ml-1">
-                    {convContext.stats?.videos_merged > 0 && <span className="text-emerald-500">{convContext.stats.videos_merged} 合成</span>}
-                    {convContext.stats?.videos_merged > 0 && convContext.stats?.videos_narrated > 0 && ' · '}
-                    {convContext.stats?.videos_narrated > 0 && <span className="text-blue-500">{convContext.stats.videos_narrated} 配音</span>}
-                  </span>
-                  <div className="flex-1" />
-                  {contextExpandedSection === 'videos' ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-                </button>
-                {contextExpandedSection === 'videos' && (
-                  <div className="px-3 pb-3 space-y-2">
-                    {(convContext.videos || []).length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-2">暂无视频</p>
-                    ) : (
-                      <>
-                        {/* Merged videos first */}
-                        {(convContext.videos || []).filter((v: any) => v.type === 'merged').map((v: any) => (
-                          <div key={v.id} className="bg-white dark:bg-gray-800 rounded-lg border overflow-hidden">
-                            <video
-                              src={v.video_url}
-                              controls
-                              className="w-full aspect-video bg-black"
-                              preload="metadata"
-                            />
-                            <div className="px-2.5 py-1.5 flex items-center gap-1.5">
-                              <PlayCircle className="w-3 h-3 text-emerald-500" />
-                              <span className="text-[10px] text-gray-500 truncate flex-1">合成视频 · {v.duration}秒</span>
-                              <button onClick={() => navigate('/videos')} className="text-gray-300 hover:text-gray-500">
-                                <ExternalLink className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        {/* Clips */}
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {(convContext.videos || []).filter((v: any) => v.type !== 'merged' && v.status === 'succeeded').map((v: any) => (
-                            <div key={v.id} className="bg-white dark:bg-gray-800 rounded-lg border overflow-hidden">
-                              <video
-                                src={v.narrated_url || v.video_url}
-                                className="w-full aspect-video bg-black"
-                                preload="metadata"
-                              />
-                              <div className="px-1.5 py-1 flex items-center gap-1">
-                                <span className="text-[9px] text-gray-400 truncate">{v.scene || '片段'}</span>
-                                {v.narrated_url && <Volume2 className="w-2.5 h-2.5 text-blue-400 flex-shrink-0" />}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Memory section */}
-              <div className="border-b">
-                <button
-                  onClick={() => setContextExpandedSection(contextExpandedSection === 'memories' ? '' : 'memories')}
-                  className="w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <Brain className="w-4 h-4 text-violet-500" />
-                  <span>记忆</span>
-                  <span className="text-xs text-gray-400 ml-1">{contextMemories.length}</span>
-                  <div className="flex-1" />
-                  {contextExpandedSection === 'memories' ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-                </button>
-                {contextExpandedSection === 'memories' && (
-                  <div className="px-3 pb-3 space-y-1.5">
-                    {contextMemories.length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-2">暂无记忆</p>
-                    ) : (
-                      contextMemories.slice(0, 8).map((mem: any) => (
-                        <div key={mem.id} className="p-2 bg-white dark:bg-gray-800 rounded-lg border text-xs">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            {mem.category === 'instruct' && <Pin className="w-3 h-3 text-red-500" />}
-                            {mem.category === 'fact' && <FileText className="w-3 h-3 text-blue-500" />}
-                            {mem.category === 'preference' && <Lightbulb className="w-3 h-3 text-amber-500" />}
-                            {mem.category === 'skill' && <Wrench className="w-3 h-3 text-emerald-500" />}
-                            {mem.category === 'context' && <Brain className="w-3 h-3 text-violet-500" />}
-                            <span className="font-medium text-gray-700 dark:text-gray-200 truncate flex-1">{mem.key}</span>
-                            <span className="flex items-center">
-                              {[1,2,3].map(i => <Star key={i} className={`w-2 h-2 ${i <= Math.round(mem.importance * 3) ? 'text-amber-400 fill-amber-400' : 'text-gray-300'}`} />)}
-                            </span>
-                          </div>
-                          <p className="text-gray-500 dark:text-gray-400 truncate">{mem.content}</p>
-                        </div>
-                      ))
-                    )}
-                    <button
-                      onClick={() => navigate('/memories')}
-                      className="w-full text-center text-[10px] text-violet-500 hover:text-violet-700 py-1"
-                    >
-                      查看全部记忆 →
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Quick nav */}
-              <div className="px-4 py-3 space-y-1.5">
-                <p className="text-[10px] text-gray-400 uppercase font-medium mb-2">快捷跳转</p>
-                <button onClick={() => navigate('/tasks')} className="w-full text-left px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg flex items-center gap-2">
-                  <ListTodo className="w-3.5 h-3.5" /> 任务中心
-                </button>
-                <button onClick={() => navigate('/workflows')} className="w-full text-left px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg flex items-center gap-2">
-                  <Workflow className="w-3.5 h-3.5" /> 工作流
-                </button>
-                <button onClick={() => navigate('/videos')} className="w-full text-left px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg flex items-center gap-2">
-                  <Video className="w-3.5 h-3.5" /> 视频画廊
-                </button>
-                <button onClick={() => navigate('/visualization')} className="w-full text-left px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg flex items-center gap-2">
-                  <Eye className="w-3.5 h-3.5" /> 可视化
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <ContextPanel
+          convContext={convContext}
+          contextLoading={contextLoading}
+          contextExpandedSection={contextExpandedSection}
+          setContextExpandedSection={setContextExpandedSection}
+          contextMemories={contextMemories}
+          onClose={() => setContextPanelOpen(false)}
+        />
       )}
     </div>
   )

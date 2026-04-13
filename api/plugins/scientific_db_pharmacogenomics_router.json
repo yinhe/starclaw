@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_pharmacogenomics_router",
+  "description": "Route pharmacogenomics searches across PharmGKB, CPIC, ClinVar, dbSNP, and PharmVar using gene, drug, variant, phenotype, population, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "pharmacogenomics_router" },
+      "gene": { "type": "string" },
+      "drug": { "type": "string" },
+      "variant": { "type": "string" },
+      "phenotype": { "type": "string" },
+      "population": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

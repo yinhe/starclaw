@@ -1,0 +1,20 @@
+{
+  "name": "neurodev_language_screen",
+  "description": "Screen expressive language delay using age, word count, phrase development, hearing concerns, and communication red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Neurodevelopment Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "language_delay_screen" },
+      "age_months": { "type": "number" },
+      "spoken_words": { "type": "number" },
+      "two_word_phrases": { "type": "boolean" },
+      "hearing_concern": { "type": "string" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "regression": { "type": "boolean" }
+    }
+  },
+  "handler": "neurodev_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

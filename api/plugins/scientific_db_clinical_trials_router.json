@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_clinical_trials_router",
+  "description": "Route clinical trial searches across ClinicalTrials.gov, WHO ICTRP, and regional trial registries using condition, intervention, age group, biomarkers, and region.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "clinical_trials_router" },
+      "condition": { "type": "string" },
+      "intervention": { "type": "string" },
+      "age_group": { "type": "string" },
+      "recruiting_status": { "type": "string" },
+      "region": { "type": "string" },
+      "biomarkers": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

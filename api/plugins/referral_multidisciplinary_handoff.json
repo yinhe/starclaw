@@ -1,0 +1,21 @@
+{
+  "name": "referral_multidisciplinary_handoff",
+  "description": "Create a concise multidisciplinary referral handoff summary with suggested departments, reasons, medications, and risk flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Referral Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "multidisciplinary_handoff" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "findings": { "type": "array", "items": { "type": "string" } },
+      "diagnoses": { "type": "array", "items": { "type": "string" } },
+      "concerns": { "type": "array", "items": { "type": "string" } },
+      "current_medications": { "type": "array", "items": { "type": "string" } },
+      "note_text": { "type": "string" },
+      "severity_hint": { "type": "string" }
+    }
+  },
+  "handler": "referral_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

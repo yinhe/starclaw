@@ -1,0 +1,20 @@
+{
+  "name": "bioinformatics_nucleotide_skew_scan",
+  "description": "Scan nucleotide sequences with sliding windows to summarize GC skew and AT skew across regions.",
+  "version": "1.0.0",
+  "author": "StarClaw Bioinformatics Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "nucleotide_skew_scan" },
+      "sequence": { "type": "string" },
+      "sequence_name": { "type": "string" },
+      "sequence_type_hint": { "type": "string" },
+      "window_size": { "type": "integer" },
+      "step_size": { "type": "integer" }
+    },
+    "required": ["sequence"]
+  },
+  "handler": "bioinformatics_clinic",
+  "metadata": { "category": "medical", "timeout": 20 }
+}

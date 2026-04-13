@@ -25,18 +25,21 @@ import (
 	"github.com/yinhe/starclaw/internal/overlord"
 	"github.com/yinhe/starclaw/internal/procutil"
 	"github.com/yinhe/starclaw/internal/swarm"
+	"github.com/yinhe/starclaw/internal/tool"
+	"gorm.io/gorm"
 )
 
 // SystemHandler handles system-level settings: swarm, overlord, updates, bounty
 type SystemHandler struct {
 	cfg            *config.Config
+	db             *gorm.DB
 	swarmClient    *swarm.Client
 	identity       *node.Identity
 	overlordClient *overlord.Client
 }
 
-func NewSystemHandler(cfg *config.Config, sc *swarm.Client, identity *node.Identity, oc ...*overlord.Client) *SystemHandler {
-	h := &SystemHandler{cfg: cfg, swarmClient: sc, identity: identity}
+func NewSystemHandler(cfg *config.Config, db *gorm.DB, sc *swarm.Client, identity *node.Identity, oc ...*overlord.Client) *SystemHandler {
+	h := &SystemHandler{cfg: cfg, db: db, swarmClient: sc, identity: identity}
 	if len(oc) > 0 {
 		h.overlordClient = oc[0]
 	}
@@ -155,9 +158,47 @@ func (h *SystemHandler) LeaveSwarm(c *gin.Context) {
 // If ?refresh=true, queries Queen directly for latest balance.
 func (h *SystemHandler) GetCredits(c *gin.Context) {
 	if h.swarmClient == nil || !h.swarmClient.Connected() {
+		// Standalone mode: try star-ai.net balance first, fall back to local stardust
+		force := c.Query("refresh") == "true"
+		if bal := tool.GetStarAIBalance(force); bal != nil {
+			hp := "healthy"
+			switch bal.StarStatus {
+			case "hibernated":
+				hp = "hibernated"
+			case "":
+				// Derive from balance if Queen didn't return status
+				if bal.Balance < 100 {
+					hp = "critical"
+				} else if bal.Balance < 500 {
+					hp = "low"
+				} else if bal.Balance >= 5000 {
+					hp = "full"
+				}
+			default:
+				if bal.Balance < 100 {
+					hp = "critical"
+				} else if bal.Balance < 500 {
+					hp = "low"
+				} else if bal.Balance >= 5000 {
+					hp = "full"
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"connected":      true,
+				"balance":        bal.BalanceRaw, // internal units (1⚡ = 10000) for BillingPage formatEnergy()
+				"balance_energy": bal.Balance,    // display ⚡ value for HPBar
+				"hp_status":      hp,
+				"status":         "synapse",
+				"star_status":    bal.StarStatus,
+				"message":        fmt.Sprintf("星能余额 %.1f ⚡（star-ai.net）", bal.Balance),
+				"updated_at":     bal.UpdatedAt.Format("15:04:05"),
+			})
+			return
+		}
+		// StarAI unreachable — show disconnected, never fake balance
 		c.JSON(http.StatusOK, gin.H{
 			"connected": false,
-			"message":   "未连接虫群，无法获取星能余额",
+			"message":   "未连接星能网络（star-ai.net 不可达）",
 		})
 		return
 	}
@@ -453,7 +494,11 @@ func (h *SystemHandler) StopBridge(c *gin.Context) {
 	// Kill the bridge process directly (more reliable than JSON-RPC shutdown)
 	var killErr error
 	if runtime.GOOS == "windows" {
-		killErr = procutil.Command("taskkill", "/F", "/IM", "mcp-bridge.exe").Run()
+		errGeneric := procutil.Command("taskkill", "/F", "/IM", "mcp-bridge.exe").Run()
+		errPlatform := procutil.Command("taskkill", "/F", "/IM", "mcp-bridge-windows-amd64.exe").Run()
+		if errGeneric != nil && errPlatform != nil {
+			killErr = errGeneric
+		}
 	} else {
 		killErr = procutil.Command("pkill", "-f", "mcp-bridge").Run()
 	}

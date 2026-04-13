@@ -1,0 +1,19 @@
+{
+  "name": "scientific_db_variant_database_router",
+  "description": "Route variant-centric searches across ClinVar, dbSNP, gnomAD, LOVD, and cancer variant databases using gene, variant, disease, and genome build clues.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "variant_database_router" },
+      "gene": { "type": "string" },
+      "variant": { "type": "string" },
+      "disease": { "type": "string" },
+      "genome_build": { "type": "string" },
+      "phenotypes": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

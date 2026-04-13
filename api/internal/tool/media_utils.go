@@ -29,11 +29,18 @@ func GetDashScopeAPIKey(db *gorm.DB, userID string) (string, string) {
 	var cfg model.ModelConfig
 	// Try user's own key first
 	if err := db.Where("user_id = ? AND provider = ? AND api_key != ''", userID, "qwen").First(&cfg).Error; err != nil {
+		log.Printf("[DashScope] no key for user %s: %v", userID, err)
 		// Fallback to platform key
 		if err := db.Where("is_platform = ? AND provider = ? AND api_key != ''", true, "qwen").First(&cfg).Error; err != nil {
-			return "", ""
+			log.Printf("[DashScope] no platform key: %v", err)
+			// Fallback to system user's key (owner-configured keys)
+			if err := db.Where("user_id = ? AND provider = ? AND api_key != ''", "system", "qwen").First(&cfg).Error; err != nil {
+				log.Printf("[DashScope] no system key: %v", err)
+				return "", ""
+			}
 		}
 	}
+	log.Printf("[DashScope] found key for user=%s, cfg_id=%s, provider=%s", userID, cfg.ID, cfg.Provider)
 	return cfg.APIKey, "dashscope.aliyuncs.com"
 }
 
@@ -214,9 +221,11 @@ func isStarAIKey(apiKey string) bool {
 	return strings.HasPrefix(apiKey, "starai://")
 }
 
-// SubmitToFal submits a request to fal.ai queue API and returns the request_id.
+// SubmitToFal submits a request to fal.ai queue API and returns the request_id
+// plus the status endpoint (extracted from fal.ai's status_url response).
+// The status endpoint may differ from the submit endpoint (e.g. "fal-ai/flux" vs "fal-ai/flux/schnell").
 // If apiKey starts with "starai://", routes through StarAI Router proxy.
-func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, error) {
+func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, string, error) {
 	bodyBytes, _ := json.Marshal(body)
 
 	var url string
@@ -228,7 +237,7 @@ func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, 
 		url = StarAIProxyURL("fal", "/"+endpoint)
 		c, _ := GetStarAIClient()
 		if c == nil {
-			return "", fmt.Errorf("StarAI proxy not initialized")
+			return "", "", fmt.Errorf("StarAI proxy not initialized")
 		}
 		client = c
 		// No auth header needed — SignedTransport adds X-Claw-* headers
@@ -242,7 +251,7 @@ func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, 
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyBytes)))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
@@ -251,26 +260,43 @@ func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fal.ai request failed: %v", err)
+		return "", "", fmt.Errorf("fal.ai request failed: %v", err)
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("fal.ai error (HTTP %d): %s", resp.StatusCode, string(respBody))
+		return "", "", fmt.Errorf("fal.ai error (HTTP %d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("failed to parse fal.ai response: %s", string(respBody))
+		return "", "", fmt.Errorf("failed to parse fal.ai response: %s", string(respBody))
 	}
 
 	requestID, _ := result["request_id"].(string)
 	if requestID == "" {
-		return "", fmt.Errorf("no request_id in fal.ai response: %s", string(respBody))
+		return "", "", fmt.Errorf("no request_id in fal.ai response: %s", string(respBody))
 	}
 
-	return requestID, nil
+	// Extract status endpoint from fal.ai's status_url (may differ from submit endpoint).
+	// e.g. submit to "fal-ai/flux/schnell" but status_url uses "fal-ai/flux"
+	statusEndpoint := endpoint
+	if statusURL, ok := result["status_url"].(string); ok && statusURL != "" {
+		// Parse: https://queue.fal.run/{endpoint}/requests/{id}/status
+		const prefix = "https://queue.fal.run/"
+		if strings.HasPrefix(statusURL, prefix) {
+			path := strings.TrimPrefix(statusURL, prefix)
+			if idx := strings.Index(path, "/requests/"); idx > 0 {
+				statusEndpoint = path[:idx]
+				if statusEndpoint != endpoint {
+					log.Printf("[fal.ai] status endpoint differs: submit=%s status=%s", endpoint, statusEndpoint)
+				}
+			}
+		}
+	}
+
+	return requestID, statusEndpoint, nil
 }
 
 // PollFalStatus polls a fal.ai queue request until completion or timeout.
@@ -295,6 +321,7 @@ func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (m
 		authHeader = "Key " + apiKey
 	}
 
+	errCount := 0
 	for time.Now().Before(deadline) {
 		req, _ := http.NewRequest("GET", statusURL, nil)
 		if authHeader != "" {
@@ -303,11 +330,30 @@ func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (m
 
 		resp, err := client.Do(req)
 		if err != nil {
+			errCount++
+			log.Printf("[fal.ai] poll error (%d): %v", errCount, err)
+			if errCount >= 5 {
+				return nil, fmt.Errorf("fal.ai polling failed after %d network errors: %v", errCount, err)
+			}
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+
+		// Non-retryable HTTP errors
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			return nil, fmt.Errorf("fal.ai auth error (HTTP %d): %s", resp.StatusCode, string(body))
+		}
+		if resp.StatusCode >= 500 {
+			errCount++
+			log.Printf("[fal.ai] poll server error (%d): HTTP %d: %s", errCount, resp.StatusCode, string(body))
+			if errCount >= 5 {
+				return nil, fmt.Errorf("fal.ai polling failed: HTTP %d after %d retries", resp.StatusCode, errCount)
+			}
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
 		var status map[string]interface{}
 		json.Unmarshal(body, &status)
@@ -321,6 +367,7 @@ func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (m
 			return nil, fmt.Errorf("fal.ai generation failed: %s", errMsg)
 		}
 
+		errCount = 0 // reset on successful poll
 		time.Sleep(5 * time.Second)
 	}
 	return nil, fmt.Errorf("fal.ai polling timeout after %v", timeout)
@@ -461,12 +508,14 @@ func generateTTSViaStarAI(text, voice, outputPath string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[TTS/StarAI] submit HTTP failed: %v", err)
 		return fmt.Errorf("TTS submit failed: %v", err)
 	}
 	respBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
+		log.Printf("[TTS/StarAI] submit error HTTP %d: %s", resp.StatusCode, string(respBody))
 		return fmt.Errorf("TTS submit error (HTTP %d): %s", resp.StatusCode, string(respBody))
 	}
 
@@ -549,9 +598,7 @@ func generateTTSViaPython(apiKey, text, voice, outputPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	cmd := hiddenCmdCtx(ctx, "python3", "/app/scripts/tts.py", apiKey, text, voice, outputPath)
-	cmdOutput, err := cmd.CombinedOutput()
-	outputStr := strings.TrimSpace(string(cmdOutput))
+	outputStr, err := runPythonScriptArgs(ctx, "tts.py", apiKey, text, voice, outputPath)
 
 	if err != nil {
 		log.Printf("[TTS] Python script failed: %v\n%s", err, outputStr)
@@ -649,6 +696,60 @@ func FitTTSToWindow(inputAudio string, windowDuration float64, tmpDir string, in
 		fittedDur = windowDuration
 	}
 	log.Printf("[DubbingFit] seg %d: sped up+trimmed %.2fs→%.2fs (max atempo=%.2fx, trimmed to %.2fs)", index, actualDur, fittedDur, maxTempoSpeedup, windowDuration)
+	return outputPath, fittedDur, nil
+}
+
+// FitTTSUniform applies a pre-calculated global tempo ratio to a TTS audio file.
+// Unlike FitTTSToWindow which calculates per-segment ratios, this ensures all segments
+// in a video share the same speech rate for consistent dubbing.
+// If the adjusted audio still overflows the window, it is hard-trimmed.
+func FitTTSUniform(inputAudio string, rawDuration, globalRatio, windowDuration float64, tmpDir string, index int) (string, float64, error) {
+	if rawDuration <= 0 {
+		return inputAudio, windowDuration, fmt.Errorf("invalid raw duration")
+	}
+
+	// No adjustment needed if ratio is ~1.0 and audio fits window
+	needsAtempo := globalRatio < 0.98 || globalRatio > 1.02
+	adjustedDur := rawDuration / globalRatio
+
+	if !needsAtempo && rawDuration <= windowDuration+0.1 {
+		return inputAudio, rawDuration, nil
+	}
+
+	outputPath := filepath.Join(tmpDir, fmt.Sprintf("uniform_%03d.mp3", index))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if needsAtempo {
+		args := []string{"-y", "-i", inputAudio, "-af", fmt.Sprintf("atempo=%.4f", globalRatio)}
+		// Hard-trim if adjusted duration still overflows window
+		if adjustedDur > windowDuration+0.1 {
+			args = append(args, "-t", fmt.Sprintf("%.3f", windowDuration))
+		}
+		args = append(args, "-c:a", "libmp3lame", "-q:a", "2", outputPath)
+		cmd := hiddenCmdCtx(ctx, "ffmpeg", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("[DubbingFit] uniform atempo failed seg %d: %v\n%s", index, err, string(out))
+			return inputAudio, rawDuration, nil
+		}
+	} else if rawDuration > windowDuration+0.1 {
+		// No atempo needed but audio overflows — just trim
+		cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", inputAudio,
+			"-t", fmt.Sprintf("%.3f", windowDuration),
+			"-c:a", "libmp3lame", "-q:a", "2", outputPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("[DubbingFit] trim failed seg %d: %v\n%s", index, err, string(out))
+			return inputAudio, rawDuration, nil
+		}
+	} else {
+		return inputAudio, rawDuration, nil
+	}
+
+	fittedDur := ProbeDuration(outputPath)
+	if fittedDur <= 0 {
+		fittedDur = windowDuration
+	}
+	log.Printf("[DubbingFit] seg %d: uniform %.2fs→%.2fs (globalRatio=%.3f, window=%.2fs)", index, rawDuration, fittedDur, globalRatio, windowDuration)
 	return outputPath, fittedDur, nil
 }
 

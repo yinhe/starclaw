@@ -1,0 +1,20 @@
+{
+  "name": "neurodev_attention_behavior_screen",
+  "description": "Review attention and behavior concerns across settings with school impact, sleep issues, and safety clues.",
+  "version": "1.0.0",
+  "author": "StarClaw Neurodevelopment Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "attention_behavior_screen" },
+      "age_years": { "type": "number" },
+      "settings_affected": { "type": "number" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "school_impact": { "type": "string" },
+      "sleep_issue": { "type": "string" },
+      "safety_concerns": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "neurodev_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "clinical_followup_extract",
+  "description": "Extract follow-up plans, home care tasks, medication reminders, and recheck items from clinical notes.",
+  "version": "1.0.0",
+  "author": "StarClaw Clinical Note Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "extract_followup" },
+      "note_text": { "type": "string", "description": "Clinical note text containing follow-up plan or discharge advice" }
+    },
+    "required": ["action", "note_text"]
+  },
+  "handler": "clinical_note_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

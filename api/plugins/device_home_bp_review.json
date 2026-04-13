@@ -1,0 +1,19 @@
+{
+  "name": "device_home_bp_review",
+  "description": "Review home blood pressure readings using repeated values, cuff fit, symptoms, and hypertensive red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Device Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "home_bp_review" },
+      "systolic": { "type": "number" },
+      "diastolic": { "type": "number" },
+      "repeat_readings": { "type": "number" },
+      "cuff_size_mismatch": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "device_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

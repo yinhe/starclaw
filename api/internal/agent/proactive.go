@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -260,22 +261,123 @@ func (e *ProactiveEngine) evaluateTriggers() {
 }
 
 // scheduleEvaluator checks if a cron-scheduled goal should fire.
+// Supports three schedule formats (Hermes-inspired):
+//  1. ISO timestamp: {"at": "2025-01-15T09:00:00Z"} — fire once after time
+//  2. Cron expression: {"cron": "0 9 * * 1-5"} — recurring (5-field standard cron)
+//  3. Interval: {"every": "30m"} — fire every N duration
 func scheduleEvaluator(goal Goal) bool {
 	if goal.TriggerConfig == "" {
 		return false
 	}
-	// Simple time-based check: if trigger_config contains an ISO timestamp, check if it's past
+
 	var config struct {
-		At string `json:"at"` // ISO timestamp
+		At    string `json:"at"`    // ISO timestamp (one-shot)
+		Cron  string `json:"cron"`  // cron expression (recurring)
+		Every string `json:"every"` // duration interval (recurring)
 	}
 	if err := json.Unmarshal([]byte(goal.TriggerConfig), &config); err != nil {
 		return false
 	}
-	t, err := time.Parse(time.RFC3339, config.At)
-	if err != nil {
+
+	now := time.Now()
+
+	// Format 1: ISO timestamp — fire once after time
+	if config.At != "" {
+		t, err := time.Parse(time.RFC3339, config.At)
+		if err != nil {
+			return false
+		}
+		return now.After(t)
+	}
+
+	// Format 2: Cron expression — check if current minute matches
+	if config.Cron != "" {
+		return matchesCron(config.Cron, now)
+	}
+
+	// Format 3: Interval — fire every N duration since goal creation
+	if config.Every != "" {
+		dur, err := time.ParseDuration(config.Every)
+		if err != nil || dur <= 0 {
+			return false
+		}
+		elapsed := now.Sub(goal.CreatedAt)
+		// Check if we're at a new interval boundary (within the 5-minute tick)
+		intervals := int(elapsed / dur)
+		nextFire := goal.CreatedAt.Add(time.Duration(intervals) * dur)
+		return now.After(nextFire) && now.Sub(nextFire) < 6*time.Minute
+	}
+
+	return false
+}
+
+// matchesCron checks if the given time matches a 5-field cron expression.
+// Uses the worker.CronExpr parser but avoids import cycle by re-implementing
+// a minimal inline version.
+func matchesCron(expr string, t time.Time) bool {
+	fields := strings.Fields(strings.TrimSpace(expr))
+	if len(fields) != 5 {
 		return false
 	}
-	return time.Now().After(t)
+	return fieldMatches(fields[0], t.Minute(), 0, 59) &&
+		fieldMatches(fields[1], t.Hour(), 0, 23) &&
+		fieldMatches(fields[2], t.Day(), 1, 31) &&
+		fieldMatches(fields[3], int(t.Month()), 1, 12) &&
+		fieldMatches(fields[4], int(t.Weekday()), 0, 6)
+}
+
+// fieldMatches checks if a single cron field matches a value.
+func fieldMatches(field string, value, min, max int) bool {
+	if field == "*" {
+		return true
+	}
+	// Handle */N (step)
+	if len(field) > 2 && field[:2] == "*/" {
+		step := 0
+		for _, c := range field[2:] {
+			if c >= '0' && c <= '9' {
+				step = step*10 + int(c-'0')
+			} else {
+				return false
+			}
+		}
+		if step <= 0 {
+			return false
+		}
+		return (value-min)%step == 0
+	}
+	// Handle comma-separated values and ranges
+	for _, part := range strings.Split(field, ",") {
+		part = strings.TrimSpace(part)
+		if strings.Contains(part, "-") {
+			bounds := strings.SplitN(part, "-", 2)
+			lo, hi := 0, 0
+			for _, c := range bounds[0] {
+				if c >= '0' && c <= '9' {
+					lo = lo*10 + int(c-'0')
+				}
+			}
+			for _, c := range bounds[1] {
+				if c >= '0' && c <= '9' {
+					hi = hi*10 + int(c-'0')
+				}
+			}
+			if value >= lo && value <= hi {
+				return true
+			}
+		} else {
+			v := 0
+			for _, c := range part {
+				if c >= '0' && c <= '9' {
+					v = v*10 + int(c-'0')
+				}
+			}
+			if v == value {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ── Goal Management ──

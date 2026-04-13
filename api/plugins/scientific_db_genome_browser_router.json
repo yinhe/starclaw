@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_genome_browser_router",
+  "description": "Route genome browser and coordinate-centric searches across UCSC, Ensembl, NCBI GDV, ENCODE, and GTEx using gene, region, organism, genome build, track focus, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "genome_browser_router" },
+      "gene": { "type": "string" },
+      "region": { "type": "string" },
+      "organism": { "type": "string" },
+      "genome_build": { "type": "string" },
+      "track_focus": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

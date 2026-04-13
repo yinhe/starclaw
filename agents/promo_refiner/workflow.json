@@ -1,0 +1,78 @@
+{
+  "nodes": [
+    {
+      "id": "start-1",
+      "type": "start",
+      "position": { "x": 320, "y": 50 },
+      "data": { "label": "开始" }
+    },
+    {
+      "id": "step-1",
+      "type": "llm",
+      "position": { "x": 320, "y": 170 },
+      "data": {
+        "label": "盘点版本与素材",
+        "description": "梳理当前版本、可复用素材、目标改动范围",
+        "model": "qwen-max",
+        "temperature": 0.2,
+        "maxTokens": 2048,
+        "prompt": "你是宣传片精修工作流的第一阶段。根据用户输入，提炼出结构化盘点结果：1）当前版本或基线；2）现有可复用素材与成片；3）本次改动是否涉及旁白、镜头、尾声、发布或桌面接管；4）需要优先确认的缺口。输出中文要点列表。原始输入：{{input}}"
+      }
+    },
+    {
+      "id": "step-2",
+      "type": "llm",
+      "position": { "x": 320, "y": 310 },
+      "data": {
+        "label": "归类改动类型",
+        "description": "将需求归类为素材盘点、旁白精修、镜头植入与叙事对齐、尾声收束、发布核验、剪映桌面接管中的一种或多种",
+        "model": "qwen-max",
+        "temperature": 0.2,
+        "maxTokens": 2048,
+        "prompt": "你是宣传片精修工作流的第二阶段。根据输入内容，将任务归类为以下一种或多种：素材盘点与版本梳理、旁白节奏与情绪精修、镜头植入与叙事对齐、尾声收束与品牌余韵、成片发布与可见性核验、剪映桌面接管。对每一类说明为什么命中。输入：{{input}}"
+      }
+    },
+    {
+      "id": "step-3",
+      "type": "llm",
+      "position": { "x": 320, "y": 450 },
+      "data": {
+        "label": "最小有效修改策略",
+        "description": "给出优先复用、局部替换、节奏控制和风险点",
+        "model": "qwen-max",
+        "temperature": 0.2,
+        "maxTokens": 3072,
+        "prompt": "你是宣传片精修工作流的第三阶段。把输入整理为执行简报，必须包含：1）优先复用项；2）必要改动项；3）新增镜头与叙事对齐原则；4）旁白与结尾需要注意的节奏点；5）风险点与不要做的事。不要假设所有视频都包含无人机、机器人或城市镜头，这些只能作为可选案例。输入：{{input}}"
+      }
+    },
+    {
+      "id": "step-4",
+      "type": "llm",
+      "position": { "x": 320, "y": 590 },
+      "data": {
+        "label": "发布验证清单",
+        "description": "输出最终的发布、可见性和回归检查项",
+        "model": "qwen-max",
+        "temperature": 0.2,
+        "maxTokens": 2048,
+        "prompt": "你是宣传片精修工作流的最后阶段。根据输入输出一份简洁的回归与发布清单，至少包含：文件是否产出、时长是否合理、主版本是否切换成功、旧版是否退场、前端是否可见，以及何时需要剪映桌面接管做最后一公里。输入：{{input}}"
+      }
+    },
+    {
+      "id": "end-1",
+      "type": "end",
+      "position": { "x": 320, "y": 730 },
+      "data": {
+        "label": "结束",
+        "outputMapping": "{{input}}"
+      }
+    }
+  ],
+  "edges": [
+    { "id": "edge-start-1-step-1", "source": "start-1", "target": "step-1" },
+    { "id": "edge-step-1-step-2", "source": "step-1", "target": "step-2" },
+    { "id": "edge-step-2-step-3", "source": "step-2", "target": "step-3" },
+    { "id": "edge-step-3-step-4", "source": "step-3", "target": "step-4" },
+    { "id": "edge-step-4-end-1", "source": "step-4", "target": "end-1" }
+  ]
+}

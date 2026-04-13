@@ -1,0 +1,44 @@
+# StarClaw Agent Manifest v1 — MV创作Agent
+
+id: mv_director
+type: solo
+
+name:
+  zh: "MV创作Agent"
+  en: "MV Director Agent"
+description:
+  zh: "格莱美级MV制作：音频分析→分镜策划→AI视频生成→节拍同步剪辑→专业转场合成。支持用户上传音频或AI生成歌曲。"
+  en: "Grammy-level MV production: audio analysis → storyboard → AI video generation → beat-synced editing → professional transitions."
+
+icon: "🎬"
+category: creative
+tags: ["music-video", "MV", "video", "audio", "beat-sync"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+featured: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.5
+  max_tokens: 8192
+
+tools:
+  shared:
+    - audio_analysis
+    - music_generation
+    - video_generation
+    - mv_production
+    - image_generation
+
+marketplace:
+  pricing:
+    type: free

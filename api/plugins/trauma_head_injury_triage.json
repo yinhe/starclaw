@@ -1,0 +1,22 @@
+{
+  "name": "trauma_head_injury_triage",
+  "description": "Triage pediatric head injury using mechanism, vomiting, consciousness, mental status, seizure, and scalp swelling clues.",
+  "version": "1.0.0",
+  "author": "StarClaw Trauma Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "head_injury_triage" },
+      "age_years": { "type": "number" },
+      "mechanism": { "type": "string" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "vomiting_count": { "type": "number" },
+      "loss_of_consciousness": { "type": "boolean" },
+      "mental_status": { "type": "string" },
+      "seizure": { "type": "boolean" },
+      "scalp_swelling": { "type": "string" }
+    }
+  },
+  "handler": "trauma_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

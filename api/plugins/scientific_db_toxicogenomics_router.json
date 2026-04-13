@@ -1,0 +1,20 @@
+{
+  "name": "scientific_db_toxicogenomics_router",
+  "description": "Route toxicogenomics searches across CTD, DrugBank, PubChem, and GEO using chemical, gene, disease, exposure, organism, and keywords.",
+  "version": "1.0.0",
+  "author": "StarClaw Scientific DB Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "toxicogenomics_router" },
+      "chemical": { "type": "string" },
+      "gene": { "type": "string" },
+      "disease": { "type": "string" },
+      "exposure": { "type": "string" },
+      "organism": { "type": "string" },
+      "keywords": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "scientific_db_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

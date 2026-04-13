@@ -1,0 +1,19 @@
+{
+  "name": "mental_health_sleep_emotion_review",
+  "description": "Review interaction between sleep and emotion using sleep hours, insomnia frequency, nightmares, irritability, and acute red flags.",
+  "version": "1.0.0",
+  "author": "StarClaw Mental Health Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "sleep_emotion_review" },
+      "sleep_hours": { "type": "number" },
+      "insomnia_days_per_week": { "type": "number" },
+      "nightmares": { "type": "boolean" },
+      "daytime_irritability": { "type": "boolean" },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "mental_health_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

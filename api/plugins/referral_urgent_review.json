@@ -1,0 +1,20 @@
+{
+  "name": "referral_urgent_review",
+  "description": "Review whether a pediatric case needs emergency, same-day, expedited, or routine referral based on red flags and clinical clues.",
+  "version": "1.0.0",
+  "author": "StarClaw Referral Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "urgent_review" },
+      "symptoms": { "type": "array", "items": { "type": "string" } },
+      "findings": { "type": "array", "items": { "type": "string" } },
+      "diagnoses": { "type": "array", "items": { "type": "string" } },
+      "concerns": { "type": "array", "items": { "type": "string" } },
+      "note_text": { "type": "string" },
+      "severity_hint": { "type": "string" }
+    }
+  },
+  "handler": "referral_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}

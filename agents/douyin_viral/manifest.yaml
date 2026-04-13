@@ -1,0 +1,77 @@
+# StarClaw Agent Manifest v1 — 抖音爆款导演
+
+id: douyin_viral
+type: solo
+
+name:
+  zh: "抖音爆款导演 Pro"
+  en: "Douyin Viral Director Pro"
+description:
+  zh: "面向抖音/TikTok百万播放目标的爆款短视频导演Agent。覆盖热点研判→高分选题→钩子A/B测试→脚本拆解→竖屏视频→字幕优先/原声优先→封面标题→发布复盘，强调高完播、高互动、高分享与系列化增长。"
+  en: "A Douyin/TikTok viral short-video director Agent optimized for million-view potential: trend analysis, high-scoring topic selection, hook A/B testing, script design, vertical video production, subtitle-first/original-audio-first delivery, packaging, and post-publish iteration."
+icon: "🔥"
+category: content
+tags: ["douyin", "tiktok", "short-video", "viral", "vertical-video", "hook-first", "subtitle-first", "series", "growth", "ab-test"]
+version: "2.0.0"
+status: stable
+visibility: public
+is_builtin: true
+featured: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  url: "https://starclaw.net"
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.5
+  max_tokens: 8192
+
+tools:
+  shared:
+    - web_search
+    - browser
+    - video_generation
+    - image_generation
+    - subtitle
+    - dubbing
+    - music_generation
+    - mv_production
+    - code
+    - desktop
+
+skills:
+  - name: { zh: "百万播放选题评分", en: "Million-View Topic Scoring" }
+    trigger: passive
+    description: { zh: "基于热点、痛点、视觉反差、互动潜力和系列延展性对选题打分，优先筛出具备百万播放潜力的方向", en: "Score ideas by trend fit, pain-point resonance, visual contrast, interaction potential, and series expansion to identify million-view opportunities" }
+    tools: [web_search, browser, code]
+    example_triggers: ["帮我找一个有百万播放潜力的抖音选题", "评估这个选题能不能爆", "viral topic scoring"]
+
+  - name: { zh: "钩子脚本 A/B 测试", en: "Hook Script A/B Testing" }
+    trigger: passive
+    description: { zh: "为同一主题生成多版本前3秒钩子、标题和开场结构，服务高停留率和高完播的短视频脚本设计", en: "Generate multiple hook, title, and opening variants for the same topic to improve retention and completion" }
+    tools: [web_search, browser, code]
+    example_triggers: ["给我三个开头版本", "这个脚本前3秒不够炸", "ab test hooks"]
+
+  - name: { zh: "字幕优先竖屏成片", en: "Subtitle-First Vertical Production" }
+    trigger: passive
+    description: { zh: "制作抖音竖屏视频时优先保留人物原声并叠加高可读字幕，必要时才补充配音、BGM和成片合成", en: "Produce vertical short videos with original audio preserved and readable burned-in subtitles first, adding dubbing or BGM only when necessary" }
+    tools: [video_generation, image_generation, subtitle, dubbing, music_generation, mv_production]
+    example_triggers: ["做一个抖音爆款视频", "只加字幕不要配音", "subtitle-first short video"]
+
+  - name: { zh: "爆款复盘与迭代", en: "Viral Iteration and Optimization" }
+    trigger: passive
+    description: { zh: "围绕完播率、互动率、转发率和评论反馈进行复盘，输出下一轮脚本、封面、评论引导与系列选题优化方案", en: "Iterate on retention, engagement, shares, and comments to produce next-round script, cover, CTA, and series optimizations" }
+    tools: [web_search, browser, code, image_generation]
+    example_triggers: ["复盘这个视频为什么没爆", "帮我做第二版", "optimize this viral video"]
+
+marketplace:
+  pricing:
+    type: free
+  keywords:
+    zh: ["抖音", "爆款视频", "短视频", "百万播放", "钩子", "脚本", "字幕", "原声", "系列化", "A/B测试", "封面", "复盘"]
+    en: ["douyin", "tiktok", "viral video", "million views", "hook", "script", "subtitle", "original audio", "series", "ab testing", "cover", "iteration"]

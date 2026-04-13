@@ -195,15 +195,45 @@ func (t *DubbingTool) addVoiceover(ctx context.Context, args dubbingArgs) (strin
 		rawAudioFiles = append(rawAudioFiles, audioPath)
 	}
 
-	// Fit TTS audio to segment windows (prevent overlap, adjust speed)
+	// Uniform speech rate: calculate a single global tempo ratio across all segments
+	// so that every clip in the video sounds like it's spoken at the same pace.
+	var rawDurations []float64
+	var totalRawDur, totalWindowDur float64
+	for i, seg := range segments {
+		dur := ProbeDuration(rawAudioFiles[i])
+		if dur <= 0 {
+			dur = seg.End - seg.Start
+		}
+		rawDurations = append(rawDurations, dur)
+		totalRawDur += dur
+		window := seg.End - seg.Start
+		if window <= 0 {
+			window = 3.0
+		}
+		totalWindowDur += window
+	}
+	globalRatio := 1.0
+	if totalWindowDur > 0 && totalRawDur > totalWindowDur {
+		globalRatio = totalRawDur / totalWindowDur
+		if globalRatio > maxTempoSpeedup {
+			globalRatio = maxTempoSpeedup
+		}
+	} else if totalWindowDur > 0 && totalRawDur < totalWindowDur*0.5 {
+		globalRatio = totalRawDur / totalWindowDur
+		if globalRatio < maxTempoSlowdown {
+			globalRatio = maxTempoSlowdown
+		}
+	}
+	log.Printf("[DubbingTool] Uniform tempo: totalRaw=%.1fs totalWindow=%.1fs globalRatio=%.3f", totalRawDur, totalWindowDur, globalRatio)
+
 	var audioFiles []string
 	var audioDurations []float64
 	for i, seg := range segments {
 		window := seg.End - seg.Start
 		if window <= 0 {
-			window = 3.0 // fallback 3s window
+			window = 3.0
 		}
-		fittedPath, fittedDur, err := FitTTSToWindow(rawAudioFiles[i], window, tmpDir, i)
+		fittedPath, fittedDur, err := FitTTSUniform(rawAudioFiles[i], rawDurations[i], globalRatio, window, tmpDir, i)
 		if err != nil {
 			log.Printf("[DubbingTool] FitTTS warning seg %d: %v, using raw audio", i, err)
 			fittedPath = rawAudioFiles[i]

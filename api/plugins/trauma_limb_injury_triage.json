@@ -1,0 +1,21 @@
+{
+  "name": "trauma_limb_injury_triage",
+  "description": "Triage limb injury using pain, deformity, swelling, weight-bearing ability, and neurovascular symptoms.",
+  "version": "1.0.0",
+  "author": "StarClaw Trauma Clinic",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "const": "limb_injury_triage" },
+      "injured_limb": { "type": "string" },
+      "swelling": { "type": "string" },
+      "pain_score": { "type": "number" },
+      "deformity": { "type": "boolean" },
+      "can_bear_weight": { "type": "boolean" },
+      "neurovascular_symptoms": { "type": "array", "items": { "type": "string" } },
+      "symptoms": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "handler": "trauma_clinic",
+  "metadata": { "category": "medical", "timeout": 10 }
+}
