@@ -7,7 +7,6 @@ import {
   Film, Code, FileText, Settings,
 } from 'lucide-react'
 import { agentAPI, queenMarketplaceAPI } from '../lib/api'
-import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 // ── Types ──
 
@@ -126,13 +125,12 @@ export default function MarketplaceDetailPage() {
     if (pricing) { handlePurchase(pricing); return }
     setInstalling(true)
     try {
-      const tools = typeof cfg.tools === 'string' ? cfg.tools : JSON.stringify(cfg.tools || [])
       await agentAPI.installFromMarketplace({
         source_id: item.id, name: item.name, description: item.description,
-        system_prompt: cfg.system_prompt || '', tools,
+        system_prompt: cfg.system_prompt || '', tools: cfg.tools || '[]',
         config: cfg.config || '{}', icon: item.icon,
       })
-      setIsInstalled(true); showToast(`已安装「${formatAgentDisplayName(item.name)}」`)
+      setIsInstalled(true); showToast(`已安装「${item.name}」`)
     } catch { showToast('安装失败', 'error') }
     setInstalling(false)
   }
@@ -178,7 +176,7 @@ export default function MarketplaceDetailPage() {
             setIsInstalled(true)
             setInstalling(false)
             setPayModal({ open: false, pricing: null, polling: false, orderNo: '' })
-            showToast(statusRes.data.message || `支付成功，已安装「${formatAgentDisplayName(item.name)}」`)
+            showToast(statusRes.data.message || `支付成功，已安装「${item.name}」`)
           }
         } catch { /* continue polling */ }
       }, 3000)
@@ -237,7 +235,7 @@ export default function MarketplaceDetailPage() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{formatAgentDisplayName(item.name)}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{item.name}</h1>
                 {pricing && <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-xs rounded-full border border-amber-200 dark:border-amber-700 font-medium">{pricing.type === 'subscription' ? '订阅' : '付费'}</span>}
               </div>
               <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">by {item.author?.nickname || 'StarClaw 官方'} · v{item.version || '1.0.0'}</p>
@@ -337,7 +335,7 @@ export default function MarketplaceDetailPage() {
 
         {/* Tab Content */}
         <div className="min-h-[400px]">
-          {activeTab === 'gene' && <GeneTab name={formatAgentDisplayName(item.name)} description={item.description} cfg={cfg} />}
+          {activeTab === 'gene' && <GeneTab name={item.name} description={item.description} cfg={cfg} />}
           {activeTab === 'skill' && <SkillTab builtinTools={builtinTools} passiveSkills={passiveSkills} />}
           {activeTab === 'instinct' && <InstinctTab proactiveSkills={proactiveSkills} />}
           {activeTab === 'mcp' && <MCPTab mcpTools={mcpTools} mcpServers={mcpServers} />}

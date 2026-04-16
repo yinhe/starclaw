@@ -1,0 +1,225 @@
+# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v1 — DevClaw (开发战队)
+# 同化自 claw-code 核心设计理念的团队开发智能体
+# ════════════════════════════════════════════════════════════
+
+id: devclaw
+type: team
+
+name:
+  zh: "DevClaw 开发战队"
+  en: "DevClaw Dev Team"
+description:
+  zh: "同化 Claude Code 架构理念的全栈开发团队。7 名专精角色——架构师拆解需求、编码兵蜂并行实现、测试员验证质量、审查员把关规范、文档虫生成文档、调试猎手定位根因、DevOps 部署运维。支持 Agent 工具编排、指令发现、Hook 钩子、技能系统、会话压缩、权限策略等核心能力。"
+  en: "Full-stack development team assimilating Claude Code architecture. 7 specialized roles — Architect decomposes requirements, Coder Drones implement in parallel, Tester validates quality, Reviewer enforces standards, DocBot generates docs, Debugger hunts root causes, DevOps handles deployment. Supports agent tool orchestration, instruction discovery, hooks, skill system, session compaction, and permission policies."
+
+icon: "🐝"
+category: development
+tags: ["development", "team", "fullstack", "architecture", "testing", "review", "devops", "claude-code"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+featured: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  url: "https://starclaw.net"
+  verified: true
+
+# ② Prompt — 团队总指挥 prompt
+prompt_file: prompt.md
+prompt_files:
+  en: prompt.en.md
+
+# ③ Model — 架构师用强模型
+model:
+  name: qwen-max
+  temperature: 0.2
+  max_tokens: 16384
+
+# ④ Tools — 团队共享 + 角色专属
+tools:
+  shared:
+    - code
+    - web_search
+    - http_request
+    - system
+    - browser
+    - document
+
+# ⑤ Skills
+skills:
+  - name: { zh: "需求拆解", en: "Requirement Decomposition" }
+    trigger: passive
+    description: { zh: "将复杂需求拆解为可执行的开发任务", en: "Decompose complex requirements into executable dev tasks" }
+    tools: [code, web_search]
+    example_triggers: ["帮我拆解这个需求", "分析一下这个功能要怎么做"]
+
+  - name: { zh: "代码审查", en: "Code Review" }
+    trigger: passive
+    description: { zh: "审查代码质量、安全性、性能", en: "Review code for quality, security, and performance" }
+    tools: [code]
+    example_triggers: ["审查这段代码", "review this PR"]
+
+  - name: { zh: "调试定位", en: "Debug Diagnosis" }
+    trigger: passive
+    description: { zh: "定位 bug 根因、分析错误日志、提出修复方案", en: "Locate root cause of bugs, analyze error logs, propose fixes" }
+    tools: [code, web_search]
+    example_triggers: ["这个 bug 怎么修", "帮我定位这个问题"]
+
+  - name: { zh: "架构设计", en: "Architecture Design" }
+    trigger: passive
+    description: { zh: "设计系统架构、技术选型、模块划分", en: "Design system architecture, tech stack selection, module decomposition" }
+    tools: [code, web_search]
+    example_triggers: ["设计一下这个系统的架构", "技术选型建议"]
+
+  - name: { zh: "自动化测试", en: "Automated Testing" }
+    trigger: passive
+    description: { zh: "编写单元测试、集成测试、E2E 测试", en: "Write unit tests, integration tests, E2E tests" }
+    tools: [code]
+    example_triggers: ["写一下测试", "给这个函数加个测试"]
+
+  - name: { zh: "文档生成", en: "Documentation Generation" }
+    trigger: passive
+    description: { zh: "生成 API 文档、README、架构文档、变更日志", en: "Generate API docs, README, architecture docs, changelogs" }
+    tools: [code, document]
+    example_triggers: ["生成文档", "写个 README"]
+
+  - name: { zh: "持续验证", en: "Continuous Verification" }
+    trigger: proactive
+    schedule: "0 0 */4 * * *"
+    tools: [code]
+    auto_execute: false
+    notify: true
+
+# ⑥ Team Roles
+team:
+  topology: hierarchical
+  roles:
+    - code: architect
+      name: { zh: "架构师", en: "Architect" }
+      prompt_file: roles/architect.md
+      is_lead: true
+      count: 1
+      model:
+        name: qwen-max
+        temperature: 0.2
+        max_tokens: 16384
+      tools:
+        shared: [code, web_search, http_request, document]
+      description:
+        zh: "需求拆解、架构设计、任务调度、技术决策。同化了 claw-code 的 System Prompt Builder 分节设计、ProjectContext 发现、Agent 路由匹配策略。"
+        en: "Requirement decomposition, architecture design, task scheduling, tech decisions. Assimilates claw-code's sectioned System Prompt Builder, ProjectContext discovery, and agent routing strategy."
+
+    - code: coder
+      name: { zh: "编码兵蜂", en: "Coder Drone" }
+      prompt_file: roles/coder.md
+      is_lead: false
+      count: 3
+      model:
+        name: qwen-max
+        temperature: 0.3
+        max_tokens: 8192
+      tools:
+        shared: [code, web_search]
+      description:
+        zh: "并行实现代码。同化了 claw-code 的 19 种工具集(bash/read_file/write_file/edit_file/grep_search/glob_search/REPL/PowerShell)和权限分层策略。"
+        en: "Parallel code implementation. Assimilates claw-code's 19-tool registry and permission-level strategy."
+
+    - code: tester
+      name: { zh: "测试员", en: "Tester" }
+      prompt_file: roles/tester.md
+      is_lead: false
+      count: 1
+      model:
+        name: qwen-max
+        temperature: 0.2
+        max_tokens: 8192
+      tools:
+        shared: [code]
+      description:
+        zh: "编写测试、执行验证、覆盖率分析。同化了 claw-code 的 verify/stuck 内建技能和持续验证理念。"
+        en: "Write tests, run verification, coverage analysis. Assimilates claw-code's verify/stuck built-in skills and continuous verification."
+
+    - code: reviewer
+      name: { zh: "审查员", en: "Reviewer" }
+      prompt_file: roles/reviewer.md
+      is_lead: false
+      count: 1
+      model:
+        name: qwen-max
+        temperature: 0.1
+        max_tokens: 8192
+      tools:
+        shared: [code]
+      description:
+        zh: "代码审查、安全扫描、规范检查。同化了 claw-code 的 PreToolUse/PostToolUse Hook 链和权限门控设计。"
+        en: "Code review, security scanning, standards enforcement. Assimilates claw-code's PreToolUse/PostToolUse Hook chain and permission gating."
+
+    - code: docbot
+      name: { zh: "文档虫", en: "DocBot" }
+      prompt_file: roles/docbot.md
+      is_lead: false
+      count: 1
+      model:
+        name: qwen-max
+        temperature: 0.3
+        max_tokens: 8192
+      tools:
+        shared: [code, document]
+      description:
+        zh: "API 文档、README、CHANGELOG、架构文档生成。同化了 claw-code 的 CLAUDE.md 指令发现和 Skill 本地技能文档模式。"
+        en: "API docs, README, CHANGELOG, architecture doc generation. Assimilates claw-code's CLAUDE.md instruction discovery and local Skill documentation pattern."
+
+    - code: debugger
+      name: { zh: "调试猎手", en: "Debugger" }
+      prompt_file: roles/debugger.md
+      is_lead: false
+      count: 1
+      model:
+        name: qwen-max
+        temperature: 0.2
+        max_tokens: 8192
+      tools:
+        shared: [code, web_search, browser]
+      description:
+        zh: "Bug 定位、根因分析、日志追踪、性能剖析。同化了 claw-code 的 debug 内建技能、会话自动压缩、结构化诊断输出。"
+        en: "Bug location, root cause analysis, log tracing, performance profiling. Assimilates claw-code's debug built-in skill, auto session compaction, and structured diagnostic output."
+
+    - code: devops
+      name: { zh: "运维工蜂", en: "DevOps" }
+      prompt_file: roles/devops.md
+      is_lead: false
+      count: 1
+      model:
+        name: qwen-max
+        temperature: 0.2
+        max_tokens: 8192
+      tools:
+        shared: [code, system, http_request]
+      description:
+        zh: "CI/CD 流水线、Docker 部署、环境配置、监控告警。同化了 claw-code 的 bash/PowerShell 工具执行和 DangerFullAccess 权限模型。"
+        en: "CI/CD pipelines, Docker deployment, environment config, monitoring. Assimilates claw-code's bash/PowerShell tool execution and DangerFullAccess permission model."
+
+# ⑧ Workflow
+workflow:
+  description:
+    zh: "DevClaw 开发流程：需求分析 → 架构设计 → 并行编码 → 测试验证 → 代码审查 → 文档生成 → 部署上线"
+    en: "DevClaw dev flow: Requirements → Architecture → Parallel Coding → Testing → Code Review → Documentation → Deployment"
+  stages:
+    - { name: "analyze", role: "architect", description: "需求分析与任务拆解" }
+    - { name: "design", role: "architect", description: "架构设计与技术选型" }
+    - { name: "implement", role: "coder", description: "并行编码实现", parallel: true }
+    - { name: "test", role: "tester", description: "测试验证与覆盖率检查" }
+    - { name: "review", role: "reviewer", description: "代码审查与安全扫描" }
+    - { name: "document", role: "docbot", description: "文档生成与更新" }
+    - { name: "deploy", role: "devops", description: "部署上线与健康检查" }
+
+marketplace:
+  pricing:
+    type: free
+  keywords:
+    zh: ["开发", "编程", "团队", "架构", "测试", "审查", "部署", "Claude Code"]
+    en: ["development", "coding", "team", "architecture", "testing", "review", "deployment", "Claude Code"]

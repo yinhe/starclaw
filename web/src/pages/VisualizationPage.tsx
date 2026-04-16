@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Play, Pause, Square, RotateCcw, Volume2, VolumeX } from 'lucide-react'
 import { taskAPI } from '../lib/api'
-import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 // ── Types ──────────────────────────────────────────────
 interface AgentData { id: string; name: string; description: string }
@@ -213,7 +212,7 @@ export default function VisualizationPage() {
       }
 
       chars.push({
-        id: agent.id, name: formatAgentDisplayName(agent.name), role: 'worker',
+        id: agent.id, name: agent.name, role: 'worker',
         x: old?.x ?? deskX, y: old?.y ?? deskY,
         targetX: tx, targetY: ty,
         color: ROLE_COLORS[i % ROLE_COLORS.length],

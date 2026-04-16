@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Bot, ArrowLeft, MessageSquare, Dna, Wrench, Zap, Plug, GitBranch, Brain, Clock, ChevronDown, ChevronUp, Sparkles, ExternalLink, Search, Film, Code, FileText, Settings, Users, Monitor, Headset } from 'lucide-react'
 import { agentAPI, memoryAPI, workflowAPI, mcpAPI, activityAPI } from '../lib/api'
-import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 // ── Types ──
 
@@ -267,7 +266,7 @@ export default function AgentDetailPage() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-gray-900">{formatAgentDisplayName(agent.name)}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{agent.name}</h1>
                 {agent.is_builtin && (
                   <span className="px-2 py-0.5 bg-primary-50 text-primary-600 text-xs rounded-full border border-primary-200 font-medium">内置</span>
                 )}
@@ -347,7 +346,7 @@ function GeneTab({ agent, config }: { agent: Agent; config: Record<string, unkno
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-gray-50 rounded-xl p-4">
             <div className="text-xs text-gray-400 mb-1">名称</div>
-            <div className="font-semibold text-gray-900">{formatAgentDisplayName(agent.name)}</div>
+            <div className="font-semibold text-gray-900">{agent.name}</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-4">
             <div className="text-xs text-gray-400 mb-1">模型</div>

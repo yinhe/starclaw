@@ -148,7 +148,7 @@ func (t *GitTool) Execute(ctx context.Context, args string) (string, error) {
 	}
 }
 
-func (t *GitTool) gitInit(wsPath string, _ gitArgs) (string, error) {
+func (t *GitTool) gitInit(wsPath string, a gitArgs) (string, error) {
 	// Configure git user for this workspace
 	t.runGit(wsPath, "init")
 	t.runGit(wsPath, "config", "user.email", "agent@starclaw.local")

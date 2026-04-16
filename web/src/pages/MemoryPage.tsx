@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Brain, Search, Plus, Trash2, Pencil, X, Star, Bot, Pin, Lightbulb, FileText, Wrench, MessageSquare, Filter, RefreshCw } from 'lucide-react'
 import { memoryAPI, agentAPI } from '../lib/api'
-import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 interface Memory {
   id: string
@@ -107,7 +106,7 @@ export default function MemoryPage() {
   }
 
   const getAgentName = (agentId: string) => {
-    return formatAgentDisplayName(agents.find(a => a.id === agentId)?.name || agentId.slice(0, 8))
+    return agents.find(a => a.id === agentId)?.name || agentId.slice(0, 8)
   }
 
   const formatTime = (t: string) => {
@@ -200,7 +199,7 @@ export default function MemoryPage() {
         >
           <option value="">全部 Agent</option>
           {agents.map(a => (
-            <option key={a.id} value={a.id}>{formatAgentDisplayName(a.name)}</option>
+            <option key={a.id} value={a.id}>{a.name}</option>
           ))}
         </select>
         {(filterCategory || filterAgent || search) && (
@@ -333,7 +332,7 @@ export default function MemoryPage() {
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-900 text-sm"
                 >
                   <option value="">选择 Agent...</option>
-                  {agents.map(a => <option key={a.id} value={a.id}>{formatAgentDisplayName(a.name)}</option>)}
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
               <div>

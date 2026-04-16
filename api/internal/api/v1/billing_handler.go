@@ -586,7 +586,7 @@ func (h *BillingHandler) getMonthCost(tenantID, userID, month string) map[string
 }
 
 // getMonthUsageBySource returns usage split by source (starai vs self)
-func (h *BillingHandler) getMonthUsageBySource(tenantID, _, month string) map[string]map[string]int64 {
+func (h *BillingHandler) getMonthUsageBySource(tenantID, userID, month string) map[string]map[string]int64 {
 	result := map[string]map[string]int64{
 		"starai": {"tokens": 0, "video": 0, "image": 0, "music": 0},
 		"self":   {"tokens": 0, "video": 0, "image": 0, "music": 0},

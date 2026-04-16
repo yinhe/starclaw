@@ -3,7 +3,6 @@ package overlord
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,13 +20,6 @@ type TaskStats struct {
 	Queued  int
 }
 
-// TradingInfo holds trading-specific data for brood registration/heartbeat.
-type TradingInfo struct {
-	Enabled  bool
-	Mode     string // follower, collaborator, autonomous
-	Accounts []map[string]interface{}
-}
-
 // Client handles registration and heartbeat with an Overlord node
 type Client struct {
 	cfg           config.OverlordConfig
@@ -36,21 +28,10 @@ type Client struct {
 	clawID        string
 	address       string // public address of this Claw API, e.g. https://starclaw.me:8080
 	webURL        string // browser-accessible Web UI URL, e.g. https://starclaw.me
-	trading       TradingInfo
 	mu            sync.RWMutex
 	stopCh        chan struct{}
 	httpC         *http.Client
 	TaskCountFunc func() TaskStats // injected by router to report real task counts
-}
-
-type httpStatusError struct {
-	path       string
-	statusCode int
-	message    string
-}
-
-func (e *httpStatusError) Error() string {
-	return fmt.Sprintf("POST %s: %d %s", e.path, e.statusCode, e.message)
 }
 
 // NewClient creates an overlord client from config
@@ -133,12 +114,6 @@ func (c *Client) NodeID() string {
 	return c.nodeID
 }
 
-func (c *Client) Token() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.token
-}
-
 // SetClawID sets the Ed25519-derived claw: address for registration
 func (c *Client) SetClawID(id string) {
 	c.mu.Lock()
@@ -157,13 +132,6 @@ func (c *Client) SetAddress(addr string) {
 func (c *Client) SetWebURL(url string) {
 	c.mu.Lock()
 	c.webURL = url
-	c.mu.Unlock()
-}
-
-// SetTradingInfo sets trading-specific data for brood registration/heartbeat
-func (c *Client) SetTradingInfo(info TradingInfo) {
-	c.mu.Lock()
-	c.trading = info
 	c.mu.Unlock()
 }
 
@@ -213,7 +181,6 @@ func (c *Client) register() error {
 
 	c.mu.RLock()
 	cid := c.clawID
-	ti := c.trading
 	c.mu.RUnlock()
 
 	body := map[string]interface{}{
@@ -226,12 +193,6 @@ func (c *Client) register() error {
 	}
 	if c.cfg.InviteCode != "" {
 		body["invite_code"] = c.cfg.InviteCode
-	}
-	if ti.Enabled {
-		body["mode"] = ti.Mode
-		if len(ti.Accounts) > 0 {
-			body["accounts"] = ti.Accounts
-		}
 	}
 
 	resp, err := c.post("/brood/register", body)
@@ -271,7 +232,6 @@ func (c *Client) heartbeat() error {
 
 	c.mu.RLock()
 	cid := c.clawID
-	ti := c.trading
 	c.mu.RUnlock()
 
 	body := map[string]interface{}{
@@ -286,17 +246,8 @@ func (c *Client) heartbeat() error {
 		"tasks_running": ts.Running,
 		"tasks_queued":  ts.Queued,
 	}
-	if ti.Enabled && len(ti.Accounts) > 0 {
-		body["accounts"] = ti.Accounts
-	}
 
 	_, err := c.post("/brood/heartbeat", body)
-	if err != nil {
-		var statusErr *httpStatusError
-		if errors.As(err, &statusErr) && (statusErr.statusCode == http.StatusUnauthorized || statusErr.statusCode == http.StatusNotFound) {
-			c.resetCredentials()
-		}
-	}
 	return err
 }
 
@@ -317,7 +268,7 @@ func (c *Client) post(path string, body map[string]interface{}) (map[string]inte
 
 	if resp.StatusCode >= 400 {
 		errMsg, _ := result["error"].(string)
-		return nil, &httpStatusError{path: path, statusCode: resp.StatusCode, message: errMsg}
+		return nil, fmt.Errorf("POST %s: %d %s", path, resp.StatusCode, errMsg)
 	}
 
 	return result, nil
@@ -340,18 +291,6 @@ func LoadCredentials() (nodeID, token string) {
 		return string(parts[0]), string(parts[1])
 	}
 	return "", ""
-}
-
-func ClearCredentials() {
-	_ = os.Remove(".overlord_credentials")
-}
-
-func (c *Client) resetCredentials() {
-	c.mu.Lock()
-	c.nodeID = ""
-	c.token = ""
-	c.mu.Unlock()
-	ClearCredentials()
 }
 
 func (c *Client) getWebURL() string {

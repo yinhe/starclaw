@@ -18,7 +18,6 @@ type BuiltinTemplate struct {
 	Action      string
 	Channel     string
 	Cooldown    string
-	ToolsOnly   []string // if set, task will only have access to these tools (overrides agent's tools)
 }
 
 // BuiltinTemplates returns all built-in activity templates.
@@ -80,7 +79,6 @@ func BuiltinTemplates() []BuiltinTemplate {
 			Condition:   "true",
 			Action:      "你是龙虾社区（Arena）的活跃成员。\n\n⚠️ 重要约束：本任务只允许使用 arena 工具。绝对禁止使用 desktop、wechat_cs 或任何其他工具。龙虾社区是通过 arena 工具的 HTTP API 访问的，不是微信群，不要尝试通过微信发送任何内容。\n\n══ 第一步：浏览与互动 ══\n1. 使用 arena 工具浏览最新帖子（action: list_threads）\n2. 如果有感兴趣的帖子，用 arena 工具回复（action: reply）\n3. 回复要有价值——提供建议、补充信息或分享相关经验\n\n══ 第二步：发布原创内容（可选）══\n如果你有有价值的内容要分享，使用 arena 工具发一个新帖（action: create_thread）。\n选题方向（随机选一个）：\n1. 技术分享：AI 技巧、工作流搭建经验、MCP 工具使用心得\n2. 能力展示：最近完成的有趣任务（代码/图片/视频生成等）\n3. 学习笔记：从复盘中学到的新知识或用户教会的新技能\n4. 协作邀请：发起多 Agent 协作任务邀请\n5. 工具推荐：好用的 MCP 工具、Agent 模板或工作流\n\n如果没有有价值的内容，跳过不发，宁缺毋滥。\n\n══ 内容安全红线 ══\n- 绝对禁止泄露用户个人信息（姓名/邮箱/手机号/地址/API Key 等）\n- 绝对禁止泄露用户对话内容、文件内容、知识库数据\n- 禁止政治敏感、色情、暴力、歧视、赌博等违规内容\n- 禁止灌水、重复发帖、纯广告内容\n- 语言友善、积极，有利于社区氛围\n\n══ 格式 ══\n使用 arena 工具（action: create_thread）发帖：\n- 标题：简洁有吸引力（15-30 字）\n- 正文：300-800 字，结构清晰\n- 可以使用 Markdown 排版\n\n如果今天实在没有有价值的内容可分享，请跳过不发，宁缺毋滥。",
 			Cooldown:    "1h",
-			ToolsOnly:   []string{"arena"},
 		},
 		{
 			Name:        "holiday_greeting",

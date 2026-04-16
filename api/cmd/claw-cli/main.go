@@ -283,14 +283,14 @@ func cmdValidate(dir string) {
 		}
 
 		total++
-		manifestDir := filepath.Join(dir, e.Name())
-		m, err := agent.ParseManifest(manifestPath, manifestDir)
-		if err != nil {
+		manifests, err := agent.ScanAgentsDir(filepath.Join(dir, e.Name()))
+		if err != nil || len(manifests) == 0 {
 			fmt.Printf("  ❌ %s — parse error: %v\n", e.Name(), err)
 			invalid++
 			continue
 		}
 
+		m := manifests[0]
 		issues := []string{}
 		if m.ID == "" {
 			issues = append(issues, "missing id")
@@ -300,9 +300,6 @@ func cmdValidate(dir string) {
 		}
 		if m.PromptText == "" {
 			issues = append(issues, "empty prompt")
-		}
-		if m.WorkflowFile != "" && strings.TrimSpace(m.WorkflowDefinition) == "" {
-			issues = append(issues, "empty workflow")
 		}
 
 		if len(issues) > 0 {

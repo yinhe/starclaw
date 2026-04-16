@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Bot, CheckCircle2, GitBranch, Rocket, ShieldCheck } from 'lucide-react'
 import { agentAPI, taskAPI, teamAPI } from '../lib/api'
-import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 interface TeamMember {
   role: string
@@ -85,11 +84,11 @@ export default function TeamDetailPage() {
 
   const resolveAgentName = (fallbackName: string) => {
     const exact = backendAgents.find((a) => a.name === fallbackName)
-    if (exact) return formatAgentDisplayName(exact.name)
+    if (exact) return exact.name
 
     const keyword = fallbackName.replace('Agent', '').replace('团队', '').trim().toLowerCase()
     const fuzzy = backendAgents.find((a) => a.name.toLowerCase().includes(keyword))
-    return fuzzy ? formatAgentDisplayName(fuzzy.name) : `${formatAgentDisplayName(fallbackName)}（待创建）`
+    return fuzzy?.name || `${fallbackName}（待创建）`
   }
 
   const resolveTeamOrchestratorAgent = () => {
@@ -120,7 +119,7 @@ export default function TeamDetailPage() {
         agent_id: orchestrator.id,
         priority: 'high',
       })
-      setTaskStatus(`团队任务已创建，执行代理：${formatAgentDisplayName(orchestrator.name)}。可到「自主任务」查看进度。`)
+      setTaskStatus(`团队任务已创建，执行代理：${orchestrator.name}。可到「自主任务」查看进度。`)
     } catch {
       setTaskStatus('创建任务失败，请检查登录状态或稍后重试。')
     } finally {
@@ -222,7 +221,7 @@ export default function TeamDetailPage() {
         <section className="bg-white border rounded-xl p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">创建团队任务</h2>
           <p className="text-sm text-gray-600 mb-2">
-            当前编排代理：{formatAgentDisplayName(resolveTeamOrchestratorAgent()?.name || '未匹配')}
+            当前编排代理：{resolveTeamOrchestratorAgent()?.name || '未匹配'}
           </p>
           <p className="text-sm text-gray-600 mb-3">
             当前已连接后端代理：{backendAgents.length} 个。点击下方按钮会创建一个高优先级团队协作任务。

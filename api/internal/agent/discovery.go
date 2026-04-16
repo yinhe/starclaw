@@ -77,9 +77,8 @@ type AgentManifest struct {
 	Marketplace *ManifestMarketplace `yaml:"marketplace"`
 
 	// Set at parse time (not from YAML)
-	Dir                string `yaml:"-"` // absolute directory path
-	PromptText         string `yaml:"-"` // loaded prompt content
-	WorkflowDefinition string `yaml:"-"`
+	Dir        string `yaml:"-"` // absolute directory path
+	PromptText string `yaml:"-"` // loaded prompt content
 }
 
 type ManifestAuthor struct {
@@ -100,36 +99,6 @@ type ManifestTools struct {
 	Own     []string `yaml:"own"`
 	Shared  []string `yaml:"shared"`
 	Foreign []string `yaml:"foreign"`
-}
-
-type ManifestRoleTools []string
-
-func (t *ManifestRoleTools) UnmarshalYAML(value *yaml.Node) error {
-	switch value.Kind {
-	case 0:
-		*t = nil
-		return nil
-	case yaml.SequenceNode:
-		var items []string
-		if err := value.Decode(&items); err != nil {
-			return err
-		}
-		*t = items
-		return nil
-	case yaml.MappingNode:
-		var spec ManifestTools
-		if err := value.Decode(&spec); err != nil {
-			return err
-		}
-		items := make([]string, 0, len(spec.Own)+len(spec.Shared)+len(spec.Foreign))
-		items = append(items, spec.Own...)
-		items = append(items, spec.Shared...)
-		items = append(items, spec.Foreign...)
-		*t = items
-		return nil
-	default:
-		return fmt.Errorf("invalid role tools format")
-	}
 }
 
 type ManifestSkill struct {
@@ -173,13 +142,13 @@ type ManifestTeam struct {
 }
 
 type ManifestRole struct {
-	Code       string            `yaml:"code"`
-	Name       I18nString        `yaml:"name"`
-	PromptFile string            `yaml:"prompt_file"`
-	Tools      ManifestRoleTools `yaml:"tools"`
-	Model      ManifestModel     `yaml:"model"`
-	Count      int               `yaml:"count"`
-	IsLead     bool              `yaml:"is_lead"`
+	Code       string        `yaml:"code"`
+	Name       I18nString    `yaml:"name"`
+	PromptFile string        `yaml:"prompt_file"`
+	Tools      []string      `yaml:"tools"`
+	Model      ManifestModel `yaml:"model"`
+	Count      int           `yaml:"count"`
+	IsLead     bool          `yaml:"is_lead"`
 
 	PromptText string `yaml:"-"` // loaded at parse time
 }
@@ -423,18 +392,6 @@ func ParseManifest(path, dir string) (*AgentManifest, error) {
 			log.Printf("[discovery] WARNING %s: cannot read prompt file %s: %v", m.ID, m.PromptFile, err)
 		}
 	}
-	if m.WorkflowFile != "" {
-		workflowPath := filepath.Join(dir, m.WorkflowFile)
-		content, err := os.ReadFile(workflowPath)
-		if err != nil {
-			return nil, fmt.Errorf("read workflow file %s: %w", m.WorkflowFile, err)
-		}
-		var workflowDef map[string]interface{}
-		if err := json.Unmarshal(content, &workflowDef); err != nil {
-			return nil, fmt.Errorf("invalid workflow file %s: %w", m.WorkflowFile, err)
-		}
-		m.WorkflowDefinition = string(content)
-	}
 
 	// Load team role prompts
 	if m.Team != nil {
@@ -460,14 +417,7 @@ func ParseManifest(path, dir string) (*AgentManifest, error) {
 // ── Seed to DB ───────────────────────────────────────────────
 
 // SeedFromManifests upserts all discovered agents into the database.
-// It also loads shared skills from the monorepo skills/ directory and
-// appends them to each agent's system prompt.
 func SeedFromManifests(db *gorm.DB, manifests []AgentManifest, ownerID string) {
-	// Load shared skills once (auto-detects monorepo root)
-	if len(manifests) > 0 {
-		LoadSharedSkills(manifests[0].Dir)
-	}
-
 	for _, m := range manifests {
 		switch m.Type {
 		case "team":
@@ -490,9 +440,6 @@ func seedSoloAgent(db *gorm.DB, m *AgentManifest, ownerID string) {
 	// Build config JSON
 	configJSON := fmt.Sprintf(`{"temperature":%v,"max_tokens":%d}`, m.Model.Temperature, m.Model.MaxTokens)
 
-	// Append shared skills to prompt
-	fullPrompt := m.PromptText + sharedSkillsCache
-
 	var agent model.Agent
 	err := db.Where("manifest_id = ? AND (user_id = ? OR user_id = ?)", m.ID, ownerID, model.SystemUserID).First(&agent).Error
 
@@ -502,7 +449,7 @@ func seedSoloAgent(db *gorm.DB, m *AgentManifest, ownerID string) {
 			UserID:       ownerID,
 			Name:         name,
 			Description:  desc,
-			SystemPrompt: fullPrompt,
+			SystemPrompt: m.PromptText,
 			ModelName:    m.Model.Name,
 			Tools:        toolsJSON,
 			Config:       configJSON,
@@ -520,7 +467,7 @@ func seedSoloAgent(db *gorm.DB, m *AgentManifest, ownerID string) {
 		updates := map[string]interface{}{
 			"name":          name,
 			"description":   desc,
-			"system_prompt": fullPrompt,
+			"system_prompt": m.PromptText,
 			"model_name":    m.Model.Name,
 			"tools":         toolsJSON,
 			"config":        configJSON,
@@ -548,14 +495,8 @@ func seedSoloAgent(db *gorm.DB, m *AgentManifest, ownerID string) {
 	// Upsert skills
 	seedSkills(db, agent.ID, m)
 
-	// Upsert shared skills as AgentSkill records (visible in skill panel)
-	seedSharedSkillRecords(db, agent.ID)
-
 	// Upsert gland definitions (schema only, not values)
 	seedGlandDefs(db, agent.ID, ownerID, m)
-
-	// Upsert workflow definition
-	seedWorkflow(db, agent.ID, ownerID, m)
 }
 
 func seedTeamAgent(db *gorm.DB, m *AgentManifest, ownerID string) {
@@ -646,9 +587,7 @@ func seedTeamAgent(db *gorm.DB, m *AgentManifest, ownerID string) {
 			// Lead role gets team-level skills and glands
 			if role.IsLead && i == 0 {
 				seedSkills(db, agent.ID, m)
-				seedSharedSkillRecords(db, agent.ID)
 				seedGlandDefs(db, agent.ID, ownerID, m)
-				seedWorkflow(db, agent.ID, ownerID, m)
 			}
 		}
 	}
@@ -734,177 +673,6 @@ func seedGlandDefs(db *gorm.DB, agentID, userID string, m *AgentManifest) {
 				"required":   g.Required,
 				"help_text":  g.HelpText.Get("zh"),
 				"sort_order": g.SortOrder,
-			})
-		}
-	}
-}
-
-// ── Workflow ─────────────────────────────────────────────────
-
-func seedWorkflow(db *gorm.DB, agentID, userID string, m *AgentManifest) {
-	if strings.TrimSpace(m.WorkflowDefinition) == "" {
-		return
-	}
-	locale := "zh"
-	name := m.Name.Get(locale)
-	if name == "" {
-		name = m.ID
-	}
-	workflowName := name + " · 默认流程"
-	description := m.Description.Get(locale)
-	var existing model.Workflow
-	err := db.Where("agent_id = ? AND user_id = ? AND name = ?", agentID, userID, workflowName).First(&existing).Error
-	if err != nil {
-		db.Create(&model.Workflow{
-			ID:          uuid.New().String(),
-			UserID:      userID,
-			AgentID:     agentID,
-			Name:        workflowName,
-			Description: description,
-			Definition:  m.WorkflowDefinition,
-			IsPublic:    m.Visibility == "public",
-		})
-		return
-	}
-	db.Model(&existing).Updates(map[string]interface{}{
-		"description": description,
-		"definition":  m.WorkflowDefinition,
-		"is_public":   m.Visibility == "public",
-	})
-}
-
-// ── Shared Skills ────────────────────────────────────────────
-
-// sharedSkillsCache holds loaded shared skills content (loaded once per startup)
-var sharedSkillsCache string
-
-// sharedSkillMeta stores parsed metadata for each shared skill file.
-type sharedSkillMeta struct {
-	Name        string
-	Description string
-	Category    string
-	Tags        string
-}
-
-// sharedSkillsMetaCache holds parsed metadata for creating AgentSkill records.
-var sharedSkillsMetaCache []sharedSkillMeta
-
-// LoadSharedSkills reads .md skill files from the monorepo skills/ directory.
-// It walks up from agentsDir to find the git root, then loads skills/*.md.
-// The result is cached and appended to every agent's system prompt.
-// Metadata is also cached for creating AgentSkill records via seedSharedSkillRecords.
-func LoadSharedSkills(agentsDir string) string {
-	if sharedSkillsCache != "" {
-		return sharedSkillsCache
-	}
-
-	// Walk up from claw/agents/ to find monorepo root (containing .git)
-	abs, err := filepath.Abs(agentsDir)
-	if err != nil {
-		return ""
-	}
-	repoRoot := ""
-	dir := abs
-	for {
-		if info, err := os.Stat(filepath.Join(dir, ".git")); err == nil && info.IsDir() {
-			repoRoot = dir
-			break
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	if repoRoot == "" {
-		return ""
-	}
-
-	skillsDir := filepath.Join(repoRoot, "skills")
-	entries, err := os.ReadDir(skillsDir)
-	if err != nil {
-		return ""
-	}
-
-	var sb strings.Builder
-	count := 0
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".md" || e.Name() == "README.md" {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(skillsDir, e.Name()))
-		if err != nil {
-			continue
-		}
-		content := string(data)
-		name := strings.TrimSuffix(e.Name(), ".md")
-
-		// Parse and cache metadata
-		meta := sharedSkillMeta{Name: name}
-		body := content
-		if strings.HasPrefix(content, "---\n") {
-			if parts := strings.SplitN(content[4:], "\n---\n", 2); len(parts) == 2 {
-				body = strings.TrimSpace(parts[1])
-				// Extract frontmatter fields
-				for _, line := range strings.Split(parts[0], "\n") {
-					line = strings.TrimSpace(line)
-					if strings.HasPrefix(line, "description:") {
-						meta.Description = strings.TrimSpace(strings.TrimPrefix(line, "description:"))
-					} else if strings.HasPrefix(line, "category:") {
-						meta.Category = strings.TrimSpace(strings.TrimPrefix(line, "category:"))
-					} else if strings.HasPrefix(line, "tags:") {
-						meta.Tags = strings.TrimSpace(strings.TrimPrefix(line, "tags:"))
-						meta.Tags = strings.Trim(meta.Tags, "[]")
-						meta.Tags = strings.ReplaceAll(meta.Tags, " ", "")
-					}
-				}
-			}
-		}
-		if meta.Description == "" {
-			meta.Description = name + " skill"
-		}
-		sharedSkillsMetaCache = append(sharedSkillsMetaCache, meta)
-
-		sb.WriteString(fmt.Sprintf("\n### %s\n%s\n", name, body))
-		count++
-	}
-
-	if count > 0 {
-		sharedSkillsCache = "\n## Shared Knowledge\n" + sb.String()
-		log.Printf("[discovery] loaded %d shared skills from %s", count, skillsDir)
-	}
-	return sharedSkillsCache
-}
-
-// seedSharedSkillRecords creates AgentSkill records for shared skills on a given agent.
-// This makes shared skills visible in the agent's skill panel alongside manifest skills.
-func seedSharedSkillRecords(db *gorm.DB, agentID string) {
-	for _, meta := range sharedSkillsMetaCache {
-		skillName := "shared:" + meta.Name
-
-		spec := map[string]interface{}{
-			"trigger":     "passive",
-			"description": meta.Description,
-			"category":    meta.Category,
-			"tags":        meta.Tags,
-			"source":      "shared-skills",
-		}
-		specBytes, _ := json.Marshal(spec)
-
-		var existing model.AgentSkill
-		err := db.Where("agent_id = ? AND skill_name = ?", agentID, skillName).First(&existing).Error
-		if err != nil {
-			db.Create(&model.AgentSkill{
-				AgentID:     agentID,
-				SkillName:   skillName,
-				SkillSpec:   string(specBytes),
-				AbilityType: "skill",
-				Enabled:     true,
-				InstalledAt: time.Now(),
-			})
-		} else {
-			db.Model(&existing).Updates(map[string]interface{}{
-				"skill_spec": string(specBytes),
 			})
 		}
 	}

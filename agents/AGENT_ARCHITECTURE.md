@@ -59,7 +59,7 @@ agents/polymarket/
 A multi-role agent team with hierarchical/flat/pipeline topology.
 
 ```
-agents/dev_team/
+agents/devclaw/
 ├── manifest.yaml       # type: team
 └── roles/
     ├── architect.md    # Lead role prompt

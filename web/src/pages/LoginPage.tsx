@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 
@@ -18,8 +18,13 @@ const CrawfishIcon = ({ className }: { className?: string }) => (
     <path d="M13 19.5l0.5 2.5" />
   </svg>
 )
-import { authAPI, setupAPI } from '../lib/api'
+import { authAPI, setupAPI, queenAPI } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
+
+interface OAuthProvider {
+  name: string
+  client_id: string
+}
 
 function getDeviceID(): string {
   let id = localStorage.getItem('starclaw_device_id')
@@ -42,14 +47,21 @@ function getDeviceName(): string {
 
 export default function LoginPage() {
   const [deployMode, setDeployMode] = useState<string | null>(null)
-  const [loginMode, setLoginMode] = useState<'token' | 'owner'>('owner')
+  const [isRegister, setIsRegister] = useState(false)
+  const [loginMode, setLoginMode] = useState<'email' | 'phone' | 'token' | 'owner'>('email')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [apiToken, setApiToken] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [pendingApproval, setPendingApproval] = useState(false)
   const [pendingMessage, setPendingMessage] = useState('')
+  const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([])
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
@@ -76,21 +88,32 @@ export default function LoginPage() {
     }
   }, [searchParams, setAuth, navigate])
 
+  // Read invite code from URL ?code= param
+  useEffect(() => {
+    const code = searchParams.get('code')
+    if (code) {
+      setInviteCode(code)
+      setIsRegister(true)
+      localStorage.setItem('starclaw_invite_code', code)
+    } else {
+      const saved = localStorage.getItem('starclaw_invite_code')
+      if (saved) setInviteCode(saved)
+    }
+  }, [searchParams])
+
   // Detect deploy mode and set appropriate login mode
-  // Both opensource and hosted modes use the same Setup → Owner Token flow.
-  // hosted mode only differs in blocking localhost-only endpoints (reset-token, get-token).
   useEffect(() => {
     setupAPI.status().then(async (res) => {
       const mode = res.data.deploy_mode || 'opensource'
       setDeployMode(mode)
-      // No owner yet → redirect to setup page (all modes)
-      if (!res.data.setup_completed) {
-        navigate('/setup', { replace: true })
-        return
-      }
-      setLoginMode('owner')
-      // Auto-login from localhost (opensource/spore only, not hosted/hive)
       if (mode === 'opensource') {
+        // No owner yet → redirect to setup page
+        if (!res.data.setup_completed) {
+          navigate('/setup', { replace: true })
+          return
+        }
+        setLoginMode('owner')
+        // Auto-login from localhost: try to get token directly
         const host = window.location.hostname
         if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
           try {
@@ -107,6 +130,50 @@ export default function LoginPage() {
       }
     }).catch(() => setDeployMode('opensource'))
   }, [navigate, setAuth])
+
+  // Fetch available OAuth providers (hosted mode only)
+  useEffect(() => {
+    if (deployMode === 'hosted') {
+      authAPI.oauthProviders().then(res => {
+        setOauthProviders(res.data.providers || [])
+      }).catch(() => {})
+    }
+  }, [deployMode])
+
+  // Handle OAuth callback (code in URL params)
+  const handleOAuthCode = useCallback(async (provider: string, code: string) => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = provider === 'github'
+        ? await authAPI.oauthGitHub(code)
+        : await authAPI.oauthGoogle(code)
+      setAuth(res.data.token, res.data.user)
+      navigate('/chat')
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } }
+      setError(axiosErr.response?.data?.error || 'OAuth login failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [setAuth, navigate])
+
+  useEffect(() => {
+    const code = searchParams.get('code')
+    const state = searchParams.get('state') // 'github' or 'google'
+    if (code && state) {
+      handleOAuthCode(state, code)
+    }
+  }, [searchParams, handleOAuthCode])
+
+  const startOAuth = (provider: OAuthProvider) => {
+    const redirectUri = `${window.location.origin}/login?state=${provider.name}`
+    if (provider.name === 'github') {
+      window.location.href = `https://github.com/login/oauth/authorize?client_id=${provider.client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user%20user:email&state=${provider.name}`
+    } else if (provider.name === 'google') {
+      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${provider.client_id}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile&state=${provider.name}`
+    }
+  }
 
   // Poll for device approval when pending
   useEffect(() => {
@@ -133,24 +200,46 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      let res
       if (loginMode === 'owner') {
-        // Owner password login — returns owner_token + auto-approves device
-        const res = await setupAPI.ownerLogin({ password, device_id: getDeviceID(), device_name: getDeviceName() })
+        // Owner password login (opensource mode) — returns owner_token + auto-approves device
+        res = await setupAPI.ownerLogin({ password, device_id: getDeviceID(), device_name: getDeviceName() })
         setAuth(res.data.owner_token, res.data.user)
         navigate('/', { replace: true })
         return
+      } else if (loginMode === 'token') {
+        res = await authAPI.tokenLogin({ token: apiToken, device_id: getDeviceID(), device_name: getDeviceName() })
+        // Handle pending approval (HTTP 202)
+        if (res.status === 202 && res.data?.status === 'pending_approval') {
+          setPendingApproval(true)
+          setPendingMessage(res.data.approve_cmd || res.data.message || '新设备等待审批中...')
+          setLoading(false)
+          return
+        }
+      } else if (loginMode === 'phone') {
+        res = isRegister
+          ? await authAPI.phoneRegister({ phone, password, username: username || undefined })
+          : await authAPI.phoneLogin({ phone, password })
+      } else {
+        res = isRegister
+          ? await authAPI.register({ email, username: username || undefined, password })
+          : await authAPI.login({ email, password })
       }
-      // Token login
-      const res = await authAPI.tokenLogin({ token: apiToken, device_id: getDeviceID(), device_name: getDeviceName() })
-      // Handle pending approval (HTTP 202)
-      if (res.status === 202 && res.data?.status === 'pending_approval') {
-        setPendingApproval(true)
-        setPendingMessage(res.data.approve_cmd || res.data.message || '新设备等待审批中...')
-        setLoading(false)
-        return
-      }
+
       setAuth(res.data.token, res.data.user)
-      navigate('/', { replace: true })
+
+      // After registration, auto-register with Queen using invite code
+      if (isRegister && inviteCode) {
+        try {
+          await queenAPI.autoRegister({ invite_code: inviteCode })
+          localStorage.removeItem('starclaw_invite_code')
+        } catch {
+          // Non-blocking: Queen auto-register can happen later
+          console.warn('Queen auto-register deferred')
+        }
+      }
+
+      navigate('/chat')
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
       setError(axiosErr.response?.data?.error || '操作失败，请重试')
@@ -192,7 +281,9 @@ export default function LoginPage() {
             </div>
           ) : (
           <>
-          <h2 className="text-2xl font-semibold mb-6">登录</h2>
+          <h2 className="text-2xl font-semibold mb-6">
+            {deployMode === 'opensource' ? '登录' : isRegister ? '创建账号' : '登录'}
+          </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Loading state */}
@@ -200,9 +291,9 @@ export default function LoginPage() {
               <div className="flex justify-center py-8">
                 <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : (
+            ) : deployMode === 'opensource' ? (
               <>
-                {deployMode === 'opensource' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
                   <button
                     type="button"
                     onClick={async () => {
@@ -320,8 +411,215 @@ export default function LoginPage() {
                   </>
                 )}
               </>
+            ) : (
+            <>
+            {/* Email / Phone / Token mode toggle */}
+            {!isRegister && (
+              <div className="flex rounded-lg bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('email'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  邮箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('phone'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  手机号
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('token'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'token' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Token
+                </button>
+              </div>
+            )}
+
+            {isRegister && (
+              <div className="flex rounded-lg bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('email'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'email' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  邮箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('phone'); setError('') }}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${loginMode === 'phone' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  手机号
+                </button>
+              </div>
+            )}
+
+            {loginMode === 'token' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Auth Token</label>
+                <input
+                  type="password"
+                  value={apiToken}
+                  onChange={(e) => setApiToken(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                  placeholder="粘贴你的 Token"
+                  required
+                />
+                <p className="mt-1.5 text-xs text-gray-400">在设置页面获取你的 Auth Token</p>
+              </div>
+            ) : (
+              <>
+                {loginMode === 'email' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="your@email.com"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="13800138000"
+                      required
+                    />
+                  </div>
+                )}
+
+                {isRegister && (
+                  <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      邀请码（可选）
+                    </label>
+                    <input
+                      type="text"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all font-mono"
+                      placeholder="SC-XXXX-XXXX"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">有邀请码？填入后注册即可获得 100⚡ 星能奖励</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      用户名（可选）
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="留空自动生成 Claw#xxxx"
+                    />
+                  </div>
+                  </>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                      placeholder="••••••"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPwd(!showPwd)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {!isRegister && (
+                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    记住我
+                  </label>
+                )}
+              </>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? '处理中...' : isRegister ? '注册' : '登录'}
+            </button>
+            </>
             )}
           </form>
+
+          {deployMode === 'hosted' && oauthProviders.length > 0 && (
+            <div className="mt-6">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+                <div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-gray-400">or</span></div>
+              </div>
+              <div className="flex gap-3">
+                {oauthProviders.map((p) => (
+                  <button
+                    key={p.name}
+                    onClick={() => startOAuth(p)}
+                    disabled={loading}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  >
+                    {p.name === 'github' && (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    )}
+                    {p.name === 'google' && (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                    )}
+                    {p.name === 'github' ? 'GitHub' : 'Google'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {deployMode === 'hosted' && loginMode !== 'token' && (
+            <div className="mt-6 text-center text-sm text-gray-500">
+              {isRegister ? '已有账号？' : '没有账号？'}
+              <button
+                onClick={() => {
+                  setIsRegister(!isRegister)
+                  setError('')
+                }}
+                className="text-primary-600 hover:text-primary-700 font-medium ml-1"
+              >
+                {isRegister ? '去登录' : '注册'}
+              </button>
+            </div>
+          )}
           </>
           )}
         </div>

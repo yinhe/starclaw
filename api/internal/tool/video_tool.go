@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,9 +32,12 @@ func (t *VideoTool) Name() string { return "video_generation" }
 
 func (t *VideoTool) Description() string {
 	return `AI 视频生成工具，支持多种视频模型和场景衔接。支持的模型：
+- wan2.7-i2v: 阿里云万相2.7图生视频（最新），720P/1080P按秒计费，支持音频驱动
+- wan2.7-t2v: 阿里云万相2.7文生视频（最新），720P/1080P按秒计费
 - wan2.6-t2v: 阿里云万相文生视频（默认），最高10秒
 - wan2.6-i2v: 阿里云万相图生视频，需要img_url
-- veo3: Google Veo 3 文生视频 (fal.ai)，电影级画质
+- doubao-seedance-2-0-260128: Seedance 2.0 文/图/多模态参考生视频（Volcengine），支持 4-15 秒或 -1 自适应
+- doubao-seedance-2-0-fast-260128: Seedance 2.0 Fast 文/图/多模态参考生视频（Volcengine），支持 4-15 秒或 -1 自适应
 - veo3.1: Google Veo 3.1 文生视频 (fal.ai)，最新最强，支持4-8秒，原生音频
 - sora2: OpenAI Sora 2 Pro 文生视频 (fal.ai)，支持5-20秒，原生音频
 - kling-v3: 快手可灵 v3 文生视频 (fal.ai)，支持3-15秒，原生音频
@@ -50,36 +54,48 @@ func (t *VideoTool) Parameters() interface{} {
 	return &JSONSchema{
 		Type: "object",
 		Properties: map[string]Property{
-			"action":       {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame, list_videos"},
-			"prompt":       {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
-			"model":        {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.6-i2v (requires img_url), veo3, veo3.1, sora2, kling-v3, minimax-video, luma"},
-			"img_url":      {Type: "string", Description: "Image URL for image-to-video models (wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
-			"size":         {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
-			"duration":     {Type: "string", Description: "Video duration in seconds: 5 or 10. Default: 5"},
-			"task_id":      {Type: "string", Description: "Task ID or record ID for check_status / extract_last_frame"},
-			"scene":        {Type: "string", Description: "Scene label for multi-scene projects (e.g. 'scene_1')"},
-			"task_ids":     {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
-			"style_prefix": {Type: "string", Description: "Shared style prefix prepended to all scene prompts for visual consistency (e.g. 'cinematic film style, warm color grading, shallow depth of field'). Stored with the record."},
-			"ref_video_id": {Type: "string", Description: "Previous scene's video record ID. Auto-extracts its last frame as img_url for i2v, ensuring visual continuity between scenes."},
-			"category":     {Type: "string", Description: "Video category: general (default), ad, short_drama, short_film, mv, tutorial. Used for organization and filtering."},
+			"action":            {Type: "string", Description: "Action: generate_video, check_status, merge_videos, list_models, extract_last_frame, list_videos"},
+			"prompt":            {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
+			"model":             {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.7-i2v (latest i2v), wan2.7-t2v (latest t2v), wan2.6-i2v, doubao-seedance-2-0-260128, doubao-seedance-2-0-fast-260128, veo3, veo3.1, sora2, kling-v3, minimax-video, luma"},
+			"img_url":           {Type: "string", Description: "Image URL for image-to-video models (wan2.7-i2v, wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
+			"size":              {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
+			"duration":          {Type: "string", Description: "Video duration in seconds. wan2.7 supports up to 10s. Seedance 2.0 supports 4-15 or -1 for auto. Default: 5"},
+			"resolution":        {Type: "string", Description: "Video resolution for wan2.7: 720P (default) or 1080P. 1080P costs more (¥1.0/s vs ¥0.6/s)."},
+			"task_id":           {Type: "string", Description: "Task ID or record ID for check_status / extract_last_frame"},
+			"scene":             {Type: "string", Description: "Scene label for multi-scene projects (e.g. 'scene_1')"},
+			"task_ids":          {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
+			"style_prefix":      {Type: "string", Description: "Shared style prefix prepended to all scene prompts for visual consistency (e.g. 'cinematic film style, warm color grading, shallow depth of field'). Stored with the record."},
+			"ref_video_id":      {Type: "string", Description: "Previous scene's video record ID. Auto-extracts its last frame as img_url for i2v, ensuring visual continuity between scenes."},
+			"ref_video_url":     {Type: "string", Description: "Reference video URL(s) for Seedance 2.0 multi-modal generation. Comma-separated if multiple."},
+			"ref_audio_url":     {Type: "string", Description: "Reference audio URL(s) for Seedance 2.0 multi-modal generation. Comma-separated if multiple."},
+			"generate_audio":    {Type: "boolean", Description: "Whether Seedance should generate synchronized audio."},
+			"watermark":         {Type: "boolean", Description: "Whether the generated video should include watermark."},
+			"return_last_frame": {Type: "boolean", Description: "Whether to ask the provider to return the generated video's last frame."},
+			"category":          {Type: "string", Description: "Video category: general (default), ad, short_drama, short_film, mv, tutorial. Used for organization and filtering."},
 		},
 		Required: []string{"action"},
 	}
 }
 
 type videoArgs struct {
-	Action      string `json:"action"`
-	Prompt      string `json:"prompt"`
-	Model       string `json:"model"`
-	ImgURL      string `json:"img_url"`
-	Size        string `json:"size"`
-	Duration    string `json:"duration"`
-	TaskID      string `json:"task_id"`
-	Scene       string `json:"scene"`
-	TaskIDs     string `json:"task_ids"`
-	StylePrefix string `json:"style_prefix"`
-	RefVideoID  string `json:"ref_video_id"`
-	Category    string `json:"category"`
+	Action          string `json:"action"`
+	Prompt          string `json:"prompt"`
+	Model           string `json:"model"`
+	ImgURL          string `json:"img_url"`
+	Size            string `json:"size"`
+	Duration        string `json:"duration"`
+	TaskID          string `json:"task_id"`
+	Scene           string `json:"scene"`
+	TaskIDs         string `json:"task_ids"`
+	StylePrefix     string `json:"style_prefix"`
+	RefVideoID      string `json:"ref_video_id"`
+	RefVideoURL     string `json:"ref_video_url"`
+	RefAudioURL     string `json:"ref_audio_url"`
+	Resolution      string `json:"resolution"` // "720P" or "1080P" (wan2.7)
+	GenerateAudio   *bool  `json:"generate_audio"`
+	Watermark       *bool  `json:"watermark"`
+	ReturnLastFrame *bool  `json:"return_last_frame"`
+	Category        string `json:"category"`
 }
 
 // fal.ai video model endpoints
@@ -120,14 +136,22 @@ func isFalVideoModel(m string) bool {
 	return ok
 }
 
+func isSeedanceVideoModel(m string) bool {
+	return strings.HasPrefix(m, "doubao-seedance-")
+}
+
 // videoFallbackChain defines auto-fallback when a model times out or fails.
 // Key = original model, Value = fallback model to retry with.
 var videoFallbackChain = map[string]string{
-	"veo3.1":        "kling-v3",
-	"sora2":         "kling-v3",
-	"kling-v3":      "wan2.6-t2v",
-	"luma":          "wan2.6-t2v",
-	"minimax-video": "wan2.6-t2v",
+	"doubao-seedance-2-0-260128":      "doubao-seedance-2-0-fast-260128",
+	"doubao-seedance-2-0-fast-260128": "wan2.7-t2v",
+	"wan2.7-i2v":                      "wan2.6-i2v",
+	"wan2.7-t2v":                      "wan2.6-t2v",
+	"veo3.1":                          "kling-v3",
+	"sora2":                           "kling-v3",
+	"kling-v3":                        "wan2.6-t2v",
+	"luma":                            "wan2.6-t2v",
+	"minimax-video":                   "wan2.6-t2v",
 }
 
 func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, error) {
@@ -157,7 +181,7 @@ func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, 
 		args.Size = "1280*720"
 	}
 	duration := 5
-	if d, err := strconv.Atoi(args.Duration); err == nil && d > 0 {
+	if d, err := strconv.Atoi(args.Duration); err == nil && (d > 0 || d == -1) {
 		duration = d
 	}
 
@@ -176,13 +200,19 @@ func (t *VideoTool) generateVideo(ctx context.Context, args videoArgs) (string, 
 			// Auto-switch to i2v model for DashScope
 			if args.Model == "wan2.6-t2v" {
 				args.Model = "wan2.6-i2v"
-				log.Printf("[VideoTool] Auto-switched to i2v with last frame from %s", args.RefVideoID)
+				log.Printf("[VideoTool] Auto-switched to wan2.6-i2v with last frame from %s", args.RefVideoID)
+			} else if args.Model == "wan2.7-t2v" {
+				args.Model = "wan2.7-i2v"
+				log.Printf("[VideoTool] Auto-switched to wan2.7-i2v with last frame from %s", args.RefVideoID)
 			}
 		}
 	}
 
 	if isFalVideoModel(args.Model) {
 		return t.generateVideoFal(ctx, userID, convID, args, duration)
+	}
+	if isSeedanceVideoModel(args.Model) {
+		return t.generateVideoSeedance(ctx, userID, convID, args, duration)
 	}
 	return t.generateVideoWan(ctx, userID, convID, args, duration)
 }
@@ -371,17 +401,17 @@ func (t *VideoTool) checkStatus(ctx context.Context, args videoArgs) (string, er
 
 func (t *VideoTool) listModels() (string, error) {
 	models := []map[string]interface{}{
-		{"name": "wan2.6-t2v", "type": "text-to-video", "provider": "dashscope", "durations": "5s, 10s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相文生视频。通用首选，速度快，3种画幅", "best_for": "通用场景、第一个镜头、快速迭代"},
+		{"name": "wan2.6-t2v", "type": "text-to-video", "provider": "dashscope", "durations": "5s, 10s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万生视频。通用首选，速度快，3种画幅", "best_for": "通用场景、第一个镜头、快速迭代"},
 		{"name": "wan2.6-i2v", "type": "image-to-video", "provider": "dashscope", "durations": "5s", "resolutions": "1280*720, 720*1280, 960*960", "quality": "good", "speed": "fast", "description": "阿里云万相图生视频，需要img_url。用于尾帧衔接保持场景连续", "best_for": "场景衔接（上一场景尾帧→下一场景起始帧）"},
+		{"name": "doubao-seedance-2-0-260128", "type": "text-to-video", "provider": "volcengine", "durations": "4-15s, -1(auto)", "resolutions": "16:9, 9:16, 1:1, adaptive", "quality": "high", "speed": "medium", "description": "Seedance 2.0 多模态视频创作，支持参考图、参考视频、参考音频与同步音频生成", "best_for": "正式版广告片、多模态参考视频、角色一致性镜头"},
+		{"name": "doubao-seedance-2-0-fast-260128", "type": "text-to-video", "provider": "volcengine", "durations": "4-15s, -1(auto)", "resolutions": "16:9, 9:16, 1:1, adaptive", "quality": "good", "speed": "fast", "description": "Seedance 2.0 Fast 官方版本号模型名，支持多模态参考与同步音频生成", "best_for": "快速验证角色动作、镜头结构与有声试片"},
 		{"name": "veo3", "type": "text-to-video", "provider": "fal.ai", "durations": "~8s (模型自动)", "resolutions": "最高1080p", "quality": "cinematic", "speed": "slow", "description": "Google Veo 3，电影级画质", "best_for": "远景建立镜头、电影级MV、风景空镜"},
 		{"name": "veo3.1", "type": "text-to-video", "provider": "fal.ai", "durations": "4s, 6s, 8s", "resolutions": "720p/1080p", "quality": "cinematic+", "speed": "medium", "description": "Google Veo 3.1，最新最强视频模型，支持原生音频、图生视频", "best_for": "电影级画质+音频、高质量i2v场景衔接"},
 		{"name": "sora2", "type": "text-to-video", "provider": "fal.ai", "durations": "5s, 10s, 15s, 20s", "resolutions": "最高1080p", "quality": "very high", "speed": "medium", "description": "OpenAI Sora 2 Pro，强运动理解，支持长视频，原生音频", "best_for": "复杂动作、长镜头、20秒连续画面"},
-		{"name": "kling-v3", "type": "text-to-video", "provider": "fal.ai", "durations": "3-15s", "resolutions": "16:9, 9:16, 1:1", "quality": "cinematic", "speed": "medium", "description": "快手可灵 v3 Pro，电影级画质，原生音频生成，支持3-15秒", "best_for": "人物特写、动态场景、角色动作、带声音视频"},
-		{"name": "minimax-video", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "1280*720", "quality": "good", "speed": "fast", "description": "MiniMax Video-01-Live，快速生成", "best_for": "快速出片、动画风格"},
 		{"name": "luma", "type": "text-to-video", "provider": "fal.ai", "durations": "~5s", "resolutions": "最高1080p", "quality": "artistic", "speed": "medium", "description": "Luma Dream Machine，梦幻艺术风格", "best_for": "艺术风格、梦幻场景、概念视觉"},
 	}
 	return toJSON(map[string]interface{}{
 		"action": "list_models", "models": models,
-		"tips": "wan系列通过 StarAI/DashScope API Key 调用，其他模型通过 fal.ai API Key 调用。MV制作推荐：veo3(电影级远景) + kling-v3(人物特写+原生音频) + wan(快速补充镜头)。",
+		"tips": "wan系列通过 StarAI/DashScope API Key 调用，seedance 系列通过 Volcengine / StarAI 代理调用，其他模型通过 fal.ai API Key 调用。MV制作推荐：seedance(5秒试镜头) + veo3(电影级远景) + kling-v3(人物特写+原生音频) + wan(快速补充镜头)。",
 	}), nil
 }

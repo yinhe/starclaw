@@ -150,7 +150,7 @@ func (t *DocumentTool) summarize(args documentArgs) (string, error) {
 }
 
 // exportWord generates a .docx file from provided content.
-func (t *DocumentTool) exportWord(_ context.Context, args documentArgs) (string, error) {
+func (t *DocumentTool) exportWord(ctx context.Context, args documentArgs) (string, error) {
 	if args.Content == "" {
 		return "", fmt.Errorf("content is required for export_word")
 	}
@@ -189,7 +189,7 @@ func (t *DocumentTool) exportWord(_ context.Context, args documentArgs) (string,
 }
 
 // summaryToWord fetches conversation, formats, and exports to Word in one step.
-func (t *DocumentTool) summaryToWord(_ context.Context, args documentArgs) (string, error) {
+func (t *DocumentTool) summaryToWord(ctx context.Context, args documentArgs) (string, error) {
 	if args.ConversationID == "" {
 		return "", fmt.Errorf("conversation_id is required")
 	}

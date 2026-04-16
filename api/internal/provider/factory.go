@@ -91,13 +91,6 @@ func CreateFromConfig(registry *Registry, cfg model.ModelConfig) ModelProvider {
 			}
 		}
 		return NewStarAIProvider(starCfg)
-	case "custom":
-		// Custom (OpenAI-compatible) provider: no predefined model list
-		return NewOpenAIProvider(OpenAIConfig{
-			APIKey:  cfg.APIKey,
-			BaseURL: cfg.BaseURL,
-			Models:  []string{},
-		})
 	default:
 		// OpenAI-compatible fallback
 		return NewOpenAIProvider(OpenAIConfig{

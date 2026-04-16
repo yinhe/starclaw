@@ -90,61 +90,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.GCAlert{},
 		&model.GCEducation{},
 		&model.GCAuditLog{},
-		// Phase 4D persistence — Abathur
-		&model.EvolutionPlanRecord{},
-		&model.SprintRecord{},
-		&model.TaskRecord{},
-		&model.HotfixRecord{},
-		// Phase 4D persistence — SenseClaw
-		&model.FeedbackRecord{},
-		&model.AlertRecord{},
-		&model.AnomalyRecord{},
-		// Phase 4D persistence — TestClaw
-		&model.TestSuiteRecord{},
-		&model.TestCaseRecord{},
-		&model.BenchmarkRecord{},
-		// Phase 4D persistence — Cocoon
-		&model.CocoonSpecRecord{},
-		&model.BuildRecord{},
-		&model.PublishRecord{},
-		// Phase 4D persistence — Chitin
-		&model.RuntimeInstance{},
-		&model.RuntimeEvent{},
-		// Phase 4D persistence — Lair
-		&model.LairNodeRecord{},
-		&model.DeploymentRecord{},
-		&model.RolloutRecord{},
-		// Phase 4D persistence — Partner
-		&model.PartnerRecord{},
-		&model.CommissionDBRecord{},
-		&model.SettlementRecord{},
-		// Phase 4D persistence — BroodNet
-		&model.MarketTask{},
-		&model.MarketBid{},
-		&model.ReputationEntry{},
-		&model.GossipPeer{},
-		// Phase 5 persistence — Autonomy
-		&model.AutonomyDecision{},
-		&model.AutonomyRule{},
-		&model.AutonomyInsight{},
-		&model.AutonomySnapshot{},
-		// Phase 5 persistence — Exchange
-		&model.ExchangeOrder{},
-		&model.ExchangeTrade{},
-		&model.ExchangeService{},
-		&model.ExchangeRequest{},
-		&model.ExchangeBid{},
-		&model.ExchangeRating{},
-		// Phase 5 persistence — Federation
-		&model.FederationSwarm{},
-		&model.FederationHandshake{},
-		&model.FederationTaskRoute{},
-		&model.FederationTrustEvent{},
-		// Phase 5 persistence — SwarmCtl
-		&model.SwarmCtlUnit{},
-		&model.SwarmCtlFormation{},
-		&model.SwarmCtlMission{},
-		&model.SwarmCtlMissionLog{},
 	); err != nil {
 		return err
 	}

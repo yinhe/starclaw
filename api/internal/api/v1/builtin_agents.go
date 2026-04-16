@@ -66,31 +66,6 @@ func SeedBuiltinAgents(db *gorm.DB) {
 
 	// Seed/update specialist agents (MV, 视频, 音乐, etc.)
 	for _, def := range builtinAgents {
-		if def.ManifestID != "" {
-			var manifestAgent model.Agent
-			if err := db.Where("manifest_id = ? AND (user_id = ? OR user_id = ?)", def.ManifestID, ownerID, model.SystemUserID).First(&manifestAgent).Error; err == nil {
-				db.Model(&manifestAgent).Updates(map[string]interface{}{
-					"is_builtin": true,
-					"is_public":  true,
-				})
-				db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '') AND id != ?", ownerID, model.SystemUserID, def.Name, manifestAgent.ID).Delete(&model.Agent{})
-				continue
-			}
-
-			var legacyAgent model.Agent
-			if err := db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '')", ownerID, model.SystemUserID, def.Name).First(&legacyAgent).Error; err == nil {
-				db.Model(&legacyAgent).Updates(map[string]interface{}{
-					"manifest_id": def.ManifestID,
-					"is_builtin":  true,
-					"is_public":   true,
-				})
-				db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '') AND id != ?", ownerID, model.SystemUserID, def.Name, legacyAgent.ID).Delete(&model.Agent{})
-				continue
-			}
-
-			continue
-		}
-
 		var agent model.Agent
 		if err := db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, def.Name).First(&agent).Error; err != nil {
 			agent = model.Agent{
@@ -230,7 +205,6 @@ type builtinAgentDef struct {
 	Description string
 	Tools       string // JSON array
 	Prompt      string
-	ManifestID  string
 	Workflow    string // JSON workflow definition {nodes, edges}  auto-created for agent
 }
 
@@ -240,53 +214,61 @@ var builtinAgents = []builtinAgentDef{
 		Description: "格莱美级MV制作：音频分析→分镜策划→AI视频生成→节拍同步剪辑→专业转场合成。支持用户上传音频或AI生成歌曲。",
 		Tools:       `["audio_analysis","music_generation","video_generation","mv_production","image_generation"]`,
 		Prompt:      mvAgentPrompt,
+		Workflow:    mvWorkflow,
 	},
 	{
 		Name:        "视频创作Agent",
 		Description: "专业视频制作：编写分镜脚本、生成AI视频、配音字幕、合成最终视频。支持多种视频模型。",
 		Tools:       `["video_generation","dubbing"]`,
 		Prompt:      videoAgentPrompt,
+		Workflow:    videoWorkflow,
 	},
 	{
 		Name:        "音乐创作Agent",
 		Description: "专业音乐创作：作词、作曲、生成带演唱的歌曲或纯音乐。支持ACE-Step、MiniMax、DiffRhythm等模型。",
 		Tools:       `["music_generation"]`,
 		Prompt:      musicAgentPrompt,
+		Workflow:    musicWorkflow,
 	},
 	{
 		Name:        "编程Agent",
 		Description: "全栈编程：编写代码、创建网站、调试程序、部署应用。支持14种编程语言。",
 		Tools:       `["code"]`,
 		Prompt:      codingAgentPrompt,
+		Workflow:    codingWorkflow,
 	},
 	{
 		Name:        "研究分析Agent",
 		Description: "互联网研究：搜索信息、浏览网页、抓取数据、整理分析报告。",
 		Tools:       `["web_search","browser","http_request"]`,
 		Prompt:      researchAgentPrompt,
+		Workflow:    researchWorkflow,
 	},
 	{
 		Name:        "漫剧创作Agent",
 		Description: "AI漫剧制作：编写剧本、生成漫画风格图片、多角色配音、组装成漫剧视频。支持多种漫画风格。",
 		Tools:       `["image_generation","comic_production","music_generation"]`,
 		Prompt:      comicAgentPrompt,
+		Workflow:    comicWorkflow,
 	},
 	{
 		Name:        "商业计划书Agent",
 		Description: "专业商业计划书撰写：市场调研、竞品分析、商业模式设计、财务预测、融资方案。输出投资人级别的BP文档。",
 		Tools:       `["web_search","browser","http_request","code"]`,
 		Prompt:      businessPlanAgentPrompt,
+		Workflow:    businessPlanWorkflow,
 	},
 	{
 		Name:        "短剧导演",
 		Description: "好莱坞风格 AI 短剧导演，从剧本构思到成片交付的一站式制作。擅长场景编排、镜头语言、配音字幕、音乐配乐的全流程把控。",
 		Tools:       `["video_generation","dubbing","subtitle","music_generation","image_generation","mv_production","web_search"]`,
 		Prompt:      shortDramaAgentPrompt,
-		ManifestID:  "short_drama",
 	},
 	{
-		Name:       "抖音爆款导演",
-		ManifestID: "douyin_viral",
+		Name:        "抖音爆款导演",
+		Description: "抖音/短视频爆款内容全流程制作：热点调研→爆款选题→钩子脚本→竖屏视频→配音字幕→BGM→封面标题。精通抖音算法逻辑和爆款内容公式，从0到1产出可直接发布的竖屏短视频。支持操控剪映等桌面软件。",
+		Tools:       `["web_search","browser","video_generation","image_generation","dubbing","music_generation","mv_production","code","desktop"]`,
+		Prompt:      douyinViralAgentPrompt,
 	},
 }
 

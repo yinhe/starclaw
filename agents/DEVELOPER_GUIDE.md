@@ -264,12 +264,12 @@ marketplace:
 ### manifest.yaml for Teams
 
 ```yaml
-id: dev_team
+id: devclaw
 type: team
 
 name:
-  zh: "Dev 研发智能体"
-  en: "Dev Agent Team"
+  zh: "DevClaw 开发团队"
+  en: "DevClaw Dev Team"
 
 team:
   topology: hierarchical           # hierarchical | flat | pipeline
@@ -303,7 +303,7 @@ team:
 ### Directory Structure
 
 ```
-agents/dev_team/
+agents/devclaw/
 ├── manifest.yaml
 ├── roles/
 │   ├── architect.md
@@ -317,8 +317,8 @@ agents/dev_team/
 
 ### Team Namespace
 
-- External tools: `dev_team:deploy` (callable by other agents)
-- Internal tools: `dev_team.architect:plan` (team members only)
+- External tools: `devclaw:deploy` (callable by other agents)
+- Internal tools: `devclaw.architect:plan` (team members only)
 - The lead role holds team-level skills and glands.
 
 ---

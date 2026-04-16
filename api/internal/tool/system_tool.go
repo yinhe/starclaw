@@ -552,17 +552,8 @@ func (t *SystemTool) delegateToAgent(ctx context.Context, args systemArgs) (stri
 	if args.AgentID == "" {
 		return "", fmt.Errorf("agent_id is required (请提供目标Agent的名称，如 agent_id=\"MV创作Agent\")")
 	}
-	// LLM often puts the task in different fields — accept alternatives
 	if args.Message == "" {
-		for _, fallback := range []string{args.Goal, args.Description, args.Title} {
-			if fallback != "" {
-				args.Message = fallback
-				break
-			}
-		}
-	}
-	if args.Message == "" {
-		return "", fmt.Errorf("message is required (请提供要委派的任务描述，如 message=\"请帮我合成视频\")")
+		return "", fmt.Errorf("message is required")
 	}
 	if t.delegateFunc == nil {
 		return "", fmt.Errorf("agent delegation not configured")

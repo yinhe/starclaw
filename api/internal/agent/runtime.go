@@ -8,9 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yinhe/starclaw/internal/broodmind"
 	"github.com/yinhe/starclaw/internal/provider"
-	"github.com/yinhe/starclaw/internal/security"
 	"github.com/yinhe/starclaw/internal/tool"
 )
 
@@ -97,8 +95,6 @@ type RunRequest struct {
 	Tools       []string // tool names to enable, nil = all
 	Temperature float64
 	MaxTokens   int
-	AgentID     string // for trajectory tracking
-	UserID      string // for trajectory tracking
 }
 
 // RunResult contains the final result of an agent run
@@ -119,32 +115,10 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 		toolDefs = r.toolRegistry.GetDefinitions(req.Tools)
 	}
 
-	// BroodMind v1: begin trajectory tracking
-	var traceID string
-	if bm := broodmind.Get(); bm != nil {
-		task := ""
-		for i := len(req.Messages) - 1; i >= 0; i-- {
-			if req.Messages[i].Role == "user" && req.Messages[i].Content != "" {
-				task = req.Messages[i].Content
-				break
-			}
-		}
-		traceID = bm.Trajectory.Begin(req.AgentID, req.UserID, bm.NodeID(), req.Model, task)
-	}
-
 	var totalUsage provider.TokenUsage
 	autoContinueCount := 0
 
 	for i := 0; i < maxToolIterations; i++ {
-		// Hermes-inspired: auto-compress if context is getting too long
-		if ShouldCompress(messages, 0) {
-			compressed, stats, err := CompressContext(ctx, r.modelProvider, req.Model, messages, 6)
-			if err == nil && stats != "" {
-				messages = compressed
-				log.Printf("[Agent] %s", stats)
-			}
-		}
-
 		chatReq := &provider.ChatRequest{
 			Model:       req.Model,
 			Messages:    messages,
@@ -189,13 +163,6 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 				Content: result.Content,
 			})
 
-			// BroodMind v1: complete trajectory on success
-			if traceID != "" {
-				if bm := broodmind.Get(); bm != nil {
-					bm.Trajectory.Complete(traceID, result.Content, totalUsage.TotalTokens, broodmind.TraceCompleted, "")
-				}
-			}
-
 			return &RunResult{
 				Content:  result.Content,
 				Messages: messages,
@@ -226,41 +193,12 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 			},
 		})
 
-		// Execute the tool (with security guard if available)
-		toolStart := time.Now()
-		var toolResult string
-		var errStr string
-		if guard := security.GetGuard(); guard != nil {
-			if accessErr := guard.CheckAccess(req.AgentID, result.Tool.Function.Name); accessErr != nil {
-				toolResult = fmt.Sprintf("Security denied: %v", accessErr)
-				errStr = accessErr.Error()
-			} else {
-				var execErr error
-				toolResult, execErr = guard.Sandbox.Execute(ctx, req.AgentID, result.Tool.Function.Name, func(sctx context.Context) (string, error) {
-					return r.toolRegistry.Execute(sctx, result.Tool.Function.Name, sanitizedArgs)
-				})
-				if execErr != nil {
-					toolResult = fmt.Sprintf("Tool execution error: %v", execErr)
-					errStr = execErr.Error()
-				}
-			}
-		} else {
-			var execErr error
-			toolResult, execErr = r.toolRegistry.Execute(ctx, result.Tool.Function.Name, sanitizedArgs)
-			if execErr != nil {
-				toolResult = fmt.Sprintf("Tool execution error: %v", execErr)
-				errStr = execErr.Error()
-			}
+		// Execute the tool
+		toolResult, err := r.toolRegistry.Execute(ctx, result.Tool.Function.Name, sanitizedArgs)
+		if err != nil {
+			toolResult = fmt.Sprintf("Tool execution error: %v", err)
 		}
-		toolDur := time.Since(toolStart)
 		autoContinueCount = 0 // reset after successful tool call
-
-		// BroodMind v1: record tool step
-		if traceID != "" {
-			if bm := broodmind.Get(); bm != nil {
-				bm.Trajectory.RecordStep(traceID, result.Tool.Function.Name, sanitizedArgs, toolResult, errStr, toolDur)
-			}
-		}
 
 		log.Printf("[Agent] Tool result: %s (%.100s...)", result.Tool.Function.Name, toolResult)
 
@@ -273,12 +211,6 @@ func (r *Runtime) Run(ctx context.Context, req *RunRequest) (*RunResult, error) 
 		})
 	}
 
-	// BroodMind v1: complete trajectory on iteration limit
-	if traceID != "" {
-		if bm := broodmind.Get(); bm != nil {
-			bm.Trajectory.Complete(traceID, "", totalUsage.TotalTokens, broodmind.TraceFailed, "exceeded max tool iterations")
-		}
-	}
 	return nil, fmt.Errorf("agent exceeded maximum tool iterations (%d)", maxToolIterations)
 }
 
@@ -449,25 +381,9 @@ func (r *Runtime) StreamRun(ctx context.Context, req *RunRequest) (<-chan *Strea
 				},
 			})
 
-			var toolResult string
-			if guard := security.GetGuard(); guard != nil {
-				if accessErr := guard.CheckAccess(req.AgentID, result.Tool.Function.Name); accessErr != nil {
-					toolResult = fmt.Sprintf("Security denied: %v", accessErr)
-				} else {
-					var execErr error
-					toolResult, execErr = guard.Sandbox.Execute(ctx, req.AgentID, result.Tool.Function.Name, func(sctx context.Context) (string, error) {
-						return r.toolRegistry.Execute(sctx, result.Tool.Function.Name, sanitizedArgs)
-					})
-					if execErr != nil {
-						toolResult = fmt.Sprintf("Tool execution error: %v", execErr)
-					}
-				}
-			} else {
-				var execErr error
-				toolResult, execErr = r.toolRegistry.Execute(ctx, result.Tool.Function.Name, sanitizedArgs)
-				if execErr != nil {
-					toolResult = fmt.Sprintf("Tool execution error: %v", execErr)
-				}
+			toolResult, err := r.toolRegistry.Execute(ctx, result.Tool.Function.Name, sanitizedArgs)
+			if err != nil {
+				toolResult = fmt.Sprintf("Tool execution error: %v", err)
 			}
 			autoContinueCount = 0 // reset after successful tool call
 			log.Printf("[Agent/Stream] Tool result from %s: %d bytes", result.Tool.Function.Name, len(toolResult))

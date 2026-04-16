@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Users, Crown, ChevronRight, Loader2, Zap } from 'lucide-react'
 import { teamAPI, agentAPI } from '../lib/api'
-import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 interface Agent { id: string; name: string; description: string }
 interface TeamMember { id: string; team_id: string; agent_id: string; role: string; specialty: string; order: number; agent?: Agent }
@@ -154,7 +153,7 @@ export default function TeamPage() {
                   {team.members.map(m => (
                     <div key={m.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 dark:bg-gray-750 rounded-lg text-xs">
                       {m.role === 'coordinator' && <Crown className="w-3 h-3 text-amber-500" />}
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{formatAgentDisplayName(m.agent?.name || '未知')}</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{m.agent?.name || '未知'}</span>
                       {m.specialty && <span className="text-gray-400">· {m.specialty}</span>}
                     </div>
                   ))}
@@ -197,7 +196,7 @@ export default function TeamPage() {
                 <select value={form.coordinator_id} onChange={e => setForm({ ...form, coordinator_id: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                   <option value="">选择团长...</option>
-                  {agents.map(a => <option key={a.id} value={a.id}>{formatAgentDisplayName(a.name)}</option>)}
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
               <div>
@@ -218,7 +217,7 @@ export default function TeamPage() {
                     <select value={m.agent_id} onChange={e => { const v = [...selectedMembers]; v[i].agent_id = e.target.value; setSelectedMembers(v) }}
                       className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                       <option value="">选择 Agent...</option>
-                      {agents.map(a => <option key={a.id} value={a.id}>{formatAgentDisplayName(a.name)}</option>)}
+                      {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                     <input value={m.specialty} onChange={e => { const v = [...selectedMembers]; v[i].specialty = e.target.value; setSelectedMembers(v) }}
                       placeholder="角色特长" className="w-28 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />

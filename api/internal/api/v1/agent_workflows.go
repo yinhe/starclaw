@@ -137,7 +137,7 @@ const comicWorkflow = `{
 
 // generateWorkflowFromTools creates a workflow definition JSON from an agent's tool list.
 // This is used for user-created agents that don't have a built-in workflow.
-func generateWorkflowFromTools(_ string, toolsJSON string) string {
+func generateWorkflowFromTools(agentName string, toolsJSON string) string {
 	var tools []string
 	if err := json.Unmarshal([]byte(toolsJSON), &tools); err != nil || len(tools) == 0 {
 		return ""

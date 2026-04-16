@@ -1,0 +1,16 @@
+[Unit]
+Description=StarClaw MCP Bridge - Host Control Server
+After=network.target
+Documentation=https://github.com/yinhe/starclaw
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mcp-bridge -port 9101
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-bridge
+
+[Install]
+WantedBy=multi-user.target

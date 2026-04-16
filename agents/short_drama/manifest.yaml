@@ -1,32 +1,26 @@
-# ════════════════════════════════════════════════════════════
-# StarClaw Agent Manifest v2 — 短剧导演 Pro (Short Drama Director Pro)
-# 全球顶级AI短剧导演：好莱坞叙事力+戛纳视觉美学+短视频爆款节奏
-# 从剧本到成片的全链路制作：分镜→AI视频→配音→BGM→专业合成→多平台
-# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v1 — 短剧导演
 
 id: short_drama
 type: solo
 
 name:
-  zh: "短剧导演 Pro"
-  en: "Short Drama Director Pro"
+  zh: "短剧导演"
+  en: "Short Drama Director"
 description:
-  zh: "全球顶级AI短剧导演Agent。以强钩子、真冲突、真悬念为第一优先级，先做会让人追下去的短剧，再做产品表达。全链路制作：剧本创作→视觉风格→逐场景AI视频生成→专业配音字幕→BGM配乐→compose_pro合成→多平台适配→版本管理。当前默认采用 Wan-only 生产策略，适配 StarClaw 虫群宇宙短剧。"
-  en: "World-class AI short drama director Agent. Prioritizes hard hooks, real conflict, and suspense before product expression, aiming to create short dramas people genuinely want to keep watching. Full pipeline: screenplay → visual style → scene-by-scene AI video → dubbing → BGM → compose_pro → multi-platform → version control. Currently optimized for a Wan-only production strategy and StarClaw Swarm Universe shorts."
+  zh: "好莱坞风格 AI 短剧导演，从剧本构思到成片交付的一站式制作。擅长场景编排、镜头语言、配音字幕、音乐配乐的全流程把控。"
+  en: "Hollywood-style AI short drama director. End-to-end production from script to final cut: scene arrangement, cinematography, dubbing, music scoring."
 
 icon: "🎭"
 category: creative
-tags: ["drama", "short-film", "video", "script", "dubbing", "brand-drama", "series", "cinematography", "post-production", "multi-platform", "wan", "hook-first", "sci-fi-drama"]
-version: "2.1.0"
+tags: ["drama", "short-film", "video", "script", "dubbing"]
+version: "1.0.0"
 status: stable
 visibility: public
 is_builtin: true
-featured: true
 
 author:
   id: starclaw
   name: { zh: "StarClaw 官方", en: "StarClaw Official" }
-  url: "https://starclaw.net"
   verified: true
 
 prompt_file: prompt.md
@@ -38,50 +32,13 @@ model:
 
 tools:
   shared:
-    - web_search
-    - browser
     - video_generation
-    - image_generation
     - dubbing
     - music_generation
+    - image_generation
     - mv_production
-    - code
-    - desktop
-
-skills:
-  - name: { zh: "品牌短剧制作", en: "Brand Short Drama Production" }
-    trigger: passive
-    description: { zh: "制作品牌短剧/系列广告：强调前3秒强钩子、真实人物处境、宏观/微观双尺度交叉剪辑，Wan-only 全链路从剧本到成片", en: "Create brand short dramas with strong first-3-second hooks, real character stakes, macro/micro cross-cutting, and a Wan-only pipeline from script to final cut" }
-    tools: [video_generation, dubbing, music_generation, mv_production, image_generation]
-    example_triggers: ["帮我拍一个品牌短剧", "brand short drama", "系列短剧", "StarClaw短剧"]
-
-  - name: { zh: "情感/悬疑短剧", en: "Emotional/Thriller Short Drama" }
-    trigger: passive
-    description: { zh: "制作情感短剧或悬疑短剧：强困境开场、情绪升级、反转与悬念收束，针对 Wan 模型优化镜头拆分", en: "Create emotional or thriller short dramas with hard-stakes openings, escalating emotion, reversals, suspenseful endings, and shot design optimized for Wan models" }
-    tools: [video_generation, dubbing, music_generation, mv_production]
-    example_triggers: ["拍一个情感短剧", "悬疑短片", "emotional short film", "thriller"]
-
-  - name: { zh: "短剧精修迭代", en: "Short Drama Refinement" }
-    trigger: passive
-    description: { zh: "对已有短剧做精修迭代：旁白节奏校准、镜头替换、结尾余韵、版本管理，优先复用已有素材", en: "Refine existing short dramas: voiceover pacing, shot replacement, ending polish, version management, prioritize reusing existing assets" }
-    tools: [video_generation, dubbing, mv_production, code, browser]
-    example_triggers: ["把这个短剧修一下", "旁白节奏不对", "结尾太突然", "refine this drama"]
-
-  - name: { zh: "多平台适配", en: "Multi-Platform Adaptation" }
-    trigger: passive
-    description: { zh: "将短剧主片适配为多平台版本：竖屏抖音版、方形朋友圈版、精华版", en: "Adapt short drama for multiple platforms: vertical TikTok, square WeChat, highlight cut" }
-    tools: [video_generation, mv_production, dubbing]
-    example_triggers: ["做一个竖屏版", "抖音版本", "多平台适配", "vertical version"]
-
-  - name: { zh: "剪映桌面精修", en: "Jianying Desktop Refinement" }
-    trigger: passive
-    description: { zh: "接管剪映桌面完成GUI级微调：聚焦窗口、截图确认、单步操作，完成导入、剪辑、字幕、转场和导出", en: "Take over Jianying desktop for GUI-level refinements with step-by-step operations" }
-    tools: [desktop]
-    example_triggers: ["去剪映里调一下", "用桌面操控做导出", "edit in Jianying"]
+    - web_search
 
 marketplace:
   pricing:
     type: free
-  keywords:
-    zh: ["短剧", "导演", "品牌短剧", "系列广告", "情感短剧", "悬疑短剧", "AI视频", "分镜", "配音", "配乐", "多平台", "剪映"]
-    en: ["short drama", "director", "brand drama", "series", "emotional", "thriller", "AI video", "storyboard", "dubbing", "BGM", "multi-platform", "Jianying"]
