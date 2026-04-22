@@ -10,8 +10,8 @@ interface ConditionNodeData {
 export default function ConditionNode({ data }: NodeProps) {
   const d = data as ConditionNodeData
   return (
-    <div className="bg-white border-2 border-purple-400 rounded-xl shadow-sm min-w-[180px]">
-      <Handle type="target" position={Position.Top} className="!bg-purple-500 !w-3 !h-3" />
+    <div className="bg-white border-2 border-purple-400 rounded-xl shadow-sm min-w-[200px] cursor-grab active:cursor-grabbing touch-manipulation">
+      <Handle type="target" position={Position.Top} className="!bg-purple-500 !w-3.5 !h-3.5 !-top-1.5" />
       <div className="px-4 py-2.5 border-b border-purple-100 bg-purple-50 rounded-t-xl">
         <div className="flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-purple-600" />
@@ -29,14 +29,14 @@ export default function ConditionNode({ data }: NodeProps) {
         position={Position.Bottom}
         id="true"
         style={{ left: '30%' }}
-        className="!bg-green-500 !w-3 !h-3"
+        className="!bg-green-500 !w-3.5 !h-3.5 !-bottom-1.5"
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="false"
         style={{ left: '70%' }}
-        className="!bg-red-500 !w-3 !h-3"
+        className="!bg-red-500 !w-3.5 !h-3.5 !-bottom-1.5"
       />
     </div>
   )

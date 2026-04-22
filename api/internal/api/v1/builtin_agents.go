@@ -64,8 +64,36 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	// Clean up garbled and untranslated marketplace templates
 	cleanupMarketplaceTemplates(db)
 
+	// ── Aggressive dedup: remove duplicate and garbled agents ──
+	cleanupDuplicateAgents(db, ownerID)
+
 	// Seed/update specialist agents (MV, 视频, 音乐, etc.)
 	for _, def := range builtinAgents {
+		if def.ManifestID != "" {
+			var manifestAgent model.Agent
+			if err := db.Where("manifest_id = ? AND (user_id = ? OR user_id = ?)", def.ManifestID, ownerID, model.SystemUserID).First(&manifestAgent).Error; err == nil {
+				db.Model(&manifestAgent).Updates(map[string]interface{}{
+					"is_builtin": true,
+					"is_public":  true,
+				})
+				db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '') AND id != ?", ownerID, model.SystemUserID, def.Name, manifestAgent.ID).Delete(&model.Agent{})
+				continue
+			}
+
+			var legacyAgent model.Agent
+			if err := db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '')", ownerID, model.SystemUserID, def.Name).First(&legacyAgent).Error; err == nil {
+				db.Model(&legacyAgent).Updates(map[string]interface{}{
+					"manifest_id": def.ManifestID,
+					"is_builtin":  true,
+					"is_public":   true,
+				})
+				db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '') AND id != ?", ownerID, model.SystemUserID, def.Name, legacyAgent.ID).Delete(&model.Agent{})
+				continue
+			}
+
+			continue
+		}
+
 		var agent model.Agent
 		if err := db.Where("(user_id = ? OR user_id = ?) AND name = ?", ownerID, model.SystemUserID, def.Name).First(&agent).Error; err != nil {
 			agent = model.Agent{
@@ -197,6 +225,87 @@ func hasCJK(s string) bool {
 	return false
 }
 
+// cleanupDuplicateAgents removes duplicate and garbled agents from the database.
+// Rules:
+//  1. For each manifest_id, keep only the LATEST agent, delete the rest.
+//  2. For each agent name, keep only ONE (prefer manifest_id > is_builtin > newest).
+//  3. Remove agents whose name has no CJK characters AND no manifest_id (garbled/English orphans).
+func cleanupDuplicateAgents(db *gorm.DB, ownerID string) {
+	totalDeleted := 0
+
+	// Step 1: Dedup by manifest_id — keep only the latest per manifest_id
+	type midGroup struct {
+		ManifestID string
+		Cnt        int64
+	}
+	var groups []midGroup
+	db.Model(&model.Agent{}).
+		Select("manifest_id, COUNT(*) as cnt").
+		Where("manifest_id IS NOT NULL AND manifest_id != '' AND (user_id = ? OR user_id = ?)", ownerID, model.SystemUserID).
+		Group("manifest_id").Having("cnt > 1").Find(&groups)
+
+	for _, g := range groups {
+		var agents []model.Agent
+		db.Where("manifest_id = ? AND (user_id = ? OR user_id = ?)", g.ManifestID, ownerID, model.SystemUserID).
+			Order("updated_at DESC").Find(&agents)
+		if len(agents) > 1 {
+			for _, a := range agents[1:] {
+				db.Unscoped().Where("id = ?", a.ID).Delete(&model.Agent{})
+				totalDeleted++
+			}
+		}
+	}
+
+	// Step 2: Dedup by name — keep the one with manifest_id, delete others
+	type nameGroup struct {
+		Name string
+		Cnt  int64
+	}
+	var nameGroups []nameGroup
+	db.Model(&model.Agent{}).
+		Select("name, COUNT(*) as cnt").
+		Where("(user_id = ? OR user_id = ?)", ownerID, model.SystemUserID).
+		Group("name").Having("cnt > 1").Find(&nameGroups)
+
+	for _, g := range nameGroups {
+		var agents []model.Agent
+		db.Where("name = ? AND (user_id = ? OR user_id = ?)", g.Name, ownerID, model.SystemUserID).
+			Order("CASE WHEN manifest_id IS NOT NULL AND manifest_id != '' THEN 0 ELSE 1 END, is_builtin DESC, updated_at DESC").
+			Find(&agents)
+		if len(agents) > 1 {
+			for _, a := range agents[1:] {
+				db.Unscoped().Where("id = ?", a.ID).Delete(&model.Agent{})
+				totalDeleted++
+			}
+		}
+	}
+
+	// Step 3: Remove garbled agents (no CJK in name, no manifest_id, not the SuperAgent)
+	var allAgents []model.Agent
+	db.Where("(manifest_id IS NULL OR manifest_id = '') AND (user_id = ? OR user_id = ?)", ownerID, model.SystemUserID).
+		Select("id, name, description").Find(&allAgents)
+	for _, a := range allAgents {
+		if !hasCJK(a.Name) && a.Name != "全能助手" {
+			db.Unscoped().Where("id = ?", a.ID).Delete(&model.Agent{})
+			totalDeleted++
+		}
+	}
+
+	// Step 4: Remove agents with empty/null description AND no manifest_id AND no system_prompt
+	db.Unscoped().Where("(manifest_id IS NULL OR manifest_id = '') AND (description IS NULL OR description = '') AND (system_prompt IS NULL OR system_prompt = '') AND (user_id = ? OR user_id = ?)", ownerID, model.SystemUserID).
+		Delete(&model.Agent{})
+
+	// Step 5: Purge all previously soft-deleted agents
+	result := db.Unscoped().Where("deleted_at IS NOT NULL AND (user_id = ? OR user_id = ?)", ownerID, model.SystemUserID).Delete(&model.Agent{})
+	if result.RowsAffected > 0 {
+		log.Printf("[Cleanup] Purged %d soft-deleted agent rows", result.RowsAffected)
+	}
+
+	if totalDeleted > 0 {
+		log.Printf("[Cleanup] Removed %d duplicate/garbled agents", totalDeleted)
+	}
+}
+
 // Built-in specialist agent definitions
 // Each agent has a focused prompt + specific tools for its domain
 
@@ -205,70 +314,63 @@ type builtinAgentDef struct {
 	Description string
 	Tools       string // JSON array
 	Prompt      string
+	ManifestID  string
 	Workflow    string // JSON workflow definition {nodes, edges}  auto-created for agent
 }
 
 var builtinAgents = []builtinAgentDef{
 	{
-		Name:        "MV创作Agent",
-		Description: "格莱美级MV制作：音频分析→分镜策划→AI视频生成→节拍同步剪辑→专业转场合成。支持用户上传音频或AI生成歌曲。",
-		Tools:       `["audio_analysis","music_generation","video_generation","mv_production","image_generation"]`,
+		Name:        "剪辑师",
+		Description: "短剧团队·后期工坊(视频)。FFmpeg标准化拼接·concat copy无损·H.264/720×1280/24fps/AAC 44.1kHz·转场·字幕烧录·多平台适配。",
+		Tools:       `["audio_analysis","video_generation","mv_production","image_generation","code"]`,
 		Prompt:      mvAgentPrompt,
-		Workflow:    mvWorkflow,
 	},
 	{
-		Name:        "视频创作Agent",
-		Description: "专业视频制作：编写分镜脚本、生成AI视频、配音字幕、合成最终视频。支持多种视频模型。",
-		Tools:       `["video_generation","dubbing"]`,
+		Name:        "摄影指导",
+		Description: "短剧团队·制作工坊。Seedance 2.0链式生成·[图N]标签角色一致性·角色sheet→TOS转换·尾帧链式·中文prompt·720×1280竖屏。",
+		Tools:       `["video_generation","image_generation","dubbing","code"]`,
 		Prompt:      videoAgentPrompt,
-		Workflow:    videoWorkflow,
 	},
 	{
-		Name:        "音乐创作Agent",
-		Description: "专业音乐创作：作词、作曲、生成带演唱的歌曲或纯音乐。支持ACE-Step、MiniMax、DiffRhythm等模型。",
-		Tools:       `["music_generation"]`,
+		Name:        "音乐总监",
+		Description: "短剧团队·后期工坊(音频)。BGM配乐·amix normalize=0·alimiter混音·Seedance原声复用·loudnorm I=-14拖音标准。",
+		Tools:       `["music_generation","code"]`,
 		Prompt:      musicAgentPrompt,
-		Workflow:    musicWorkflow,
 	},
 	{
 		Name:        "编程Agent",
 		Description: "全栈编程：编写代码、创建网站、调试程序、部署应用。支持14种编程语言。",
 		Tools:       `["code"]`,
 		Prompt:      codingAgentPrompt,
-		Workflow:    codingWorkflow,
 	},
 	{
 		Name:        "研究分析Agent",
 		Description: "互联网研究：搜索信息、浏览网页、抓取数据、整理分析报告。",
 		Tools:       `["web_search","browser","http_request"]`,
 		Prompt:      researchAgentPrompt,
-		Workflow:    researchWorkflow,
 	},
 	{
 		Name:        "漫剧创作Agent",
 		Description: "AI漫剧制作：编写剧本、生成漫画风格图片、多角色配音、组装成漫剧视频。支持多种漫画风格。",
 		Tools:       `["image_generation","comic_production","music_generation"]`,
 		Prompt:      comicAgentPrompt,
-		Workflow:    comicWorkflow,
 	},
 	{
 		Name:        "商业计划书Agent",
 		Description: "专业商业计划书撰写：市场调研、竞品分析、商业模式设计、财务预测、融资方案。输出投资人级别的BP文档。",
 		Tools:       `["web_search","browser","http_request","code"]`,
 		Prompt:      businessPlanAgentPrompt,
-		Workflow:    businessPlanWorkflow,
 	},
 	{
-		Name:        "短剧导演",
-		Description: "好莱坞风格 AI 短剧导演，从剧本构思到成片交付的一站式制作。擅长场景编排、镜头语言、配音字幕、音乐配乐的全流程把控。",
-		Tools:       `["video_generation","dubbing","subtitle","music_generation","image_generation","mv_production","web_search"]`,
+		Name:        "总导演",
+		Description: "AI短剧全链路制作团队。角色工坊→剧本工坊→制作工坊→后期工坊。Seedance 2.0 + [图N]标签角色一致性 + 尾帧链式生成。EP01-EP04四集实战经验编码。",
+		Tools:       `["video_generation","dubbing","music_generation","image_generation","mv_production","web_search","browser","code","desktop"]`,
 		Prompt:      shortDramaAgentPrompt,
+		ManifestID:  "short_drama",
 	},
 	{
-		Name:        "抖音爆款导演",
-		Description: "抖音/短视频爆款内容全流程制作：热点调研→爆款选题→钩子脚本→竖屏视频→配音字幕→BGM→封面标题。精通抖音算法逻辑和爆款内容公式，从0到1产出可直接发布的竖屏短视频。支持操控剪映等桌面软件。",
-		Tools:       `["web_search","browser","video_generation","image_generation","dubbing","music_generation","mv_production","code","desktop"]`,
-		Prompt:      douyinViralAgentPrompt,
+		Name:       "抖音爆款导演",
+		ManifestID: "douyin_viral",
 	},
 }
 

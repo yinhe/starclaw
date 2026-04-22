@@ -4,11 +4,11 @@ id: video_creator
 type: solo
 
 name:
-  zh: "视频创作Agent"
-  en: "Video Creator Agent"
+  zh: "摄影指导"
+  en: "Director of Photography"
 description:
-  zh: "专业视频制作：编写分镜脚本、生成AI视频、配音字幕、合成最终视频。支持多种视频模型。"
-  en: "Professional video production: storyboard, AI video generation, dubbing & subtitles, final compositing."
+  zh: "短剧团队·制作工坊。EP01-EP04实战经验：Seedance 2.0链式生成·[图N]标签角色一致性·角色sheet→TOS转换·尾帧链式传递·隐私过滤自动重试·720×1280竖屏。"
+  en: "Short Drama Team · Production Studio. EP01-EP04 battle-tested: Seedance 2.0 chain generation, [图N] tag character consistency, sheet→TOS, last-frame chaining, privacy filter retry, 720×1280 portrait."
 
 icon: "🎥"
 category: creative
@@ -33,7 +33,22 @@ model:
 tools:
   shared:
     - video_generation
+    - image_generation
     - dubbing
+    - code
+
+skills:
+  - name: { zh: "Seedance链式生成", en: "Seedance Chain Generation" }
+    trigger: passive
+    description: { zh: "[图N]标签绑定+尾帧链式传递+TOS URL信任链。每镜自动拉取角色TOS URL，提取尾帧→Seedream TOS→下一镜。隐私过滤自动重试最多15次", en: "[图N] tag binding + last-frame chaining + TOS URL trust chain" }
+    tools: [video_generation, image_generation]
+    example_triggers: ["生成EP04第三镜", "链式生成全集", "刷新TOS URL"]
+
+  - name: { zh: "角色三视图制作", en: "Character Sheet Production" }
+    trigger: passive
+    description: { zh: "原照→nano-banana-2/edit→综合sheet(16:9)→上传CDN→Seedream TOS。prompt精简：近景+三视图+表情+服饰全在一张图", en: "Photo → nano-banana-2/edit → unified sheet → CDN → Seedream TOS" }
+    tools: [image_generation, code]
+    example_triggers: ["做温婉的三视图", "生成角色sheet", "刷新所有TOS"]
 
 marketplace:
   pricing:

@@ -1,0 +1,60 @@
+# StarClaw Agent Manifest v1 — 剧本编剧Agent
+
+id: screenplay_writer
+type: solo
+
+name:
+  zh: "编剧"
+  en: "Screenwriter"
+description:
+  zh: "短剧团队·剧本工坊。EP01-EP04实战经验：分镜脚本→[图N]标签绑定→EP0x_PROMPTS生成。情感弧线设计、暗线追踪、角色外观卡自动插入、跨集连续性检查。"
+  en: "Short Drama Team · Screenplay Studio. EP01-EP04 battle-tested: storyboard → [图N] tag binding → EP0x_PROMPTS generation. Emotional arc, foreshadowing, character card auto-insertion, cross-episode continuity."
+
+icon: "📝"
+category: creative
+tags: ["screenplay", "drama", "narrative", "character-arc", "worldbuilding", "outline", "five-act"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.7
+  max_tokens: 16384
+
+tools:
+  shared:
+    - web_search
+    - code
+    - image_generation
+
+skills:
+  - name: { zh: "分镜提示词生成", en: "Shot Prompts Generation" }
+    trigger: passive
+    description: { zh: "将EP0x剧本转化为EP0x_PROMPTS.md，自动插入[图N]标签+Appearance Card，每镜含角色+场景+动作+镜头+情绪", en: "Convert EP0x scripts to EP0x_PROMPTS.md with auto [图N] tags + Appearance Cards" }
+    tools: [code]
+    example_triggers: ["把EP04剧本转成PROMPTS", "生成分镜提示词", "写第五集的prompts"]
+
+  - name: { zh: "角色外观卡设计", en: "Character Appearance Card" }
+    trigger: passive
+    description: { zh: "设计角色外观卡（Appearance Card），用于Seedance提示词中角色一致性描述。服装/发型/体型/配色严格统一", en: "Design character appearance cards for Seedance prompt consistency" }
+    tools: [image_generation]
+    example_triggers: ["设计林见月的外观卡", "写角色描述", "更新温婉的服装"]
+
+  - name: { zh: "情感弧线与暗线", en: "Emotional Arc & Foreshadowing" }
+    trigger: passive
+    description: { zh: "设计每集情感弧线（S1→Sn）、埋设暗线伏笔（物件型/行为型/感知型）、跨集连续性检查", en: "Design per-episode emotional arcs, plant foreshadowing, cross-episode continuity check" }
+    tools: []
+    example_triggers: ["设计EP04情感弧线", "埋古铜钱的伏笔", "检查跨集衔接"]
+
+marketplace:
+  pricing:
+    type: free

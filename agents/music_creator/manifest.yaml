@@ -4,11 +4,11 @@ id: music_creator
 type: solo
 
 name:
-  zh: "音乐创作Agent"
-  en: "Music Creator Agent"
+  zh: "音乐总监"
+  en: "Music Director"
 description:
-  zh: "专业音乐创作：作词、作曲、生成带演唱的歌曲或纯音乐。支持ACE-Step、MiniMax、DiffRhythm等模型。"
-  en: "Professional music creation: lyrics, composition, vocal songs and instrumentals. Supports ACE-Step, MiniMax, DiffRhythm."
+  zh: "短剧团队·后期工坊(音频)。EP01-EP04实战经验：BGM配乐·amix normalize=0·alimiter混音·Seedance原声复用·情感配乐设计·多集音乐主题统一。"
+  en: "Short Drama Team · Post-Production (Audio). EP01-EP04 battle-tested: BGM scoring, amix normalize=0, alimiter mixing, Seedance original audio reuse, emotional scoring, multi-episode theme consistency."
 
 icon: "🎵"
 category: creative
@@ -33,6 +33,20 @@ model:
 tools:
   shared:
     - music_generation
+    - code
+
+skills:
+  - name: { zh: "短剧BGM配乐", en: "Drama BGM Scoring" }
+    trigger: passive
+    description: { zh: "根据剧集情感弧线生成匹配的BGM。每集多段情绪音乐，自动匹配场景情感（紧张/温馨/爆笑/悬疑）", en: "Generate BGM matching episode emotional arcs" }
+    tools: [music_generation]
+    example_triggers: ["给EP04配BGM", "生成紧张氛围音乐", "做主题曲"]
+
+  - name: { zh: "FFmpeg音频混合", en: "FFmpeg Audio Mixing" }
+    trigger: passive
+    description: { zh: "amix normalize=0 + alimiter混音方案。Seedance原声可直接用，无对白集不需要单独音频混合", en: "amix normalize=0 + alimiter mixing. Seedance original audio reusable" }
+    tools: [code]
+    example_triggers: ["混合BGM和旁白", "调整音量平衡", "Seedance原声处理"]
 
 marketplace:
   pricing:

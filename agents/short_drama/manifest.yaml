@@ -1,26 +1,34 @@
-# StarClaw Agent Manifest v1 — 短剧导演
+# ════════════════════════════════════════════════════════════
+# StarClaw Agent Manifest v3 — 短剧团队 (Short Drama Team)
+# Seedance 2.0 + [图N]标签 + 尾帧链式 + 剧本上传 + FFmpeg后期
+# 从剧本到成片的全链路制作：剧本融入→角色一致性→AI视频→配音→BGM→合成→多平台
+# ════════════════════════════════════════════════════════════
 
 id: short_drama
 type: solo
 
 name:
-  zh: "短剧导演"
-  en: "Short Drama Director"
+  zh: "总导演"
+  en: "Executive Director"
 description:
-  zh: "好莱坞风格 AI 短剧导演，从剧本构思到成片交付的一站式制作。擅长场景编排、镜头语言、配音字幕、音乐配乐的全流程把控。"
-  en: "Hollywood-style AI short drama director. End-to-end production from script to final cut: scene arrangement, cinematography, dubbing, music scoring."
+  zh: "AI短剧全链路制作团队。角色工坊→剧本工坊→制作工坊→后期工坊。Seedance 2.0 + [图N]标签角色一致性 + 尾帧链式生成。EP01-EP04 四集实战经验编码，平均每集 160-320 元。"
+  en: "AI short drama full-pipeline production team. Character Studio → Screenplay Studio → Production Studio → Post-Production Studio. Seedance 2.0 + [图N] tag character consistency + last-frame chaining. Battle-tested across EP01-EP04, ~160-320 RMB per episode."
 
 icon: "🎭"
 category: creative
-tags: ["drama", "short-film", "video", "script", "dubbing"]
-version: "1.0.0"
+tags: ["drama", "short-film", "video", "script", "dubbing", "brand-drama", "series", "cinematography", "post-production", "multi-platform", "seedance", "hook-first", "swarm-universe", "script-upload"]
+version: "3.0.0"
 status: stable
 visibility: public
 is_builtin: true
+featured: true
+
+workflow_file: workflow.json
 
 author:
   id: starclaw
   name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  url: "https://starclaw.net"
   verified: true
 
 prompt_file: prompt.md
@@ -32,13 +40,63 @@ model:
 
 tools:
   shared:
+    - web_search
+    - browser
     - video_generation
+    - image_generation
     - dubbing
     - music_generation
-    - image_generation
     - mv_production
-    - web_search
+    - code
+    - desktop
+
+skills:
+  - name: { zh: "剧本融入生产", en: "Script-to-Production" }
+    trigger: passive
+    description: { zh: "上传/粘贴故事剧本(EP0x_*.md)或生成提示词(EP0x_*_PROMPTS.md)，自动解析分镜表→生成Seedance prompt→逐镜链式生成→后期合成。支持虫群宇宙系列剧本。", en: "Upload/paste story scripts or PROMPTS files, auto-parse storyboard → generate Seedance prompts → chain-generate scenes → post-production. Supports Swarm Universe series scripts." }
+    tools: [video_generation, dubbing, music_generation, mv_production, image_generation, code]
+    example_triggers: ["拍第五集", "这是剧本", "上传剧本", "按这个PROMPTS文件生成", "StarClaw短剧"]
+
+  - name: { zh: "Seedance角色一致性生产", en: "Seedance Character-Consistent Production" }
+    trigger: passive
+    description: { zh: "使用[图N]标签绑定法+尾帧链式传递，Seedance 2.0全链路生产。角色三视图→TOS信任URL→逐镜生成→标准化→拼接。参考 skills/seedance_production.md。", en: "Character-consistent production using [图N] tag binding + last-frame chaining with Seedance 2.0. Character sheets → TOS URLs → scene generation → normalize → concat. See skills/seedance_production.md." }
+    tools: [video_generation, image_generation, code]
+    example_triggers: ["角色一致性生成", "用图N标签", "刷新TOS URL", "链式生成"]
+
+  - name: { zh: "短剧精修迭代", en: "Short Drama Refinement" }
+    trigger: passive
+    description: { zh: "对已有短剧做精修迭代：旁白节奏校准、镜头替换、结尾余韵、版本管理，优先复用已有素材", en: "Refine existing short dramas: voiceover pacing, shot replacement, ending polish, version management, prioritize reusing existing assets" }
+    tools: [video_generation, dubbing, mv_production, code, browser]
+    example_triggers: ["把这个短剧修一下", "旁白节奏不对", "结尾太突然", "refine this drama"]
+
+  - name: { zh: "多平台适配", en: "Multi-Platform Adaptation" }
+    trigger: passive
+    description: { zh: "将短剧主片适配为多平台版本：竖屏抖音版、方形朋友圈版、精华版", en: "Adapt short drama for multiple platforms: vertical TikTok, square WeChat, highlight cut" }
+    tools: [video_generation, mv_production, dubbing]
+    example_triggers: ["做一个竖屏版", "抖音版本", "多平台适配", "vertical version"]
+
+  - name: { zh: "剪映桌面精修", en: "Jianying Desktop Refinement" }
+    trigger: passive
+    description: { zh: "接管剪映桌面完成GUI级微调：聚焦窗口、截图确认、单步操作，完成导入、剪辑、字幕、转场和导出", en: "Take over Jianying desktop for GUI-level refinements with step-by-step operations" }
+    tools: [desktop]
+    example_triggers: ["去剪映里调一下", "用桌面操控做导出", "edit in Jianying"]
+
+  - name: { zh: "豆包2.0情感配音", en: "Volcengine TTS 2.0 Emotional Dubbing" }
+    trigger: passive
+    description: { zh: "使用火山引擎豆包2.0音色进行情感配音：逐段语音指令控制情绪/语气，支持撒娇学妹/甜美桃子/高冷御姐等角色音色。参考 skills/volcengine_tts_voices.md 中的角色音色卡和情绪指令模板。", en: "Emotional dubbing with Volcengine TTS 2.0: per-segment emotion control via voice instructions, supporting character voices like sajiaoxuemei/tianmeitaozi/gaolengyujie. Refer to skills/volcengine_tts_voices.md for voice profiles and instruction templates." }
+    tools: [dubbing]
+    example_triggers: ["用豆包2.0配音", "用撒娇学妹的声音", "情感配音", "volcengine tts", "给林见月配音"]
+
+glands:
+  - key: drama_project_path
+    name: { zh: "剧本项目路径", en: "Drama Project Path" }
+    description: { zh: "默认剧本项目的文件夹路径。Agent 开始对话时自动读取该路径下的 bible.md 和 drama/ 文件夹。留空则不自动加载任何项目。", en: "Default drama project folder path. Agent auto-loads bible.md and drama/ from this path at conversation start. Leave empty to skip auto-loading." }
+    required: false
+    default: ""
 
 marketplace:
   pricing:
     type: free
+  keywords:
+    zh: ["短剧", "导演", "品牌短剧", "系列广告", "情感短剧", "悬疑短剧", "AI视频", "分镜", "配音", "配乐", "多平台", "剪映"]
+    en: ["short drama", "director", "brand drama", "series", "emotional", "thriller", "AI video", "storyboard", "dubbing", "BGM", "multi-platform", "Jianying"]

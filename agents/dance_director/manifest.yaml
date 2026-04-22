@@ -1,0 +1,60 @@
+# StarClaw Agent Manifest v1 — 舞蹈视频导演Agent
+
+id: dance_director
+type: solo
+
+name:
+  zh: "舞蹈视频导演"
+  en: "Dance Video Director"
+description:
+  zh: "专业AI舞蹈视频制作：角色三视图一致性、Seedance 2.0生成、尾帧衔接、多段拼接、BGM配乐。从零到完成品的全流程导演。"
+  en: "Professional AI dance video production: character turnaround consistency, Seedance 2.0 generation, last-frame continuity, multi-clip assembly, BGM overlay."
+
+icon: "💃"
+category: creative
+tags: ["dance", "seedance", "video", "character-consistency", "BGM", "xianxia"]
+version: "1.0.0"
+status: stable
+visibility: public
+is_builtin: true
+
+author:
+  id: starclaw
+  name: { zh: "StarClaw 官方", en: "StarClaw Official" }
+  verified: true
+
+prompt_file: prompt.md
+
+model:
+  name: qwen-max
+  temperature: 0.5
+  max_tokens: 8192
+
+tools:
+  shared:
+    - video_generation
+    - dubbing
+    - image_generation
+
+skills:
+  - name: { zh: "舞蹈视频生成", en: "Dance Video Generation" }
+    trigger: passive
+    description: { zh: "使用Seedance 2.0生成角色一致的舞蹈视频片段", en: "Generate character-consistent dance clips with Seedance 2.0" }
+    tools: [video_generation, image_generation]
+    example_triggers: ["生成一个林见月跳舞的视频", "make a dance video", "角色跳舞"]
+
+  - name: { zh: "多段舞蹈拼接", en: "Multi-Clip Dance Assembly" }
+    trigger: passive
+    description: { zh: "将多个舞蹈片段拼接成完整视频，支持crossfade转场和BGM配乐", en: "Assemble multiple dance clips with crossfade transitions and BGM overlay" }
+    tools: [video_generation]
+    example_triggers: ["拼接舞蹈视频", "合成最终版", "加上BGM"]
+
+  - name: { zh: "角色一致性控制", en: "Character Consistency Control" }
+    trigger: passive
+    description: { zh: "通过三视图参考图+尾帧衔接保证多段视频角色和场景一致性", en: "Maintain character and scene consistency via turnaround sheets and last-frame linking" }
+    tools: [video_generation, image_generation]
+    example_triggers: ["保持角色一致", "用三视图", "首尾帧衔接"]
+
+marketplace:
+  pricing:
+    type: free

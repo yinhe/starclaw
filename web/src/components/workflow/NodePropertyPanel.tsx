@@ -10,6 +10,14 @@ interface Props {
   onClose: () => void
 }
 
+const MEDIA_CATEGORIES = [
+  { value: 'character', label: '角色' },
+  { value: 'scene', label: '场景' },
+  { value: 'prop', label: '道具' },
+  { value: 'costume', label: '服装' },
+  { value: 'reference', label: '参考' },
+]
+
 export default function NodePropertyPanel({ node, models, tools, onUpdate, onClose }: Props) {
   const [localData, setLocalData] = useState<Record<string, unknown>>({})
 
@@ -30,159 +38,129 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
   const nodeType = node.type || ''
 
   return (
-    <div className="w-72 border-l bg-white flex flex-col h-full">
-      <div className="px-4 py-3 border-b flex items-center justify-between">
+    <div className="w-72 border-l border-gray-800 bg-gray-900 flex flex-col h-full">
+      <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-gray-800">节点属性</h3>
-          <p className="text-xs text-gray-400 mt-0.5">{(localData.label as string) || nodeType}</p>
+          <h3 className="text-sm font-semibold text-gray-200">节点属性</h3>
+          <p className="text-xs text-gray-500 mt-0.5">{(localData.label as string) || nodeType}</p>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors">
           <X className="w-4 h-4" />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Common: label */}
         <Field label="名称">
           <input
             value={(localData.label as string) || ''}
             onChange={(e) => update('label', e.target.value)}
-            className="input-sm"
+            className="input-dark"
           />
         </Field>
 
-        {/* LLM Node */}
         {nodeType === 'llm' && (
           <>
             <Field label="模型">
-              <select
-                value={(localData.model as string) || ''}
-                onChange={(e) => update('model', e.target.value)}
-                className="input-sm"
-              >
+              <select value={(localData.model as string) || ''} onChange={(e) => update('model', e.target.value)} className="input-dark">
                 <option value="">选择模型</option>
                 {models.map((m) => (
-                  <option key={m.id} value={m.model_name}>
-                    {m.display_name || `${m.provider} / ${m.model_name}`}
-                  </option>
+                  <option key={m.id} value={m.model_name}>{m.display_name || `${m.provider} / ${m.model_name}`}</option>
                 ))}
               </select>
             </Field>
+            <Field label="描述">
+              <textarea value={(localData.description as string) || ''} onChange={(e) => update('description', e.target.value)}
+                rows={3} className="input-dark resize-none" placeholder="节点功能说明" />
+            </Field>
             <Field label="Prompt 模板">
-              <textarea
-                value={(localData.prompt as string) || ''}
-                onChange={(e) => update('prompt', e.target.value)}
-                rows={5}
-                className="input-sm resize-none"
-                placeholder="使用 {{input}} 引用上游输入"
-              />
+              <textarea value={(localData.prompt as string) || ''} onChange={(e) => update('prompt', e.target.value)}
+                rows={5} className="input-dark resize-none font-mono text-xs" placeholder="使用 {{input}} 引用上游输入" />
             </Field>
             <Field label="Temperature">
               <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.1"
+                <input type="range" min="0" max="2" step="0.1"
                   value={(localData.temperature as number) ?? 0.7}
                   onChange={(e) => update('temperature', parseFloat(e.target.value))}
-                  className="flex-1"
-                />
-                <span className="text-xs text-gray-500 w-8 text-right">
-                  {(localData.temperature as number)?.toFixed(1) ?? '0.7'}
-                </span>
+                  className="flex-1 accent-blue-500" />
+                <span className="text-xs text-gray-400 w-8 text-right">{(localData.temperature as number)?.toFixed(1) ?? '0.7'}</span>
               </div>
-            </Field>
-            <Field label="Max Tokens">
-              <input
-                type="number"
-                value={(localData.maxTokens as number) || 4096}
-                onChange={(e) => update('maxTokens', parseInt(e.target.value) || 4096)}
-                className="input-sm"
-              />
             </Field>
           </>
         )}
 
-        {/* Tool Node */}
         {nodeType === 'tool' && (
           <>
             <Field label="工具">
-              <select
-                value={(localData.toolName as string) || ''}
-                onChange={(e) => update('toolName', e.target.value)}
-                className="input-sm"
-              >
+              <select value={(localData.toolName as string) || ''} onChange={(e) => update('toolName', e.target.value)} className="input-dark">
                 <option value="">选择工具</option>
-                {tools.map((t) => (
-                  <option key={t} value={t}>
-                    {t === 'web_search' ? 'Web 搜索' : t === 'http_request' ? 'HTTP 请求' : t}
-                  </option>
-                ))}
+                {tools.map((t) => (<option key={t} value={t}>{t}</option>))}
               </select>
             </Field>
+            <Field label="描述">
+              <textarea value={(localData.description as string) || ''} onChange={(e) => update('description', e.target.value)}
+                rows={2} className="input-dark resize-none" placeholder="工具调用说明" />
+            </Field>
             <Field label="参数模板 (JSON)">
-              <textarea
-                value={(localData.argsTemplate as string) || ''}
-                onChange={(e) => update('argsTemplate', e.target.value)}
-                rows={4}
-                className="input-sm resize-none font-mono text-xs"
-                placeholder='{"query": "{{input}}"}'
-              />
+              <textarea value={(localData.argsTemplate as string) || ''} onChange={(e) => update('argsTemplate', e.target.value)}
+                rows={4} className="input-dark resize-none font-mono text-xs" placeholder='{"query": "{{input}}"}' />
             </Field>
           </>
         )}
 
-        {/* Condition Node */}
         {nodeType === 'condition' && (
           <>
             <Field label="条件表达式">
-              <textarea
-                value={(localData.expression as string) || ''}
-                onChange={(e) => update('expression', e.target.value)}
-                rows={3}
-                className="input-sm resize-none font-mono text-xs"
-                placeholder='input.contains("error")'
-              />
+              <textarea value={(localData.expression as string) || ''} onChange={(e) => update('expression', e.target.value)}
+                rows={3} className="input-dark resize-none font-mono text-xs" placeholder='input.contains("error")' />
             </Field>
-            <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
-              <p className="font-medium text-gray-500 mb-1">说明</p>
-              <p>表达式为 true 走绿色出口，false 走红色出口。</p>
-              <p className="mt-1">可使用 <code className="bg-gray-200 px-1 rounded">input</code> 引用上游节点的输出。</p>
-            </div>
+            <Field label="描述">
+              <textarea value={(localData.description as string) || ''} onChange={(e) => update('description', e.target.value)}
+                rows={2} className="input-dark resize-none" placeholder="分支逻辑说明" />
+            </Field>
           </>
         )}
 
-        {/* Start Node */}
+        {nodeType === 'media' && (
+          <>
+            <Field label="类型">
+              <select value={(localData.category as string) || 'character'} onChange={(e) => update('category', e.target.value)} className="input-dark">
+                {MEDIA_CATEGORIES.map((c) => (<option key={c.value} value={c.value}>{c.label}</option>))}
+              </select>
+            </Field>
+            <Field label="图片 URL">
+              <input value={(localData.imageUrl as string) || ''} onChange={(e) => update('imageUrl', e.target.value)}
+                className="input-dark font-mono text-xs" placeholder="/v1/images/xxx 或 https://..." />
+            </Field>
+            <Field label="描述">
+              <textarea value={(localData.description as string) || ''} onChange={(e) => update('description', e.target.value)}
+                rows={3} className="input-dark resize-none" placeholder="角色/场景/道具描述" />
+            </Field>
+            {(localData.imageUrl as string) && (
+              <div className="rounded-lg overflow-hidden border border-gray-700">
+                <img src={localData.imageUrl as string} alt="" className="w-full h-32 object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              </div>
+            )}
+          </>
+        )}
+
         {nodeType === 'start' && (
           <Field label="输入变量">
-            <textarea
-              value={(localData.inputVars as string) || ''}
-              onChange={(e) => update('inputVars', e.target.value)}
-              rows={3}
-              className="input-sm resize-none font-mono text-xs"
-              placeholder="user_message"
-            />
+            <textarea value={(localData.inputVars as string) || ''} onChange={(e) => update('inputVars', e.target.value)}
+              rows={3} className="input-dark resize-none font-mono text-xs" placeholder="user_message" />
           </Field>
         )}
 
-        {/* End Node */}
         {nodeType === 'end' && (
           <Field label="输出映射">
-            <textarea
-              value={(localData.outputMapping as string) || ''}
-              onChange={(e) => update('outputMapping', e.target.value)}
-              rows={3}
-              className="input-sm resize-none font-mono text-xs"
-              placeholder="{{last_node_output}}"
-            />
+            <textarea value={(localData.outputMapping as string) || ''} onChange={(e) => update('outputMapping', e.target.value)}
+              rows={3} className="input-dark resize-none font-mono text-xs" placeholder="{{last_node_output}}" />
           </Field>
         )}
 
-        {/* Node ID (read-only) */}
-        <div className="pt-2 border-t">
-          <p className="text-xs text-gray-400">
-            ID: <code className="bg-gray-100 px-1 rounded">{node.id}</code>
+        <div className="pt-2 border-t border-gray-800">
+          <p className="text-xs text-gray-600">
+            ID: <code className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-400">{node.id}</code>
           </p>
         </div>
       </div>
@@ -193,7 +171,7 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+      <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">{label}</label>
       {children}
     </div>
   )

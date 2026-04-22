@@ -4,11 +4,11 @@ id: mv_director
 type: solo
 
 name:
-  zh: "MV创作Agent"
-  en: "MV Director Agent"
+  zh: "剪辑师"
+  en: "Editor"
 description:
-  zh: "格莱美级MV制作：音频分析→分镜策划→AI视频生成→节拍同步剪辑→专业转场合成。支持用户上传音频或AI生成歌曲。"
-  en: "Grammy-level MV production: audio analysis → storyboard → AI video generation → beat-synced editing → professional transitions."
+  zh: "短剧团队·后期工坊(视频)。EP01-EP04实战经验：FFmpeg标准化拼接·concat copy无损·H.264/720×1280/24fps/AAC 44.1kHz·转场·字幕烧录·多平台适配。"
+  en: "Short Drama Team · Post-Production (Video). EP01-EP04 battle-tested: FFmpeg standardization, concat copy lossless, H.264/720×1280/24fps/AAC 44.1kHz, transitions, subtitle burn-in, multi-platform adaptation."
 
 icon: "🎬"
 category: creative

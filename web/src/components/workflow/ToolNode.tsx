@@ -10,8 +10,8 @@ interface ToolNodeData {
 export default function ToolNode({ data }: NodeProps) {
   const d = data as ToolNodeData
   return (
-    <div className="bg-white border-2 border-amber-400 rounded-xl shadow-sm min-w-[180px]">
-      <Handle type="target" position={Position.Top} className="!bg-amber-500 !w-3 !h-3" />
+    <div className="bg-white border-2 border-amber-400 rounded-xl shadow-sm min-w-[200px] cursor-grab active:cursor-grabbing touch-manipulation">
+      <Handle type="target" position={Position.Top} className="!bg-amber-500 !w-3.5 !h-3.5 !-top-1.5" />
       <div className="px-4 py-2.5 border-b border-amber-100 bg-amber-50 rounded-t-xl">
         <div className="flex items-center gap-2">
           <Wrench className="w-4 h-4 text-amber-600" />
@@ -24,7 +24,7 @@ export default function ToolNode({ data }: NodeProps) {
           <span className="text-gray-700">{d.toolName || '未配置'}</span>
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-amber-500 !w-3 !h-3" />
+      <Handle type="source" position={Position.Bottom} className="!bg-amber-500 !w-3.5 !h-3.5 !-bottom-1.5" />
     </div>
   )
 }

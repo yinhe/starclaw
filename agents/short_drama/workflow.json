@@ -1,0 +1,233 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "position": {"x": 520, "y": 20},
+      "data": {"label": "剧本项目"}
+    },
+
+    {
+      "id": "char-1",
+      "type": "media",
+      "position": {"x": 30, "y": 100},
+      "data": {
+        "label": "[图1] 林见月",
+        "description": "女一 · 穿越者 · 薄荷绿古装",
+        "category": "character",
+        "imageUrl": "/v1/projects/swarm-universe/production/characters/lin_jianyue/unified_sheet_v6.png"
+      }
+    },
+    {
+      "id": "char-2",
+      "type": "media",
+      "position": {"x": 220, "y": 100},
+      "data": {
+        "label": "[图2] ZERG",
+        "description": "虫族种子 · 灰色甲壳机甲犬",
+        "category": "character",
+        "imageUrl": "/v1/projects/swarm-universe/production/characters/zerg/unified_sheet_stage0.png"
+      }
+    },
+    {
+      "id": "char-3",
+      "type": "media",
+      "position": {"x": 410, "y": 100},
+      "data": {
+        "label": "[图3] 苏蜜",
+        "description": "女二 · 当代闺蜜 · 酒红深V",
+        "category": "character",
+        "imageUrl": "/v1/projects/swarm-universe/production/characters/sumi/sumi_ref_v7.png"
+      }
+    },
+    {
+      "id": "char-4",
+      "type": "media",
+      "position": {"x": 600, "y": 100},
+      "data": {
+        "label": "[图4] 温婉",
+        "description": "女三 · 量化高手 · 高领针织",
+        "category": "character"
+      }
+    },
+    {
+      "id": "char-5",
+      "type": "media",
+      "position": {"x": 790, "y": 100},
+      "data": {
+        "label": "[图5] 颜术",
+        "description": "男一 · 创业者 · 灰卫衣",
+        "category": "character"
+      }
+    },
+
+    {
+      "id": "bible",
+      "type": "llm",
+      "position": {"x": 520, "y": 280},
+      "data": {
+        "label": "加载 bible.md",
+        "description": "角色库 + 世界观 + [图N] 标签"
+      }
+    },
+
+    {
+      "id": "scene-ep01",
+      "type": "media",
+      "position": {"x": 30, "y": 400},
+      "data": {
+        "label": "EP01 穿越",
+        "description": "6镜 · 45s · 林见月坠落现代",
+        "category": "scene"
+      }
+    },
+    {
+      "id": "scene-ep02",
+      "type": "media",
+      "position": {"x": 220, "y": 400},
+      "data": {
+        "label": "EP02 半块面包",
+        "description": "6镜 · 50s · ZERG初次信任",
+        "category": "scene"
+      }
+    },
+    {
+      "id": "scene-ep03",
+      "type": "media",
+      "position": {"x": 410, "y": 400},
+      "data": {
+        "label": "EP03 第一笔交易",
+        "description": "6镜 · 48s · 闺蜜相遇",
+        "category": "scene"
+      }
+    },
+    {
+      "id": "scene-ep04",
+      "type": "media",
+      "position": {"x": 600, "y": 400},
+      "data": {
+        "label": "EP04 新世界",
+        "description": "11镜 · 52s · 量化登场",
+        "category": "scene"
+      }
+    },
+    {
+      "id": "scene-ep05",
+      "type": "media",
+      "position": {"x": 790, "y": 400},
+      "data": {
+        "label": "EP05 待写",
+        "description": "颜术正式登场",
+        "category": "scene"
+      }
+    },
+
+    {
+      "id": "script-parse",
+      "type": "llm",
+      "position": {"x": 150, "y": 560},
+      "data": {
+        "label": "解析分镜表",
+        "description": "故事剧本 → Seedance prompt"
+      }
+    },
+    {
+      "id": "seedance",
+      "type": "tool",
+      "position": {"x": 400, "y": 560},
+      "data": {
+        "label": "Seedance 2.0 生成",
+        "toolName": "video_generation",
+        "description": "[图N] + 尾帧链式 · 逐镜生成"
+      }
+    },
+    {
+      "id": "costume-1",
+      "type": "media",
+      "position": {"x": 700, "y": 560},
+      "data": {
+        "label": "古装汉服",
+        "description": "薄荷绿 + 透纱外袍 + 流苏耳环",
+        "category": "costume"
+      }
+    },
+    {
+      "id": "prop-1",
+      "type": "media",
+      "position": {"x": 890, "y": 560},
+      "data": {
+        "label": "翡翠银腰扣",
+        "description": "林见月专属道具 · 全集复用",
+        "category": "prop"
+      }
+    },
+
+    {
+      "id": "dubbing",
+      "type": "tool",
+      "position": {"x": 150, "y": 710},
+      "data": {
+        "label": "TTS 配音",
+        "toolName": "dubbing",
+        "description": "情感旁白 + 角色对话"
+      }
+    },
+    {
+      "id": "bgm",
+      "type": "tool",
+      "position": {"x": 400, "y": 710},
+      "data": {
+        "label": "BGM 配乐",
+        "toolName": "music_generation",
+        "description": "氛围音乐 · 节拍同步"
+      }
+    },
+
+    {
+      "id": "compose",
+      "type": "tool",
+      "position": {"x": 280, "y": 850},
+      "data": {
+        "label": "Pro 合成成片",
+        "toolName": "mv_production",
+        "description": "compose_pro · 转场 + 字幕 + 配乐"
+      }
+    },
+
+    {
+      "id": "end",
+      "type": "end",
+      "position": {"x": 520, "y": 850},
+      "data": {"label": "交付"}
+    }
+  ],
+  "edges": [
+    {"id": "e-s-bible", "source": "start", "target": "bible"},
+    {"id": "e-c1-bible", "source": "char-1", "target": "bible"},
+    {"id": "e-c2-bible", "source": "char-2", "target": "bible"},
+    {"id": "e-c3-bible", "source": "char-3", "target": "bible"},
+    {"id": "e-c4-bible", "source": "char-4", "target": "bible"},
+    {"id": "e-c5-bible", "source": "char-5", "target": "bible"},
+
+    {"id": "e-bible-ep01", "source": "bible", "target": "scene-ep01"},
+    {"id": "e-bible-ep02", "source": "bible", "target": "scene-ep02"},
+    {"id": "e-bible-ep03", "source": "bible", "target": "scene-ep03"},
+    {"id": "e-bible-ep04", "source": "bible", "target": "scene-ep04"},
+    {"id": "e-bible-ep05", "source": "bible", "target": "scene-ep05"},
+
+    {"id": "e-ep-parse", "source": "scene-ep04", "target": "script-parse"},
+    {"id": "e-parse-sd", "source": "script-parse", "target": "seedance"},
+
+    {"id": "e-c1-sd", "source": "char-1", "target": "seedance", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-c2-sd", "source": "char-2", "target": "seedance", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-costume-sd", "source": "costume-1", "target": "seedance", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-prop-sd", "source": "prop-1", "target": "seedance", "style": {"strokeDasharray": "5 5"}},
+
+    {"id": "e-sd-dub", "source": "seedance", "target": "dubbing"},
+    {"id": "e-sd-bgm", "source": "seedance", "target": "bgm"},
+
+    {"id": "e-dub-comp", "source": "dubbing", "target": "compose"},
+    {"id": "e-bgm-comp", "source": "bgm", "target": "compose"},
+    {"id": "e-comp-end", "source": "compose", "target": "end"}
+  ]
+}
