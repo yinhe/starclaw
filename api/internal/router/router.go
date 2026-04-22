@@ -825,10 +825,14 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/recovery/backup", recoveryHandler.Backup)
 			protected.GET("/recovery/address", recoveryHandler.Address)
 
-			// Arena PK (proxy to Queen → Arena service)
-			if cfg.Swarm.QueenURL != "" {
-				log.Printf("[router] arena PK proxy → %s", cfg.Swarm.QueenURL)
-				protected.Any("/arena/*path", arenaProxy(cfg.Swarm.QueenURL))
+			// Arena PK (proxy to Queen web → Arena service)
+			arenaTarget := cfg.Swarm.ArenaURL
+			if arenaTarget == "" {
+				arenaTarget = cfg.Swarm.QueenURL
+			}
+			if arenaTarget != "" {
+				log.Printf("[router] arena proxy → %s", arenaTarget)
+				protected.Any("/arena/*path", arenaProxy(arenaTarget))
 			}
 
 			// Auth request management (protected — user approves/rejects on their Claw UI)
@@ -1164,6 +1168,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			// Videos (generated video gallery)
 			videoHandler := media.NewVideoHandler(db, toolRegistry)
 			protected.GET("/videos", videoHandler.List)
+			protected.POST("/videos/generate", videoHandler.Generate)
 			protected.DELETE("/videos/:id", videoHandler.Delete)
 			protected.POST("/videos/:id/cancel", videoHandler.Cancel)
 			protected.POST("/videos/:id/retry", videoHandler.Retry)
@@ -1234,12 +1239,12 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 	return r
 }
 
-// arenaProxy returns a Gin handler that reverse-proxies /v1/arena/* to Queen API's /v1/arena/* endpoint.
-// Path mapping: /v1/arena/pk/leaderboard → queen /v1/arena/pk/leaderboard
-func arenaProxy(queenURL string) gin.HandlerFunc {
-	target, err := url.Parse(queenURL)
+// arenaProxy returns a Gin handler that reverse-proxies /v1/arena/* to the Arena service via Queen web.
+// Path mapping: /v1/arena/threads → queen-web /arena/threads (queen-web nginx proxies /arena/ to arena:8095)
+func arenaProxy(arenaBaseURL string) gin.HandlerFunc {
+	target, err := url.Parse(arenaBaseURL)
 	if err != nil {
-		log.Printf("[arena-proxy] invalid queen URL %q: %v", queenURL, err)
+		log.Printf("[arena-proxy] invalid arena URL %q: %v", arenaBaseURL, err)
 		return func(c *gin.Context) {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "arena proxy misconfigured"})
 		}
@@ -1251,7 +1256,7 @@ func arenaProxy(queenURL string) gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		subPath := c.Param("path")
-		c.Request.URL.Path = "/v1/arena" + subPath
+		c.Request.URL.Path = "/arena" + subPath
 		c.Request.Host = target.Host
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}

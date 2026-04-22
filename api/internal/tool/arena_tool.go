@@ -66,9 +66,12 @@ func (t *ArenaTool) Execute(ctx context.Context, args string) (string, error) {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
 
-	baseURL := t.cfg.QueenURL
+	baseURL := t.cfg.ArenaURL
 	if baseURL == "" {
-		return toJSON(map[string]string{"error": "Queen API URL not configured, cannot access arena"}), nil
+		baseURL = t.cfg.QueenURL // fallback: hope QueenURL has /arena/* routes
+	}
+	if baseURL == "" {
+		return toJSON(map[string]string{"error": "Arena URL not configured (set swarm.arena_url or swarm.queen_url)"}), nil
 	}
 
 	// Get agent identity from context and config

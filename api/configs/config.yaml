@@ -55,6 +55,7 @@ trading:
 swarm:
   enabled: false                    # set true to join the swarm
   queen_url: ""                     # e.g. https://api.starclaw.me or http://queen-swarm:8090
+  arena_url: ""                     # Queen web URL with /arena/* proxy, e.g. https://starclaw.net.cn
   node_name: ""                     # display name (defaults to hostname)
   region: ""                        # e.g. cn-east, us-west
   heartbeat_interval: 30            # seconds
