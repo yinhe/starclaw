@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   X, Film, Clapperboard, Play, Plus, Check, CircleDot, CircleAlert, CircleX,
   Music, Scissors, Sparkles, Image as ImageIcon, Trash2, ChevronRight, Layers,
@@ -11,6 +11,7 @@ interface Props {
   onUpdate: (id: string, data: Record<string, unknown>) => void
   onClose: () => void
   onProduce?: (episode: EpisodeData) => void
+  initialSceneId?: string   // 外部传入打开时自动展开的场景
 }
 
 type TabKey = 'scenes' | 'composition' | 'meta'
@@ -26,10 +27,18 @@ const TAKE_STATUS_ICON: Record<Take['status'], typeof Check> = {
   pending: CircleDot, running: CircleDot, succeeded: Check, failed: CircleX,
 }
 
-export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduce }: Props) {
+export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduce, initialSceneId }: Props) {
   const data = node.data as unknown as EpisodeData
   const [tab, setTab] = useState<TabKey>('scenes')
-  const [expandedScene, setExpandedScene] = useState<string | null>(null)
+  const [expandedScene, setExpandedScene] = useState<string | null>(initialSceneId || null)
+
+  // 外部切换 initialSceneId 时（sceneStep 节点点击），自动跳到 scenes tab 并展开该场景
+  useEffect(() => {
+    if (initialSceneId) {
+      setTab('scenes')
+      setExpandedScene(initialSceneId)
+    }
+  }, [initialSceneId, node.id])
 
   const scenes = data.scenes || []
   const comp: Composition = data.composition || { picked_clips: [], status: 'pending' }

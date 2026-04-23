@@ -85,12 +85,23 @@ export default function WorkflowPage() {
 
   // 聚焦模式：选中某一集时隐藏其他剧集节点，突出当前集的工作流
   const [focusedEpisodeId, setFocusedEpisodeId] = useState<string | null>(null)
+  const [focusedSceneId, setFocusedSceneId] = useState<string | null>(null)
   const [focusMode, setFocusMode] = useState(true)
+
+  // 场景子图节点位置的本地存储覆盖（key: __scene__<epId>__<sceneId> → {x,y}）
+  const SCENE_POS_KEY = 'wf-scene-positions'
+  const [scenePositions, setScenePositions] = useState<Record<string, { x: number; y: number }>>(() => {
+    try { return JSON.parse(localStorage.getItem(SCENE_POS_KEY) || '{}') } catch { return {} }
+  })
+  useEffect(() => {
+    try { localStorage.setItem(SCENE_POS_KEY, JSON.stringify(scenePositions)) } catch { /* ignore */ }
+  }, [scenePositions])
 
   // 聚焦到某一集：中央画布缩放到该节点 + 打开右侧工作流面板
   const focusEpisode = useCallback((n: Node) => {
     setSelectedNode(n)
     setFocusedEpisodeId(n.id)
+    setFocusedSceneId(null)
     // 下一帧再 fitView，让 hidden 生效后再缩放
     setTimeout(() => {
       try {
@@ -98,6 +109,48 @@ export default function WorkflowPage() {
       } catch { /* ignore */ }
     }, 80)
   }, [])
+
+  // runEpisodeProduction 在下面定义，用 ref 打破循环依赖
+  const runEpisodeProductionRef = useRef<(ep: EpisodeData, id: string) => void>(() => {})
+
+  // 重拍单场景：构造只含该场景的 EpisodeData 投递给同一工作流
+  const rerunScene = useCallback((epId: string, sceneId: string) => {
+    setNodes(nds => {
+      const epNode = nds.find(n => n.id === epId)
+      if (!epNode) return nds
+      const ep = epNode.data as unknown as EpisodeData
+      const scene = (ep.scenes || []).find(s => s.id === sceneId)
+      if (!scene) return nds
+      // 标记 running
+      const newScenes = (ep.scenes || []).map(s => s.id !== sceneId ? s : {
+        ...s,
+        takes: [...(s.takes || []), {
+          take_id: `t${(s.takes?.length || 0) + 1}`,
+          status: 'running' as const,
+          created_at: new Date().toISOString(),
+          note: '手动重拍',
+        }],
+      })
+      // 异步触发生产（scoped 只含该场景）
+      setTimeout(() => {
+        const scopedEp: EpisodeData = { ...ep, scenes: [scene] }
+        runEpisodeProductionRef.current(scopedEp, epId)
+      }, 0)
+      return nds.map(n => n.id !== epId ? n : { ...n, data: { ...ep, scenes: newScenes } as unknown as Record<string, unknown> })
+    })
+  }, [setNodes])
+
+  // 切换 picked take（由 sceneStep takes 缩略图墙触发）
+  const pickSceneTake = useCallback((epId: string, sceneId: string, takeId: string) => {
+    setNodes(nds => nds.map(n => {
+      if (n.id !== epId) return n
+      const d = n.data as unknown as EpisodeData
+      const newScenes = (d.scenes || []).map(s => s.id === sceneId ? { ...s, picked_take: takeId } : s)
+      const picked_clips = newScenes.map(s => s.picked_take ? `${s.id}.${s.picked_take}` : '').filter(Boolean)
+      const composition = { ...(d.composition || { picked_clips: [] }), picked_clips }
+      return { ...n, data: { ...d, scenes: newScenes, composition } as unknown as Record<string, unknown> }
+    }))
+  }, [setNodes])
 
   // 派生画布显示节点：focusMode 开启且选中某一集时
   //   · 隐藏其他剧集节点
@@ -130,10 +183,12 @@ export default function WorkflowPage() {
     const sceneNodes: Node[] = ep.scenes.map((s, i) => {
       const pickedTake = s.picked_take ? s.takes?.find(t => t.take_id === s.picked_take) : undefined
       const anyTake = s.takes?.find(t => t.status === 'succeeded')
+      const nodeId = `__scene__${focusedEpisodeId}__${s.id}`
+      const savedPos = scenePositions[nodeId]
       return {
-        id: `__scene__${focusedEpisodeId}__${s.id}`,
+        id: nodeId,
         type: 'sceneStep',
-        position: { x: startX + i * SCENE_W, y },
+        position: savedPos || { x: startX + i * SCENE_W, y },
         data: {
           sceneId: s.id,
           label: s.label,
@@ -142,19 +197,25 @@ export default function WorkflowPage() {
           isPicked: !!pickedTake,
           videoUrl: pickedTake?.video_url || anyTake?.video_url,
           thumbnail: (s as unknown as Record<string, string>).thumbnail,
+          takes: s.takes || [],
+          pickedTakeId: s.picked_take,
+          onRerun: (sid: string) => rerunScene(focusedEpisodeId, sid),
+          onPickTake: (sid: string, tid: string) => pickSceneTake(focusedEpisodeId, sid, tid),
         },
-        draggable: false,
+        draggable: true,
         selectable: true,
       } as Node
     })
 
     // 终点合成节点
+    const finalNodeId = `__scene__${focusedEpisodeId}__final`
+    const finalSaved = scenePositions[finalNodeId]
     const finalNode: Node = {
-      id: `__scene__${focusedEpisodeId}__final`,
+      id: finalNodeId,
       type: 'sceneStep',
-      position: { x: startX + n * SCENE_W, y },
+      position: finalSaved || { x: startX + n * SCENE_W, y },
       data: { isFinal: true, sceneId: 'FIN', label: '合成成片', duration: 0, hasClip: false, isPicked: false },
-      draggable: false,
+      draggable: true,
       selectable: true,
     }
 
@@ -189,7 +250,7 @@ export default function WorkflowPage() {
       displayNodes: [...visibleNodes, ...sceneNodes, finalNode],
       displayEdges: [...edges, ...subEdges],
     }
-  }, [nodes, edges, focusMode, focusedEpisodeId])
+  }, [nodes, edges, focusMode, focusedEpisodeId, scenePositions, rerunScene, pickSceneTake])
 
   // localStorage key for 无 workflowId 情况下的草稿画布（按 tab 隔离）
   const DRAFT_KEY = workflowId ? `wf-draft:${workflowId}` : 'wf-draft:__new__'
@@ -286,12 +347,39 @@ export default function WorkflowPage() {
   )
 
   const onNodeClick: NodeMouseHandler = useCallback((_e, node) => {
-    setSelectedNode(node)
     setContextMenu(null)
-    // 点到剧集节点 → 聚焦（隐藏其他剧集 + 缩放到1.4x）
+    // 点到剧集节点 → 聚焦
     if (node.type === 'media' && (node.data as Record<string, unknown>).category === 'scene') {
+      setSelectedNode(node)
       setFocusedEpisodeId(node.id)
+      setFocusedSceneId(null)
+      return
     }
+    // 点到场景子图节点 → 选中其父剧集并打开对应 scene tab
+    if (node.type === 'sceneStep') {
+      const d = node.data as Record<string, unknown>
+      if (d.isFinal) return
+      const sceneId = d.sceneId as string
+      // 解析父剧集 ID：__scene__<epId>__<sceneId>
+      const prefix = `__scene__`
+      if (node.id.startsWith(prefix)) {
+        const rest = node.id.slice(prefix.length)
+        const epId = rest.substring(0, rest.lastIndexOf('__'))
+        const epNode = nodes.find(n => n.id === epId)
+        if (epNode) {
+          setSelectedNode(epNode)
+          setFocusedSceneId(sceneId)
+        }
+      }
+      return
+    }
+    setSelectedNode(node)
+  }, [nodes])
+
+  // 场景子图节点拖动后持久化位置
+  const onNodeDragStop = useCallback((_e: React.MouseEvent, node: Node) => {
+    if (node.type !== 'sceneStep') return
+    setScenePositions(prev => ({ ...prev, [node.id]: { x: node.position.x, y: node.position.y } }))
   }, [])
 
   const handleNodeDataUpdate = useCallback(
@@ -398,6 +486,9 @@ export default function WorkflowPage() {
       }))
     }
   }, [setNodes, workflowId])
+
+  // 同步 ref，让 rerunScene 可以前向引用 runEpisodeProduction
+  useEffect(() => { runEpisodeProductionRef.current = runEpisodeProduction }, [runEpisodeProduction])
 
   const addMediaNodeWithData = useCallback(
     (data: Record<string, unknown>) => {
@@ -785,7 +876,8 @@ export default function WorkflowPage() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
-            onPaneClick={() => { setSelectedNode(null); setContextMenu(null); if (focusMode) setFocusedEpisodeId(null) }}
+            onNodeDragStop={onNodeDragStop}
+            onPaneClick={() => { setSelectedNode(null); setContextMenu(null); setFocusedSceneId(null); if (focusMode) setFocusedEpisodeId(null) }}
             onPaneContextMenu={onPaneContextMenu}
             nodeTypes={nodeTypes}
             fitView
@@ -856,8 +948,9 @@ export default function WorkflowPage() {
             <EpisodeWorkflowPanel
               node={selectedNode}
               onUpdate={handleNodeDataUpdate}
-              onClose={() => setSelectedNode(null)}
+              onClose={() => { setSelectedNode(null); setFocusedSceneId(null) }}
               onProduce={(ep) => runEpisodeProduction(ep, selectedNode.id)}
+              initialSceneId={focusedSceneId || undefined}
             />
           </div>
         ) : selectedNode ? (
