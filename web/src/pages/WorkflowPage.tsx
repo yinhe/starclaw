@@ -215,8 +215,20 @@ export default function WorkflowPage() {
     setShowSwarmConfirm(true)
   }, [])
 
-  const doLoadSwarmUniverse = useCallback(() => {
-    const { nodes: seed, nextId } = buildSeedNodes({ startIdCounter: nodeIdCounter.current })
+  const [loadingSwarm, setLoadingSwarm] = useState(false)
+  const doLoadSwarmUniverse = useCallback(async () => {
+    setLoadingSwarm(true)
+    let seed: Node[] = []
+    let nextId = nodeIdCounter.current
+    try {
+      const r = await buildSeedNodes({ startIdCounter: nodeIdCounter.current })
+      seed = r.nodes as unknown as Node[]
+      nextId = r.nextId
+    } catch (e) {
+      alert(`加载 manifest 失败：${e instanceof Error ? e.message : String(e)}\n\n请确认 /v1/projects/swarm-universe/assets/manifest.json 可访问。`)
+      setLoadingSwarm(false)
+      return
+    }
     nodeIdCounter.current = nextId
     // 先清理旧的 media 节点（角色/剧集/道具）避免重复，再追加新 seed
     setNodes(nds => [
@@ -775,9 +787,9 @@ export default function WorkflowPage() {
                 className="px-4 py-2 text-xs font-medium rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white transition">
                 取消
               </button>
-              <button onClick={doLoadSwarmUniverse}
-                className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600 text-white hover:from-violet-500 hover:to-cyan-500 transition shadow-lg shadow-violet-900/40 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> 加载虫群宇宙
+              <button onClick={doLoadSwarmUniverse} disabled={loadingSwarm}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600 text-white hover:from-violet-500 hover:to-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed transition shadow-lg shadow-violet-900/40 flex items-center gap-1.5">
+                {loadingSwarm ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> 加载中…</>) : (<><Sparkles className="w-3.5 h-3.5" /> 加载虫群宇宙</>)}
               </button>
             </div>
           </div>
