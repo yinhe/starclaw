@@ -162,6 +162,33 @@ export const imageAPI = {
   }) => api.post('/images/generate', data, { timeout: 240000 }),
 }
 
+// Character Studio 辅助：AI 生成外观卡（同步一次性短文本）
+export const characterAPI = {
+  generateAppearance: (data: {
+    name: string
+    role: string
+    notes?: string
+    reference_url?: string
+  }) => api.post('/characters/generate-appearance', data, { timeout: 60000 }),
+}
+
+// CDN 上传（cdn.starclaw.net，EP04 验证过）
+// 后端按 env 配置走 scp → 43.106.158.26:/opt/cdn/.../<claw_id>/<drama>/<asset_type>/<filename>
+// 若未配置或失败 → 自动 fallback 到 /v1/uploads/<uuid>（本地稳定 URL）
+export const cdnAPI = {
+  upload: (file: File, opts: { drama: string; asset_type: string; filename?: string }) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('drama', opts.drama)
+    form.append('asset_type', opts.asset_type)
+    if (opts.filename) form.append('filename', opts.filename)
+    return api.post('/cdn/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    })
+  },
+}
+
 // Music
 export const musicAPI = {
   list: () => api.get('/music'),

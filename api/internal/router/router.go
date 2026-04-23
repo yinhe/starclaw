@@ -1185,6 +1185,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/images", mediaHandler.ListImages)
 			protected.POST("/images/generate", mediaHandler.GenerateImage)
 			protected.DELETE("/images/:id", mediaHandler.DeleteImage)
+
+			// Character Studio helpers (AI appearance card + CDN upload)
+			charStudioHandler := media.NewCharacterStudioHandler(db, providerRegistry)
+			protected.POST("/characters/generate-appearance", charStudioHandler.GenerateAppearance)
+			protected.POST("/cdn/upload", charStudioHandler.CDNUpload)
 			protected.GET("/music", mediaHandler.ListMusic)
 			protected.DELETE("/music/:id", mediaHandler.DeleteMusic)
 			protected.GET("/documents", mediaHandler.ListDocuments)

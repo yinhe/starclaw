@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
-import { X, Users, Upload, Sparkles, Loader2, RefreshCw, Check, ChevronLeft, ChevronRight, AlertCircle, Image as ImageIcon, Wand2 } from 'lucide-react'
+import { X, Users, Upload, Sparkles, Loader2, RefreshCw, Check, ChevronLeft, ChevronRight, AlertCircle, Image as ImageIcon, Wand2, Plus } from 'lucide-react'
 import type { CharacterData } from './episodeTypes'
-import { fileAPI, imageAPI } from '../../lib/api'
+import { fileAPI, imageAPI, characterAPI, cdnAPI } from '../../lib/api'
 
 interface Props {
   open: boolean
@@ -20,6 +20,15 @@ const ROLE_PRESETS = [
   { value: '配角', color: 'bg-violet-500/20 text-violet-300 border-violet-500/40' },
   { value: '生物', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
 ]
+// 自定义 role 持久到 localStorage，下次打开 modal 也能看到
+const CUSTOM_ROLES_KEY = 'starclaw:character-custom-roles'
+const CUSTOM_ROLE_COLOR = 'bg-teal-500/20 text-teal-300 border-teal-500/40'
+function loadCustomRoles(): string[] {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_ROLES_KEY) || '[]') || [] } catch { return [] }
+}
+function saveCustomRoles(rs: string[]) {
+  try { localStorage.setItem(CUSTOM_ROLES_KEY, JSON.stringify(rs.slice(0, 32))) } catch { /* ignore quota */ }
+}
 
 const STYLE_PRESETS = [
   { value: 'realistic', label: '写实', hint: 'EP01-04 验证，适配真人短剧' },
@@ -62,6 +71,44 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
 
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // ── 自定义定位（持久化） ──
+  const [customRoles, setCustomRoles] = useState<string[]>(() => loadCustomRoles())
+  const [roleInputOpen, setRoleInputOpen] = useState(false)
+  const [roleDraft, setRoleDraft] = useState('')
+  const addCustomRole = () => {
+    const v = roleDraft.trim()
+    if (!v) return
+    const known = new Set([...ROLE_PRESETS.map(r => r.value), ...customRoles])
+    if (!known.has(v)) {
+      const next = [...customRoles, v]
+      setCustomRoles(next); saveCustomRoles(next)
+    }
+    setRole(v); setRoleDraft(''); setRoleInputOpen(false)
+  }
+
+  // ── AI 一键生成外观卡 ──
+  const [genAppearLoading, setGenAppearLoading] = useState(false)
+  const [genAppearError, setGenAppearError] = useState<string | null>(null)
+  const generateAppearance = async () => {
+    if (!name.trim()) { setGenAppearError('请先填角色名'); return }
+    setGenAppearLoading(true); setGenAppearError(null)
+    try {
+      const res = await characterAPI.generateAppearance({
+        name: name.trim(),
+        role,
+        notes: appearance.trim() || undefined,
+        reference_url: refUrl || undefined,
+      })
+      const text = ((res.data as Record<string, unknown>).appearance_card as string) || ''
+      if (text) setAppearance(text)
+      else setGenAppearError('模型返回为空，请重试')
+    } catch (e) {
+      setGenAppearError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setGenAppearLoading(false)
+    }
+  }
+
   // 首次打开时根据 initial 同步（同一 modal 实例被复用切换角色时）
   const [initKey, setInitKey] = useState<string>('')
   if (open) {
@@ -95,20 +142,43 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
 
   const canNextFromStage1 = name.trim() && appearance.trim() && refUrl
 
-  // ── 参考图上传 ──
+  // ── 参考图上传（优先 cdn.starclaw.net，失败 fallback /v1/uploads） ──
+  const [uploadTarget, setUploadTarget] = useState<'cdn' | 'local' | ''>('')
   const handleFilePick = async (file: File) => {
     setUploading(true)
+    setUploadTarget('')
+    const preview = URL.createObjectURL(file)
+    setRefPreview(preview)
+    // 基于角色名生成远端 filename（空则用原文件名）
+    const baseName = (name.trim() || 'ref')
+      .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
+      .toLowerCase()
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase()
     try {
-      const preview = URL.createObjectURL(file)
-      setRefPreview(preview)
-      const res = await fileAPI.upload(file)
-      const url: string = (res.data as Record<string, unknown>).url as string
-      if (!url) throw new Error('上传未返回 URL')
-      // 本地 /v1/uploads/xxx → 拼上 origin 成完整公网 URL（fal 需要公网可访问）
-      const absolute = url.startsWith('http') ? url : `${window.location.origin}${url}`
-      setRefUrl(absolute)
-    } catch (e) {
-      alert(`上传失败：${e instanceof Error ? e.message : String(e)}`)
+      // Try CDN first
+      const res = await cdnAPI.upload(file, {
+        drama: 'swarm-universe',
+        asset_type: 'characters',
+        filename: `${baseName}/ref_photo.${ext}`,
+      })
+      const data = res.data as Record<string, unknown>
+      const url = (data.url as string) || ''
+      if (!url) throw new Error('CDN 未返回 URL')
+      setRefUrl(url)
+      setUploadTarget((data.target as 'cdn' | 'local') || 'cdn')
+    } catch (cdnErr) {
+      // Fallback: local /v1/uploads
+      try {
+        const res = await fileAPI.upload(file)
+        const url: string = (res.data as Record<string, unknown>).url as string
+        if (!url) throw new Error('本地上传未返回 URL')
+        const absolute = url.startsWith('http') ? url : `${window.location.origin}${url}`
+        setRefUrl(absolute)
+        setUploadTarget('local')
+        console.warn('[Character] CDN upload failed, fell back to local:', cdnErr)
+      } catch (e) {
+        alert(`上传失败：${e instanceof Error ? e.message : String(e)}`)
+      }
     } finally {
       setUploading(false)
     }
@@ -205,6 +275,22 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
               uploading={uploading}
               onPickFile={() => fileRef.current?.click()}
               onPasteUrl={url => { setRefUrl(url); setRefPreview(url) }}
+              customRoles={customRoles}
+              onRemoveCustomRole={(v) => {
+                const next = customRoles.filter(x => x !== v)
+                setCustomRoles(next); saveCustomRoles(next)
+                if (role === v) setRole('女一')
+              }}
+              roleInputOpen={roleInputOpen}
+              roleDraft={roleDraft}
+              setRoleDraft={setRoleDraft}
+              onOpenRoleInput={() => setRoleInputOpen(true)}
+              onCloseRoleInput={() => { setRoleInputOpen(false); setRoleDraft('') }}
+              onAddCustomRole={addCustomRole}
+              uploadTarget={uploadTarget}
+              genAppearLoading={genAppearLoading}
+              genAppearError={genAppearError}
+              onGenerateAppearance={generateAppearance}
             />
           )}
           {stage === 2 && (
@@ -313,9 +399,26 @@ function Stage1(props: {
   refPreview: string; refUrl: string; uploading: boolean
   onPickFile: () => void
   onPasteUrl: (url: string) => void
+  // 自定义 role
+  customRoles: string[]
+  onRemoveCustomRole: (v: string) => void
+  roleInputOpen: boolean
+  roleDraft: string
+  setRoleDraft: (v: string) => void
+  onOpenRoleInput: () => void
+  onCloseRoleInput: () => void
+  onAddCustomRole: () => void
+  // CDN 上传目标 + AI 外观卡
+  uploadTarget: 'cdn' | 'local' | ''
+  genAppearLoading: boolean
+  genAppearError: string | null
+  onGenerateAppearance: () => void
 }) {
   const { name, setName, role, setRole, appearance, setAppearance, style, setStyle,
-    refPreview, refUrl, uploading, onPickFile, onPasteUrl } = props
+    refPreview, refUrl, uploading, onPickFile, onPasteUrl,
+    customRoles, onRemoveCustomRole, roleInputOpen, roleDraft, setRoleDraft,
+    onOpenRoleInput, onCloseRoleInput, onAddCustomRole,
+    uploadTarget, genAppearLoading, genAppearError, onGenerateAppearance } = props
   return (
     <div className="space-y-4">
       {/* 角色名 */}
@@ -328,36 +431,81 @@ function Stage1(props: {
           autoFocus />
       </div>
 
-      {/* 定位 */}
+      {/* 定位（支持自定义 + 按钮） */}
       <div>
         <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">定位</label>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 items-center">
           {ROLE_PRESETS.map(r => (
             <button key={r.value} type="button" onClick={() => setRole(r.value)}
               className={`px-2.5 py-1 text-xs rounded-md border transition ${role === r.value ? r.color : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-600'}`}>
               {r.value}
             </button>
           ))}
+          {customRoles.map(v => (
+            <span key={v} className={`group inline-flex items-center gap-1 pl-2.5 pr-1 py-1 text-xs rounded-md border transition ${role === v ? CUSTOM_ROLE_COLOR : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-600'}`}>
+              <button type="button" onClick={() => setRole(v)}>{v}</button>
+              <button type="button" onClick={() => onRemoveCustomRole(v)} title="删除此自定义"
+                className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          {roleInputOpen ? (
+            <span className="inline-flex items-center gap-1">
+              <input
+                value={roleDraft} onChange={e => setRoleDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); onAddCustomRole() }
+                  else if (e.key === 'Escape') { e.preventDefault(); onCloseRoleInput() }
+                }}
+                placeholder="e.g. 反派·大BOSS"
+                autoFocus
+                className="px-2 py-1 w-28 bg-gray-800 border border-teal-600/60 rounded-md text-xs text-teal-200 placeholder-gray-600 focus:outline-none focus:border-teal-400" />
+              <button type="button" onClick={onAddCustomRole}
+                className="px-1.5 py-1 text-xs rounded-md bg-teal-600 text-white hover:bg-teal-500 transition"><Check className="w-3 h-3" /></button>
+              <button type="button" onClick={onCloseRoleInput}
+                className="px-1.5 py-1 text-xs rounded-md bg-gray-800 border border-gray-700 text-gray-400 hover:text-gray-200 transition"><X className="w-3 h-3" /></button>
+            </span>
+          ) : (
+            <button type="button" onClick={onOpenRoleInput}
+              title="自定义定位（保存在本地）"
+              className="px-2 py-1 text-xs rounded-md border border-dashed border-gray-600 text-gray-500 hover:text-teal-300 hover:border-teal-500/60 transition inline-flex items-center gap-1">
+              <Plus className="w-3 h-3" /> 自定义
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 外观卡 */}
+      {/* 外观卡（含 AI 一键生成） */}
       <div>
-        <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
-          <Sparkles className="w-3 h-3" /> 外观卡 * <span className="text-gray-600 font-normal normal-case">（一字不差复用，要具体可拍）</span>
-        </label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3" /> 外观卡 * <span className="text-gray-600 font-normal normal-case">（一字不差复用，要具体可拍）</span>
+          </label>
+          <button type="button" onClick={onGenerateAppearance} disabled={genAppearLoading || !name.trim()}
+            title={!name.trim() ? '请先填角色名' : 'AI 基于角色名/定位/已有片段写一段具体可拍的外观卡'}
+            className="px-2 py-1 text-[11px] rounded-md bg-gradient-to-r from-violet-600/80 to-fuchsia-600/80 hover:from-violet-500 hover:to-fuchsia-500 text-white inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm shadow-violet-900/30">
+            {genAppearLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+            AI 一键生成
+          </button>
+        </div>
         <textarea
           value={appearance} onChange={e => setAppearance(e.target.value)}
           rows={3}
           placeholder="薄荷绿古装汉服+透纱外袍的瘦弱年轻中国女子，黑色长直发柔顺，古风流苏耳环+翡翠银腰扣"
           className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500 focus:outline-none resize-none" />
-        <p className="mt-1 text-[10px] text-gray-600">示例：服装+发型+体型+配色。不写抽象词（"美丽""优雅"）</p>
+        {genAppearError && (
+          <p className="mt-1 text-[10px] text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3" />AI 生成失败：{genAppearError}</p>
+        )}
+        <p className="mt-1 text-[10px] text-gray-600">示例：服装+发型+体型+配色。不写抽象词（"美丽""优雅"）· AI 会参考你填过的片段和上传的参考图</p>
       </div>
 
       {/* 参考图上传 */}
       <div>
         <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
           <Upload className="w-3 h-3" /> 参考图 * <span className="text-gray-600 font-normal normal-case">（原照或已有三视图，fal 需公网可访问）</span>
+          {uploadTarget === 'cdn' && <span className="px-1.5 py-0.5 rounded bg-emerald-600/20 border border-emerald-500/40 text-[9px] text-emerald-300 font-mono normal-case">CDN</span>}
+          {uploadTarget === 'local' && <span className="px-1.5 py-0.5 rounded bg-amber-600/20 border border-amber-500/40 text-[9px] text-amber-300 font-mono normal-case">LOCAL</span>}
         </label>
         <div className="grid grid-cols-[1fr_140px] gap-2">
           <div>
@@ -367,7 +515,7 @@ function Stage1(props: {
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs font-mono text-gray-200 placeholder-gray-600 focus:border-violet-500 focus:outline-none" />
             <button onClick={onPickFile} disabled={uploading}
               className="mt-1.5 w-full px-3 py-2 bg-gray-800 border border-dashed border-gray-700 hover:border-violet-500/60 text-xs text-gray-300 rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50">
-              {uploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 上传中…</> : <><Upload className="w-3.5 h-3.5" /> 从本地上传</>}
+              {uploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 上传中…</> : <><Upload className="w-3.5 h-3.5" /> 上传到 cdn.starclaw.net</>}
             </button>
           </div>
           <div className="h-[88px] rounded-lg border border-gray-700 bg-gray-950 overflow-hidden flex items-center justify-center">

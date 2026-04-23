@@ -69,6 +69,7 @@ RUN apk --no-cache add \
     python3 py3-pip py3-setuptools \
     nodejs npm \
     docker-cli docker-cli-compose \
+    openssh-client \
     && PIP_ARGS=""; NPM_REG=""; \
     if [ "$USE_CN_MIRROR" = "true" ]; then \
       PIP_ARGS="-i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com"; \
