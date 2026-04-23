@@ -179,8 +179,13 @@ export default function WorkflowPage() {
     [setNodes, contextMenu],
   )
 
+  const [showSwarmConfirm, setShowSwarmConfirm] = useState(false)
+
   const loadSwarmUniverse = useCallback(() => {
-    if (!confirm('将加载虫群宇宙完整资产：\n\n• 5 个角色（林见月·ZERG·苏蜜·颜术·温婉）\n• 7 个道具（古铜钱·半块饼·手机·吹风机等）\n• 50 集正片（五季×10集·EP01-EP04 已含真实成片）\n• 8 集衍生剧（《道裂》前传 + MCU 外传）\n\n⚠ 将清除画布上现有的角色/剧集/道具节点后重新加载（保留 start/end/LLM/tool 节点）。')) return
+    setShowSwarmConfirm(true)
+  }, [])
+
+  const doLoadSwarmUniverse = useCallback(() => {
     const { nodes: seed, nextId } = buildSeedNodes({ startIdCounter: nodeIdCounter.current })
     nodeIdCounter.current = nextId
     // 先清理旧的 media 节点（角色/剧集/道具）避免重复，再追加新 seed
@@ -196,6 +201,7 @@ export default function WorkflowPage() {
     setEdges(eds => eds.filter(e => !e.id.startsWith('e-seed-')))
     // Auto-save workflow name if still default
     if (workflowName === '未命名工作流') setWorkflowName('虫群宇宙 · 短剧完整红本')
+    setShowSwarmConfirm(false)
   }, [setNodes, setEdges, workflowName])
 
   const runEpisodeProduction = useCallback(async (episodeData: EpisodeData, nodeId: string) => {
@@ -699,6 +705,73 @@ export default function WorkflowPage() {
         onClose={() => setShowEpModal(false)}
         onCreate={(data) => { addMediaNodeWithData(data as unknown as Record<string, unknown>) }}
       />
+
+      {/* Swarm Universe 确认对话框 */}
+      {showSwarmConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setShowSwarmConfirm(false)}>
+          <div className="relative w-[480px] max-w-[92vw] rounded-2xl border border-violet-500/30 bg-gradient-to-br from-gray-900 via-gray-900 to-violet-950/40 shadow-2xl shadow-violet-900/40 overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            {/* 顶部装饰渐变条 */}
+            <div className="h-1 bg-gradient-to-r from-violet-500 via-cyan-400 to-violet-500" />
+            {/* Header */}
+            <div className="px-6 pt-5 pb-3 flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-900/40">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-semibold text-white">加载 虫群宇宙 完整资产</h3>
+                <p className="text-xs text-gray-400 mt-0.5">一键铺设角色库 · 剧集骨架 · 道具 · 成片 takes</p>
+              </div>
+            </div>
+            {/* Body: 统计卡片 */}
+            <div className="px-6 pb-4 grid grid-cols-2 gap-2">
+              <StatCard icon={Users} label="角色" value="5" hint="林见月·ZERG·苏蜜·颜术·温婉" color="from-cyan-500/20 to-cyan-500/5 border-cyan-500/30 text-cyan-300" />
+              <StatCard icon={Package} label="道具" value="7" hint="古铜钱·半块饼·手机·吹风机…" color="from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-300" />
+              <StatCard icon={Film} label="正片" value="50" hint="五季×10集 · EP01-04 已成片" color="from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-300" />
+              <StatCard icon={Clapperboard} label="衍生剧" value="8" hint="《道裂》前传 + MCU 外传" color="from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-300" />
+            </div>
+            {/* 警告条 */}
+            <div className="mx-6 mb-4 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 flex-shrink-0 animate-pulse" />
+              <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                将<span className="font-semibold text-amber-100">清除画布上现有</span>的角色 / 剧集 / 道具节点后重新加载，
+                <span className="text-gray-400">保留 start / end / LLM / tool 节点</span>。
+              </p>
+            </div>
+            {/* Footer 按钮 */}
+            <div className="px-6 py-4 bg-gray-950/60 border-t border-gray-800 flex items-center justify-end gap-2">
+              <button onClick={() => setShowSwarmConfirm(false)}
+                className="px-4 py-2 text-xs font-medium rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white transition">
+                取消
+              </button>
+              <button onClick={doLoadSwarmUniverse}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600 text-white hover:from-violet-500 hover:to-cyan-500 transition shadow-lg shadow-violet-900/40 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" /> 加载虫群宇宙
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatCard({ icon: Icon, label, value, hint, color }: {
+  icon: typeof Users
+  label: string
+  value: string
+  hint: string
+  color: string
+}) {
+  return (
+    <div className={`rounded-lg border bg-gradient-to-br ${color} px-3 py-2.5`}>
+      <div className="flex items-center gap-2 mb-1">
+        <Icon className="w-3.5 h-3.5" />
+        <span className="text-[10px] font-medium uppercase tracking-wider opacity-80">{label}</span>
+        <span className="ml-auto text-lg font-bold leading-none">{value}</span>
+      </div>
+      <p className="text-[10px] text-gray-400 leading-snug truncate" title={hint}>{hint}</p>
     </div>
   )
 }
