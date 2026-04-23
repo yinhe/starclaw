@@ -149,6 +149,17 @@ export const videoAPI = {
 export const imageAPI = {
   list: () => api.get('/images'),
   delete: (id: string) => api.delete(`/images/${id}`),
+  // 同步生成单张图片 → 返回稳定本地 URL（由角色工坊使用）
+  generate: (data: {
+    prompt: string
+    model?: string
+    image_url?: string
+    size?: string
+    scene?: string
+    style?: string
+    negative_prompt?: string
+    conversation_id?: string
+  }) => api.post('/images/generate', data, { timeout: 240000 }),
 }
 
 // Music
@@ -343,6 +354,8 @@ export const workflowAPI = {
   listRuns: (id: string) => api.get(`/workflows/${id}/runs`),
   enableWebhook: (id: string) => api.post(`/workflows/${id}/webhook/enable`),
   disableWebhook: (id: string) => api.post(`/workflows/${id}/webhook/disable`),
+  syncProject: (data: { project_name: string; agent_id?: string }) => api.post('/workflows/sync-project', data),
+  listProjects: () => api.get('/workflows/projects'),
 }
 
 // Workflow Templates (Marketplace)

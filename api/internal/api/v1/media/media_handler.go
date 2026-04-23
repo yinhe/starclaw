@@ -1,6 +1,8 @@
 package media
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,16 +12,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/sandbox"
+	"github.com/yinhe/starclaw/internal/tool"
 	"gorm.io/gorm"
 )
 
 // MediaHandler handles image gallery, music gallery, and document browsing.
 type MediaHandler struct {
-	db *gorm.DB
+	db           *gorm.DB
+	toolRegistry *tool.Registry
 }
 
-func NewMediaHandler(db *gorm.DB) *MediaHandler {
-	return &MediaHandler{db: db}
+func NewMediaHandler(db *gorm.DB, toolRegistry *tool.Registry) *MediaHandler {
+	return &MediaHandler{db: db, toolRegistry: toolRegistry}
 }
 
 // ── Images ──
@@ -40,6 +44,80 @@ func (h *MediaHandler) DeleteImage(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"message": "deleted"})
+}
+
+// GenerateImage synchronously generates a single image via image_generation tool
+// and returns the stable local URL. Used by Character Studio wizard.
+// Body: { prompt, model?, image_url?, size?, scene?, style?, negative_prompt? }
+// Response: { image_id, url, local_url, display_url, model, size, scene }
+func (h *MediaHandler) GenerateImage(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req struct {
+		Prompt         string `json:"prompt"`
+		Model          string `json:"model"`
+		ImageURL       string `json:"image_url"`
+		Size           string `json:"size"`
+		Scene          string `json:"scene"`
+		Style          string `json:"style"`
+		NegativePrompt string `json:"negative_prompt"`
+		ConversationID string `json:"conversation_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request body", "detail": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		c.JSON(400, gin.H{"error": "prompt is required"})
+		return
+	}
+	imgTool, ok := h.toolRegistry.Get("image_generation")
+	if !ok {
+		c.JSON(500, gin.H{"error": "image_generation tool not available"})
+		return
+	}
+	if req.Model == "" {
+		req.Model = "nano-banana-2"
+	}
+	if req.Size == "" {
+		req.Size = "landscape_16_9"
+	}
+	args := map[string]interface{}{
+		"action":          "generate_image",
+		"prompt":          req.Prompt,
+		"model":           req.Model,
+		"size":            req.Size,
+		"n":               "1",
+		"scene":           req.Scene,
+		"style":           req.Style,
+		"negative_prompt": req.NegativePrompt,
+	}
+	if strings.TrimSpace(req.ImageURL) != "" {
+		args["image_url"] = strings.TrimSpace(req.ImageURL)
+	}
+	argsBytes, err := json.Marshal(args)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to marshal image args"})
+		return
+	}
+	ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, userID)
+	if strings.TrimSpace(req.ConversationID) != "" {
+		ctx = context.WithValue(ctx, tool.CtxKeyConversationID, strings.TrimSpace(req.ConversationID))
+	}
+	result, err := imgTool.Execute(ctx, string(argsBytes))
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &data); err != nil {
+		c.JSON(200, gin.H{"result": result})
+		return
+	}
+	c.JSON(200, data)
 }
 
 // ── Music ──

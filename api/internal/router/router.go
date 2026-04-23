@@ -717,6 +717,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/workflows/:id/runs", workflowHandler.ListRuns)
 			protected.POST("/workflows/:id/webhook/enable", workflowHandler.EnableWebhook)
 			protected.POST("/workflows/:id/webhook/disable", workflowHandler.DisableWebhook)
+			protected.POST("/workflows/sync-project", workflowHandler.SyncProject)
+			protected.GET("/workflows/projects", workflowHandler.ListProjects)
 
 			// Knowledge Bases (RAG)
 			kbHandler := knowledge.NewKnowledgeHandler(db, pipeline, embedder)
@@ -1179,8 +1181,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/videos/voices", videoHandler.ListVoices)
 
 			// Images, Music, Documents (media gallery)
-			mediaHandler := media.NewMediaHandler(db)
+			mediaHandler := media.NewMediaHandler(db, toolRegistry)
 			protected.GET("/images", mediaHandler.ListImages)
+			protected.POST("/images/generate", mediaHandler.GenerateImage)
 			protected.DELETE("/images/:id", mediaHandler.DeleteImage)
 			protected.GET("/music", mediaHandler.ListMusic)
 			protected.DELETE("/music/:id", mediaHandler.DeleteMusic)
