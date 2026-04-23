@@ -16,7 +16,7 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers } from 'lucide-react'
+import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import LLMNode from '../components/workflow/LLMNode'
 import ToolNode from '../components/workflow/ToolNode'
@@ -27,6 +27,8 @@ import MediaNode from '../components/workflow/MediaNode'
 import SceneStepNode from '../components/workflow/SceneStepNode'
 import NodePropertyPanel from '../components/workflow/NodePropertyPanel'
 import EpisodeWorkflowPanel from '../components/workflow/EpisodeWorkflowPanel'
+import SnapshotsModal from '../components/workflow/SnapshotsModal'
+import type { WorkflowSnapshot } from '../components/workflow/snapshots'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
 import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData } from '../components/workflow/episodeTypes'
@@ -254,14 +256,28 @@ export default function WorkflowPage() {
 
   // localStorage key for 无 workflowId 情况下的草稿画布（按 tab 隔离）
   const DRAFT_KEY = workflowId ? `wf-draft:${workflowId}` : 'wf-draft:__new__'
+  // hydrated=true 之后才允许写 localStorage，避免首渲染 nodes=[] 覆盖已有草稿
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
+    setHydrated(false)
     loadModels()
     loadTools()
     if (workflowId) {
-      loadWorkflow(workflowId)
+      // 先尝试本地草稿立刻显示（避免后端慢 → 空态覆盖），再后台 load backend
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY)
+        if (raw) {
+          const d = JSON.parse(raw) as { nodes?: Node[]; edges?: Edge[]; name?: string; counter?: number }
+          if (d.nodes && d.nodes.length) setNodes(d.nodes as Node[])
+          if (d.edges) setEdges(d.edges as Edge[])
+          if (d.name) setWorkflowName(d.name)
+          if (typeof d.counter === 'number') nodeIdCounter.current = d.counter
+        }
+      } catch { /* ignore */ }
+      loadWorkflow(workflowId).finally(() => setHydrated(true))
     } else {
-      // 无 workflowId 时尝试从 localStorage 恢复草稿（避免刷新丢失）
+      // 无 workflowId 时从 localStorage 恢复草稿
       try {
         const raw = localStorage.getItem(DRAFT_KEY)
         if (raw) {
@@ -272,21 +288,28 @@ export default function WorkflowPage() {
           if (typeof d.counter === 'number') nodeIdCounter.current = d.counter
         }
       } catch { /* ignore corrupted draft */ }
+      setHydrated(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
 
-  // 自动保存草稿到 localStorage（debounced via requestIdleCallback/setTimeout）
+  // 自动保存草稿到 localStorage（debounced；hydrated 后且非完全空态才写）
   useEffect(() => {
+    if (!hydrated) return
+    // 护栏：仅 Start+End 两个默认节点 + 0 edges 视为"空"，不覆盖之前的草稿
+    const meaningful = nodes.length > 2 || edges.length > 0 ||
+      nodes.some(n => n.type !== 'start' && n.type !== 'end')
+    if (!meaningful) return
     const t = setTimeout(() => {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
           nodes, edges, name: workflowName, counter: nodeIdCounter.current,
+          savedAt: Date.now(),
         }))
       } catch { /* quota exceeded, ignore */ }
     }, 500)
     return () => clearTimeout(t)
-  }, [nodes, edges, workflowName, DRAFT_KEY])
+  }, [nodes, edges, workflowName, DRAFT_KEY, hydrated])
 
   // Fullscreen API
   useEffect(() => {
@@ -335,8 +358,9 @@ export default function WorkflowPage() {
       if (wf) {
         setWorkflowName(wf.name || '未命名工作流')
         const def = typeof wf.definition === 'string' ? JSON.parse(wf.definition) : wf.definition
-        if (def?.nodes) setNodes(def.nodes)
-        if (def?.edges) setEdges(def.edges)
+        // 只有当后端 definition 真的有内容时才覆盖本地草稿，避免空态擦掉用户数据
+        if (def?.nodes && Array.isArray(def.nodes) && def.nodes.length > 0) setNodes(def.nodes)
+        if (def?.edges && Array.isArray(def.edges) && def.edges.length > 0) setEdges(def.edges)
       }
     } catch { /* */ }
   }
@@ -414,6 +438,14 @@ export default function WorkflowPage() {
   )
 
   const [showSwarmConfirm, setShowSwarmConfirm] = useState(false)
+  const [showSnapshots, setShowSnapshots] = useState(false)
+
+  const restoreSnapshot = useCallback((snap: WorkflowSnapshot) => {
+    setNodes(snap.data.nodes)
+    setEdges(snap.data.edges)
+    setWorkflowName(snap.data.workflowName || '未命名工作流')
+    if (typeof snap.data.counter === 'number') nodeIdCounter.current = snap.data.counter
+  }, [setNodes, setEdges])
 
   const loadSwarmUniverse = useCallback(() => {
     setShowSwarmConfirm(true)
@@ -607,8 +639,14 @@ export default function WorkflowPage() {
             </button>
           )}
           <div className="w-px h-6 bg-gray-700/50 mx-1" />
+          <button onClick={() => setShowSnapshots(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-900/40 backdrop-blur border border-purple-700/50 text-purple-200 hover:text-white hover:bg-purple-800/60 transition-all"
+            title="存档 / 快照管理（本地）">
+            <Camera className="w-3.5 h-3.5" /> 存档
+          </button>
           <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-300 hover:text-white hover:bg-gray-700/80 disabled:opacity-50 transition-all">
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-300 hover:text-white hover:bg-gray-700/80 disabled:opacity-50 transition-all"
+            title="保存到后端（跨设备）">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存
           </button>
           <button onClick={handleRun} disabled={running}
@@ -985,6 +1023,19 @@ export default function WorkflowPage() {
           .map(n => n.data as unknown as EpisodeData)}
         onClose={() => setShowEpModal(false)}
         onCreate={(data) => { addMediaNodeWithData(data as unknown as Record<string, unknown>) }}
+      />
+
+      {/* 存档 / 快照管理 */}
+      <SnapshotsModal
+        open={showSnapshots}
+        onClose={() => setShowSnapshots(false)}
+        current={{
+          nodes, edges,
+          workflowName,
+          counter: nodeIdCounter.current,
+          workflowId: workflowId || null,
+        }}
+        onRestore={restoreSnapshot}
       />
 
       {/* Swarm Universe 确认对话框 */}
