@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Swords, Sprout } from 'lucide-react'
+import { MessageSquare, Bot, Cpu, BookOpen, Plug, GitBranch, LayoutDashboard, Settings, LogOut, Store, Moon, Sun, Menu, X, Bell, CheckCircle2, XCircle, Info, AlertTriangle, Radar, Zap, Film, FolderOpen, FileText, Brain, Activity, Swords, Sprout, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { notificationAPI, versionAPI, systemAPI, authRequestAPI } from '../lib/api'
 import { starclawWS } from '../lib/websocket'
 
@@ -88,6 +88,16 @@ export default function Layout() {
   const { locale, setLocale, t } = useI18n()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('starclaw_sidebar_collapsed') === '1' } catch { return false }
+  })
+  const toggleCollapsed = () => {
+    setCollapsed(v => {
+      const nv = !v
+      try { localStorage.setItem('starclaw_sidebar_collapsed', nv ? '1' : '0') } catch {}
+      return nv
+    })
+  }
   const [unreadCount, setUnreadCount] = useState(0)
   const [showNotif, setShowNotif] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
@@ -260,20 +270,28 @@ export default function Layout() {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed md:static z-20 top-0 md:top-auto left-0 h-full w-60 bg-gray-900 text-white flex flex-col transition-transform md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="p-4 border-b border-gray-700">
-          <div className="flex items-center gap-2">
-            <CrawfishIcon className="w-7 h-7 text-red-400" />
-            <span className="text-xl font-bold" translate="no">StarClaw</span>
+      <aside className={`fixed md:static z-20 top-0 md:top-auto left-0 h-full ${collapsed ? 'w-14' : 'w-60'} bg-gray-900 text-white flex flex-col transition-[width,transform] duration-200 md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className={`${collapsed ? 'px-2 py-3' : 'p-4'} border-b border-gray-700 relative`}>
+          <div className={`flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}>
+            <CrawfishIcon className="w-7 h-7 text-red-400 flex-shrink-0" />
+            {!collapsed && <span className="text-xl font-bold" translate="no">StarClaw</span>}
           </div>
-          <p className="text-xs text-gray-400 mt-1">{t('app.subtitle')}</p>
+          {!collapsed && <p className="text-xs text-gray-400 mt-1">{t('app.subtitle')}</p>}
+          {/* Desktop collapse toggle */}
+          <button
+            onClick={toggleCollapsed}
+            className="hidden md:flex absolute top-2 -right-3 w-6 h-6 items-center justify-center rounded-full bg-gray-800 border border-gray-600 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors z-30 shadow-lg"
+            title={collapsed ? '展开侧边栏' : '折叠侧边栏'}
+          >
+            {collapsed ? <ChevronsRight className="w-3.5 h-3.5" /> : <ChevronsLeft className="w-3.5 h-3.5" />}
+          </button>
         </div>
 
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+        <nav className={`flex-1 ${collapsed ? 'p-1.5' : 'p-3'} space-y-0.5 overflow-y-auto overflow-x-hidden`}>
           {navGroups.map(({ group, items }, gi) => (
             <div key={group || `g${gi}`}>
-              {gi > 0 && <div className="my-2 mx-3 border-t border-gray-700/60" />}
-              {group && (
+              {gi > 0 && <div className={`my-2 ${collapsed ? 'mx-1' : 'mx-3'} border-t border-gray-700/60`} />}
+              {group && !collapsed && (
                 <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                   {group}
                 </div>
@@ -283,75 +301,116 @@ export default function Layout() {
                   key={to}
                   to={to}
                   onClick={() => setMobileOpen(false)}
+                  title={collapsed ? label : undefined}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    `flex items-center ${collapsed ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded-lg text-sm transition-colors ${
                       isActive
                         ? 'bg-primary-600 text-white'
                         : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                     }`
                   }
                 >
-                  <Icon className="w-4 h-4" />
-                  {label}
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  {!collapsed && label}
                 </NavLink>
               ))}
             </div>
           ))}
         </nav>
 
-        <div className="border-t border-gray-700">
-          <HPBar />
-        </div>
-        <div className="p-3 border-t border-gray-700 space-y-2">
-          <a
-            href="https://starclaw.net/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-          >
-            <FileText className="w-4 h-4" />
-            {t('nav.docs')}
-          </a>
-          <div className="px-3 py-1">
-            <kbd className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Ctrl+K</kbd>
-            <span className="text-xs text-gray-500 ml-1.5">{t('common.quick_search')}</span>
+        {!collapsed && (
+          <div className="border-t border-gray-700">
+            <HPBar />
           </div>
-          <div className="flex items-center justify-between px-3 py-1">
-            <span className="text-xs text-gray-400">{t('common.theme')}</span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
-                className="px-1.5 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition-colors font-mono"
-                title={locale === 'zh' ? 'Switch to English' : '切换到中文'}
+        )}
+        <div className={`${collapsed ? 'p-1.5' : 'p-3'} border-t border-gray-700 space-y-2`}>
+          {collapsed ? (
+            <>
+              <a
+                href="https://starclaw.net/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                title={t('nav.docs')}
+                className="flex items-center justify-center px-2 py-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
               >
-                {locale === 'zh' ? 'EN' : '中'}
-              </button>
+                <FileText className="w-4 h-4" />
+              </a>
               <button
                 onClick={toggleTheme}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                className="w-full flex items-center justify-center px-2 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                 title={dark ? '浅色模式' : '深色模式'}
               >
                 {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
-            </div>
-          </div>
-          <div className="flex items-center justify-between px-3 py-2">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-primary-600 flex items-center justify-center text-xs font-medium">
-                {user?.username?.charAt(0).toUpperCase()}
+              <div
+                className="flex items-center justify-center px-2 py-1 text-xs font-medium text-gray-400"
+                title={user?.username}
+              >
+                <div className="w-7 h-7 rounded-full bg-primary-600 flex items-center justify-center text-xs font-medium text-white">
+                  {user?.username?.charAt(0).toUpperCase()}
+                </div>
               </div>
-              <span className="text-sm text-gray-300 truncate max-w-[120px]">
-                {user?.username}
-              </span>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="text-gray-400 hover:text-white transition-colors"
-              title={t('common.logout')}
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center px-2 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                title={t('common.logout')}
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <a
+                href="https://starclaw.net/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                {t('nav.docs')}
+              </a>
+              <div className="px-3 py-1">
+                <kbd className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Ctrl+K</kbd>
+                <span className="text-xs text-gray-500 ml-1.5">{t('common.quick_search')}</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-1">
+                <span className="text-xs text-gray-400">{t('common.theme')}</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
+                    className="px-1.5 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition-colors font-mono"
+                    title={locale === 'zh' ? 'Switch to English' : '切换到中文'}
+                  >
+                    {locale === 'zh' ? 'EN' : '中'}
+                  </button>
+                  <button
+                    onClick={toggleTheme}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                    title={dark ? '浅色模式' : '深色模式'}
+                  >
+                    {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-primary-600 flex items-center justify-center text-xs font-medium">
+                    {user?.username?.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm text-gray-300 truncate max-w-[120px]">
+                    {user?.username}
+                  </span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="text-gray-400 hover:text-white transition-colors"
+                  title={t('common.logout')}
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </aside>
 

@@ -1186,10 +1186,17 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/images/generate", mediaHandler.GenerateImage)
 			protected.DELETE("/images/:id", mediaHandler.DeleteImage)
 
-			// Character Studio helpers (AI appearance card + CDN upload)
+			// Character Studio helpers (AI appearance card + CDN upload + TOS launder)
 			charStudioHandler := media.NewCharacterStudioHandler(db, providerRegistry)
 			protected.POST("/characters/generate-appearance", charStudioHandler.GenerateAppearance)
 			protected.POST("/cdn/upload", charStudioHandler.CDNUpload)
+			protected.POST("/cdn/launder-tos", charStudioHandler.LaunderTOSURL)
+			protected.POST("/cdn/resign-tos", charStudioHandler.ResignTOSURL)
+
+			// Drama Writer Agent（短剧编剧 AI · 多维度审稿 + 发布文案）
+			writerHandler := media.NewDramaWriterHandler(db, providerRegistry)
+			protected.POST("/drama/writer/review", writerHandler.Review)
+			protected.POST("/drama/writer/promo", writerHandler.GeneratePromo)
 			protected.GET("/music", mediaHandler.ListMusic)
 			protected.DELETE("/music/:id", mediaHandler.DeleteMusic)
 			protected.GET("/documents", mediaHandler.ListDocuments)

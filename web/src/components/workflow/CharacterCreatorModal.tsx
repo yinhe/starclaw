@@ -201,7 +201,7 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
         negative_prompt: 'blurry, low quality, text, watermark, deformed, extra fingers, bad anatomy',
       })
       const data = res.data as Record<string, unknown>
-      const url = (data.local_url || data.display_url || data.url) as string
+      const url = (data.local_url || data.display_url || data.url || data.image_url) as string
       if (!url) throw new Error('生成未返回有效 URL')
       // 若是相对 /v1/images/xxx，拼完整域名让外部模型后续也能拉
       const absolute = url.startsWith('http') ? url : `${window.location.origin}${url}`

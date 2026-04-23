@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { X, Wand2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { X, Wand2, Sparkles, Loader2 } from 'lucide-react'
 import type { Node } from '@xyflow/react'
+import { parseTOSFreshness, freshnessLabel, refreshTOS } from './tosUrlUtils'
 
 interface Props {
   node: Node | null
@@ -10,6 +11,8 @@ interface Props {
   onClose: () => void
   /** 点击角色节点的「打开向导」按钮时触发，父组件负责打开 CharacterCreatorModal 的 edit 模式 */
   onEditCharacter?: (nodeId: string) => void
+  /** 点击道具节点的「打开道具工坊」按钮时触发，父组件负责打开 PropEditorModal */
+  onEditProp?: (nodeId: string) => void
 }
 
 const MEDIA_CATEGORIES = [
@@ -20,14 +23,33 @@ const MEDIA_CATEGORIES = [
   { value: 'reference', label: '参考' },
 ]
 
-export default function NodePropertyPanel({ node, models, tools, onUpdate, onClose, onEditCharacter }: Props) {
+export default function NodePropertyPanel({ node, models, tools, onUpdate, onClose, onEditCharacter, onEditProp }: Props) {
   const [localData, setLocalData] = useState<Record<string, unknown>>({})
+  const [launderingTOS, setLaunderingTOS] = useState(false)
+  const [launderErr, setLaunderErr] = useState<string>('')
+  const [lightboxURL, setLightboxURL] = useState<string>('')
+  const [lightboxLabel, setLightboxLabel] = useState<string>('')
 
   useEffect(() => {
     if (node) {
       setLocalData({ ...(node.data as Record<string, unknown>) })
+      setLaunderErr('')
     }
   }, [node])
+
+  // ESC 关闭大图
+  useEffect(() => {
+    if (!lightboxURL) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxURL('') }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightboxURL])
+
+  const openLightbox = (url: string, label: string) => {
+    if (!url) return
+    setLightboxURL(url)
+    setLightboxLabel(label)
+  }
 
   if (!node) return null
 
@@ -36,6 +58,32 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
     setLocalData(next)
     onUpdate(node.id, next)
   }
+
+  // 生成 / 刷新 TOS URL。首选 resign（HMAC 7d，零成本）；失败 fallback 到 Seedream launder（24h）
+  const launderTOS = async () => {
+    const oldTOSUrl = (localData.tos_url as string) || ''
+    const fallbackSrc = ((localData.cdn_url as string) || (localData.imageUrl as string) || '').trim()
+    if (!oldTOSUrl && !fallbackSrc) {
+      setLaunderErr('先填「本地图片 URL」或「CDN URL」作为 laundering 源')
+      return
+    }
+    setLaunderErr('')
+    setLaunderingTOS(true)
+    try {
+      const r = await refreshTOS(oldTOSUrl, fallbackSrc)
+      update('tos_url', r.tosUrl)
+      // 可以在 console 看到走了哪条路径
+      console.log(`[NodePropertyPanel] tos_url refreshed via ${r.source}${r.expiresSec ? ` (${r.expiresSec}s)` : ''}`)
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string; detail?: string } }; message?: string }
+      setLaunderErr(err.response?.data?.error || err.response?.data?.detail || err.message || '生成 TOS URL 失败')
+    } finally {
+      setLaunderingTOS(false)
+    }
+  }
+
+  // TOS URL 新鲜度（每 30s 重算一次以驱动 label 更新，不做高频 setInterval 避免浪费）
+  const tosFreshness = useMemo(() => parseTOSFreshness((localData.tos_url as string) || ''), [localData.tos_url])
 
   const nodeType = node.type || ''
 
@@ -129,14 +177,70 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
                 {MEDIA_CATEGORIES.map((c) => (<option key={c.value} value={c.value}>{c.label}</option>))}
               </select>
             </Field>
-            <Field label="图片 URL">
+            <Field label="本地图片 URL（相对路径）">
               <input value={(localData.imageUrl as string) || ''} onChange={(e) => update('imageUrl', e.target.value)}
-                className="input-dark font-mono text-xs" placeholder="/v1/images/xxx 或 https://..." />
+                className="input-dark font-mono text-xs" placeholder="/v1/projects/xxx 或 /v1/uploads/xxx" />
+              <UrlThumb url={(localData.imageUrl as string) || ''} badge="本地" tint="slate" onOpen={openLightbox} />
+              <p className="text-[10px] text-gray-600 mt-1 leading-relaxed">容器内的真实路径，用于 laundering 输入 & 本地 fallback。</p>
+            </Field>
+            <Field label="CDN URL（cdn.starclaw.net）">
+              <input value={(localData.cdn_url as string) || ''} onChange={(e) => update('cdn_url', e.target.value)}
+                className="input-dark font-mono text-xs" placeholder="https://cdn.starclaw.net/..." />
+              <UrlThumb url={(localData.cdn_url as string) || ''} badge="CDN" tint="indigo" onOpen={openLightbox} />
+              <p className="text-[10px] text-gray-600 mt-1 leading-relaxed">公网可访问，30d 稳定；给 Seedance 走 TOS 之前的退路。</p>
+            </Field>
+            <Field label="Volcengine TOS URL（Ark 信任域，bypass 隐私过滤）">
+              <div className="flex gap-1.5">
+                <input value={(localData.tos_url as string) || ''}
+                  onChange={(e) => update('tos_url', e.target.value)}
+                  className="input-dark font-mono text-xs flex-1"
+                  placeholder="https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/..." />
+                <button
+                  onClick={launderTOS}
+                  disabled={launderingTOS}
+                  className="px-2.5 py-1.5 rounded-md bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium flex items-center gap-1 shadow-md shadow-emerald-900/30 transition whitespace-nowrap"
+                  title="把本地图 / CDN 图过一遍 Seedream 5.0 lite，生成 bypass 隐私过滤的 Ark TOS URL（24h 有效）"
+                >
+                  {launderingTOS ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {launderingTOS ? '生成中' : '生成'}
+                </button>
+              </div>
+              <UrlThumb url={(localData.tos_url as string) || ''} badge="TOS" tint="emerald" onOpen={openLightbox} />
+              {tosFreshness.parsed && (() => {
+                const lab = freshnessLabel(tosFreshness)
+                const toneCls = lab.tone === 'ok'
+                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                  : lab.tone === 'warn'
+                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                    : 'text-rose-400 bg-rose-500/10 border-rose-500/30'
+                return (
+                  <div className={`mt-2 px-2 py-1 rounded border text-[10px] font-medium flex items-center gap-1.5 ${toneCls}`}>
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${lab.tone === 'ok' ? 'bg-emerald-400' : lab.tone === 'warn' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400 animate-pulse'}`} />
+                    <span>{lab.text}</span>
+                    {lab.tone !== 'ok' && (
+                      <button type="button" onClick={launderTOS} disabled={launderingTOS} className="ml-auto underline underline-offset-2 hover:text-white disabled:opacity-50">
+                        {launderingTOS ? '刷新中…' : '立即刷新'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
+              {launderErr && <p className="text-[10px] text-rose-400 mt-1 leading-relaxed">{launderErr}</p>}
+              <p className="text-[10px] text-gray-600 mt-1 leading-relaxed">Seedance 生成视频时**优先**用 TOS URL（唯一能绕过隐私过滤的地址）。TOS 硬性 24h 过期（Volcengine 规则），EP 开跑前会自动预刷所有过期 URL。</p>
             </Field>
             <Field label="描述">
               <textarea value={(localData.description as string) || ''} onChange={(e) => update('description', e.target.value)}
                 rows={3} className="input-dark resize-none" placeholder="角色/场景/道具描述" />
             </Field>
+            {localData.category === 'prop' && onEditProp && (
+              <button
+                onClick={() => onEditProp(node.id)}
+                className="w-full px-3 py-2 rounded-lg bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-medium flex items-center justify-center gap-1.5 shadow-md shadow-amber-900/30 transition"
+                title="打开道具工坊：上传/AI 生成参考图 + 编辑信息"
+              >
+                <Wand2 className="w-3.5 h-3.5" /> 打开道具工坊（重新生成参考图）
+              </button>
+            )}
             {localData.category === 'character' && (
               <>
                 {onEditCharacter && (
@@ -162,12 +266,6 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
                 </Field>
               </>
             )}
-            {(localData.imageUrl as string) && (
-              <div className="rounded-lg overflow-hidden border border-gray-700">
-                <img src={localData.imageUrl as string} alt="" className="w-full h-32 object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              </div>
-            )}
           </>
         )}
 
@@ -191,6 +289,36 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
           </p>
         </div>
       </div>
+
+      {lightboxURL && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 cursor-zoom-out"
+          onClick={() => setLightboxURL('')}
+          role="dialog" aria-modal="true"
+        >
+          <div className="relative max-w-[95vw] max-h-[95vh]">
+            <img
+              src={lightboxURL}
+              alt={lightboxLabel}
+              className="max-w-[95vw] max-h-[88vh] object-contain rounded-lg shadow-2xl shadow-black"
+              onClick={(e) => e.stopPropagation()}
+              onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3' }}
+            />
+            <div className="mt-2 px-2 text-center">
+              <p className="text-xs font-medium text-gray-300">{lightboxLabel}</p>
+              <p className="text-[10px] font-mono text-gray-500 break-all mt-0.5 max-w-[80ch] mx-auto">{lightboxURL}</p>
+              <p className="text-[10px] text-gray-600 mt-1">点黑色区域或按 ESC 关闭</p>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxURL('') }}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-gray-900 border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 transition flex items-center justify-center shadow-lg"
+              title="关闭 (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -201,5 +329,55 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">{label}</label>
       {children}
     </div>
+  )
+}
+
+// 小缩略图：满宽 64px 高，点击开大图。url 为空时渲染占位框。
+function UrlThumb({ url, badge, tint, onOpen }: {
+  url: string
+  badge: string
+  tint: 'slate' | 'indigo' | 'emerald'
+  onOpen: (u: string, label: string) => void
+}) {
+  const tintRing: Record<'slate' | 'indigo' | 'emerald', string> = {
+    slate: 'ring-slate-600/60 bg-slate-500/80',
+    indigo: 'ring-indigo-600/60 bg-indigo-500/80',
+    emerald: 'ring-emerald-600/60 bg-emerald-500/80',
+  }
+  if (!url) {
+    return (
+      <div className="mt-2 h-16 rounded-md border border-dashed border-gray-800 bg-gray-900/40 flex items-center justify-center">
+        <span className="text-[10px] text-gray-600">无 {badge} 图</span>
+      </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(url, badge)}
+      className={`mt-2 w-full h-16 rounded-md overflow-hidden relative ring-1 ${tintRing[tint].split(' ')[0]} hover:ring-2 transition cursor-zoom-in group`}
+      title={`点击查看 ${badge} 大图`}
+    >
+      <img
+        src={url}
+        alt={badge}
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+        onError={(e) => {
+          const t = e.target as HTMLImageElement
+          t.style.display = 'none'
+          const parent = t.parentElement
+          if (parent && !parent.querySelector('[data-failfallback]')) {
+            const span = document.createElement('span')
+            span.setAttribute('data-failfallback', '1')
+            span.className = 'absolute inset-0 flex items-center justify-center text-[10px] text-rose-400 bg-rose-950/20'
+            span.textContent = `${badge} 图访问失败 (地址可能过期或错误)`
+            parent.appendChild(span)
+          }
+        }}
+      />
+      <span className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-white text-[9px] font-semibold shadow ${tintRing[tint].split(' ')[1]}`}>
+        {badge}
+      </span>
+    </button>
   )
 }

@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import {
   X, Film, Clapperboard, Play, Plus, Check, CircleDot, CircleAlert, CircleX,
   Music, Scissors, Sparkles, Image as ImageIcon, Trash2, ChevronRight, Layers,
-  Archive, FileText, History,
+  Archive, FileText, History, Wand2, AlertTriangle, Lightbulb, Wrench,
+  Copy, ExternalLink, Terminal,
 } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import { SEASONS, sceneTakesSummary, type EpisodeData, type SceneSpec, type Take, type Composition } from './episodeTypes'
+import { dramaAPI, type WriterReviewResponse, type PromoResponse } from '../../lib/api'
 
 interface Props {
   node: Node
@@ -195,6 +197,7 @@ export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduc
 
         {tab === 'composition' && (
           <CompositionTab
+            data={data}
             comp={comp}
             scenes={scenes}
             onUpdate={(c) => update({ composition: c })}
@@ -411,6 +414,12 @@ function ScriptTab({ data }: { data: EpisodeData }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // 编剧 Agent 审稿状态
+  const [reviewing, setReviewing] = useState(false)
+  const [review, setReview] = useState<WriterReviewResponse | null>(null)
+  const [reviewErr, setReviewErr] = useState<string | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(true)
+
   useEffect(() => {
     const s = data.script
     if (!s?.md && !s?.prompts_md) return
@@ -422,6 +431,28 @@ function ScriptTab({ data }: { data: EpisodeData }) {
       .catch(e => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
   }, [data.script?.md, data.script?.prompts_md])
+
+  const runWriterReview = async () => {
+    setReviewing(true); setReviewErr(null); setReview(null); setReviewOpen(true)
+    try {
+      const meta = JSON.stringify({
+        season: data.season, episode_number: data.episode_number,
+        duration: data.duration, description: data.description,
+        scenes: (data.scenes || []).map(s => ({ id: s.id, label: s.label, duration: s.duration })),
+      })
+      const res = await dramaAPI.writerReview({
+        episode_label: data.label,
+        episode_meta: meta,
+        bible_url: '/v1/projects/swarm-universe/bible.md',
+        script_url: data.script?.md,
+        prompts_url: data.script?.prompts_md,
+      })
+      setReview(res.data)
+    } catch (e) {
+      const detail = (e as { response?: { data?: { error?: string } }; message?: string })
+      setReviewErr(detail.response?.data?.error || detail.message || String(e))
+    } finally { setReviewing(false) }
+  }
 
   if (!data.script?.md && !data.script?.prompts_md) {
     return (
@@ -437,7 +468,7 @@ function ScriptTab({ data }: { data: EpisodeData }) {
 
   return (
     <div className="p-3 space-y-2">
-      <div className="flex gap-1 border-b border-gray-800 -mx-3 px-3 pb-2">
+      <div className="flex gap-1 border-b border-gray-800 -mx-3 px-3 pb-2 items-center">
         <button onClick={() => setWhich('script')} disabled={!data.script?.md}
           className={`px-2.5 py-1 rounded text-[11px] font-medium transition ${which === 'script' ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/50' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-40`}>
           📜 剧本
@@ -446,7 +477,27 @@ function ScriptTab({ data }: { data: EpisodeData }) {
           className={`px-2.5 py-1 rounded text-[11px] font-medium transition ${which === 'prompts' ? 'bg-violet-900/40 text-violet-300 border border-violet-700/50' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-40`}>
           ✨ 提示词总稿
         </button>
+        <div className="flex-1" />
+        <button onClick={runWriterReview} disabled={reviewing || loading}
+          title="调用编剧 AI Agent 对本集剧本+提示词做 9 维度审稿并给出具体修改建议"
+          className={`px-2.5 py-1 rounded text-[11px] font-semibold transition inline-flex items-center gap-1 ${reviewing ? 'bg-amber-900/40 text-amber-300 border border-amber-700/50 cursor-wait' : 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50 hover:bg-emerald-700/30'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+          {reviewing ? <CircleDot className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+          {reviewing ? '审稿中…' : '编剧审'}
+        </button>
       </div>
+
+      {/* 审稿错误 */}
+      {reviewErr && (
+        <div className="p-2 rounded bg-red-900/20 border border-red-500/30 text-[11px] text-red-300">
+          编剧审失败：{reviewErr}
+        </div>
+      )}
+
+      {/* 审稿结果卡 */}
+      {review && (
+        <WriterReviewCard review={review} open={reviewOpen} onToggle={() => setReviewOpen(!reviewOpen)} />
+      )}
+
       {loading && <div className="text-center py-8 text-xs text-gray-500"><CircleDot className="w-4 h-4 mx-auto animate-spin mb-1" />加载中</div>}
       {error && <div className="p-2 rounded bg-red-900/20 border border-red-500/30 text-[11px] text-red-300">加载失败：{error}</div>}
       {text && (
@@ -454,6 +505,284 @@ function ScriptTab({ data }: { data: EpisodeData }) {
           {text}
         </pre>
       )}
+    </div>
+  )
+}
+
+function WriterReviewCard({ review, open, onToggle }: { review: WriterReviewResponse; open: boolean; onToggle: () => void }) {
+  const scoreColor = review.overall_score >= 80 ? 'text-emerald-300' : review.overall_score >= 60 ? 'text-amber-300' : 'text-red-300'
+  const scoreRing = review.overall_score >= 80 ? 'border-emerald-500/40' : review.overall_score >= 60 ? 'border-amber-500/40' : 'border-red-500/40'
+  return (
+    <div className={`rounded-lg border ${scoreRing} bg-gray-900/60 overflow-hidden`}>
+      <button onClick={onToggle}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-gray-800/50 transition">
+        <ChevronRight className={`w-3.5 h-3.5 text-gray-400 transition ${open ? 'rotate-90' : ''}`} />
+        <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-gray-200 uppercase tracking-wider">编剧审稿</span>
+            <span className={`text-lg font-bold ${scoreColor}`}>{Math.round(review.overall_score)}</span>
+            <span className="text-[10px] text-gray-500">/ 100</span>
+          </div>
+          <div className="text-[11px] text-gray-300 truncate">{review.verdict}</div>
+        </div>
+        <span className="text-[10px] text-gray-600 font-mono ml-2">{review.model}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-800 p-3 space-y-3 text-[11px]">
+          {/* 9 维度条形图 */}
+          {review.dimensions?.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-medium mb-1">9 维度评分</div>
+              {review.dimensions.map(d => (
+                <div key={d.key} className="grid grid-cols-[100px_1fr_30px] gap-2 items-center">
+                  <div className="text-gray-300 truncate" title={d.comment}>{d.label}</div>
+                  <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${d.score >= 80 ? 'bg-emerald-500' : d.score >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${Math.min(100, Math.max(0, d.score))}%` }}
+                    />
+                  </div>
+                  <div className={`text-right font-mono tabular-nums ${d.score >= 80 ? 'text-emerald-300' : d.score >= 60 ? 'text-amber-300' : 'text-red-300'}`}>{Math.round(d.score)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Top issues */}
+          {review.top_issues?.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-medium mb-1.5 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-red-400" /> 关键问题 ({review.top_issues.length})
+              </div>
+              <div className="space-y-1.5">
+                {review.top_issues.map((it, i) => (
+                  <div key={i} className={`rounded border px-2 py-1.5 ${it.severity === 'high' ? 'border-red-500/40 bg-red-900/10' : it.severity === 'medium' ? 'border-amber-500/40 bg-amber-900/10' : 'border-gray-700 bg-gray-800/40'}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[9px] px-1 py-0.5 rounded font-semibold ${it.severity === 'high' ? 'bg-red-500/30 text-red-200' : it.severity === 'medium' ? 'bg-amber-500/30 text-amber-200' : 'bg-gray-700 text-gray-300'}`}>
+                        {it.severity.toUpperCase()}
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">{it.where}</span>
+                    </div>
+                    <div className="text-gray-200 mt-1">{it.problem}</div>
+                    <div className="text-gray-500 mt-0.5 text-[10px]">→ {it.why}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suggestions */}
+          {review.suggestions?.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-medium mb-1.5 flex items-center gap-1">
+                <Lightbulb className="w-3 h-3 text-amber-400" /> 修改建议 ({review.suggestions.length})
+              </div>
+              <div className="space-y-1.5">
+                {review.suggestions.map((s, i) => (
+                  <div key={i} className="rounded border border-gray-700 bg-gray-800/40 px-2 py-1.5">
+                    <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                      <span className="font-mono">{s.where}</span>
+                      <span>·</span>
+                      <span className="text-violet-300">{s.action}</span>
+                    </div>
+                    {s.original && (
+                      <div className="text-[10px] text-gray-500 mt-1 line-through">原: {s.original}</div>
+                    )}
+                    <div className="text-gray-200 mt-0.5">新: {s.revised}</div>
+                    <div className="text-gray-500 mt-0.5 text-[10px]">因: {s.reason}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Rewrite hints — 镶场 */}
+          {review.rewrite_hints?.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-medium mb-1.5 flex items-center gap-1">
+                <Wrench className="w-3 h-3 text-cyan-400" /> 镶场改写 ({review.rewrite_hints.length})
+              </div>
+              <div className="space-y-1.5">
+                {review.rewrite_hints.map((h, i) => (
+                  <div key={i} className="rounded border border-cyan-800/40 bg-cyan-950/20 px-2 py-1.5">
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="font-mono text-cyan-300">{h.scene_id}</span>
+                      <span className="text-gray-500">·</span>
+                      <span className="text-gray-400">{h.field}</span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 mt-1">Before: {h.before}</div>
+                    <div className="text-gray-200 mt-0.5">After: {h.after}</div>
+                    <div className="text-gray-500 mt-0.5 text-[10px]">→ {h.rationale}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 日志面板 · 按时间顺序列出本集所有 Take 的 Seedance 调用上下文 ──
+// 已从右侧 tab 移至画布底部，导出给 WorkflowPage 的 BottomLogsDock 使用。
+export function EpisodeLogsPane({ data }: { data: EpisodeData }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const scenes = data.scenes || []
+  // 展开所有 take 成扁平时间线
+  type Entry = { sceneId: string; sceneLabel: string; take: Take }
+  const entries: Entry[] = []
+  for (const s of scenes) {
+    for (const t of (s.takes || [])) {
+      entries.push({ sceneId: s.id, sceneLabel: s.label || '', take: t })
+    }
+  }
+  // 按 created_at 倒序（最新在上）
+  entries.sort((a, b) => (b.take.created_at || '').localeCompare(a.take.created_at || ''))
+
+  const total = entries.length
+  const succeeded = entries.filter(e => e.take.status === 'succeeded').length
+  const failed = entries.filter(e => e.take.status === 'failed').length
+  const running = entries.filter(e => e.take.status === 'running').length
+
+  const toggle = (key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
+  const copyText = async (text: string) => {
+    try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+  }
+
+  const fmtTime = (iso?: string) => {
+    if (!iso) return '-'
+    try {
+      const d = new Date(iso)
+      return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
+    } catch { return iso.slice(11, 19) }
+  }
+  const fmtDuration = (t: Take) => {
+    if (!t.created_at || !t.finished_at) return ''
+    try {
+      const ms = new Date(t.finished_at).getTime() - new Date(t.created_at).getTime()
+      if (ms < 1000) return `${ms}ms`
+      return `${(ms / 1000).toFixed(1)}s`
+    } catch { return '' }
+  }
+
+  if (total === 0) {
+    return (
+      <div className="p-6 text-center text-gray-500">
+        <Terminal className="w-8 h-8 mx-auto mb-2 opacity-40" />
+        <p className="text-xs">暂无生产日志</p>
+        <p className="text-[10px] text-gray-600 mt-1">点击「开始生产 {data.label}」后，每个 Take 的 Seedance 调用记录会汇总到这里</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-3 space-y-2">
+      {/* 统计条 */}
+      <div className="grid grid-cols-4 gap-1 text-center">
+        <div className="rounded bg-gray-900/60 border border-gray-800 py-1">
+          <div className="text-[9px] text-gray-500 uppercase">总计</div>
+          <div className="text-sm font-bold text-gray-200">{total}</div>
+        </div>
+        <div className="rounded bg-emerald-950/40 border border-emerald-900/50 py-1">
+          <div className="text-[9px] text-emerald-400/80 uppercase">成功</div>
+          <div className="text-sm font-bold text-emerald-300">{succeeded}</div>
+        </div>
+        <div className="rounded bg-amber-950/40 border border-amber-900/50 py-1">
+          <div className="text-[9px] text-amber-400/80 uppercase">进行中</div>
+          <div className="text-sm font-bold text-amber-300">{running}</div>
+        </div>
+        <div className="rounded bg-red-950/40 border border-red-900/50 py-1">
+          <div className="text-[9px] text-red-400/80 uppercase">失败</div>
+          <div className="text-sm font-bold text-red-300">{failed}</div>
+        </div>
+      </div>
+
+      {/* 时间线 */}
+      <div className="space-y-1.5">
+        {entries.map(({ sceneId, sceneLabel, take }) => {
+          const key = `${sceneId}.${take.take_id}`
+          const isOpen = expanded.has(key)
+          const Icon = TAKE_STATUS_ICON[take.status]
+          const statusTint = take.status === 'succeeded' ? 'border-emerald-700/40 bg-emerald-950/20'
+            : take.status === 'running' ? 'border-amber-700/40 bg-amber-950/20 animate-pulse'
+            : take.status === 'failed' ? 'border-red-700/40 bg-red-950/20'
+            : 'border-gray-700 bg-gray-900/40'
+          return (
+            <div key={key} className={`rounded border ${statusTint} overflow-hidden`}>
+              <button onClick={() => toggle(key)}
+                className="w-full px-2 py-1.5 flex items-center gap-2 text-left hover:bg-gray-800/30 transition">
+                <ChevronRight className={`w-3 h-3 text-gray-500 transition ${isOpen ? 'rotate-90' : ''}`} />
+                <Icon className={`w-3 h-3 ${take.status === 'succeeded' ? 'text-emerald-400' : take.status === 'failed' ? 'text-red-400' : take.status === 'running' ? 'text-amber-400' : 'text-gray-400'}`} />
+                <span className="text-[11px] font-mono text-cyan-300">{sceneId}.{take.take_id}</span>
+                <span className="text-[10px] text-gray-400 truncate flex-1">{sceneLabel}</span>
+                <span className="text-[10px] text-gray-500 font-mono">{fmtTime(take.created_at)}</span>
+                {take.finished_at && <span className="text-[10px] text-gray-600 font-mono">Δ{fmtDuration(take)}</span>}
+              </button>
+
+              {isOpen && (
+                <div className="border-t border-gray-800 px-2 py-2 space-y-1.5 text-[10px]">
+                  {/* Basic */}
+                  <LogRow label="模型" value={take.model || 'doubao-seedance-2-0-260128'} mono onCopy={copyText} />
+                  {take.task_id && <LogRow label="Task ID" value={take.task_id} mono onCopy={copyText} />}
+                  {typeof take.duration === 'number' && <LogRow label="时长" value={`${take.duration}s`} onCopy={copyText} />}
+                  {take.ref_image_url && <LogRow label="角色参考图" value={take.ref_image_url} link onCopy={copyText} />}
+                  {take.ref_video_url && <LogRow label="上场尾帧视频" value={take.ref_video_url} link onCopy={copyText} />}
+                  {take.ref_video_id && <LogRow label="上场 VideoRecord" value={take.ref_video_id} mono onCopy={copyText} />}
+                  {take.video_url && <LogRow label="本场产出" value={take.video_url} link onCopy={copyText} />}
+                  {take.lastframe_url && <LogRow label="本场尾帧" value={take.lastframe_url} link onCopy={copyText} />}
+
+                  {/* Prompt */}
+                  {take.prompt && (
+                    <div className="mt-1.5">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-gray-500 uppercase text-[9px] tracking-wider">Prompt ({take.prompt.length}字)</span>
+                        <button onClick={() => copyText(take.prompt || '')} className="text-gray-500 hover:text-gray-300 transition">
+                          <Copy className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words text-gray-300 bg-gray-950/70 border border-gray-800 rounded p-1.5 max-h-40 overflow-y-auto font-mono text-[10px] leading-relaxed">
+                        {take.prompt}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Note / error */}
+                  {take.note && (
+                    <div className={`mt-1 rounded p-1.5 text-[10px] ${take.status === 'failed' ? 'bg-red-900/30 border border-red-800/50 text-red-200' : 'bg-gray-800/50 border border-gray-700 text-gray-300'}`}>
+                      <span className="text-gray-500 uppercase text-[9px] tracking-wider">{take.status === 'failed' ? '错误' : '备注'}：</span>
+                      {take.note}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function LogRow({ label, value, mono, link, onCopy }: { label: string; value: string; mono?: boolean; link?: boolean; onCopy: (t: string) => void }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="text-gray-500 w-20 flex-shrink-0 uppercase text-[9px] tracking-wider pt-0.5">{label}</span>
+      <div className={`flex-1 min-w-0 ${mono ? 'font-mono' : ''} text-gray-300 break-all`}>
+        {link ? <a href={value} target="_blank" rel="noreferrer" className="text-cyan-400 hover:text-cyan-300 underline inline-flex items-center gap-1">{value.length > 80 ? value.slice(0, 80) + '…' : value}<ExternalLink className="w-2.5 h-2.5" /></a> : value}
+      </div>
+      <button onClick={() => onCopy(value)} className="text-gray-500 hover:text-gray-300 transition flex-shrink-0 mt-0.5">
+        <Copy className="w-2.5 h-2.5" />
+      </button>
     </div>
   )
 }
@@ -533,9 +862,43 @@ function TakeCard({ take, isPicked, onPick, onRemove }: { take: Take; isPicked: 
   )
 }
 
-function CompositionTab({ comp, scenes, onUpdate }: { comp: Composition; scenes: SceneSpec[]; onUpdate: (c: Composition) => void }) {
+function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; comp: Composition; scenes: SceneSpec[]; onUpdate: (c: Composition) => void }) {
   const pickedScenes = scenes.filter(s => s.picked_take)
   const missingCount = scenes.length - pickedScenes.length
+
+  // 推广文案生成状态
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [promo, setPromo] = useState<PromoResponse | null>(null)
+  const [promoErr, setPromoErr] = useState<string | null>(null)
+
+  const runPromo = async () => {
+    setPromoLoading(true); setPromoErr(null); setPromo(null)
+    try {
+      const meta = JSON.stringify({
+        season: data.season, episode_number: data.episode_number,
+        duration: data.duration, description: data.description,
+        scenes_count: scenes.length,
+      })
+      const res = await dramaAPI.generatePromo({
+        episode_label: data.label,
+        episode_meta: meta,
+        bible_url: '/v1/projects/swarm-universe/bible.md',
+        script_url: data.script?.md,
+        prompts_url: data.script?.prompts_md,
+        cover_url: data.cover_url,
+        final_video_url: comp.final_video_url,
+        picked_clips: comp.picked_clips,
+      })
+      setPromo(res.data)
+    } catch (e) {
+      const detail = (e as { response?: { data?: { error?: string; raw?: string } }; message?: string })
+      setPromoErr(detail.response?.data?.error || detail.message || String(e))
+    } finally { setPromoLoading(false) }
+  }
+
+  const copy = async (text: string) => {
+    try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+  }
 
   return (
     <div className="p-3 space-y-3">
@@ -649,6 +1012,144 @@ function CompositionTab({ comp, scenes, onUpdate }: { comp: Composition; scenes:
         <div className="rounded-lg overflow-hidden border border-emerald-500/30">
           <video src={comp.final_video_url} controls className="w-full" />
         </div>
+      )}
+
+      {/* 最后一步：生成推广文案 */}
+      <div className="pt-3 border-t border-gray-800">
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-pink-400" /> 最后一步·发布文案
+          </label>
+          <button onClick={runPromo} disabled={promoLoading || missingCount > 0}
+            title={missingCount > 0 ? `还有 ${missingCount} 个场景未选 take` : '调用编剧 AI 生成抖音/朋友圈/小红书全套文案'}
+            className={`px-2.5 py-1 rounded text-[11px] font-semibold transition inline-flex items-center gap-1 ${promoLoading ? 'bg-amber-900/40 text-amber-300 border border-amber-700/50 cursor-wait' : 'bg-pink-900/40 text-pink-300 border border-pink-700/50 hover:bg-pink-700/30'} disabled:opacity-40 disabled:cursor-not-allowed`}>
+            {promoLoading ? <CircleDot className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            {promoLoading ? '生成中…' : '生成文案'}
+          </button>
+        </div>
+        {promoErr && (
+          <div className="p-2 rounded bg-red-900/20 border border-red-500/30 text-[11px] text-red-300">
+            生成失败：{promoErr}
+          </div>
+        )}
+        {promo && <PromoResultCard promo={promo} onCopy={copy} />}
+        {!promo && !promoLoading && !promoErr && (
+          <div className="p-3 rounded bg-gray-900/40 border border-gray-800 text-[10px] text-gray-500 leading-relaxed">
+            → 生成后将得到：<span className="text-pink-300">抖音标题（多候选）</span> / 正文 / 话题标签 / 置顶评论，
+            <span className="text-cyan-300">朋友圈多版文案</span>（短/中/长/带@），
+            <span className="text-rose-300">小红书长文</span>。<br/>
+            每段文案均有一键复制按钮。
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// 推广文案结果卡
+function PromoResultCard({ promo, onCopy }: { promo: PromoResponse; onCopy: (t: string) => void }) {
+  const [openPlat, setOpenPlat] = useState<'douyin' | 'wechat' | 'xhs' | null>('douyin')
+  return (
+    <div className="rounded-lg border border-pink-700/40 bg-gradient-to-br from-pink-950/20 via-gray-900/60 to-purple-950/20 overflow-hidden">
+      {/* 核心钩子 */}
+      <div className="p-3 border-b border-pink-800/30">
+        <div className="text-[10px] uppercase tracking-wider text-pink-400/70 mb-1">Core Hook</div>
+        <div className="text-sm font-semibold text-pink-100 flex items-start gap-2">
+          <span className="flex-1">{promo.core_hook}</span>
+          <button onClick={() => onCopy(promo.core_hook)} className="text-gray-500 hover:text-gray-300 mt-1"><Copy className="w-3 h-3" /></button>
+        </div>
+        <div className="text-[10px] text-gray-500 mt-1">目标受众情绪：<span className="text-amber-300">{promo.audience_vibe}</span> · <span className="font-mono">{promo.model}</span></div>
+      </div>
+
+      {/* 平台 tab */}
+      <div className="flex gap-0 border-b border-gray-800">
+        <PlatBtn active={openPlat === 'douyin'} label="抖音" color="pink" onClick={() => setOpenPlat(openPlat === 'douyin' ? null : 'douyin')} />
+        <PlatBtn active={openPlat === 'wechat'} label="朋友圈" color="cyan" onClick={() => setOpenPlat(openPlat === 'wechat' ? null : 'wechat')} />
+        {promo.xiaohongshu && <PlatBtn active={openPlat === 'xhs'} label="小红书" color="rose" onClick={() => setOpenPlat(openPlat === 'xhs' ? null : 'xhs')} />}
+      </div>
+
+      {openPlat === 'douyin' && (
+        <div className="p-3 space-y-2 text-[11px]">
+          <PromoBlock label="前 3s 锁屏文字" value={promo.douyin.first_frame_caption} onCopy={onCopy} hint="销引画面用，6-12 字" />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500">标题候选 ({promo.douyin.titles?.length || 0})</span>
+            </div>
+            <div className="space-y-1">
+              {promo.douyin.titles?.map((t, i) => (
+                <div key={i} className="flex items-center gap-2 rounded bg-gray-900/60 border border-gray-800 px-2 py-1.5">
+                  <span className="text-pink-400 font-mono text-[9px]">#{i + 1}</span>
+                  <span className="flex-1 text-gray-200">{t}</span>
+                  <span className="text-[9px] text-gray-600">{t.length}字</span>
+                  <button onClick={() => onCopy(t)} className="text-gray-500 hover:text-gray-300"><Copy className="w-3 h-3" /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <PromoBlock label="正文配文" value={promo.douyin.body} onCopy={onCopy} multiline />
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 flex items-center justify-between">
+              <span>话题标签 ({promo.douyin.hashtags?.length || 0})</span>
+              <button onClick={() => onCopy((promo.douyin.hashtags || []).join(' '))} className="text-gray-500 hover:text-gray-300 inline-flex items-center gap-1 text-[10px]"><Copy className="w-2.5 h-2.5" />全复制</button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {promo.douyin.hashtags?.map((h, i) => (
+                <span key={i} className="px-1.5 py-0.5 rounded bg-pink-900/40 text-pink-300 text-[10px] border border-pink-800/40 cursor-pointer" onClick={() => onCopy(h)}>{h}</span>
+              ))}
+            </div>
+          </div>
+          {promo.douyin.series_tag && <PromoBlock label="系列标签" value={promo.douyin.series_tag} onCopy={onCopy} />}
+          {promo.douyin.pinned_comment && <PromoBlock label="作者置顶评论" value={promo.douyin.pinned_comment} onCopy={onCopy} hint="发布后自己评论并置顶，驱动互动" />}
+        </div>
+      )}
+
+      {openPlat === 'wechat' && (
+        <div className="p-3 space-y-2 text-[11px]">
+          <PromoBlock label="短版 ≤ 30字" value={promo.wechat_moments.copy_short} onCopy={onCopy} />
+          <PromoBlock label="中版 80-120字" value={promo.wechat_moments.copy_medium} onCopy={onCopy} multiline />
+          <PromoBlock label="长版 150-200字" value={promo.wechat_moments.copy_long} onCopy={onCopy} multiline />
+          <PromoBlock label="带 @朋友版" value={promo.wechat_moments.with_friend_tag} onCopy={onCopy} multiline />
+          {promo.wechat_moments.share_hint && <PromoBlock label="转发钩子" value={promo.wechat_moments.share_hint} onCopy={onCopy} />}
+        </div>
+      )}
+
+      {openPlat === 'xhs' && promo.xiaohongshu && (
+        <div className="p-3 space-y-2 text-[11px]">
+          <PromoBlock label="小红书正文" value={promo.xiaohongshu} onCopy={onCopy} multiline />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PlatBtn({ active, label, color, onClick }: { active: boolean; label: string; color: 'pink' | 'cyan' | 'rose'; onClick: () => void }) {
+  const base = active
+    ? (color === 'pink' ? 'text-pink-300 border-pink-500 bg-pink-900/20'
+     : color === 'cyan' ? 'text-cyan-300 border-cyan-500 bg-cyan-900/20'
+     : 'text-rose-300 border-rose-500 bg-rose-900/20')
+    : 'text-gray-500 border-transparent hover:text-gray-300'
+  return (
+    <button onClick={onClick}
+      className={`px-3 py-1.5 text-[11px] font-medium border-b-2 transition ${base}`}>
+      {label}
+    </button>
+  )
+}
+
+function PromoBlock({ label, value, onCopy, multiline, hint }: { label: string; value: string; onCopy: (t: string) => void; multiline?: boolean; hint?: string }) {
+  if (!value) return null
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[10px] uppercase tracking-wider text-gray-500">{label}{hint ? <span className="normal-case text-gray-600 ml-1 tracking-normal">· {hint}</span> : null}</span>
+        <button onClick={() => onCopy(value)} className="text-gray-500 hover:text-gray-300 inline-flex items-center gap-1 text-[10px]">
+          <Copy className="w-2.5 h-2.5" />复制
+        </button>
+      </div>
+      {multiline ? (
+        <pre className="whitespace-pre-wrap break-words text-gray-200 bg-gray-900/60 border border-gray-800 rounded p-2 font-mono text-[10px] leading-relaxed">{value}</pre>
+      ) : (
+        <div className="text-gray-200 bg-gray-900/60 border border-gray-800 rounded p-2 text-[11px]">{value}</div>
       )}
     </div>
   )

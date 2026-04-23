@@ -131,8 +131,30 @@ export const toolAPI = {
 }
 
 // Videos
+export interface VideoGenerateRequest {
+  prompt: string
+  model?: string              // 默认 doubao-seedance-2-0-260128
+  img_url?: string
+  size?: string               // "720*1280" (竖屏) / "1280*720" (横屏)
+  duration?: number           // 秒
+  scene?: string              // e.g. "EP05.S1"
+  style_prefix?: string       // 从 bible 抽取的统一风格
+  ref_video_id?: string       // 上一条 VideoRecord.id → 后端自动抽尾帧
+  ref_video_url?: string      // 上一场景尾帧视频 URL（逗号分隔多个）
+  ref_audio_url?: string
+  generate_audio?: boolean    // Seedance 原生中文 TTS
+  watermark?: boolean
+  return_last_frame?: boolean // 要求返回 lastframe_url 便于下一场衔接
+  category?: string           // "short_drama"
+  conversation_id?: string
+}
+
 export const videoAPI = {
-  list: () => api.get('/videos'),
+  list: (params?: Record<string, string>) =>
+    api.get('/videos', { params }),
+  generate: (req: VideoGenerateRequest) => api.post('/videos/generate', req),
+  // 按 task_id 查询状态（后端支持 ?task_id=xxx filter）
+  statusByTaskId: (taskId: string) => api.get('/videos', { params: { task_id: taskId } }),
   delete: (id: string) => api.delete(`/videos/${id}`),
   cancel: (id: string) => api.post(`/videos/${id}/cancel`),
   retry: (id: string) => api.post(`/videos/${id}/retry`),
@@ -172,6 +194,89 @@ export const characterAPI = {
   }) => api.post('/characters/generate-appearance', data, { timeout: 60000 }),
 }
 
+// Drama Writer Agent — 多维度编剧审稿
+export interface WriterReviewRequest {
+  episode_label: string
+  episode_meta?: string
+  bible_url?: string
+  script_url?: string
+  prompts_url?: string
+  bible_md?: string
+  script_md?: string
+  prompts_md?: string
+  focus_dims?: string[]
+}
+export interface WriterDimensionResult {
+  key: string; label: string; score: number; comment: string
+  good: string[]; bad: string[]
+}
+export interface WriterIssue {
+  dimension: string; severity: 'high' | 'medium' | 'low'
+  where: string; problem: string; why: string
+}
+export interface WriterSuggestion {
+  where: string; action: string; original?: string; revised: string; reason: string
+}
+export interface WriterRewriteHint {
+  scene_id: string; field: string; before: string; after: string; rationale: string
+}
+export interface WriterReviewResponse {
+  episode_label: string
+  overall_score: number
+  verdict: string
+  dimensions: WriterDimensionResult[]
+  top_issues: WriterIssue[]
+  suggestions: WriterSuggestion[]
+  rewrite_hints: WriterRewriteHint[]
+  model: string; provider: string; generated_at: string
+}
+// 推广文案生成（抖音 / 朋友圈 / 小红书）
+export interface PromoGenRequest {
+  episode_label: string
+  episode_meta?: string
+  bible_url?: string
+  script_url?: string
+  prompts_url?: string
+  bible_md?: string
+  script_md?: string
+  prompts_md?: string
+  cover_url?: string
+  final_video_url?: string
+  picked_clips?: string[]
+  platforms?: string[]
+}
+export interface PromoDouyin {
+  titles: string[]
+  body: string
+  hashtags: string[]
+  first_frame_caption: string
+  series_tag: string
+  pinned_comment: string
+}
+export interface PromoWechatMoments {
+  copy_short: string
+  copy_medium: string
+  copy_long: string
+  with_friend_tag: string
+  share_hint: string
+}
+export interface PromoResponse {
+  episode_label: string
+  douyin: PromoDouyin
+  wechat_moments: PromoWechatMoments
+  xiaohongshu?: string
+  core_hook: string
+  audience_vibe: string
+  model: string
+  provider: string
+  generated_at: string
+}
+
+export const dramaAPI = {
+  writerReview: (req: WriterReviewRequest) => api.post<WriterReviewResponse>('/drama/writer/review', req),
+  generatePromo: (req: PromoGenRequest) => api.post<PromoResponse>('/drama/writer/promo', req),
+}
+
 // CDN 上传（cdn.starclaw.net，EP04 验证过）
 // 后端按 env 配置走 scp → 43.106.158.26:/opt/cdn/.../<claw_id>/<drama>/<asset_type>/<filename>
 // 若未配置或失败 → 自动 fallback 到 /v1/uploads/<uuid>（本地稳定 URL）
@@ -187,6 +292,24 @@ export const cdnAPI = {
       timeout: 120000,
     })
   },
+  // Re-launder a local / CDN image through Seedream 5.0 lite → fresh Volcengine
+  // Ark TOS signed URL (bypasses Seedance privacy filter). Valid ~24h.
+  launderTOS: (image_url: string) =>
+    api.post<{ tos_url: string; size: number; mime: string; source: string; note: string }>(
+      '/cdn/launder-tos',
+      { image_url },
+      { timeout: 180000 },
+    ),
+  // Cheap path: re-sign an existing TOS URL with our VOLC_TOS_AK/SK for up to
+  // 7 days (604800s). No Seedream call, no image bytes, pure HMAC. Returns
+  // 502 + {hint: "fall back to launder-tos"} if AKSK has no read access on
+  // the bucket (HEAD validation 403/404).
+  resignTOS: (tos_url: string, expires_sec = 604800) =>
+    api.post<{ tos_url: string; expires_sec: number; source: string; head_status: number }>(
+      '/cdn/resign-tos',
+      { tos_url, expires_sec },
+      { timeout: 20000 },
+    ),
 }
 
 // Music

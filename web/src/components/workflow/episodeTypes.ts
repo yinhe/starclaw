@@ -7,8 +7,16 @@ export interface Take {
   lastframe_url?: string
   task_id?: string
   thumbnail_url?: string
-  note?: string            // reject/pick reason
+  note?: string            // reject/pick reason / error message
   created_at?: string
+  // —— 日志字段（详细记录 Seedance 调用上下文，供「日志」tab 复盘） ——
+  prompt?: string          // 实际发给 Seedance 的完整 prompt
+  ref_image_url?: string   // 本 take 使用的角色参考图
+  ref_video_url?: string   // 本 take 使用的上一场 picked_take 视频（尾帧链）
+  ref_video_id?: string    // 本 take 使用的上一场 VideoRecord.id
+  model?: string           // e.g. doubao-seedance-2-0-260128
+  duration?: number        // 视频时长（秒）
+  finished_at?: string     // 结束时间
 }
 
 export interface SceneSpec {

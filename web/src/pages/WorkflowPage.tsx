@@ -16,7 +16,7 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera } from 'lucide-react'
+import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera, Coins } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import LLMNode from '../components/workflow/LLMNode'
 import ToolNode from '../components/workflow/ToolNode'
@@ -26,7 +26,9 @@ import EndNode from '../components/workflow/EndNode'
 import MediaNode from '../components/workflow/MediaNode'
 import SceneStepNode from '../components/workflow/SceneStepNode'
 import NodePropertyPanel from '../components/workflow/NodePropertyPanel'
-import EpisodeWorkflowPanel from '../components/workflow/EpisodeWorkflowPanel'
+import EpisodeWorkflowPanel, { EpisodeLogsPane } from '../components/workflow/EpisodeWorkflowPanel'
+import CostAnalysisModal from '../components/workflow/CostAnalysisModal'
+import PropEditorModal, { type PropData } from '../components/workflow/PropEditorModal'
 import SnapshotsModal from '../components/workflow/SnapshotsModal'
 import type { WorkflowSnapshot } from '../components/workflow/snapshots'
 import UniverseOverviewModal from '../components/workflow/UniverseOverviewModal'
@@ -34,7 +36,8 @@ import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
 import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData } from '../components/workflow/episodeTypes'
 import { buildSeedNodes } from '../components/workflow/swarmUniverseSeed'
-import { modelAPI, toolAPI, workflowAPI } from '../lib/api'
+import { modelAPI, toolAPI, workflowAPI, videoAPI } from '../lib/api'
+import { parseTOSFreshness, refreshTOS } from '../components/workflow/tosUrlUtils'
 
 const nodeTypes = {
   llm: LLMNode,
@@ -70,16 +73,39 @@ export default function WorkflowPage() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [workflowName, setWorkflowName] = useState('未命名工作流')
   const [saving, setSaving] = useState(false)
+  // 保存反馈（toast），3s 后自动消失
+  const [saveToast, setSaveToast] = useState<{ kind: 'ok' | 'err' | 'info'; msg: string } | null>(null)
+  // 自动保存：每次 nodes/edges 变化后 debounce 3s 触发（仅当 workflowId 存在）
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedDefRef = useRef<string>('')
   const [running, setRunning] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  // 节点右键管理菜单（删除/复制/重命名）
+  const [nodeContextMenu, setNodeContextMenu] = useState<{ x: number; y: number; node: Node } | null>(null)
+  // 连线右键菜单（删除）
+  const [edgeContextMenu, setEdgeContextMenu] = useState<{ x: number; y: number; edge: Edge } | null>(null)
+  // 撤销栈：最近 20 次破坏性操作（删节点/删连线/删场景），Ctrl+Z 恢复
+  type UndoSnap = {
+    kind: 'delete-node' | 'delete-edge' | 'delete-scene'
+    nodes: Node[]
+    edges: Edge[]
+    label: string
+  }
+  const [undoStack, setUndoStack] = useState<UndoSnap[]>([])
   const [models, setModels] = useState<{ id: string; provider: string; model_name: string; display_name: string }[]>([])
   const [availableTools, setAvailableTools] = useState<string[]>([])
   const [showLeftPanel, setShowLeftPanel] = useState(true)
+  // 画布底部日志 dock：选中剧集节点时可展开
+  const [logsDockOpen, setLogsDockOpen] = useState(false)
+  // 成本分析 Modal
+  const [showCostModal, setShowCostModal] = useState(false)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ characters: true, episodes: true, props: true, pipeline: false, spinoff: true, 's1': true, 's2': false, 's3': false, 's4': false, 's5': false })
   const [showCharModal, setShowCharModal] = useState(false)
   const [editCharNodeId, setEditCharNodeId] = useState<string | null>(null)
+  // 道具工坊·编辑模式
+  const [editPropNodeId, setEditPropNodeId] = useState<string | null>(null)
   const [showEpModal, setShowEpModal] = useState(false)
   const [epModalSeason, setEpModalSeason] = useState<number>(1)
   const [epModalSpinoffGroup, setEpModalSpinoffGroup] = useState<string | undefined>(undefined)
@@ -115,32 +141,30 @@ export default function WorkflowPage() {
   }, [])
 
   // runEpisodeProduction 在下面定义，用 ref 打破循环依赖
-  const runEpisodeProductionRef = useRef<(ep: EpisodeData, id: string) => void>(() => {})
+  const runEpisodeProductionRef = useRef<(ep: EpisodeData, id: string, opts?: { initialRefVideoUrl?: string }) => void>(() => {})
 
   // 重拍单场景：构造只含该场景的 EpisodeData 投递给同一工作流
+  // 关键：从前一场景的 picked_take 抽取 video_url 作为 initialRefVideoUrl 保证尾帧链式不断
   const rerunScene = useCallback((epId: string, sceneId: string) => {
     setNodes(nds => {
       const epNode = nds.find(n => n.id === epId)
       if (!epNode) return nds
       const ep = epNode.data as unknown as EpisodeData
-      const scene = (ep.scenes || []).find(s => s.id === sceneId)
-      if (!scene) return nds
-      // 标记 running
-      const newScenes = (ep.scenes || []).map(s => s.id !== sceneId ? s : {
-        ...s,
-        takes: [...(s.takes || []), {
-          take_id: `t${(s.takes?.length || 0) + 1}`,
-          status: 'running' as const,
-          created_at: new Date().toISOString(),
-          note: '手动重拍',
-        }],
-      })
-      // 异步触发生产（scoped 只含该场景）
+      const allScenes = ep.scenes || []
+      const sceneIdx = allScenes.findIndex(s => s.id === sceneId)
+      if (sceneIdx < 0) return nds
+      const scene = allScenes[sceneIdx]
+      const prev = sceneIdx > 0 ? allScenes[sceneIdx - 1] : undefined
+      const prevPicked = prev ? prev.takes.find(t => t.take_id === prev.picked_take) : undefined
+      const initialRefVideoUrl = prevPicked?.video_url || ''
+
+      // 异步触发生产（scoped 只含该场景 + 传上一场尾帧）
+      // NOTE: runEpisodeProduction 内部会自行把 take 标记为 running/succeeded/failed
       setTimeout(() => {
         const scopedEp: EpisodeData = { ...ep, scenes: [scene] }
-        runEpisodeProductionRef.current(scopedEp, epId)
+        void runEpisodeProductionRef.current(scopedEp, epId, { initialRefVideoUrl })
       }, 0)
-      return nds.map(n => n.id !== epId ? n : { ...n, data: { ...ep, scenes: newScenes } as unknown as Record<string, unknown> })
+      return nds
     })
   }, [setNodes])
 
@@ -325,10 +349,19 @@ export default function WorkflowPage() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F11') { e.preventDefault(); toggleFullscreen() }
       if (e.key === 'Delete' && selectedNode) deleteSelectedNode()
+      // Ctrl/Cmd+Z → 撤销最近一次删除
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        // 如果焦点在输入框/textarea/contenteditable 中，不拦截原生 undo
+        const t = e.target as HTMLElement | null
+        const tag = t?.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable) return
+        e.preventDefault()
+        undoLastDelete()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedNode])
+  }, [selectedNode, undoStack])
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -338,13 +371,64 @@ export default function WorkflowPage() {
     }
   }
 
+  // 快照当前 nodes+edges 到撤销栈（压入前裁成最多 20 条）
+  const pushUndo = useCallback((kind: UndoSnap['kind'], label: string) => {
+    setUndoStack(stk => {
+      const snap: UndoSnap = { kind, label, nodes: [...nodes], edges: [...edges] }
+      const next = [...stk, snap]
+      if (next.length > 20) next.shift()
+      return next
+    })
+  }, [nodes, edges])
+
+  const undoLastDelete = useCallback(() => {
+    setUndoStack(stk => {
+      if (stk.length === 0) return stk
+      const next = [...stk]
+      const snap = next.pop()!
+      setNodes(snap.nodes)
+      setEdges(snap.edges)
+      return next
+    })
+  }, [setNodes, setEdges])
+
   const deleteSelectedNode = () => {
     if (!selectedNode) return
     if (selectedNode.type === 'start' || selectedNode.type === 'end') return
+
+    // ── 场景子图节点特殊处理：不是真实 node，而是从 episode.scenes[] 派生 ──
+    if (selectedNode.type === 'sceneStep') {
+      const d = selectedNode.data as Record<string, unknown>
+      if (d.isFinal) return // Final Cut 不允许删
+      const sceneId = d.sceneId as string
+      if (!focusedEpisodeId || !sceneId) return
+      pushUndo('delete-scene', `删除场景 ${sceneId}`)
+      setNodes(nds => nds.map(n => {
+        if (n.id !== focusedEpisodeId) return n
+        const ep = n.data as unknown as EpisodeData
+        const newScenes = (ep.scenes || []).filter(s => s.id !== sceneId)
+        const picked_clips = newScenes.map(s => s.picked_take ? `${s.id}.${s.picked_take}` : '').filter(Boolean)
+        const composition = { ...(ep.composition || { picked_clips: [], status: 'pending' as const }), picked_clips }
+        return { ...n, data: { ...ep, scenes: newScenes, composition } as unknown as Record<string, unknown> }
+      }))
+      setSelectedNode(null)
+      setFocusedSceneId(null)
+      return
+    }
+
+    // 普通节点：push 快照，再删除
+    pushUndo('delete-node', `删除 ${selectedNode.type} · ${(selectedNode.data as Record<string, unknown>)?.label || selectedNode.id}`)
     setNodes(nds => nds.filter(n => n.id !== selectedNode.id))
     setEdges(eds => eds.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id))
     setSelectedNode(null)
   }
+
+  // 删除单条 edge（含 undo）
+  const deleteEdge = useCallback((edgeId: string) => {
+    pushUndo('delete-edge', `删除连线 ${edgeId}`)
+    setEdges(eds => eds.filter(e => e.id !== edgeId))
+    setEdgeContextMenu(null)
+  }, [pushUndo, setEdges])
 
   const loadModels = async () => {
     try { const res = await modelAPI.list(); setModels(res.data.models || []) } catch { /* */ }
@@ -494,42 +578,327 @@ export default function WorkflowPage() {
     setShowSwarmConfirm(false)
   }, [setNodes, setEdges, workflowName])
 
-  const runEpisodeProduction = useCallback(async (episodeData: EpisodeData, nodeId: string) => {
-    // Mark episode as generating; downstream: call short-drama team workflow with episode-scoped input
-    const payload = {
-      episode_id: nodeId,
-      episode_label: episodeData.label,
-      season: episodeData.season,
-      episode_number: episodeData.episode_number,
-      scenes: episodeData.scenes || [],
-      duration: episodeData.duration,
-      description: episodeData.description,
-    }
+  // ── 剧本/bible/提示词文本缓存 + 获取 ──
+  const textCacheRef = useRef<Record<string, string>>({})
+  const fetchTextCached = useCallback(async (url: string): Promise<string> => {
+    if (!url) return ''
+    if (textCacheRef.current[url]) return textCacheRef.current[url]
+    try {
+      const r = await fetch(url, { cache: 'no-cache' })
+      if (!r.ok) return ''
+      const t = await r.text()
+      textCacheRef.current[url] = t
+      return t
+    } catch { return '' }
+  }, [])
 
-    // Optimistic UI: set composition.status = generating
+  // 从 nodes 里收集角色参考（tag → imageUrl 与 label → imageUrl）
+  const collectCharacterRefs = useCallback((): { byTag: Record<string, string>; list: Array<{ label: string; tag?: string; url: string }> } => {
+    const byTag: Record<string, string> = {}
+    const list: Array<{ label: string; tag?: string; url: string }> = []
+    for (const n of nodes) {
+      if (n.type !== 'media') continue
+      const d = n.data as Record<string, unknown>
+      if (d.category !== 'character') continue
+      // Priority: TOS/CDN URL (bypasses Seedance privacy filter) > local imageUrl (fallback)
+      const url = (d.tos_url as string) || (d.cdn_url as string) || (d.imageUrl as string) || ''
+      if (!url) continue
+      const tag = (d.tag as string) || ''
+      const label = (d.label as string) || ''
+      list.push({ label, tag, url })
+      if (tag) byTag[tag] = url
+    }
+    return { byTag, list }
+  }, [nodes])
+
+  // 轮询 Seedance 视频任务状态
+  const pollVideoStatus = useCallback(async (taskId: string, sceneLabel: string, maxSec = 20 * 60): Promise<{ video_url?: string; lastframe_url?: string; status: string; record_id?: string }> => {
+    const start = Date.now()
+    let pollInterval = 5000
+    while ((Date.now() - start) / 1000 < maxSec) {
+      await new Promise(r => setTimeout(r, pollInterval))
+      try {
+        const res = await videoAPI.statusByTaskId(taskId)
+        const videos: Array<{ id: string; task_id: string; video_url: string; status: string; lastframe_url?: string }> = res.data.videos || []
+        const rec = videos.find(v => v.task_id === taskId)
+        if (!rec) { pollInterval = Math.min(pollInterval + 2000, 15000); continue }
+        if (rec.status === 'succeeded') {
+          return { video_url: rec.video_url, lastframe_url: rec.lastframe_url, status: 'succeeded', record_id: rec.id }
+        }
+        if (rec.status === 'failed' || rec.status === 'cancelled') {
+          return { status: rec.status, record_id: rec.id }
+        }
+        // running / pending → keep polling
+      } catch (e) {
+        console.warn(`[runEpisodeProduction] poll ${sceneLabel} error:`, e)
+      }
+      pollInterval = Math.min(pollInterval + 1000, 20000)
+    }
+    return { status: 'timeout' }
+  }, [])
+
+  const runEpisodeProduction = useCallback(async (episodeData: EpisodeData, nodeId: string, opts?: { initialRefVideoUrl?: string }) => {
+    const scenes = episodeData.scenes || []
+    if (scenes.length === 0) { alert('该集没有场景，请先添加场景'); return }
+
+    // Optimistic UI: composition.status = generating
     setNodes(nds => nds.map(n => {
       if (n.id !== nodeId) return n
       const d = n.data as unknown as EpisodeData
       return { ...n, data: { ...d, composition: { ...(d.composition || { picked_clips: [] }), status: 'generating', picked_clips: d.composition?.picked_clips || [] } } as unknown as Record<string, unknown> }
     }))
 
-    try {
-      if (workflowId) {
-        const res = await workflowAPI.run(workflowId, { input: JSON.stringify(payload) })
-        alert(`✅ 已提交 ${episodeData.label} 到短剧团队工作流\n\n返回：${JSON.stringify(res.data.output || res.data.result, null, 2).slice(0, 500)}`)
-      } else {
-        alert(`⚠️ 请先保存工作流，然后点“开始生产 ${episodeData.label}”将交给短剧团队。\n\n当前 payload 预览：\n${JSON.stringify(payload, null, 2).slice(0, 600)}`)
+    // 1) 加载剧本 / bible / 提示词作为 style_prefix 依据
+    const scriptUrl = episodeData.script?.md || ''
+    const promptsUrl = episodeData.script?.prompts_md || ''
+    const BIBLE_URL = '/v1/projects/swarm-universe/bible.md'
+    const [bibleText, , promptsText] = await Promise.all([
+      fetchTextCached(BIBLE_URL),
+      fetchTextCached(scriptUrl),   // 目前不直接拼入 prompt，仅预热缓存供 ScriptTab 复用
+      fetchTextCached(promptsUrl),
+    ])
+    // 从 bible 首段/前 600 字抽取风格线索，作为 Seedance style_prefix
+    const stylePrefix = (() => {
+      const lines = (bibleText || '').split('\n').filter(l => l.trim() && !l.trim().startsWith('#')).slice(0, 4).join(' ')
+      return lines ? lines.slice(0, 600) : '竖屏短剧 720x1280，现代都市+奇幻元素，冷暖色对比，电影感构图，浅景深，自然光源'
+    })()
+
+    // 2) 收集角色参考图
+    const { byTag, list: charList } = collectCharacterRefs()
+
+    // 2.5) 自动刷新即将过期的 TOS URL
+    //   refreshTOS 混合策略：先调 /v1/cdn/resign-tos（HMAC 7d，零成本），失败 fallback 到
+    //   /v1/cdn/launder-tos（Seedream 再洗 24h）。详见 tosUrlUtils.ts。
+    const refreshPlan: Array<{ idx: number; tag: string; oldUrl: string; source: string; nodeId: string }> = []
+    for (let i = 0; i < charList.length; i++) {
+      const f = parseTOSFreshness(charList[i].url)
+      if (!f.parsed || !f.staleOrExpired) continue
+      const charTag = charList[i].tag || ''
+      const charLabel = charList[i].label
+      const n = nodes.find(nn => {
+        if (nn.type !== 'media') return false
+        const d = nn.data as Record<string, unknown>
+        if (d.category !== 'character') return false
+        return (charTag && d.tag === charTag) || d.label === charLabel
+      })
+      if (!n) continue
+      const d = n.data as Record<string, unknown>
+      const source = (d.cdn_url as string) || (d.imageUrl as string) || ''
+      refreshPlan.push({ idx: i, tag: charTag, oldUrl: charList[i].url, source, nodeId: n.id })
+    }
+    if (refreshPlan.length > 0) {
+      console.log(`[runEpisodeProduction] auto-refreshing ${refreshPlan.length} stale TOS URL(s) — resign first, launder fallback`)
+      const results = await Promise.allSettled(
+        refreshPlan.map(async (p) => ({ p, r: await refreshTOS(p.oldUrl, p.source) })),
+      )
+      const nodeUpdates: Record<string, string> = {}
+      const refreshFailures: string[] = []
+      let resignCount = 0
+      let launderCount = 0
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          const { p, r: rr } = r.value
+          charList[p.idx].url = rr.tosUrl
+          if (p.tag) byTag[p.tag] = rr.tosUrl
+          nodeUpdates[p.nodeId] = rr.tosUrl
+          if (rr.source === 'resign') resignCount++; else launderCount++
+        } else {
+          const rr = r.reason as { response?: { data?: { error?: string } }; message?: string }
+          refreshFailures.push(rr?.response?.data?.error || rr?.message || 'unknown')
+        }
       }
-    } catch (e) {
-      alert(`生产提交失败：${(e as Error).message || e}`)
-      // rollback status
+      console.log(`[runEpisodeProduction] TOS refresh done: resign=${resignCount} launder=${launderCount} fail=${refreshFailures.length}`)
+      if (Object.keys(nodeUpdates).length > 0) {
+        setNodes(nds => nds.map(n => nodeUpdates[n.id]
+          ? { ...n, data: { ...(n.data as Record<string, unknown>), tos_url: nodeUpdates[n.id] } }
+          : n,
+        ))
+      }
+      if (refreshFailures.length > 0) {
+        console.warn('[runEpisodeProduction] TOS refresh partial failures:', refreshFailures)
+      }
+    }
+
+    // 3) 对场景 prompt 做占位符替换（把 [图1][图2] 替换为 "<label>(见附图)" 形式的文字描述，真实的 URL 通过 img_url 传递）
+    const resolveScenePrompt = (rawPrompt: string): { resolved: string; usedUrls: string[] } => {
+      const usedTags = new Set<string>()
+      let out = rawPrompt || ''
+      // [图1]-[图9] 识别
+      out = out.replace(/\[图(\d+)\]/g, (_m, n) => {
+        const tag = `[图${n}]`
+        usedTags.add(tag)
+        const char = charList.find(c => c.tag === tag)
+        return char ? `${char.label}` : _m
+      })
+      const usedUrls = Array.from(usedTags).map(t => byTag[t]).filter(Boolean)
+      return { resolved: out, usedUrls }
+    }
+
+    // 4) 从 prompts_md 里提取每个场景的详细 Seedance 英文 prompt（如果存在则优先使用）
+    //    简单策略：按 "### S{n}" 或 "## S{n}" 标题切分
+    const sceneBlockFromPrompts = (sid: string): string => {
+      if (!promptsText) return ''
+      const re = new RegExp(`#{2,3}\\s*${sid}[\\s\\S]*?(?=\\n#{2,3}\\s*S\\d|$)`, 'i')
+      const m = promptsText.match(re)
+      return m ? m[0] : ''
+    }
+
+    // 5) 逐场景串行生产（单集顺序，拿上一场 picked_take 尾帧作为下一场 ref_video_url）
+    let prevRefVideoUrl: string = opts?.initialRefVideoUrl || ''
+    let prevRecordId: string = ''
+    const failures: string[] = []
+
+    for (const scene of scenes) {
+      const takeId = `t${(scene.takes?.length || 0) + 1}`
+      const sceneLabelFull = `${episodeData.label} · ${scene.id}`
+
+      // 5b) 组装 prompt + 参考图（先组装，再把 take 标 running 以便日志立即可见）
+      const { resolved, usedUrls } = resolveScenePrompt(scene.prompt || scene.label || '')
+      const promptsSnippet = sceneBlockFromPrompts(scene.id)
+      const fullPrompt = [
+        resolved,
+        promptsSnippet ? `\n\n[镜别细则（摘自提示词总稿）]\n${promptsSnippet}` : '',
+      ].join('').slice(0, 4000)
+
+      // img_url 优先使用本场角色参考图，兜底使用上一场尾帧
+      const imgUrl = usedUrls[0] || ''
+      // ref_video_url 始终使用上一场 picked_take 的 video_url（Seedance 多模态参考）
+      const refVideoUrl = prevRefVideoUrl
+      const modelName = 'doubao-seedance-2-0-260128'
+
+      // 5a) 先把本场 take 标记为 running 入 UI（并塞入日志字段）
       setNodes(nds => nds.map(n => {
         if (n.id !== nodeId) return n
         const d = n.data as unknown as EpisodeData
-        return { ...n, data: { ...d, composition: { ...(d.composition || { picked_clips: [] }), status: 'pending', picked_clips: d.composition?.picked_clips || [] } } as unknown as Record<string, unknown> }
+        const newScenes = (d.scenes || []).map(s => s.id !== scene.id ? s : {
+          ...s,
+          takes: [...(s.takes || []), {
+            take_id: takeId,
+            status: 'running' as const,
+            created_at: new Date().toISOString(),
+            prompt: fullPrompt,
+            ref_image_url: imgUrl,
+            ref_video_url: refVideoUrl,
+            ref_video_id: prevRecordId,
+            model: modelName,
+            duration: scene.duration || 5,
+          }],
+        })
+        return { ...n, data: { ...d, scenes: newScenes } as unknown as Record<string, unknown> }
       }))
+
+      console.log(`[runEpisodeProduction] ${sceneLabelFull}`, { imgUrl, refVideoUrl, promptLen: fullPrompt.length })
+
+      // 5c) 调 /v1/videos/generate
+      let taskId = ''
+      let videoUrl = ''
+      let lastframeUrl = ''
+      let recordId = ''
+      let statusNote = ''
+      try {
+        const res = await videoAPI.generate({
+          prompt: fullPrompt,
+          model: 'doubao-seedance-2-0-260128',
+          img_url: imgUrl || undefined,
+          ref_video_url: refVideoUrl || undefined,
+          ref_video_id: prevRecordId || undefined,
+          duration: scene.duration || 5,
+          size: '720*1280',
+          scene: `${episodeData.label}.${scene.id}`,
+          style_prefix: stylePrefix,
+          generate_audio: true,
+          return_last_frame: true,
+          watermark: false,
+          category: 'short_drama',
+        })
+        const data = res.data || {}
+        taskId = data.task_id || data.result?.task_id || ''
+        statusNote = data.message || data.status || ''
+        if (!taskId) {
+          throw new Error(`后端未返回 task_id: ${JSON.stringify(data).slice(0, 200)}`)
+        }
+        // 5d) 轮询状态
+        const poll = await pollVideoStatus(taskId, sceneLabelFull)
+        if (poll.status === 'succeeded' && poll.video_url) {
+          videoUrl = poll.video_url
+          lastframeUrl = poll.lastframe_url || ''
+          recordId = poll.record_id || ''
+        } else {
+          statusNote = `轮询状态=${poll.status}`
+        }
+      } catch (e) {
+        // 优先解包 axios 后端错误 (err.response.data.error) —— 让用户看到真正原因
+        // 例如：no Volcengine API key found. Please configure volcengine or use StarAI
+        const ax = e as { response?: { status?: number; data?: { error?: string; message?: string } }; message?: string }
+        const backendErr = ax?.response?.data?.error || ax?.response?.data?.message
+        const httpStatus = ax?.response?.status
+        statusNote = backendErr
+          ? `${backendErr}${httpStatus ? ` (HTTP ${httpStatus})` : ''}`
+          : (ax?.message || String(e))
+        console.error(`[runEpisodeProduction] ${sceneLabelFull} generate failed:`, e)
+      }
+
+      // 5e) 把 take 更新为 succeeded/failed，并自动 pick
+      const ok = !!videoUrl
+      setNodes(nds => nds.map(n => {
+        if (n.id !== nodeId) return n
+        const d = n.data as unknown as EpisodeData
+        const newScenes = (d.scenes || []).map(s => {
+          if (s.id !== scene.id) return s
+          const takes = (s.takes || []).map(t => t.take_id !== takeId ? t : {
+            ...t,
+            status: ok ? 'succeeded' as const : 'failed' as const,
+            video_url: videoUrl || t.video_url,
+            lastframe_url: lastframeUrl || t.lastframe_url,
+            task_id: taskId || t.task_id,
+            note: statusNote || t.note,
+            finished_at: new Date().toISOString(),
+          })
+          return {
+            ...s,
+            takes,
+            picked_take: ok ? takeId : s.picked_take,
+          }
+        })
+        const picked_clips = newScenes.map(s => s.picked_take ? `${s.id}.${s.picked_take}` : '').filter(Boolean)
+        const composition = { ...(d.composition || { picked_clips: [] }), picked_clips }
+        return { ...n, data: { ...d, scenes: newScenes, composition } as unknown as Record<string, unknown> }
+      }))
+
+      if (ok) {
+        prevRefVideoUrl = videoUrl   // 下一场用本场片段整段作为多模态参考
+        prevRecordId = recordId       // 也传 record_id，后端会自动 extract_last_frame
+      } else {
+        failures.push(`${scene.id}(${statusNote.slice(0, 200)})`)
+        // 失败则中断整集，避免错误扩散
+        break
+      }
     }
-  }, [setNodes, workflowId])
+
+    // 检测典型"配置缺失"错误，给出一条可执行的引导
+    const needsKey = failures.some(f => /no\s+\w+\s+API key|not initialized|unauthorized node|API key not configured|no api key/i.test(f))
+
+    // 6) 更新最终状态
+    setNodes(nds => nds.map(n => {
+      if (n.id !== nodeId) return n
+      const d = n.data as unknown as EpisodeData
+      const allPicked = (d.scenes || []).every(s => s.picked_take)
+      return { ...n, data: { ...d, composition: { ...(d.composition || { picked_clips: [] }), status: allPicked ? 'ready' : 'pending' } } as unknown as Record<string, unknown> }
+    }))
+
+    if (failures.length) {
+      const hint = needsKey
+        ? '\n\n🔑 看起来缺少模型供应商密钥。请到「模型配置」页新增一条 volcengine（豆包/Seedance）或 StarAI 密钥，保存后重试。'
+        : '\n\n已完成的镜头已保留，可在右侧面板点击对应场景「重拍」单独重试。'
+      if (needsKey && confirm(`⚠️ ${episodeData.label} 生产失败：\n${failures.join('\n')}${hint}\n\n是否现在前往「模型配置」页？`)) {
+        navigate('/models')
+      } else if (!needsKey) {
+        alert(`⚠️ ${episodeData.label} 生产部分失败：\n${failures.join('\n')}${hint}`)
+      }
+    } else {
+      alert(`✅ ${episodeData.label} 全部 ${scenes.length} 镜已生成，picked_take 已自动选中。\n请在"合成链路" tab 检查并推进 BGM / 最终合成。`)
+    }
+  }, [setNodes, fetchTextCached, collectCharacterRefs, pollVideoStatus, navigate])
 
   // 同步 ref，让 rerunScene 可以前向引用 runEpisodeProduction
   useEffect(() => { runEpisodeProductionRef.current = runEpisodeProduction }, [runEpisodeProduction])
@@ -555,19 +924,56 @@ export default function WorkflowPage() {
     [nodes, setNodes],
   )
 
-  const handleSave = async () => {
+  // ── 显示临时 toast · 3s 自动消失 ──
+  const showToast = useCallback((kind: 'ok' | 'err' | 'info', msg: string) => {
+    setSaveToast({ kind, msg })
+    setTimeout(() => setSaveToast(null), 3000)
+  }, [])
+
+  // ── 核心保存：auto=true 时走静默模式（不弹 alert，toast 用 info） ──
+  const doSave = useCallback(async (opts?: { auto?: boolean }) => {
+    const auto = !!opts?.auto
     setSaving(true)
     try {
       const definition = JSON.stringify({ nodes, edges })
+      if (definition === lastSavedDefRef.current) {
+        if (!auto) showToast('info', '无改动，无需保存')
+        return
+      }
       if (workflowId) {
         await workflowAPI.update(workflowId, { name: workflowName, definition })
+        lastSavedDefRef.current = definition
+        showToast(auto ? 'info' : 'ok', auto ? `已自动保存 · ${new Date().toLocaleTimeString('zh-CN')}` : `已保存 · ${nodes.length} 节点 ${edges.length} 连线`)
       } else {
         const res = await workflowAPI.create({ name: workflowName, definition })
-        if (res.data.workflow?.id) navigate(`/workflows?id=${res.data.workflow.id}`, { replace: true })
+        lastSavedDefRef.current = definition
+        const newId = res.data.workflow?.id
+        if (newId) {
+          navigate(`/workflows?id=${newId}`, { replace: true })
+          showToast('ok', `已创建并保存 · ${nodes.length} 节点`)
+        } else {
+          showToast('err', '保存成功但未返回 workflow id')
+        }
       }
-    } catch { /* */ }
-    setSaving(false)
-  }
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        || (e as { message?: string })?.message || String(e)
+      console.error('[WorkflowPage] save failed:', e)
+      showToast('err', `保存失败：${msg}`)
+    } finally {
+      setSaving(false)
+    }
+  }, [nodes, edges, workflowId, workflowName, navigate, showToast])
+
+  const handleSave = () => { void doSave() }
+
+  // ── 自动保存：nodes/edges 任意改动 3s debounce 后后台保存（仅当 workflowId 存在） ──
+  useEffect(() => {
+    if (!workflowId) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => { void doSave({ auto: true }) }, 3000)
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
+  }, [nodes, edges, workflowId, doSave])
 
   const handleRun = async () => {
     setRunning(true)
@@ -581,8 +987,40 @@ export default function WorkflowPage() {
 
   const onPaneContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
     e.preventDefault()
+    setNodeContextMenu(null)
+    setEdgeContextMenu(null)
     setContextMenu({ x: (e as MouseEvent).clientX - 250, y: (e as MouseEvent).clientY - 100 })
   }, [])
+
+  // 连线右键 → 弹连线管理菜单（目前只有删除，保留扩展空间）
+  const onEdgeContextMenu = useCallback((e: React.MouseEvent, edge: Edge) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu(null)
+    setNodeContextMenu(null)
+    setEdgeContextMenu({ x: (e as unknown as MouseEvent).clientX, y: (e as unknown as MouseEvent).clientY, edge })
+  }, [])
+
+  // 节点右键 → 弹节点管理菜单（删除/复制）
+  const onNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu(null)
+    setSelectedNode(node)
+    setNodeContextMenu({ x: (e as unknown as MouseEvent).clientX, y: (e as unknown as MouseEvent).clientY, node })
+  }, [])
+
+  const duplicateNode = useCallback((node: Node) => {
+    const id = `${node.type}-${nodeIdCounter.current++}`
+    const copy: Node = {
+      ...node, id,
+      position: { x: node.position.x + 40, y: node.position.y + 40 },
+      selected: false,
+      data: JSON.parse(JSON.stringify(node.data || {})),
+    }
+    setNodes(nds => [...nds, copy])
+    setNodeContextMenu(null)
+  }, [setNodes])
 
   return (
     <div ref={containerRef} className="h-full flex flex-col bg-gray-950">
@@ -593,6 +1031,14 @@ export default function WorkflowPage() {
             className="p-2 rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700/80 transition-all">
             <ArrowLeft className="w-4 h-4" />
           </button>
+          {/* 侧边栏折叠时的展开按钮（与 ArrowLeft 平行，避免与 back 按钮重叠） */}
+          {!showLeftPanel && (
+            <button onClick={() => setShowLeftPanel(true)}
+              title="展开侧边栏（项目资产）"
+              className="p-2 rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700/80 transition-all">
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          )}
           <div className="px-3 py-1.5 rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50">
             <input
               value={workflowName}
@@ -651,6 +1097,11 @@ export default function WorkflowPage() {
             </button>
           )}
           <div className="w-px h-6 bg-gray-700/50 mx-1" />
+          <button onClick={() => setShowCostModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-900/40 backdrop-blur border border-amber-700/50 text-amber-200 hover:text-white hover:bg-amber-800/60 transition-all"
+            title="成本分析：扫描所有剧集 takes 计算 Seedance/LLM/图片/BGM 费用">
+            <Coins className="w-3.5 h-3.5" /> 成本
+          </button>
           <button onClick={() => setShowSnapshots(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-900/40 backdrop-blur border border-purple-700/50 text-purple-200 hover:text-white hover:bg-purple-800/60 transition-all"
             title="存档 / 快照管理（本地）">
@@ -658,9 +1109,19 @@ export default function WorkflowPage() {
           </button>
           <button onClick={handleSave} disabled={saving}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-300 hover:text-white hover:bg-gray-700/80 disabled:opacity-50 transition-all"
-            title="保存到后端（跨设备）">
+            title="保存到后端（跨设备） · 改动后 3s 会自动保存">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存
           </button>
+          {/* 保存状态 toast，3s 自动消失 */}
+          {saveToast && (
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg backdrop-blur border transition-all ${
+              saveToast.kind === 'ok' ? 'bg-emerald-900/60 border-emerald-600/50 text-emerald-100'
+              : saveToast.kind === 'err' ? 'bg-red-900/60 border-red-600/50 text-red-100'
+              : 'bg-gray-800/80 border-gray-600/50 text-gray-300'
+            }`}>
+              {saveToast.msg}
+            </div>
+          )}
           <button onClick={handleRun} disabled={running}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 backdrop-blur border border-emerald-500/50 text-white hover:bg-emerald-500 disabled:opacity-50 transition-all shadow-lg shadow-emerald-900/30">
             {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} 开始生产
@@ -919,13 +1380,7 @@ export default function WorkflowPage() {
           </div>
         )}
 
-        {/* Left panel toggle when hidden */}
-        {!showLeftPanel && (
-          <button onClick={() => setShowLeftPanel(true)}
-            className="absolute left-3 top-14 z-40 p-1.5 rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-500 hover:text-white transition-colors">
-            <PanelLeftOpen className="w-4 h-4" />
-          </button>
-        )}
+        {/* Left panel toggle when hidden → 已移到顶栏与 ArrowLeft 并排 */}
 
         <div className="flex-1 relative" style={{ touchAction: 'none' }}>
           <ReactFlow
@@ -937,8 +1392,10 @@ export default function WorkflowPage() {
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             onNodeDragStop={onNodeDragStop}
-            onPaneClick={() => { setSelectedNode(null); setContextMenu(null); setFocusedSceneId(null); if (focusMode) setFocusedEpisodeId(null) }}
+            onPaneClick={() => { setSelectedNode(null); setContextMenu(null); setNodeContextMenu(null); setEdgeContextMenu(null); setFocusedSceneId(null) }}
             onPaneContextMenu={onPaneContextMenu}
+            onNodeContextMenu={onNodeContextMenu}
+            onEdgeContextMenu={onEdgeContextMenu}
             nodeTypes={nodeTypes}
             fitView
             className="!bg-gray-950"
@@ -985,7 +1442,7 @@ export default function WorkflowPage() {
               </Panel>
             )}
 
-            {/* Right-click Context Menu */}
+            {/* Right-click Context Menu · 画布空白：添加节点 */}
             {contextMenu && (
               <div className="absolute bg-gray-800/95 backdrop-blur-xl rounded-lg shadow-2xl border border-gray-700/50 py-1 w-44 z-50"
                 style={{ left: contextMenu.x + 250, top: contextMenu.y + 100 }}>
@@ -1000,6 +1457,93 @@ export default function WorkflowPage() {
               </div>
             )}
           </ReactFlow>
+
+          {/* 画布底部·生产日志 Dock（选中剧集节点时出现，可折叠） */}
+          {selectedNode && selectedNode.type === 'media' && (selectedNode.data as Record<string, unknown>).category === 'scene' && (
+            <div className={`absolute left-0 right-0 bottom-0 z-40 bg-gray-950/95 backdrop-blur-xl border-t border-gray-800 shadow-2xl transition-all ${logsDockOpen ? 'h-72' : 'h-8'}`}>
+              <button onClick={() => setLogsDockOpen(v => !v)}
+                className="w-full h-8 px-3 flex items-center gap-2 bg-gray-900/80 hover:bg-gray-800 border-b border-gray-800 transition">
+                <ChevronRight className={`w-3 h-3 text-gray-500 transition-transform ${logsDockOpen ? 'rotate-90' : ''}`} />
+                <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">生产日志</span>
+                <span className="text-[10px] text-gray-500">
+                  · {((selectedNode.data as unknown as EpisodeData).label) || selectedNode.id}
+                </span>
+                <span className="ml-auto text-[10px] text-gray-600">
+                  {(() => {
+                    const ep = selectedNode.data as unknown as EpisodeData
+                    const takes = (ep.scenes || []).reduce((n, s) => n + (s.takes?.length || 0), 0)
+                    return `${takes} takes`
+                  })()}
+                </span>
+              </button>
+              {logsDockOpen && (
+                <div className="absolute top-8 left-0 right-0 bottom-0 overflow-y-auto">
+                  <EpisodeLogsPane data={selectedNode.data as unknown as EpisodeData} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Edge Right-click Context Menu · 连线管理 */}
+          {edgeContextMenu && (() => {
+            const edge = edgeContextMenu.edge
+            return (
+              <div className="fixed bg-gray-800/95 backdrop-blur-xl rounded-lg shadow-2xl border border-gray-700/50 py-1 w-48 z-[100]"
+                style={{ left: edgeContextMenu.x, top: edgeContextMenu.y }}
+                onClick={(e) => e.stopPropagation()}>
+                <div className="px-3 py-1 border-b border-gray-700/50 text-[10px] text-gray-500 uppercase tracking-wider truncate">
+                  连线 · {edge.source.slice(0, 8)} → {edge.target.slice(0, 8)}
+                </div>
+                <button onClick={() => deleteEdge(edge.id)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-red-900/40 transition-colors">
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  <span className="text-xs text-red-300">删除连线</span>
+                </button>
+                <div className="px-3 py-1 border-t border-gray-700/50 text-[10px] text-gray-600">
+                  Ctrl+Z 可撤销
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Node Right-click Context Menu · 节点管理（与连线 X 删除呼应） */}
+          {nodeContextMenu && (() => {
+            const node = nodeContextMenu.node
+            const isProtected = node.type === 'start' || node.type === 'end'
+            return (
+              <div className="fixed bg-gray-800/95 backdrop-blur-xl rounded-lg shadow-2xl border border-gray-700/50 py-1 w-48 z-[100]"
+                style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
+                onClick={(e) => e.stopPropagation()}>
+                <div className="px-3 py-1 border-b border-gray-700/50 text-[10px] text-gray-500 uppercase tracking-wider truncate">
+                  {node.type} · {node.id.slice(0, 16)}
+                </div>
+                <button onClick={() => { setSelectedNode(node); setNodeContextMenu(null) }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700/60 transition-colors">
+                  <Wrench className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-xs text-gray-300">打开属性面板</span>
+                </button>
+                <button onClick={() => duplicateNode(node)}
+                  disabled={isProtected}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-xs text-gray-300">复制节点</span>
+                </button>
+                <button onClick={() => {
+                    setSelectedNode(node)
+                    setNodeContextMenu(null)
+                    setTimeout(() => deleteSelectedNode(), 0)
+                  }}
+                  disabled={isProtected}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-red-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  <span className="text-xs text-red-300">{isProtected ? '删除（start/end 锁定）' : '删除节点'}</span>
+                </button>
+                <div className="px-3 py-1 border-t border-gray-700/50 text-[10px] text-gray-600">
+                  提示：Delete 键直接删除已选节点
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Right Property Panel — episode gets the rich workflow panel (pt-14 avoids toolbar overlap) */}
@@ -1022,6 +1566,7 @@ export default function WorkflowPage() {
               onUpdate={handleNodeDataUpdate}
               onClose={() => setSelectedNode(null)}
               onEditCharacter={(id) => setEditCharNodeId(id)}
+              onEditProp={(id) => setEditPropNodeId(id)}
             />
           </div>
         ) : null}
@@ -1037,6 +1582,26 @@ export default function WorkflowPage() {
         onClose={() => setShowCharModal(false)}
         onCreate={(data) => { addMediaNodeWithData(data as unknown as Record<string, unknown>) }}
       />
+
+      {/* 道具编辑器 */}
+      {editPropNodeId && (() => {
+        const n = nodes.find(x => x.id === editPropNodeId)
+        if (!n) return null
+        const d = n.data as unknown as PropData
+        return (
+          <PropEditorModal
+            open={true}
+            initial={d}
+            onClose={() => setEditPropNodeId(null)}
+            onSave={(data: PropData) => {
+              setNodes(nds => nds.map(x => x.id === editPropNodeId
+                ? { ...x, data: { ...(x.data as Record<string, unknown>), ...(data as unknown as Record<string, unknown>) } }
+                : x))
+              setEditPropNodeId(null)
+            }}
+          />
+        )
+      })()}
 
       {/* 角色编辑向导（右侧属性面板点"打开角色工坊向导"触发） */}
       {editCharNodeId && (() => {
@@ -1068,6 +1633,13 @@ export default function WorkflowPage() {
           .map(n => n.data as unknown as EpisodeData)}
         onClose={() => setShowEpModal(false)}
         onCreate={(data) => { addMediaNodeWithData(data as unknown as Record<string, unknown>) }}
+      />
+
+      {/* 💰 成本分析 */}
+      <CostAnalysisModal
+        open={showCostModal}
+        onClose={() => setShowCostModal(false)}
+        nodes={nodes}
       />
 
       {/* 🌌 宇宙总览 */}

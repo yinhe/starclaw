@@ -317,7 +317,7 @@ func (t *VideoTool) generateVideoSeedance(ctx context.Context, userID, convID st
 	})
 
 	go func() {
-		videoURL, err := t.pollVolcengineTask(context.Background(), apiKey, baseURL, taskID, 10*time.Minute)
+		videoURL, err := t.pollVolcengineTask(context.Background(), apiKey, baseURL, taskID, 20*time.Minute)
 		if err != nil {
 			log.Printf("[VideoTool] Seedance task %s failed: %v", taskID, err)
 			t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(map[string]interface{}{"status": "failed"})
@@ -335,10 +335,17 @@ func (t *VideoTool) generateVideoSeedance(ctx context.Context, userID, convID st
 			return
 		}
 		savedURL := videoURL
-		if localURL, err := SaveClipLocally(videoURL); err == nil {
-			savedURL = localURL
+		// short_drama 专用路径：直接用 StarAI/Seedance 回传的公网 URL，
+		// 不做 SaveClipLocally，保证下一场 ref_video_url 仍然是 Seedance 可抓的公网地址。
+		// 其他 category（通用视频生成）继续走本地持久化以便 ffmpeg 合并。
+		if args.Category != "short_drama" {
+			if localURL, lerr := SaveClipLocally(videoURL); lerr == nil {
+				savedURL = localURL
+			} else {
+				log.Printf("[VideoTool] Seedance task %s: local save failed (will use remote URL): %v", taskID, lerr)
+			}
 		} else {
-			log.Printf("[VideoTool] Seedance task %s: local save failed (will use remote URL): %v", taskID, err)
+			log.Printf("[VideoTool] Seedance task %s (short_drama): keep public URL for ref chain: %s", taskID, savedURL)
 		}
 		updates := map[string]interface{}{"video_url": savedURL, "status": "succeeded"}
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(updates)

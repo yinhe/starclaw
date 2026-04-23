@@ -1,7 +1,7 @@
 // ── 虫群宇宙 · 完整种子数据 ──
-// 真实资产（5 角色 / 7 道具 / EP01-EP04 成片）从 manifest.json 运行时加载：
-//   /v1/projects/swarm-universe/assets/manifest.json
-// EP05-EP50 + 8 衍生剧仍为占位（未产出实拍），走本文件硬编码。
+// 真实资产 + 已规划集数（EP01-EP05，EP05 挂剧本+提示词但暂无成片）
+// 从 manifest.json 运行时加载：/v1/projects/swarm-universe/assets/manifest.json
+// EP06-EP50 + 8 衍生剧仍为占位（未产出实拍），走本文件硬编码。
 
 import type { EpisodeData, CharacterData, SceneSpec, Take } from './episodeTypes'
 
@@ -12,11 +12,13 @@ export interface SwarmManifest {
     key: string; label: string; tag: string; role: string
     description: string; appearance_card: string
     ref: string | null
+    tos_url?: string  // Volcengine Ark TOS signed URL (bypasses Seedance privacy filter)
     extras?: Record<string, string>
   }>
   props: Array<{
     key: string; label: string; description: string
     ref: string | null; ref_clip?: string
+    tos_url?: string  // Volcengine Ark TOS signed URL (bypasses Seedance privacy filter)
   }>
   episodes: Array<{
     id: string; season: number; number: number; title: string; duration: number
@@ -55,14 +57,16 @@ function charactersFromManifest(m: SwarmManifest): CharacterData[] {
     appearance_card: c.appearance_card,
     description: c.description,
     imageUrl: abs(m, c.ref),
+    tos_url: c.tos_url,
   }))
 }
 
-function propsFromManifest(m: SwarmManifest): Array<{ category: 'prop'; label: string; description: string; imageUrl?: string }> {
+function propsFromManifest(m: SwarmManifest): Array<{ category: 'prop'; label: string; description: string; imageUrl?: string; tos_url?: string }> {
   return m.props.map(p => ({
     category: 'prop' as const,
     label: p.label, description: p.description,
     imageUrl: p.ref ? abs(m, p.ref) : undefined,
+    tos_url: p.tos_url,
   }))
 }
 
@@ -158,10 +162,10 @@ function episodesFromManifest(m: SwarmManifest): EpisodeData[] {
   ))
 }
 
-// EP05-EP50 + 衍生剧：无实拍，保持硬编码占位
+// EP06-EP50 + 衍生剧：无实拍，保持硬编码占位
+// EP05 已从 stub 移除 — 现在由 manifest.json 提供（挂 md/prompts_md，待生产）
 export const STUB_EPISODES: EpisodeData[] = [
-  // EP05-EP10 stubs (大纲写好但未分镜)
-  ep(1, 5, '夜袭', 55, placeholderScenes(6, 55), '6镜·55s·第一道裂隙+ZERG数据护盾+林灵觉感应觉醒'),
+  // EP06-EP10 stubs (大纲写好但未分镜)
   ep(1, 6, '记忆', 55, placeholderScenes(6, 55), '6镜·55s·仙道武术闪回+灵气冲击首次觉醒'),
   ep(1, 7, '合力', 60, placeholderScenes(7, 60), '7镜·60s·林+ZERG+苏蜜三人配合战斗'),
   ep(1, 8, '日常', 60, placeholderScenes(6, 60), '6镜·60s·买衣服化妆+林第一次看K线指股票'),
@@ -247,8 +251,11 @@ export async function buildSeedNodes(opts: SeedLoadOptions) {
   const characters = charactersFromManifest(manifest)
   const props = propsFromManifest(manifest)
   const realEpisodes = episodesFromManifest(manifest)
-  // 合并：EP01-EP04 来自 manifest，EP05+ 用硬编码占位
-  const allEpisodes: EpisodeData[] = [...realEpisodes, ...STUB_EPISODES]
+  // 合并：manifest 优先（真相源），stub 仅补齐 manifest 里还没有的集数
+  // 去重 key = season + episode_number（同季同集号则 manifest 覆盖 stub）
+  const realKeys = new Set(realEpisodes.map(e => `${e.season}-${e.episode_number}`))
+  const pendingStubs = STUB_EPISODES.filter(e => !realKeys.has(`${e.season}-${e.episode_number}`))
+  const allEpisodes: EpisodeData[] = [...realEpisodes, ...pendingStubs]
 
   // ── 三层画布布局 ──
   // 第一层 (TOP)    角色 y = 40               水平排列
