@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Wand2 } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 
 interface Props {
@@ -8,6 +8,8 @@ interface Props {
   tools: string[]
   onUpdate: (id: string, data: Record<string, unknown>) => void
   onClose: () => void
+  /** 点击角色节点的「打开向导」按钮时触发，父组件负责打开 CharacterCreatorModal 的 edit 模式 */
+  onEditCharacter?: (nodeId: string) => void
 }
 
 const MEDIA_CATEGORIES = [
@@ -18,7 +20,7 @@ const MEDIA_CATEGORIES = [
   { value: 'reference', label: '参考' },
 ]
 
-export default function NodePropertyPanel({ node, models, tools, onUpdate, onClose }: Props) {
+export default function NodePropertyPanel({ node, models, tools, onUpdate, onClose, onEditCharacter }: Props) {
   const [localData, setLocalData] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
@@ -137,6 +139,15 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
             </Field>
             {localData.category === 'character' && (
               <>
+                {onEditCharacter && (
+                  <button
+                    onClick={() => onEditCharacter(node.id)}
+                    className="w-full px-3 py-2 rounded-lg bg-gradient-to-r from-violet-600/80 to-cyan-600/80 hover:from-violet-500 hover:to-cyan-500 text-white text-xs font-medium flex items-center justify-center gap-1.5 shadow-md shadow-violet-900/30 transition"
+                    title="打开 3 阶段向导：编辑信息 · 重新生成三视图 · 保存"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" /> 打开角色工坊向导（重新生成三视图）
+                  </button>
+                )}
                 <Field label="角色标签 (tag)">
                   <input value={(localData.tag as string) || ''} onChange={(e) => update('tag', e.target.value)}
                     className="input-dark font-mono text-xs" placeholder="[图1]" />

@@ -6,6 +6,8 @@ import { fileAPI, imageAPI } from '../../lib/api'
 interface Props {
   open: boolean
   existingTags: string[]       // e.g. ["[图1]","[图2]"]
+  /** 传入时进入编辑模式：预填字段，保留原 tag；onCreate 回调应做 update 而非 create */
+  initial?: Partial<CharacterData>
   onClose: () => void
   onCreate: (data: CharacterData) => void
 }
@@ -41,28 +43,47 @@ function buildSheetPrompt(appearance: string, style: string): string {
   ].filter(Boolean).join(' ')
 }
 
-export default function CharacterCreatorModal({ open, existingTags, onClose, onCreate }: Props) {
+export default function CharacterCreatorModal({ open, existingTags, initial, onClose, onCreate }: Props) {
+  const isEdit = !!initial
   const [stage, setStage] = useState<Stage>(1)
-  // Stage 1 变量（最小集）
-  const [name, setName] = useState('')
-  const [role, setRole] = useState('女一')
-  const [appearance, setAppearance] = useState('')
+  // Stage 1 变量（最小集）—— edit 模式预填
+  const [name, setName] = useState(initial?.label || '')
+  const [role, setRole] = useState(initial?.role || '女一')
+  const [appearance, setAppearance] = useState(initial?.appearance_card || '')
   const [style, setStyle] = useState('realistic')
-  const [refUrl, setRefUrl] = useState('')            // 参考图稳定 URL（fal 可直接访问）
-  const [refPreview, setRefPreview] = useState('')    // 本地预览（data: 或 /v1/uploads/）
+  const [refUrl, setRefUrl] = useState(initial?.imageUrl || '')
+  const [refPreview, setRefPreview] = useState(initial?.imageUrl || '')
   const [uploading, setUploading] = useState(false)
   // Stage 2 生成结果
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
-  const [sheetUrl, setSheetUrl] = useState('')       // nano-banana 生成的 sheet 稳定 URL
+  const [sheetUrl, setSheetUrl] = useState('')
   const [attempts, setAttempts] = useState(0)
 
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // 首次打开时根据 initial 同步（同一 modal 实例被复用切换角色时）
+  const [initKey, setInitKey] = useState<string>('')
+  if (open) {
+    const key = (initial?.tag || '') + '|' + (initial?.label || '')
+    if (key !== initKey) {
+      setInitKey(key)
+      setStage(1)
+      setName(initial?.label || '')
+      setRole(initial?.role || '女一')
+      setAppearance(initial?.appearance_card || '')
+      setRefUrl(initial?.imageUrl || '')
+      setRefPreview(initial?.imageUrl || '')
+      setSheetUrl('')
+      setGenError(null)
+      setAttempts(0)
+    }
+  }
+
   if (!open) return null
 
-  // 自动分配 [图N] tag
-  const nextTag = (() => {
+  // 编辑模式保留原 tag；新建模式自动分配下一个 [图N]
+  const nextTag = isEdit ? (initial?.tag || '[图?]') : (() => {
     const used = new Set<number>()
     existingTags.forEach(t => {
       const m = t.match(/\[图(\d+)\]/)
@@ -153,7 +174,7 @@ export default function CharacterCreatorModal({ open, existingTags, onClose, onC
         <div className="px-5 py-3.5 border-b border-gray-800 flex items-center justify-between bg-gradient-to-r from-violet-900/40 via-gray-900 to-cyan-900/30">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-violet-400" />
-            <h3 className="text-sm font-semibold text-gray-100">角色工坊 · 新建角色</h3>
+            <h3 className="text-sm font-semibold text-gray-100">角色工坊 · {isEdit ? '编辑角色' : '新建角色'}</h3>
             <span className="ml-1.5 px-2 py-0.5 rounded-md bg-violet-500/20 border border-violet-500/40 text-[11px] font-mono text-violet-300">
               {nextTag}
             </span>
@@ -249,7 +270,14 @@ export default function CharacterCreatorModal({ open, existingTags, onClose, onC
           {stage === 3 && (
             <button onClick={submit}
               className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition flex items-center gap-1.5 shadow-lg shadow-emerald-900/30">
-              <Check className="w-3.5 h-3.5" /> 入库 {nextTag}
+              <Check className="w-3.5 h-3.5" /> {isEdit ? `保存 ${nextTag}` : `入库 ${nextTag}`}
+            </button>
+          )}
+          {/* 编辑模式：Stage 1 也允许直接保存元数据（不重新生成图） */}
+          {isEdit && stage === 1 && (
+            <button onClick={() => { submit() }} disabled={!name.trim() || !appearance.trim()}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 border border-gray-600 text-gray-200 hover:bg-gray-600 disabled:opacity-40 transition flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5" /> 仅保存文字
             </button>
           )}
         </div>

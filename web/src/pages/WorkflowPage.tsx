@@ -79,6 +79,7 @@ export default function WorkflowPage() {
   const [showLeftPanel, setShowLeftPanel] = useState(true)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ characters: true, episodes: true, props: true, pipeline: false, spinoff: true, 's1': true, 's2': false, 's3': false, 's4': false, 's5': false })
   const [showCharModal, setShowCharModal] = useState(false)
+  const [editCharNodeId, setEditCharNodeId] = useState<string | null>(null)
   const [showEpModal, setShowEpModal] = useState(false)
   const [epModalSeason, setEpModalSeason] = useState<number>(1)
   const [epModalSpinoffGroup, setEpModalSpinoffGroup] = useState<string | undefined>(undefined)
@@ -1020,6 +1021,7 @@ export default function WorkflowPage() {
               tools={availableTools}
               onUpdate={handleNodeDataUpdate}
               onClose={() => setSelectedNode(null)}
+              onEditCharacter={(id) => setEditCharNodeId(id)}
             />
           </div>
         ) : null}
@@ -1035,6 +1037,28 @@ export default function WorkflowPage() {
         onClose={() => setShowCharModal(false)}
         onCreate={(data) => { addMediaNodeWithData(data as unknown as Record<string, unknown>) }}
       />
+
+      {/* 角色编辑向导（右侧属性面板点"打开角色工坊向导"触发） */}
+      {editCharNodeId && (() => {
+        const n = nodes.find(x => x.id === editCharNodeId)
+        if (!n) return null
+        const d = n.data as unknown as CharacterData
+        return (
+          <CharacterCreatorModal
+            open={true}
+            existingTags={[]}
+            initial={d}
+            onClose={() => setEditCharNodeId(null)}
+            onCreate={(data) => {
+              // 合并回原节点（保留 tag / 其他自定义字段）
+              setNodes(nds => nds.map(x => x.id === editCharNodeId
+                ? { ...x, data: { ...(x.data as Record<string, unknown>), ...(data as unknown as Record<string, unknown>), tag: d.tag || data.tag } }
+                : x))
+              setEditCharNodeId(null)
+            }}
+          />
+        )
+      })()}
       <EpisodeCreatorModal
         open={showEpModal}
         defaultSeason={epModalSeason}
