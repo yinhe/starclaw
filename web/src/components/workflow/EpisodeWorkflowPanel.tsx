@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   X, Film, Clapperboard, Play, Plus, Check, CircleDot, CircleAlert, CircleX,
   Music, Scissors, Sparkles, Image as ImageIcon, Trash2, ChevronRight, Layers,
+  Archive, FileText, History,
 } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import { SEASONS, sceneTakesSummary, type EpisodeData, type SceneSpec, type Take, type Composition } from './episodeTypes'
@@ -14,7 +15,7 @@ interface Props {
   initialSceneId?: string   // 外部传入打开时自动展开的场景
 }
 
-type TabKey = 'scenes' | 'composition' | 'meta'
+type TabKey = 'scenes' | 'composition' | 'script' | 'meta'
 
 const TAKE_STATUS_COLOR: Record<Take['status'], string> = {
   pending:   'border-gray-600 bg-gray-800 text-gray-400',
@@ -130,6 +131,14 @@ export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduc
             已选 {pickedCount}/{scenes.length}
           </span>
           <CompositionStatusPill status={comp.status} />
+          {data.history_preview && (
+            <button
+              onClick={() => window.open(data.history_preview!.clip, '_blank')}
+              title={data.history_preview.note || '查看整集历史废稿'}
+              className="px-2 py-0.5 rounded text-[10px] bg-red-900/30 border border-red-700/40 text-red-300 hover:bg-red-800/40 hover:text-red-200 transition flex items-center gap-1">
+              <History className="w-2.5 h-2.5" /> 历史合成废稿
+            </button>
+          )}
         </div>
       </div>
 
@@ -137,6 +146,7 @@ export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduc
       <div className="flex border-b border-gray-800">
         <TabBtn active={tab === 'scenes'} onClick={() => setTab('scenes')} icon={Layers} label="场景" count={scenes.length} />
         <TabBtn active={tab === 'composition'} onClick={() => setTab('composition')} icon={Scissors} label="合成链路" count={comp.picked_clips.length} />
+        <TabBtn active={tab === 'script'} onClick={() => setTab('script')} icon={FileText} label="剧本" />
         <TabBtn active={tab === 'meta'} onClick={() => setTab('meta')} icon={Sparkles} label="元数据" />
       </div>
 
@@ -189,6 +199,10 @@ export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduc
             scenes={scenes}
             onUpdate={(c) => update({ composition: c })}
           />
+        )}
+
+        {tab === 'script' && (
+          <ScriptTab data={data} />
         )}
 
         {tab === 'meta' && (
@@ -343,7 +357,102 @@ function SceneCard({
               </div>
             )}
           </div>
+
+          {/* 历史版本（废片） */}
+          {scene.rejected_takes && scene.rejected_takes.length > 0 && (
+            <RejectedTakesSection rejected={scene.rejected_takes} />
+          )}
         </div>
+      )}
+    </div>
+  )
+}
+
+function RejectedTakesSection({ rejected }: { rejected: Take[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="pt-2 border-t border-gray-700/40">
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-1.5 text-[10px] text-gray-500 hover:text-gray-300 transition">
+        <ChevronRight className={`w-3 h-3 transition ${open ? 'rotate-90' : ''}`} />
+        <Archive className="w-3 h-3" />
+        <span className="uppercase tracking-wider font-medium">历史版本 / 废片 ({rejected.length})</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          {rejected.map(t => (
+            <div key={t.take_id} className="group relative rounded border border-red-900/40 bg-red-950/20 overflow-hidden">
+              <div className="h-16 bg-gray-900 relative">
+                {t.video_url ? (
+                  <video src={t.video_url} muted loop className="w-full h-full object-cover opacity-60 hover:opacity-100 transition"
+                    onMouseEnter={e => (e.currentTarget as HTMLVideoElement).play()}
+                    onMouseLeave={e => { const v = e.currentTarget as HTMLVideoElement; v.pause(); v.currentTime = 0 }} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-600"><CircleX className="w-4 h-4" /></div>
+                )}
+                <span className="absolute top-0.5 left-0.5 px-1 py-0.5 rounded bg-red-900/80 text-red-200 text-[8px] font-bold">废</span>
+              </div>
+              <div className="px-1.5 py-1 bg-gray-850/80 text-[9px] text-gray-400 truncate" title={t.note}>
+                <span className="font-mono text-red-300">{t.take_id}</span>
+                {t.note && <span className="ml-1 text-gray-500">· {t.note}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ScriptTab({ data }: { data: EpisodeData }) {
+  const [scriptMd, setScriptMd] = useState<string | null>(null)
+  const [promptsMd, setPromptsMd] = useState<string | null>(null)
+  const [which, setWhich] = useState<'script' | 'prompts'>('script')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const s = data.script
+    if (!s?.md && !s?.prompts_md) return
+    setLoading(true); setError(null)
+    Promise.all([
+      s.md ? fetch(s.md).then(r => r.ok ? r.text() : Promise.reject(`HTTP ${r.status}`)).catch(e => { throw new Error(`剧本: ${e}`) }) : Promise.resolve(null),
+      s.prompts_md ? fetch(s.prompts_md).then(r => r.ok ? r.text() : Promise.reject(`HTTP ${r.status}`)).catch(e => { throw new Error(`提示词: ${e}`) }) : Promise.resolve(null),
+    ]).then(([a, b]) => { setScriptMd(a); setPromptsMd(b) })
+      .catch(e => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false))
+  }, [data.script?.md, data.script?.prompts_md])
+
+  if (!data.script?.md && !data.script?.prompts_md) {
+    return (
+      <div className="p-6 text-center text-gray-500">
+        <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+        <p className="text-xs">本集暂无关联剧本 / 提示词文档</p>
+        <p className="text-[10px] text-gray-600 mt-1">在 manifest.json 的 episodes[].script 里挂 md / prompts_md 路径即可</p>
+      </div>
+    )
+  }
+
+  const text = which === 'script' ? scriptMd : promptsMd
+
+  return (
+    <div className="p-3 space-y-2">
+      <div className="flex gap-1 border-b border-gray-800 -mx-3 px-3 pb-2">
+        <button onClick={() => setWhich('script')} disabled={!data.script?.md}
+          className={`px-2.5 py-1 rounded text-[11px] font-medium transition ${which === 'script' ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/50' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-40`}>
+          📜 剧本
+        </button>
+        <button onClick={() => setWhich('prompts')} disabled={!data.script?.prompts_md}
+          className={`px-2.5 py-1 rounded text-[11px] font-medium transition ${which === 'prompts' ? 'bg-violet-900/40 text-violet-300 border border-violet-700/50' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-40`}>
+          ✨ 提示词总稿
+        </button>
+      </div>
+      {loading && <div className="text-center py-8 text-xs text-gray-500"><CircleDot className="w-4 h-4 mx-auto animate-spin mb-1" />加载中</div>}
+      {error && <div className="p-2 rounded bg-red-900/20 border border-red-500/30 text-[11px] text-red-300">加载失败：{error}</div>}
+      {text && (
+        <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-gray-200 font-mono bg-gray-950/50 border border-gray-800 rounded p-3 max-h-[calc(100vh-280px)] overflow-y-auto">
+          {text}
+        </pre>
       )}
     </div>
   )

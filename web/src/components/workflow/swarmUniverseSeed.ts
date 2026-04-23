@@ -21,7 +21,12 @@ export interface SwarmManifest {
   episodes: Array<{
     id: string; season: number; number: number; title: string; duration: number
     description: string; final: string
-    scenes: Array<{ id: string; label: string; duration: number; clip: string; prompt: string }>
+    script?: { md?: string; prompts_md?: string }
+    history_preview?: { clip: string; note?: string }
+    scenes: Array<{
+      id: string; label: string; duration: number; clip: string; prompt: string
+      rejected_takes?: Array<{ id: string; duration: number; clip: string; note?: string }>
+    }>
   }>
 }
 
@@ -65,10 +70,15 @@ function propsFromManifest(m: SwarmManifest): Array<{ category: 'prop'; label: s
 
 function ep(
   season: number, num: number, title: string, duration: number,
-  scenes: Array<{ id: string; label: string; duration: number; prompt?: string; clip?: string }>,
+  scenes: Array<{
+    id: string; label: string; duration: number; prompt?: string; clip?: string
+    rejected_takes?: Array<{ id: string; duration: number; clip: string; note?: string }>
+  }>,
   description: string,
   isSpinoff = false, spinoffGroup?: string,
   finalVideoUrl?: string,
+  script?: { md?: string; prompts_md?: string },
+  history_preview?: { clip: string; note?: string },
 ): EpisodeData {
   const fullScenes: SceneSpec[] = scenes.map(s => {
     const takes: Take[] = []
@@ -83,7 +93,15 @@ function ep(
       })
       picked_take = 't1'
     }
-    return { id: s.id, label: s.label, duration: s.duration, prompt: s.prompt, takes, picked_take }
+    const rejected_takes: Take[] | undefined = s.rejected_takes && s.rejected_takes.length > 0
+      ? s.rejected_takes.map(rt => ({
+          take_id: rt.id,
+          status: 'failed' as const,
+          video_url: rt.clip,
+          note: rt.note || '早期废稿',
+        }))
+      : undefined
+    return { id: s.id, label: s.label, duration: s.duration, prompt: s.prompt, takes, picked_take, rejected_takes }
   })
   const picked_clips = fullScenes.filter(s => s.picked_take).map(s => `${s.id}.${s.picked_take}`)
   const hasReal = !!finalVideoUrl
@@ -100,6 +118,8 @@ function ep(
       final_video_url: finalVideoUrl,
       status: hasReal ? 'ready' : 'pending',
     },
+    script,
+    history_preview,
   }
 }
 
@@ -120,10 +140,21 @@ function episodesFromManifest(m: SwarmManifest): EpisodeData[] {
     e.scenes.map(s => ({
       id: s.id, label: s.label, duration: s.duration,
       prompt: s.prompt, clip: abs(m, s.clip),
+      rejected_takes: s.rejected_takes?.map(rt => ({
+        id: rt.id, duration: rt.duration, clip: abs(m, rt.clip), note: rt.note,
+      })),
     })),
     e.description,
     false, undefined,
     abs(m, e.final),
+    e.script ? {
+      md: e.script.md ? abs(m, e.script.md) : undefined,
+      prompts_md: e.script.prompts_md ? abs(m, e.script.prompts_md) : undefined,
+    } : undefined,
+    e.history_preview ? {
+      clip: abs(m, e.history_preview.clip),
+      note: e.history_preview.note,
+    } : undefined,
   ))
 }
 

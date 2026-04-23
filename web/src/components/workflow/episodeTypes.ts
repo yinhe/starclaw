@@ -18,6 +18,17 @@ export interface SceneSpec {
   prompt?: string
   takes: Take[]
   picked_take?: string     // take_id reference
+  rejected_takes?: Take[]  // 历史废稿（早期版本 / 已弃用）
+}
+
+export interface EpisodeScript {
+  md?: string              // 剧本 Markdown 相对路径（或绝对 /v1/... URL）
+  prompts_md?: string      // 提示词总稿 Markdown
+}
+
+export interface EpisodeHistoryPreview {
+  clip: string             // 早期整集合成废稿视频 URL
+  note?: string
 }
 
 export interface Composition {
@@ -44,6 +55,9 @@ export interface EpisodeData {
   // production
   scenes?: SceneSpec[]
   composition?: Composition
+  // 扩展：剧本 + 历史整集合成废稿
+  script?: EpisodeScript
+  history_preview?: EpisodeHistoryPreview
 }
 
 export interface CharacterData {

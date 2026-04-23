@@ -29,6 +29,7 @@ import NodePropertyPanel from '../components/workflow/NodePropertyPanel'
 import EpisodeWorkflowPanel from '../components/workflow/EpisodeWorkflowPanel'
 import SnapshotsModal from '../components/workflow/SnapshotsModal'
 import type { WorkflowSnapshot } from '../components/workflow/snapshots'
+import UniverseOverviewModal from '../components/workflow/UniverseOverviewModal'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
 import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData } from '../components/workflow/episodeTypes'
@@ -439,6 +440,16 @@ export default function WorkflowPage() {
 
   const [showSwarmConfirm, setShowSwarmConfirm] = useState(false)
   const [showSnapshots, setShowSnapshots] = useState(false)
+  const [showOverview, setShowOverview] = useState(false)
+
+  const focusEpisodeFromOverview = useCallback((nodeId: string) => {
+    const n = nodes.find(x => x.id === nodeId)
+    if (!n) return
+    setSelectedNode(n)
+    setFocusedEpisodeId(nodeId)
+    // 让 ReactFlow 缩到该集
+    setTimeout(() => rfRef.current?.setCenter(n.position.x + 100, n.position.y + 70, { zoom: 1.4, duration: 600 }), 50)
+  }, [nodes])
 
   const restoreSnapshot = useCallback((snap: WorkflowSnapshot) => {
     setNodes(snap.data.nodes)
@@ -672,6 +683,16 @@ export default function WorkflowPage() {
                 <PanelLeftClose className="w-3.5 h-3.5" />
               </button>
             </div>
+            {/* 🌌 宇宙总览入口 */}
+            <button
+              onClick={() => setShowOverview(true)}
+              className="mx-2 mt-2 mb-1 px-2.5 py-2 rounded-lg bg-gradient-to-r from-violet-600/20 via-cyan-600/20 to-emerald-600/20 hover:from-violet-600/40 hover:via-cyan-600/40 hover:to-emerald-600/40 border border-violet-500/30 hover:border-violet-400/60 text-xs font-medium text-violet-200 hover:text-white transition flex items-center gap-2 shadow-md shadow-violet-900/20"
+              title="查看 5 季 50 集项目全景 + 角色卡 + 世界观骨架"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="flex-1 text-left">🌌 宇宙总览</span>
+              <ChevronRight className="w-3 h-3 opacity-60" />
+            </button>
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               {/* Characters */}
               {(() => {
@@ -1023,6 +1044,14 @@ export default function WorkflowPage() {
           .map(n => n.data as unknown as EpisodeData)}
         onClose={() => setShowEpModal(false)}
         onCreate={(data) => { addMediaNodeWithData(data as unknown as Record<string, unknown>) }}
+      />
+
+      {/* 🌌 宇宙总览 */}
+      <UniverseOverviewModal
+        open={showOverview}
+        onClose={() => setShowOverview(false)}
+        nodes={nodes}
+        onFocusEpisode={focusEpisodeFromOverview}
       />
 
       {/* 存档 / 快照管理 */}

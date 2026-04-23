@@ -135,6 +135,22 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
               <textarea value={(localData.description as string) || ''} onChange={(e) => update('description', e.target.value)}
                 rows={3} className="input-dark resize-none" placeholder="角色/场景/道具描述" />
             </Field>
+            {localData.category === 'character' && (
+              <>
+                <Field label="角色标签 (tag)">
+                  <input value={(localData.tag as string) || ''} onChange={(e) => update('tag', e.target.value)}
+                    className="input-dark font-mono text-xs" placeholder="[图1]" />
+                </Field>
+                <Field label="定位 (role)">
+                  <input value={(localData.role as string) || ''} onChange={(e) => update('role', e.target.value)}
+                    className="input-dark text-xs" placeholder="女一 / 男一 / 配角" />
+                </Field>
+                <Field label="外观卡 (appearance card)">
+                  <textarea value={(localData.appearance_card as string) || ''} onChange={(e) => update('appearance_card', e.target.value)}
+                    rows={5} className="input-dark resize-none text-xs leading-relaxed" placeholder="给 AI 看图生视频用的一句话外观描述，注入到场景 prompt 的 [图N] 占位符" />
+                </Field>
+              </>
+            )}
             {(localData.imageUrl as string) && (
               <div className="rounded-lg overflow-hidden border border-gray-700">
                 <img src={localData.imageUrl as string} alt="" className="w-full h-32 object-cover"
