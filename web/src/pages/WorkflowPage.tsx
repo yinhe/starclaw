@@ -79,11 +79,41 @@ export default function WorkflowPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const nodeIdCounter = useRef(100)
 
+  // localStorage key for 无 workflowId 情况下的草稿画布（按 tab 隔离）
+  const DRAFT_KEY = workflowId ? `wf-draft:${workflowId}` : 'wf-draft:__new__'
+
   useEffect(() => {
     loadModels()
     loadTools()
-    if (workflowId) loadWorkflow(workflowId)
+    if (workflowId) {
+      loadWorkflow(workflowId)
+    } else {
+      // 无 workflowId 时尝试从 localStorage 恢复草稿（避免刷新丢失）
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY)
+        if (raw) {
+          const d = JSON.parse(raw) as { nodes?: Node[]; edges?: Edge[]; name?: string; counter?: number }
+          if (d.nodes && d.nodes.length) setNodes(d.nodes as Node[])
+          if (d.edges) setEdges(d.edges as Edge[])
+          if (d.name) setWorkflowName(d.name)
+          if (typeof d.counter === 'number') nodeIdCounter.current = d.counter
+        }
+      } catch { /* ignore corrupted draft */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
+
+  // 自动保存草稿到 localStorage（debounced via requestIdleCallback/setTimeout）
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          nodes, edges, name: workflowName, counter: nodeIdCounter.current,
+        }))
+      } catch { /* quota exceeded, ignore */ }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [nodes, edges, workflowName, DRAFT_KEY])
 
   // Fullscreen API
   useEffect(() => {
