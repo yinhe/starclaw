@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import {
   ReactFlow,
   Controls,
@@ -11,11 +11,12 @@ import {
   type Edge,
   type Node,
   type NodeMouseHandler,
+  type ReactFlowInstance,
   BackgroundVariant,
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles } from 'lucide-react'
+import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import LLMNode from '../components/workflow/LLMNode'
 import ToolNode from '../components/workflow/ToolNode'
@@ -78,6 +79,34 @@ export default function WorkflowPage() {
   const [epModalSpinoffGroup, setEpModalSpinoffGroup] = useState<string | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const nodeIdCounter = useRef(100)
+  const rfRef = useRef<ReactFlowInstance | null>(null)
+
+  // 聚焦模式：选中某一集时隐藏其他剧集节点，突出当前集的工作流
+  const [focusedEpisodeId, setFocusedEpisodeId] = useState<string | null>(null)
+  const [focusMode, setFocusMode] = useState(true)
+
+  // 聚焦到某一集：中央画布缩放到该节点 + 打开右侧工作流面板
+  const focusEpisode = useCallback((n: Node) => {
+    setSelectedNode(n)
+    setFocusedEpisodeId(n.id)
+    // 下一帧再 fitView，让 hidden 生效后再缩放
+    setTimeout(() => {
+      try {
+        rfRef.current?.fitView({ nodes: [{ id: n.id }], duration: 500, padding: 0.4, maxZoom: 1.4 })
+      } catch { /* ignore */ }
+    }, 80)
+  }, [])
+
+  // 派生画布显示节点：focusMode 开启且选中某一集时，隐藏其他剧集节点
+  const displayNodes = useMemo(() => {
+    if (!focusMode || !focusedEpisodeId) return nodes
+    return nodes.map(n => {
+      if (n.type !== 'media') return n
+      const cat = (n.data as Record<string, unknown>).category
+      if (cat !== 'scene') return n
+      return { ...n, hidden: n.id !== focusedEpisodeId }
+    })
+  }, [nodes, focusMode, focusedEpisodeId])
 
   // localStorage key for 无 workflowId 情况下的草稿画布（按 tab 隔离）
   const DRAFT_KEY = workflowId ? `wf-draft:${workflowId}` : 'wf-draft:__new__'
@@ -176,6 +205,10 @@ export default function WorkflowPage() {
   const onNodeClick: NodeMouseHandler = useCallback((_e, node) => {
     setSelectedNode(node)
     setContextMenu(null)
+    // 点到剧集节点 → 聚焦（隐藏其他剧集 + 缩放到1.4x）
+    if (node.type === 'media' && (node.data as Record<string, unknown>).category === 'scene') {
+      setFocusedEpisodeId(node.id)
+    }
   }, [])
 
   const handleNodeDataUpdate = useCallback(
@@ -355,6 +388,35 @@ export default function WorkflowPage() {
         </div>
 
         <div className="flex items-center gap-1.5 pointer-events-auto">
+          {/* 聚焦模式开关 */}
+          <button onClick={() => {
+              const next = !focusMode
+              setFocusMode(next)
+              if (!next) setFocusedEpisodeId(null)
+              else if (selectedNode && (selectedNode.data as Record<string,unknown>).category === 'scene') {
+                setFocusedEpisodeId(selectedNode.id)
+              }
+            }}
+            title={focusMode ? '聚焦模式：只显示当前集（点击切换为总览）' : '总览模式：显示全部剧集（点击切换为聚焦）'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg backdrop-blur border transition-all ${
+              focusMode
+                ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-200 hover:bg-cyan-600/30'
+                : 'bg-gray-800/80 border-gray-700 text-gray-400 hover:text-gray-200'
+            }`}>
+            {focusMode ? <Film className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
+            {focusMode ? '聚焦' : '总览'}
+          </button>
+          {/* 退出聚焦快捷键（focused 时） */}
+          {focusMode && focusedEpisodeId && (
+            <button onClick={() => {
+                setFocusedEpisodeId(null)
+                setTimeout(() => { try { rfRef.current?.fitView({ duration: 400, padding: 0.2 }) } catch {} }, 50)
+              }}
+              title="退出聚焦，查看全部"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white transition">
+              <ArrowLeft className="w-3.5 h-3.5" /> 全部
+            </button>
+          )}
           <button onClick={loadSwarmUniverse}
             title="一键加载虫群宇宙完整资产 (5角色 + 7道具 + 50集 + 衍生剧)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-violet-600/90 to-cyan-600/90 backdrop-blur border border-violet-500/50 text-white hover:from-violet-500 hover:to-cyan-500 transition-all shadow-lg shadow-violet-900/30">
@@ -463,7 +525,7 @@ export default function WorkflowPage() {
                   const scenes = d.scenes || []
                   const picked = scenes.filter(s => s.picked_take).length
                   return (
-                    <button key={n.id} onClick={() => setSelectedNode(n)}
+                    <button key={n.id} onClick={() => focusEpisode(n)}
                       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-cyan-900/30 border-l-2 border-cyan-500' : ''}`}>
                       <Film className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
                       <div className="min-w-0 flex-1">
@@ -633,13 +695,14 @@ export default function WorkflowPage() {
 
         <div className="flex-1 relative" style={{ touchAction: 'none' }}>
           <ReactFlow
-            nodes={nodes}
+            nodes={displayNodes}
             edges={edges}
+            onInit={(inst) => { rfRef.current = inst }}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
-            onPaneClick={() => { setSelectedNode(null); setContextMenu(null) }}
+            onPaneClick={() => { setSelectedNode(null); setContextMenu(null); if (focusMode) setFocusedEpisodeId(null) }}
             onPaneContextMenu={onPaneContextMenu}
             nodeTypes={nodeTypes}
             fitView
