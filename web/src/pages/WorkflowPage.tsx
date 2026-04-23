@@ -24,6 +24,7 @@ import ConditionNode from '../components/workflow/ConditionNode'
 import StartNode from '../components/workflow/StartNode'
 import EndNode from '../components/workflow/EndNode'
 import MediaNode from '../components/workflow/MediaNode'
+import SceneStepNode from '../components/workflow/SceneStepNode'
 import NodePropertyPanel from '../components/workflow/NodePropertyPanel'
 import EpisodeWorkflowPanel from '../components/workflow/EpisodeWorkflowPanel'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
@@ -39,6 +40,7 @@ const nodeTypes = {
   start: StartNode,
   end: EndNode,
   media: MediaNode,
+  sceneStep: SceneStepNode,
 }
 
 const initialNodes: Node[] = [
@@ -97,16 +99,97 @@ export default function WorkflowPage() {
     }, 80)
   }, [])
 
-  // 派生画布显示节点：focusMode 开启且选中某一集时，隐藏其他剧集节点
-  const displayNodes = useMemo(() => {
-    if (!focusMode || !focusedEpisodeId) return nodes
-    return nodes.map(n => {
+  // 派生画布显示节点：focusMode 开启且选中某一集时
+  //   · 隐藏其他剧集节点
+  //   · 在该集下方注入场景子图（S1→S2→…→Final）
+  const { displayNodes, displayEdges } = useMemo(() => {
+    if (!focusMode || !focusedEpisodeId) {
+      return { displayNodes: nodes, displayEdges: edges }
+    }
+    const focused = nodes.find(n => n.id === focusedEpisodeId)
+    const visibleNodes = nodes.map(n => {
       if (n.type !== 'media') return n
       const cat = (n.data as Record<string, unknown>).category
       if (cat !== 'scene') return n
       return { ...n, hidden: n.id !== focusedEpisodeId }
     })
-  }, [nodes, focusMode, focusedEpisodeId])
+    // 如果聚焦节点不存在或没有 scenes，不注入子图
+    const ep = focused?.data as unknown as EpisodeData | undefined
+    if (!focused || !ep?.scenes || ep.scenes.length === 0) {
+      return { displayNodes: visibleNodes, displayEdges: edges }
+    }
+
+    // 场景节点子图布局：在聚焦集下方一行水平排开
+    const SCENE_W = 190
+    const SCENE_H_OFFSET = 280    // 聚焦集下方距离
+    const n = ep.scenes.length
+    const rowWidth = (n + 1) * SCENE_W  // +1 给 final 节点
+    const startX = (focused.position?.x ?? 0) - rowWidth / 2 + 100 // 大致居中
+    const y = (focused.position?.y ?? 0) + SCENE_H_OFFSET
+
+    const sceneNodes: Node[] = ep.scenes.map((s, i) => {
+      const pickedTake = s.picked_take ? s.takes?.find(t => t.take_id === s.picked_take) : undefined
+      const anyTake = s.takes?.find(t => t.status === 'succeeded')
+      return {
+        id: `__scene__${focusedEpisodeId}__${s.id}`,
+        type: 'sceneStep',
+        position: { x: startX + i * SCENE_W, y },
+        data: {
+          sceneId: s.id,
+          label: s.label,
+          duration: s.duration,
+          hasClip: !!anyTake,
+          isPicked: !!pickedTake,
+          videoUrl: pickedTake?.video_url || anyTake?.video_url,
+          thumbnail: (s as unknown as Record<string, string>).thumbnail,
+        },
+        draggable: false,
+        selectable: true,
+      } as Node
+    })
+
+    // 终点合成节点
+    const finalNode: Node = {
+      id: `__scene__${focusedEpisodeId}__final`,
+      type: 'sceneStep',
+      position: { x: startX + n * SCENE_W, y },
+      data: { isFinal: true, sceneId: 'FIN', label: '合成成片', duration: 0, hasClip: false, isPicked: false },
+      draggable: false,
+      selectable: true,
+    }
+
+    // 边：episode → S1 → S2 → ... → Sn → Final
+    const baseEdgeStyle = { stroke: '#06b6d4', strokeWidth: 2 }
+    const subEdges: Edge[] = []
+    subEdges.push({
+      id: `__edge__${focusedEpisodeId}__ep-s1`,
+      source: focusedEpisodeId,
+      target: sceneNodes[0].id,
+      animated: true,
+      style: baseEdgeStyle,
+    })
+    for (let i = 0; i < sceneNodes.length - 1; i++) {
+      subEdges.push({
+        id: `__edge__${focusedEpisodeId}__${ep.scenes[i].id}-${ep.scenes[i + 1].id}`,
+        source: sceneNodes[i].id,
+        target: sceneNodes[i + 1].id,
+        animated: true,
+        style: baseEdgeStyle,
+      })
+    }
+    subEdges.push({
+      id: `__edge__${focusedEpisodeId}__last-final`,
+      source: sceneNodes[sceneNodes.length - 1].id,
+      target: finalNode.id,
+      animated: true,
+      style: { stroke: '#10b981', strokeWidth: 2.5 },
+    })
+
+    return {
+      displayNodes: [...visibleNodes, ...sceneNodes, finalNode],
+      displayEdges: [...edges, ...subEdges],
+    }
+  }, [nodes, edges, focusMode, focusedEpisodeId])
 
   // localStorage key for 无 workflowId 情况下的草稿画布（按 tab 隔离）
   const DRAFT_KEY = workflowId ? `wf-draft:${workflowId}` : 'wf-draft:__new__'
@@ -696,7 +779,7 @@ export default function WorkflowPage() {
         <div className="flex-1 relative" style={{ touchAction: 'none' }}>
           <ReactFlow
             nodes={displayNodes}
-            edges={edges}
+            edges={displayEdges}
             onInit={(inst) => { rfRef.current = inst }}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
