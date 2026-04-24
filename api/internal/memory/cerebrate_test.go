@@ -12,8 +12,8 @@ func TestExtractKeywords(t *testing.T) {
 		query string
 		min   int // minimum expected keywords
 	}{
-		{"帮我写一个 Python 爬虫", 2},       // "帮" and "我" are stopwords
-		{"FFmpeg 视频合并 crossfade", 3},   // technical terms
+		{"帮我写一个 Python 爬虫", 2},           // "帮" and "我" are stopwords
+		{"FFmpeg 视频合并 crossfade", 3},     // technical terms
 		{"Hello world program in Go", 3}, // English
 		{"", 0},                          // empty
 		{"的了是", 0},                       // all stopwords
@@ -132,6 +132,102 @@ func TestTruncate_Unicode(t *testing.T) {
 	result := truncate("你好世界测试", 3)
 	if result != "你好世..." {
 		t.Errorf("got %q, want %q", result, "你好世...")
+	}
+}
+
+func TestDefaultPalaceFields(t *testing.T) {
+	room, anchor, path := defaultPalaceFields("agent-1", model.MemCatSkill, "frontend_debug", "", model.MemScopeAgent)
+	if room != model.MemRoomSkill {
+		t.Fatalf("expected skill room, got %s", room)
+	}
+	if anchor != "skill/frontend_debug" {
+		t.Fatalf("unexpected anchor: %s", anchor)
+	}
+	if !contains(path, "agent/agent_1") || !contains(path, "skill/frontend_debug") {
+		t.Fatalf("unexpected path: %s", path)
+	}
+
+	room, anchor, path = defaultPalaceFields("", model.MemCatFact, "project_starclaw", "", model.MemScopeGlobal)
+	if room != model.MemRoomProject {
+		t.Fatalf("expected project room, got %s", room)
+	}
+	if anchor != "project/project_starclaw" {
+		t.Fatalf("unexpected project anchor: %s", anchor)
+	}
+	if path != "user/default > project/project_starclaw" {
+		t.Fatalf("unexpected project path: %s", path)
+	}
+}
+
+func TestPalaceTermsFromQuery(t *testing.T) {
+	terms := palaceTermsFromQuery("部署 StarClaw project release")
+	if len(terms) == 0 {
+		t.Fatal("expected palace terms")
+	}
+	joined := "|"
+	for _, term := range terms {
+		joined += term + "|"
+	}
+	if !contains(joined, "|starclaw|") {
+		t.Fatalf("expected starclaw term, got %v", terms)
+	}
+	if !contains(joined, "|project|") && !contains(joined, "|release|") {
+		t.Fatalf("expected structural palace term, got %v", terms)
+	}
+}
+
+func TestScorePalaceMemory_PrefersAnchorAndPathMatches(t *testing.T) {
+	query := "deploy starclaw release"
+	terms := palaceTermsFromQuery(query)
+	matched := model.Memory{
+		Key:        "deploy_release_flow",
+		Content:    "StarClaw release deploy checklist",
+		Category:   model.MemCatSkill,
+		Room:       model.MemRoomSkill,
+		Anchor:     "skill/deploy_release_flow",
+		Path:       "agent/dev_team > project/starclaw > task/release > skill/deploy_release_flow",
+		Importance: 0.9,
+	}
+	unmatched := model.Memory{
+		Key:        "wechat_poster",
+		Content:    "Generate poster and send to WeChat",
+		Category:   model.MemCatSkill,
+		Room:       model.MemRoomSkill,
+		Anchor:     "skill/wechat_poster",
+		Path:       "agent/dev_team > task/social_media > skill/wechat_poster",
+		Importance: 0.95,
+	}
+
+	matchedScore := scorePalaceMemory(matched, query, terms)
+	unmatchedScore := scorePalaceMemory(unmatched, query, terms)
+	if matchedScore <= unmatchedScore {
+		t.Fatalf("expected matched palace memory to score higher, got matched=%.2f unmatched=%.2f", matchedScore, unmatchedScore)
+	}
+}
+
+func TestScorePalaceMemory_DerivesFieldsForLegacyMemory(t *testing.T) {
+	query := "project starclaw"
+	terms := palaceTermsFromQuery(query)
+	legacy := model.Memory{
+		Key:        "project_starclaw",
+		Content:    "StarClaw project context",
+		Category:   model.MemCatFact,
+		Scope:      model.MemScopeGlobal,
+		Importance: 0.8,
+	}
+
+	room, anchor, path := palaceFieldsForMemory(legacy)
+	if room != model.MemRoomProject {
+		t.Fatalf("expected derived project room, got %s", room)
+	}
+	if anchor != "project/project_starclaw" {
+		t.Fatalf("unexpected derived anchor: %s", anchor)
+	}
+	if path != "user/default > project/project_starclaw" {
+		t.Fatalf("unexpected derived path: %s", path)
+	}
+	if scorePalaceMemory(legacy, query, terms) <= 0 {
+		t.Fatal("expected legacy memory to receive a positive palace score")
 	}
 }
 

@@ -301,6 +301,7 @@ $BridgeDir = "$InstallDir\mcp-bridge"
 $BinaryName = "mcp-bridge.exe"
 $BinaryPath = "$BridgeDir\$BinaryName"
 $DownloadURL = "%s/v1/mcp-bridge/download/windows_amd64"
+$HealthURL = "http://127.0.0.1:9101/health"
 
 if (!(Test-Path $BridgeDir)) { New-Item -ItemType Directory -Path $BridgeDir -Force | Out-Null }
 
@@ -309,7 +310,7 @@ try { Invoke-RestMethod -Uri "http://127.0.0.1:9101/shutdown" -Method POST -Time
 Start-Sleep -Seconds 1
 
 # Also kill any leftover process
-Get-Process -Name "mcp-bridge" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in @("mcp-bridge", "mcp-bridge-windows-amd64") } | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # Download
 $downloaded = $false
@@ -382,16 +383,31 @@ try {
 try {
     Start-Process -FilePath $BinaryPath -ArgumentList "-port","9101" -WorkingDirectory $BridgeDir -WindowStyle Hidden -ErrorAction Stop
     Start-Sleep -Seconds 2
-    # Verify it's running
-    $running = Get-Process -Name "mcp-bridge" -ErrorAction SilentlyContinue
-    if ($running) {
+    # Verify it is the expected MCP Bridge service
+    $healthy = $false
+    $serviceName = ""
+    try {
+        $health = Invoke-RestMethod -Uri $HealthURL -TimeoutSec 3 -ErrorAction Stop
+        if ($health) {
+            $serviceName = [string]$health.service
+            if ($health.status -eq "ok" -and $serviceName -eq "mcp-bridge") {
+                $healthy = $true
+            }
+        }
+    } catch {}
+    if ($healthy) {
         Write-Host ""
         Write-Host "Done! MCP Bridge is running in the background." -ForegroundColor Green
         Write-Host "It will auto-start whenever you log in."
         Write-Host "Go back to your Claw settings page - it should show Connected."
     } else {
         Write-Host ""
-        Write-Host "Warning: MCP Bridge started but may have exited." -ForegroundColor Yellow
+        if ($serviceName -ne "") {
+            Write-Host "Warning: Port 9101 is occupied by another service: $serviceName" -ForegroundColor Yellow
+            Write-Host "Please stop or remap the service using port 9101, then run the installer again." -ForegroundColor Yellow
+        } else {
+            Write-Host "Warning: MCP Bridge started but may have exited." -ForegroundColor Yellow
+        }
         Write-Host "Try running manually: $BinaryPath -port 9101" -ForegroundColor Yellow
     }
 } catch {

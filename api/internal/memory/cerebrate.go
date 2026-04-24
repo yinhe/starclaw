@@ -43,6 +43,209 @@ func (c *Cerebrate) SetEmbedder(e rag.EmbeddingProvider) {
 	c.embedder = e
 }
 
+func defaultPalaceFields(agentID, category, key, conversationID, scope string) (string, string, string) {
+	token := normalizePalaceToken(key)
+	if token == "" {
+		token = "memory"
+	}
+
+	room := model.MemRoomTask
+	anchor := "task/" + token
+
+	switch category {
+	case model.MemCatSkill:
+		room = model.MemRoomSkill
+		anchor = "skill/" + token
+	case model.MemCatSummary:
+		room = model.MemRoomTask
+		if conversationID != "" {
+			anchor = "task/conversation_" + conversationID[:min(8, len(conversationID))]
+		}
+	case model.MemCatContext:
+		room = model.MemRoomTask
+		if conversationID != "" {
+			anchor = "task/conversation_" + conversationID[:min(8, len(conversationID))]
+		}
+	case model.MemCatInstruct, model.MemCatPreference, model.MemCatFact:
+		switch {
+		case strings.Contains(token, "project"):
+			room = model.MemRoomProject
+			anchor = "project/" + token
+		case strings.Contains(token, "task") || strings.Contains(token, "todo") || strings.Contains(token, "goal") || strings.Contains(token, "deploy") || strings.Contains(token, "release"):
+			room = model.MemRoomTask
+			anchor = "task/" + token
+		default:
+			room = model.MemRoomUser
+			anchor = "user/" + token
+		}
+	}
+
+	pathRoot := "user/default"
+	if scope == model.MemScopeAgent && agentID != "" {
+		pathRoot = "agent/" + normalizePalaceToken(agentID)
+	}
+
+	return room, anchor, pathRoot + " > " + anchor
+}
+
+func normalizePalaceToken(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		" ", "_",
+		"-", "_",
+		"/", "_",
+		"\\", "_",
+		".", "_",
+		":", "_",
+		"，", "_",
+		"。", "_",
+		"（", "_",
+		"）", "_",
+		"(", "_",
+		")", "_",
+	)
+	s = replacer.Replace(s)
+	for strings.Contains(s, "__") {
+		s = strings.ReplaceAll(s, "__", "_")
+	}
+	return strings.Trim(s, "_")
+}
+
+func palaceTermsFromQuery(query string) []string {
+	seen := map[string]bool{}
+	var terms []string
+	add := func(term string) {
+		term = strings.TrimSpace(strings.ToLower(term))
+		if len(term) < 2 || seen[term] {
+			return
+		}
+		seen[term] = true
+		terms = append(terms, term)
+	}
+
+	normalized := normalizePalaceToken(query)
+	add(normalized)
+	for _, part := range strings.Split(normalized, "_") {
+		add(part)
+	}
+	for _, kw := range extractKeywords(query) {
+		add(kw)
+		add(normalizePalaceToken(kw))
+	}
+	return terms
+}
+
+func scorePalaceMemory(mem model.Memory, query string, terms []string) float64 {
+	queryToken := normalizePalaceToken(query)
+	derivedRoom, derivedAnchor, derivedPath := palaceFieldsForMemory(mem)
+	room := strings.ToLower(derivedRoom)
+	anchor := strings.ToLower(derivedAnchor)
+	path := strings.ToLower(derivedPath)
+	key := strings.ToLower(mem.Key)
+	content := strings.ToLower(mem.Content)
+	category := strings.ToLower(mem.Category)
+
+	score := mem.Importance * 0.4
+	for _, term := range terms {
+		if term == "" {
+			continue
+		}
+		if anchor == term || strings.HasSuffix(anchor, "/"+term) {
+			score += 6
+		}
+		if strings.Contains(anchor, term) {
+			score += 3.5
+		}
+		if strings.Contains(path, term) {
+			score += 2.5
+		}
+		if strings.Contains(room, term) || strings.Contains(category, term) {
+			score += 1.25
+		}
+		if strings.Contains(key, term) {
+			score += 1.75
+		}
+		if strings.Contains(content, term) {
+			score += 1.1
+		}
+	}
+	if queryToken != "" {
+		if anchor == queryToken || strings.HasSuffix(anchor, "/"+queryToken) {
+			score += 6
+		}
+		if strings.Contains(path, queryToken) {
+			score += 2
+		}
+	}
+	if mem.AccessCount > 0 {
+		score += float64(mem.AccessCount) * 0.05
+	}
+	return score
+}
+
+func (c *Cerebrate) palaceRecall(userID, agentID, query string, topK int) []model.Memory {
+	if topK <= 0 || strings.TrimSpace(query) == "" {
+		return nil
+	}
+
+	terms := palaceTermsFromQuery(query)
+	if len(terms) == 0 {
+		return nil
+	}
+
+	var candidates []model.Memory
+	c.db.Where("user_id = ? AND category != ? AND (agent_id = ? OR scope = ?)",
+		userID, model.MemCatInstruct, agentID, model.MemScopeGlobal).
+		Order("updated_at DESC").
+		Limit(200).
+		Find(&candidates)
+
+	type scored struct {
+		mem   model.Memory
+		score float64
+	}
+	var ranked []scored
+	for _, mem := range candidates {
+		score := scorePalaceMemory(mem, query, terms)
+		if score < 1.5 {
+			continue
+		}
+		ranked = append(ranked, scored{mem: mem, score: score})
+	}
+
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].score == ranked[j].score {
+			if ranked[i].mem.Importance == ranked[j].mem.Importance {
+				return ranked[i].mem.UpdatedAt.After(ranked[j].mem.UpdatedAt)
+			}
+			return ranked[i].mem.Importance > ranked[j].mem.Importance
+		}
+		return ranked[i].score > ranked[j].score
+	})
+
+	if len(ranked) > topK {
+		ranked = ranked[:topK]
+	}
+	out := make([]model.Memory, 0, len(ranked))
+	for _, item := range ranked {
+		out = append(out, item.mem)
+	}
+	return out
+}
+
+func palaceFieldsForMemory(mem model.Memory) (string, string, string) {
+	room := mem.Room
+	anchor := mem.Anchor
+	path := mem.Path
+	if room != "" && anchor != "" && path != "" {
+		return room, anchor, path
+	}
+	return defaultPalaceFields(mem.AgentID, mem.Category, mem.Key, mem.ConversationID, mem.Scope)
+}
+
 // ─── Memory Retrieval (injection before conversation) ───
 
 // Retrieve returns relevant memories for a user+agent, sorted by relevance to the query.
@@ -72,15 +275,16 @@ func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]m
 		Order("importance DESC, updated_at DESC").Limit(5).Find(&instructs)
 	addUnique(instructs)
 
-	// 2. Global non-instruct memories (cross-agent knowledge)
-	var globals []model.Memory
-	c.db.Where("user_id = ? AND scope = ? AND category != ?",
-		userID, model.MemScopeGlobal, model.MemCatInstruct).
-		Order("importance DESC, updated_at DESC").Limit(5).Find(&globals)
-	addUnique(globals)
+	// 2. Memory Palace recall (same room / anchor / path gets priority)
+	remaining := maxResults - len(result)
+	if remaining <= 0 {
+		remaining = 3
+	}
+	palaceMems := c.palaceRecall(userID, agentID, query, remaining)
+	addUnique(palaceMems)
 
 	// 3. P4: Vector semantic recall (if embedder available)
-	remaining := maxResults - len(result)
+	remaining = maxResults - len(result)
 	if remaining <= 0 {
 		remaining = 3
 	}
@@ -90,7 +294,17 @@ func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]m
 		addUnique(semanticMems)
 	}
 
-	// 4. Fallback: Agent-specific keyword-matched memories
+	// 4. Global non-instruct memories (cross-agent knowledge)
+	remaining = maxResults - len(result)
+	if remaining > 0 {
+		var globals []model.Memory
+		c.db.Where("user_id = ? AND scope = ? AND category != ?",
+			userID, model.MemScopeGlobal, model.MemCatInstruct).
+			Order("importance DESC, updated_at DESC").Limit(remaining).Find(&globals)
+		addUnique(globals)
+	}
+
+	// 5. Fallback: Agent-specific keyword-matched memories
 	remaining = maxResults - len(result)
 	if remaining > 0 {
 		keywords := extractKeywords(query)
@@ -104,8 +318,8 @@ func (c *Cerebrate) Retrieve(userID, agentID, query string, maxResults int) ([]m
 				if len(kw) < 2 {
 					continue
 				}
-				conditions = append(conditions, "(`key` LIKE ? OR content LIKE ?)")
-				args = append(args, "%"+kw+"%", "%"+kw+"%")
+				conditions = append(conditions, "(`key` LIKE ? OR content LIKE ? OR room LIKE ? OR anchor LIKE ? OR path LIKE ?)")
+				args = append(args, "%"+kw+"%", "%"+kw+"%", "%"+kw+"%", "%"+kw+"%", "%"+kw+"%")
 			}
 			if len(conditions) > 0 {
 				whereClause := strings.Join(conditions, " OR ")
@@ -293,6 +507,7 @@ func (c *Cerebrate) CheckInstantMemory(userID, agentID, message string) bool {
 
 	// Generate a key from content (first 30 chars, snake_case-ish)
 	key := fmt.Sprintf("instant_%d", time.Now().UnixMilli()%100000)
+	room, anchor, path := defaultPalaceFields(agentID, model.MemCatFact, key, "", model.MemScopeGlobal)
 
 	mem := model.Memory{
 		UserID:     userID,
@@ -302,6 +517,9 @@ func (c *Cerebrate) CheckInstantMemory(userID, agentID, message string) bool {
 		Category:   model.MemCatFact,
 		Source:     "instant",
 		Scope:      model.MemScopeGlobal,
+		Room:       room,
+		Anchor:     anchor,
+		Path:       path,
 		Importance: 0.9,
 	}
 	c.db.Create(&mem)
@@ -437,6 +655,7 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 		if e.Category == model.MemCatFact || e.Category == model.MemCatPreference || e.Category == model.MemCatInstruct {
 			scope = model.MemScopeGlobal
 		}
+		room, anchor, path := defaultPalaceFields(agentID, e.Category, e.Key, convID, scope)
 
 		// Upsert: update if same key+user+agent exists, otherwise create
 		var existing model.Memory
@@ -449,6 +668,9 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 				"importance": e.Importance,
 				"source":     "auto_extract",
 				"scope":      scope,
+				"room":       room,
+				"anchor":     anchor,
+				"path":       path,
 			}
 			if convID != "" {
 				updates["conversation_id"] = convID
@@ -469,6 +691,9 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 				Category:       e.Category,
 				Source:         "auto_extract",
 				Scope:          scope,
+				Room:           room,
+				Anchor:         anchor,
+				Path:           path,
 				ConversationID: convID,
 				Importance:     e.Importance,
 			}
@@ -558,6 +783,7 @@ func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conver
 			c.db.Delete(&oldest)
 		}
 	}
+	room, anchor, path := defaultPalaceFields(agentID, model.MemCatSummary, "conv_summary_"+conversationID[:min(8, len(conversationID))], conversationID, model.MemScopeAgent)
 
 	mem := model.Memory{
 		UserID:         userID,
@@ -567,6 +793,9 @@ func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conver
 		Category:       model.MemCatSummary,
 		Source:         "auto_extract",
 		Scope:          model.MemScopeAgent,
+		Room:           room,
+		Anchor:         anchor,
+		Path:           path,
 		ConversationID: conversationID,
 		Importance:     0.4,
 	}
@@ -746,6 +975,11 @@ func (c *Cerebrate) CreateMemory(userID, agentID, key, content, category string)
 	if !validCats[category] {
 		category = model.MemCatFact
 	}
+	scope := model.MemScopeAgent
+	if category == model.MemCatFact || category == model.MemCatPreference || category == model.MemCatInstruct {
+		scope = model.MemScopeGlobal
+	}
+	room, anchor, path := defaultPalaceFields(agentID, category, key, "", scope)
 
 	mem := &model.Memory{
 		UserID:     userID,
@@ -754,6 +988,10 @@ func (c *Cerebrate) CreateMemory(userID, agentID, key, content, category string)
 		Content:    content,
 		Category:   category,
 		Source:     "user_explicit",
+		Scope:      scope,
+		Room:       room,
+		Anchor:     anchor,
+		Path:       path,
 		Importance: 0.8,
 	}
 	if err := c.db.Create(mem).Error; err != nil {

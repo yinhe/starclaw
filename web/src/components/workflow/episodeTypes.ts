@@ -17,6 +17,11 @@ export interface Take {
   model?: string           // e.g. doubao-seedance-2-0-260128
   duration?: number        // 视频时长（秒）
   finished_at?: string     // 结束时间
+  // —— 归档字段（本地持久化，不依赖 24h 过期的 TOS URL） ——
+  // 成功后由 /v1/videos/archive 下载 TOS mp4 到
+  // docs/<project>/production/<ep>/clips_v2/<scene>_<take>.mp4
+  local_path?: string      // "/production/ep05/clips_v2/S1_t1.mp4"
+  local_url?: string       // "/v1/projects/swarm-universe/production/ep05/clips_v2/S1_t1.mp4"
 }
 
 export interface SceneSpec {
@@ -72,8 +77,9 @@ export interface CharacterData {
   category: 'character'
   label: string            // "林见月"
   tag?: string             // "[图1]"
+  key?: string             // manifest key, e.g. "lin_jianyue" / "sumi" / "zerg" — 自检一键修复要用
   appearance_card?: string // 外观卡文案
-  imageUrl?: string        // 参考图/三视图
+  imageUrl?: string        // 参考图/三视图（/v1/projects/... path）
   tos_url?: string         // Seedance TOS URL (24h)
   description?: string
   role?: string            // 女一 | 女二 | 男一 | 配角

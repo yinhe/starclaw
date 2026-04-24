@@ -336,6 +336,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		Tools:       enabledTools,
 		Temperature: modelCfg.Temperature,
 		MaxTokens:   maxTok,
+		AgentID:     agent.ID,
+		UserID:      userID,
 	}
 
 	// Inject user_id, conversation_id, and provider into context so tools can access them

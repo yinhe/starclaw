@@ -477,6 +477,14 @@ func (t *VideoTool) TryAutoMerge(userID, convID string) {
 		return
 	}
 
+	// Skip auto-merge if compose_pro (type=mv) already produced a video for this conversation
+	var mvCount int64
+	t.db.Model(&model.VideoRecord{}).Where("user_id = ? AND conversation_id = ? AND type = ? AND status = ?", userID, convID, "mv", "succeeded").Count(&mvCount)
+	if mvCount > 0 {
+		log.Printf("[VideoTool] Auto-merge skipped: compose_pro MV already exists (%d)", mvCount)
+		return
+	}
+
 	// Check if a merge already exists with the same clip count (another goroutine beat us)
 	var existingMerge model.VideoRecord
 	hasMerge := t.db.Where("user_id = ? AND conversation_id = ? AND type = ?", userID, convID, "merged").

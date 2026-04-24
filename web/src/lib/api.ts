@@ -165,6 +165,20 @@ export const videoAPI = {
   voices: () => api.get('/videos/voices'),
   addMusic: (id: string, musicId: string, lyricsSrt?: string) =>
     api.post(`/videos/${id}/add-music`, { music_id: musicId, lyrics_srt: lyricsSrt || '' }),
+  // 把 Seedance TOS 视频归档到 docs/<project>/production/<ep>/clips_v2/
+  // 并向同目录 _generated_urls.json 追写一条记录。返回 { local_path, local_url, size, ledger_entries }.
+  archive: (req: {
+    video_url: string
+    project: string
+    episode: string
+    scene: string
+    take_id: string
+    prompt?: string
+    ref_images?: string[]
+    task_id?: string
+    model?: string
+    overwrite?: boolean
+  }) => api.post('/videos/archive', req),
 }
 
 // Images
@@ -182,6 +196,48 @@ export const imageAPI = {
     negative_prompt?: string
     conversation_id?: string
   }) => api.post('/images/generate', data, { timeout: 240000 }),
+}
+
+// 工作流派单前自检相关（PreflightModal 使用）
+export const projectAPI = {
+  // 根据 character_key/hint 扫 docs/<project>/ 推荐候选 ref 图
+  // resp: { candidates: [{ path, url, size, score, reason }], hints_used }
+  suggestRef: (project: string, body: {
+    character_key?: string
+    character_label?: string
+    hint?: string
+    broken_ref?: string
+    limit?: number
+  }) => api.post(`/projects/${encodeURIComponent(project)}/ref/suggest`, body),
+  // 原子写回 manifest.json 里某角色的 ref 字段
+  // resp: { character, previous_ref, size_bytes, note }
+  setCharacterRef: (project: string, key: string, ref: string) =>
+    api.put(`/projects/${encodeURIComponent(project)}/manifest/characters/${encodeURIComponent(key)}`, { ref }),
+  // v2: 把候选图（nano/raw/variants 或外部 URL）晋级为 entities/<kind>/<key>/sheets/unified_sheet_v<N+1>.png
+  // 并原子 patch manifest.ref。二选一：source_path（项目相对）或 source_url（http）。
+  // resp: { new_ref, new_url, previous_ref, version, size_bytes, note }
+  promoteToSheet: (project: string, kind: 'characters'|'props'|'scenes', key: string, body: {
+    source_path?: string
+    source_url?: string
+  }) => api.post(
+    `/projects/${encodeURIComponent(project)}/entities/${encodeURIComponent(kind)}/${encodeURIComponent(key)}/promote`,
+    body,
+  ),
+}
+
+// nano-banana 生成（走 StarAI 代理 fal.ai/nano-banana-2 | nano-banana-2/edit）
+// 输出会自动回写本地 entities/<kind>/<key>/nano/<ts>_<slug>.png + .json 侧写档。
+// resp: { local_path, local_url, sidecar_path, request_id, model, generated_url }
+export const nanoAPI = {
+  generate: (body: {
+    project: string
+    entity_kind?: 'characters'|'props'|'scenes'
+    entity_key: string
+    source_url?: string   // 非空触发 edit 模式；空则纯文本生图
+    prompt: string
+    model?: string        // 默认 nano-banana-2 | /edit
+    size?: string         // square_hd / portrait_4_3 / landscape_16_9 ...
+  }) => api.post('/nano/generate', body, { timeout: 240000 }),
 }
 
 // Character Studio 辅助：AI 生成外观卡（同步一次性短文本）
@@ -292,6 +348,15 @@ export const cdnAPI = {
       timeout: 120000,
     })
   },
+  // 服务器端已有字节了 → 直接 POST 一个 image_url（/v1/projects/.. | /v1/uploads/.. | http），
+  // 后端复用 scpUploadBytes 推到 cdn.starclaw.net。面板里「🔼 同步到 CDN」就走这个。
+  // resp: { target: "cdn", url, remote_path, size, mime, source }
+  uploadFromLocal: (image_url: string, opts: { drama: string; asset_type: string; filename?: string }) =>
+    api.post<{ target: string; url: string; remote_path: string; size: number; mime: string; source: string }>(
+      '/cdn/upload-from-local',
+      { image_url, drama: opts.drama, asset_type: opts.asset_type, filename: opts.filename },
+      { timeout: 120000 },
+    ),
   // Re-launder a local / CDN image through Seedream 5.0 lite → fresh Volcengine
   // Ark TOS signed URL (bypasses Seedance privacy filter). Valid ~24h.
   launderTOS: (image_url: string) =>
@@ -309,6 +374,25 @@ export const cdnAPI = {
       '/cdn/resign-tos',
       { tos_url, expires_sec },
       { timeout: 20000 },
+    ),
+  promoteTOS: (
+    source_url: string,
+    opts: {
+      class?: string
+      tenant_id?: string
+      workspace_id?: string
+      project_id?: string
+      asset_kind?: string
+      asset_id?: string
+      variant?: string
+      file_name?: string
+      expires_sec?: number
+    } = {},
+  ) =>
+    api.post<{ tos_url: string; expires_sec: number; bucket: string; object_key: string; object_url: string }>(
+      '/cdn/promote-tos',
+      { source_url, ...opts },
+      { timeout: 180000 },
     ),
 }
 

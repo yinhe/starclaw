@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,51 @@ type MemoryHandler struct {
 
 func NewMemoryHandler(db *gorm.DB) *MemoryHandler {
 	return &MemoryHandler{db: db}
+}
+
+func inferMemoryPalaceFields(agentID, category, key, room, anchor, path, scope string) (string, string, string) {
+	if room != "" && anchor != "" && path != "" {
+		return room, anchor, path
+	}
+
+	token := strings.ToLower(strings.TrimSpace(key))
+	token = strings.NewReplacer(" ", "_", "-", "_", "/", "_", "\\", "_", ".", "_", ":", "_").Replace(token)
+	for strings.Contains(token, "__") {
+		token = strings.ReplaceAll(token, "__", "_")
+	}
+	token = strings.Trim(token, "_")
+	if token == "" {
+		token = "memory"
+	}
+
+	if room == "" {
+		switch category {
+		case model.MemCatSkill:
+			room = model.MemRoomSkill
+		case model.MemCatContext, model.MemCatSummary:
+			room = model.MemRoomTask
+		default:
+			if strings.Contains(token, "project") {
+				room = model.MemRoomProject
+			} else {
+				room = model.MemRoomUser
+			}
+		}
+	}
+
+	if anchor == "" {
+		anchor = room + "/" + token
+	}
+
+	if path == "" {
+		root := "user/default"
+		if scope == model.MemScopeAgent && agentID != "" {
+			root = "agent/" + agentID
+		}
+		path = root + " > " + anchor
+	}
+
+	return room, anchor, path
 }
 
 // List returns memories for a specific agent, with optional category and search filter
@@ -32,7 +78,7 @@ func (h *MemoryHandler) List(c *gin.Context) {
 		q = q.Where("category = ?", category)
 	}
 	if search != "" {
-		q = q.Where("(key LIKE ? OR content LIKE ?)", "%"+search+"%", "%"+search+"%")
+		q = q.Where("(key LIKE ? OR content LIKE ? OR room LIKE ? OR anchor LIKE ? OR path LIKE ?)", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
 	var total int64
@@ -52,6 +98,9 @@ func (h *MemoryHandler) Create(c *gin.Context) {
 		Key        string  `json:"key" binding:"required"`
 		Content    string  `json:"content" binding:"required"`
 		Category   string  `json:"category"`
+		Room       string  `json:"room"`
+		Anchor     string  `json:"anchor"`
+		Path       string  `json:"path"`
 		Importance float64 `json:"importance"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -65,6 +114,11 @@ func (h *MemoryHandler) Create(c *gin.Context) {
 	if req.Category == "" {
 		req.Category = "fact"
 	}
+	scope := model.MemScopeAgent
+	if req.Category == model.MemCatFact || req.Category == model.MemCatPreference || req.Category == model.MemCatInstruct {
+		scope = model.MemScopeGlobal
+	}
+	room, anchor, path := inferMemoryPalaceFields(req.AgentID, req.Category, req.Key, req.Room, req.Anchor, req.Path, scope)
 
 	mem := model.Memory{
 		UserID:     userID,
@@ -73,6 +127,10 @@ func (h *MemoryHandler) Create(c *gin.Context) {
 		Content:    req.Content,
 		Category:   req.Category,
 		Source:     "user_explicit",
+		Scope:      scope,
+		Room:       room,
+		Anchor:     anchor,
+		Path:       path,
 		Importance: req.Importance,
 	}
 	if err := h.db.Create(&mem).Error; err != nil {
@@ -95,6 +153,9 @@ func (h *MemoryHandler) Update(c *gin.Context) {
 
 	var req struct {
 		Content    string  `json:"content"`
+		Room       string  `json:"room"`
+		Anchor     string  `json:"anchor"`
+		Path       string  `json:"path"`
 		Importance float64 `json:"importance"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -108,6 +169,15 @@ func (h *MemoryHandler) Update(c *gin.Context) {
 	}
 	if req.Importance > 0 {
 		updates["importance"] = req.Importance
+	}
+	if req.Room != "" {
+		updates["room"] = req.Room
+	}
+	if req.Anchor != "" {
+		updates["anchor"] = req.Anchor
+	}
+	if req.Path != "" {
+		updates["path"] = req.Path
 	}
 
 	h.db.Model(&mem).Updates(updates)

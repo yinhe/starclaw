@@ -2,7 +2,6 @@ package v1
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/mcp"
@@ -27,47 +26,46 @@ func (h *SkillsHandler) ListTools(c *gin.Context) {
 
 func (h *SkillsHandler) ListSkills(c *gin.Context) {
 	type SkillInfo struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Type        string `json:"type"`
-		Status      string `json:"status"`
+		Name             string   `json:"name"`
+		Description      string   `json:"description"`
+		Type             string   `json:"type"`
+		Status           string   `json:"status"`
+		Category         string   `json:"category"`
+		CategoryLabel    string   `json:"category_label"`
+		Subcategory      string   `json:"subcategory,omitempty"`
+		SubcategoryLabel string   `json:"subcategory_label,omitempty"`
+		Industry         string   `json:"industry"`
+		Tags             []string `json:"tags,omitempty"`
 	}
 	var skills []SkillInfo
 
 	// Built-in tools
-	builtinNames := []string{"system", "code", "web_search", "http_request", "browser", "video_generation", "deploy_web", "bind_domain", "verify_online"}
+	builtinNames := map[string]bool{"system": true, "code": true, "web_search": true, "http_request": true, "browser": true, "video_generation": true, "image_generation": true, "music_generation": true, "audio_analysis": true, "mv_production": true, "dubbing": true, "comic_production": true, "document": true, "desktop": true, "deploy_web": true, "bind_domain": true, "verify_online": true}
 	for _, name := range h.toolRegistry.List() {
 		t, ok := h.toolRegistry.Get(name)
 		if !ok {
 			continue
 		}
 		typ := "builtin"
-		for _, bn := range builtinNames {
-			if name == bn {
-				typ = "builtin"
-				break
-			}
-		}
-		// Check if it's a plugin (starts with plugin prefix or not in builtin list)
-		isBuiltin := false
-		for _, bn := range builtinNames {
-			if name == bn {
-				isBuiltin = true
-				break
-			}
-		}
-		if !isBuiltin && name != "system" {
-			if strings.HasPrefix(name, "mcp_") {
+		if !builtinNames[name] && name != "system" {
+			if catalog := tool.DescribeCapability(name, "plugin", tool.MetadataFor(t)); catalog.Subcategory == "mcp" {
 				typ = "mcp"
 			} else {
 				typ = "plugin"
 			}
 		}
+		catalog := tool.DescribeCapability(name, typ, tool.MetadataFor(t))
 		skills = append(skills, SkillInfo{
-			Name:        name,
-			Description: t.Description(),
-			Type:        typ,
-			Status:      "active",
+			Name:             name,
+			Description:      t.Description(),
+			Type:             typ,
+			Status:           "active",
+			Category:         catalog.Category,
+			CategoryLabel:    catalog.CategoryLabel,
+			Subcategory:      catalog.Subcategory,
+			SubcategoryLabel: catalog.SubcategoryLabel,
+			Industry:         catalog.Industry,
+			Tags:             catalog.Tags,
 		})
 	}
 
@@ -76,11 +74,18 @@ func (h *SkillsHandler) ListSkills(c *gin.Context) {
 	var mcpServers []model.MCPServer
 	h.db.Where("user_id = ?", userID).Find(&mcpServers)
 	for _, srv := range mcpServers {
+		catalog := tool.DescribeCapability("mcp:"+srv.Name, "mcp", nil)
 		skills = append(skills, SkillInfo{
-			Name:        "mcp:" + srv.Name,
-			Description: fmt.Sprintf("MCP 外部服务: %s (%s)", srv.Name, srv.BaseURL),
-			Type:        "mcp",
-			Status:      srv.Status,
+			Name:             "mcp:" + srv.Name,
+			Description:      fmt.Sprintf("MCP 外部服务: %s (%s)", srv.Name, srv.BaseURL),
+			Type:             "mcp",
+			Status:           srv.Status,
+			Category:         catalog.Category,
+			CategoryLabel:    catalog.CategoryLabel,
+			Subcategory:      catalog.Subcategory,
+			SubcategoryLabel: catalog.SubcategoryLabel,
+			Industry:         catalog.Industry,
+			Tags:             catalog.Tags,
 		})
 	}
 
@@ -89,11 +94,18 @@ func (h *SkillsHandler) ListSkills(c *gin.Context) {
 	if connected, ok := bridgeStatus["connected"].(bool); ok && connected {
 		if toolNames, ok := bridgeStatus["tool_names"].([]string); ok {
 			for _, tn := range toolNames {
+				catalog := tool.DescribeCapability("host."+tn, "mcp", nil)
 				skills = append(skills, SkillInfo{
-					Name:        "host." + tn,
-					Description: fmt.Sprintf("宿主机工具: %s (MCP Bridge)", tn),
-					Type:        "mcp",
-					Status:      "active",
+					Name:             "host." + tn,
+					Description:      fmt.Sprintf("宿主机工具: %s (MCP Bridge)", tn),
+					Type:             "mcp",
+					Status:           "active",
+					Category:         catalog.Category,
+					CategoryLabel:    catalog.CategoryLabel,
+					Subcategory:      catalog.Subcategory,
+					SubcategoryLabel: catalog.SubcategoryLabel,
+					Industry:         catalog.Industry,
+					Tags:             catalog.Tags,
 				})
 			}
 		}

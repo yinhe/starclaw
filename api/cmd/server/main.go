@@ -1,32 +1,49 @@
-package main
+﻿package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/yinhe/starclaw/internal/abathur"
+	agentpkg "github.com/yinhe/starclaw/internal/agent"
 	v1 "github.com/yinhe/starclaw/internal/api/v1"
+	"github.com/yinhe/starclaw/internal/autonomy"
+	"github.com/yinhe/starclaw/internal/broodmind"
+	"github.com/yinhe/starclaw/internal/broodnet"
+	"github.com/yinhe/starclaw/internal/chitin"
+	"github.com/yinhe/starclaw/internal/cocoon"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/database"
+	"github.com/yinhe/starclaw/internal/exchange"
+	"github.com/yinhe/starclaw/internal/federation"
+	"github.com/yinhe/starclaw/internal/hydralisk"
+	"github.com/yinhe/starclaw/internal/hydralisk_v"
 	"github.com/yinhe/starclaw/internal/instinct"
+	"github.com/yinhe/starclaw/internal/lair"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/molt"
+	"github.com/yinhe/starclaw/internal/mutalisk"
+	"github.com/yinhe/starclaw/internal/nerve"
 	"github.com/yinhe/starclaw/internal/node"
+	"github.com/yinhe/starclaw/internal/partner"
+	"github.com/yinhe/starclaw/internal/roach"
 	"github.com/yinhe/starclaw/internal/router"
+	"github.com/yinhe/starclaw/internal/security"
+	"github.com/yinhe/starclaw/internal/sense"
 	"github.com/yinhe/starclaw/internal/swarm"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/yinhe/starclaw/internal/swarmctl"
+	"github.com/yinhe/starclaw/internal/testclaw"
+	"github.com/yinhe/starclaw/internal/wiring"
+	"github.com/yinhe/starclaw/internal/zergling"
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -97,6 +114,14 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Warn if JWT secret is the insecure default (block in release mode)
+	if cfg.JWT.Secret == "starclaw-secret-key-change-me" {
+		if cfg.Server.Mode == "release" {
+			log.Fatalf("[SECURITY] JWT secret is the insecure default. Set JWT_SECRET env var or jwt.secret in config before running in release mode.")
+		}
+		log.Println("[WARNING] JWT secret is the insecure default 'starclaw-secret-key-change-me'. Set JWT_SECRET for production use.")
+	}
+
 	// Spore upgrade migration: if SPORE_DATA_DIR is set (shared dir) but has no
 	// claw.db, and the version-local ./data/ does → migrate data to shared dir.
 	// This runs once on the first upgrade from old (version-local) to new (shared) layout.
@@ -118,6 +143,9 @@ func main() {
 
 	// Seed system-level built-in agents (visible to all users)
 	v1.SeedBuiltinAgents(db)
+
+	// Discover and seed manifest-based agents from agents/ directory
+	seedManifestAgents(db)
 
 	// Auto-seed missing built-in activities for all users who have a SuperAgent
 	// This ensures new instinct templates are available even for existing users
@@ -143,7 +171,8 @@ func main() {
 		log.Println("[info] Redis disabled, using in-memory cache")
 	}
 
-	// Start Molt version checker
+	// Start Molt version checker + upgrade protocol
+	molt.InitUpgrade(cfg.Storage.DataDir)
 	molt.StartChecker()
 	if cfg.Hive.URL != "" {
 		molt.SetHiveURL(cfg.Hive.URL)
@@ -156,6 +185,54 @@ func main() {
 	// Load crypto identity for claw: address
 	identity := node.LoadOrCreateIdentity()
 	log.Printf("Node ID: %s", identity.NodeID)
+
+	// Initialize BroodMind cognitive engine
+	broodmind.Init(identity.NodeID)
+
+	// Initialize security guard (sandbox + trust levels)
+	security.InitGuard(security.DefaultSandboxConfig())
+
+	// Initialize swarm formation engine (Phase 3C cross-node coordination)
+	swarm.InitFormation(identity.NodeID, identity.NodeID, cfg.Node.Address)
+
+	// Initialize Hydralisk heavy worker (Phase 3C batch processing)
+	hydralisk.InitWorker(identity.NodeID, hydralisk.DefaultWorkerConfig())
+
+	// Initialize BroodOS Network (Phase 4A-4/5 + Phase 4B-1/2/3)
+	broodnet.InitMarket(identity.NodeID, nil)
+	broodnet.InitOrchestrator(identity.NodeID)
+	broodnet.InitReputation(nil)
+	broodnet.InitPricing(nil)
+	broodnet.InitGossip(identity.NodeID, cfg.Node.Address, nil, nil, nil)
+
+	// Initialize Phase 4C engines
+	abathur.InitEngine(identity.NodeID, nil)
+	sense.InitEngine(identity.NodeID, nil)
+	testclaw.InitEngine(identity.NodeID, nil)
+	cocoon.InitEngine(identity.NodeID, nil)
+	chitin.InitEngine(identity.NodeID, nil)
+	lair.InitEngine(identity.NodeID, nil)
+	partner.InitEngine(identity.NodeID, nil)
+
+	// Initialize physical variant adapters (Phase 4B)
+	zergling.InitAdapter(identity.NodeID, nil)
+	mutalisk.InitAdapter(identity.NodeID, nil)
+	roach.InitAdapter(identity.NodeID, nil)
+	hydralisk_v.InitAdapter(identity.NodeID, nil)
+
+	// Initialize Nerve Bus — cross-engine wiring (Phase 4D)
+	nerveBus := nerve.InitBus()
+	nerve.RegisterAllWorkers(nerveBus)
+	nerve.RegisterCrossEngineSubscriptions(nerveBus)
+
+	// Initialize Phase 5 engines (with DB persistence)
+	autonomy.InitEngine(identity.NodeID, nil, db)
+	exchange.InitEngine(identity.NodeID, nil, db)
+	federation.InitEngine(identity.NodeID, nil, db)
+	swarmctl.InitEngine(identity.NodeID, db)
+
+	// Wire Phase 5 engines to Nerve Bus
+	wiring.WirePhase5(nerveBus)
 
 	// Log full boot context for diagnostics
 	logBootContext(cfg)
@@ -422,559 +499,52 @@ func copyDirRecursive(src, dst string) error {
 	return nil
 }
 
-func openCLIDB() (*config.Config, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-	return cfg, nil
-}
-
-// cmdGetToken prints the current owner token without modifying it.
-func cmdGetToken() {
-	cfg, err := openCLIDB()
-	if err != nil {
-		log.Fatal(err)
-	}
-	db, err := database.InitDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+// seedManifestAgents discovers agents from the agents/ directory and seeds them into the DB.
+// This allows manifest-defined agents (like pitch_master) to auto-register on startup.
+func seedManifestAgents(db *gorm.DB) {
+	// Determine owner ID (same logic as SeedBuiltinAgents)
+	ownerID := model.SystemUserID
+	var owner model.User
+	if err := db.Where("owner_token IS NOT NULL AND owner_token != ''").First(&owner).Error; err == nil {
+		ownerID = owner.ID
 	}
 
-	var user model.User
-	if err := db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
-		log.Fatalf("No owner user found. Run initial setup first.")
+	// Try multiple candidate paths for agents/ directory
+	exe, _ := os.Executable()
+	exeDir := filepath.Dir(exe)
+	candidates := []string{
+		filepath.Join(exeDir, "agents"),
+		filepath.Join(exeDir, "..", "agents"),
+		filepath.Join(exeDir, "..", "..", "agents"),
+		"agents",
+		filepath.Join("..", "agents"),
+	}
+	if v := os.Getenv("CLAW_AGENTS_DIR"); v != "" {
+		candidates = append([]string{v}, candidates...)
 	}
 
-	fmt.Println("========================================")
-	fmt.Printf("Owner: %s (id: %s)\n", user.Username, user.ID)
-	fmt.Printf("Owner Token: %s\n", *user.OwnerToken)
-	fmt.Println("========================================")
-}
-
-// cmdResetToken regenerates the owner token and prints it.
-func cmdResetToken() {
-	cfg, err := openCLIDB()
-	if err != nil {
-		log.Fatal(err)
+	var agentsDir string
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && info.IsDir() {
+			agentsDir = c
+			break
+		}
 	}
-	db, err := database.InitDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-
-	var user model.User
-	if err := db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
-		log.Fatalf("No owner user found. Run initial setup first.")
-	}
-
-	tokenBytes := make([]byte, 16)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		log.Fatalf("Failed to generate token: %v", err)
-	}
-	newToken := hex.EncodeToString(tokenBytes)
-
-	if err := db.Model(&user).Update("owner_token", newToken).Error; err != nil {
-		log.Fatalf("Failed to update token: %v", err)
-	}
-
-	fmt.Println("========================================")
-	fmt.Printf("Owner: %s (id: %s)\n", user.Username, user.ID)
-	fmt.Printf("New Owner Token: %s\n", newToken)
-	fmt.Println("========================================")
-	fmt.Println("Use this token to log in via the Auth Token tab.")
-}
-
-// cmdDevices lists all authorized devices.
-func cmdDevices() {
-	cfg, err := openCLIDB()
-	if err != nil {
-		log.Fatal(err)
-	}
-	db, err := database.InitDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-
-	var devices []model.AuthorizedDevice
-	db.Order("created_at DESC").Find(&devices)
-
-	if len(devices) == 0 {
-		fmt.Println("No authorized devices found.")
+	if agentsDir == "" {
+		log.Println("[discovery] No agents/ directory found, skipping manifest discovery")
 		return
 	}
 
-	fmt.Printf("%-10s %-20s %-10s %-10s %s\n", "ID", "NAME", "APPROVED", "REVOKED", "LAST USED")
-	fmt.Println("----------------------------------------------------------------------")
-	for _, d := range devices {
-		lastUsed := "never"
-		if d.LastUsedAt != nil {
-			lastUsed = d.LastUsedAt.Format("2006-01-02 15:04")
-		}
-		status := "pending"
-		if d.Revoked {
-			status = "revoked"
-		} else if d.Approved {
-			status = "approved"
-		}
-		fmt.Printf("%-10s %-20s %-10s %-10s %s\n", d.ID[:8], truncate(d.DeviceName, 20), status, "", lastUsed)
-	}
-}
-
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max-3] + "..."
-}
-
-// cmdApproveDevice approves a pending device by ID prefix.
-func cmdApproveDevice() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: starclaw approve <device-id-prefix>")
-		os.Exit(1)
-	}
-	prefix := os.Args[2]
-
-	cfg, err := openCLIDB()
+	manifests, err := agentpkg.ScanAgentsDir(agentsDir)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("[discovery] Failed to scan agents dir: %v", err)
+		return
 	}
-	db, err := database.InitDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-
-	var devices []model.AuthorizedDevice
-	db.Where("id LIKE ?", prefix+"%").Find(&devices)
-
-	if len(devices) == 0 {
-		log.Fatalf("No device found matching prefix: %s", prefix)
-	}
-	if len(devices) > 1 {
-		fmt.Printf("Multiple devices match prefix '%s':\n", prefix)
-		for _, d := range devices {
-			fmt.Printf("  %s  %s\n", d.ID[:8], d.DeviceName)
-		}
-		log.Fatalf("Please provide a more specific prefix.")
-	}
-
-	device := devices[0]
-	if device.Approved && !device.Revoked {
-		fmt.Printf("Device %s (%s) is already approved.\n", device.ID[:8], device.DeviceName)
+	if len(manifests) == 0 {
 		return
 	}
 
-	db.Model(&device).Updates(map[string]interface{}{"approved": true, "revoked": false})
-	fmt.Printf("✓ Device approved: %s (%s)\n", device.ID[:8], device.DeviceName)
-}
-
-// cmdRejectDevice rejects/revokes a device by ID prefix.
-func cmdRejectDevice() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: starclaw reject <device-id-prefix>")
-		os.Exit(1)
-	}
-	prefix := os.Args[2]
-
-	cfg, err := openCLIDB()
-	if err != nil {
-		log.Fatal(err)
-	}
-	db, err := database.InitDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-
-	var devices []model.AuthorizedDevice
-	db.Where("id LIKE ?", prefix+"%").Find(&devices)
-
-	if len(devices) == 0 {
-		log.Fatalf("No device found matching prefix: %s", prefix)
-	}
-	if len(devices) > 1 {
-		fmt.Printf("Multiple devices match prefix '%s':\n", prefix)
-		for _, d := range devices {
-			fmt.Printf("  %s  %s\n", d.ID[:8], d.DeviceName)
-		}
-		log.Fatalf("Please provide a more specific prefix.")
-	}
-
-	device := devices[0]
-	db.Model(&device).Updates(map[string]interface{}{"approved": false, "revoked": true})
-	fmt.Printf("✓ Device rejected: %s (%s)\n", device.ID[:8], device.DeviceName)
-}
-
-// migrateIdentity calls Queen's identity migration API to transfer balance/bindings
-// from an old claw address to a new one. Runs async, non-fatal on failure.
-var _ = migrateIdentity // suppress unused lint — called conditionally at startup
-
-func migrateIdentity(queenURL, token, oldClawID, newClawID string) {
-	body := fmt.Sprintf(`{"old_claw_id":"%s","new_claw_id":"%s"}`, oldClawID, newClawID)
-	url := strings.TrimSuffix(queenURL, "/swarm") + "/internal/identity/migrate"
-
-	req, _ := http.NewRequest("POST", url, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Node-Token", token)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("[identity] migration request failed (non-fatal): %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode == http.StatusOK {
-		log.Printf("[identity] ✅ migration successful: %s → %s: %s", oldClawID, newClawID, string(respBody))
-	} else {
-		log.Printf("[identity] migration returned %d: %s (non-fatal)", resp.StatusCode, string(respBody))
-	}
-}
-
-// cmdExportKey exports the node identity as a 24-word BIP-39 mnemonic.
-func cmdExportKey() {
-	id := node.LoadOrCreateIdentity()
-	seed := id.PrivateKey.Seed()
-
-	mnemonic, err := node.SeedToMnemonic(seed)
-	if err != nil {
-		log.Fatalf("Failed to encode mnemonic: %v", err)
-	}
-
-	// Build HD wallet to show derived addresses
-	w := node.WalletFromSeed(seed, mnemonic)
-
-	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║       StarClaw Node Identity Backup              ║")
-	fmt.Println("╠══════════════════════════════════════════════════╣")
-	fmt.Printf("║  Node ID (cold): %s\n", w.NodeID)
-	fmt.Printf("║  Hot address:    %s\n", w.HotNodeID)
-	fmt.Printf("║  Fingerprint:    %s\n", id.Fingerprint())
-	fmt.Println("╠══════════════════════════════════════════════════╣")
-	fmt.Println("║  24-Word Mnemonic (BIP-39):")
-	words := strings.Split(mnemonic, " ")
-	for i := 0; i < len(words); i += 4 {
-		end := i + 4
-		if end > len(words) {
-			end = len(words)
-		}
-		nums := ""
-		for j := i; j < end; j++ {
-			nums += fmt.Sprintf("  %2d.%-12s", j+1, words[j])
-		}
-		fmt.Printf("║%s\n", nums)
-	}
-	fmt.Println("╠══════════════════════════════════════════════════╣")
-	fmt.Printf("║  Seed (hex): %s\n", hex.EncodeToString(seed))
-	fmt.Println("╚══════════════════════════════════════════════════╝")
-	fmt.Println("")
-	fmt.Println("Write down the 24 words above and store in a SAFE place.")
-	fmt.Println("To restore: starclaw import-key <24 words>")
-	fmt.Println("")
-	fmt.Println("WARNING: Anyone with these words can control your node and wallet.")
-}
-
-// cmdImportKey restores node identity from mnemonic (24 words) or seed hex.
-func cmdImportKey() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage:")
-		fmt.Println("  starclaw import-key word1 word2 word3 ... word24")
-		fmt.Println("  starclaw import-key <64-char-hex-seed>")
-		os.Exit(1)
-	}
-
-	var seed []byte
-	var err error
-
-	// Detect mode: hex (single arg, 64 chars) or mnemonic (multiple words)
-	if len(os.Args) == 3 && len(os.Args[2]) == 64 {
-		// Hex seed mode
-		seed, err = hex.DecodeString(os.Args[2])
-		if err != nil || len(seed) != 32 {
-			log.Fatalf("Invalid hex seed: must be 64 hex characters")
-		}
-		fmt.Println("Importing from hex seed...")
-	} else {
-		// Mnemonic mode: collect all remaining args as words
-		words := os.Args[2:]
-		mnemonic := strings.Join(words, " ")
-		seed, err = node.MnemonicToSeed(mnemonic)
-		if err != nil {
-			log.Fatalf("Invalid mnemonic: %v", err)
-		}
-		fmt.Printf("Importing from %d-word mnemonic...\n", len(words))
-	}
-
-	// Build wallet to show info
-	w := node.WalletFromSeed(seed, "")
-
-	// Write key file
-	keyFile := os.Getenv("NODE_KEY_PATH")
-	if keyFile == "" {
-		keyFile = ".node_key"
-	}
-
-	// Check if key file already exists
-	if _, err := os.Stat(keyFile); err == nil {
-		fmt.Printf("WARNING: Key file already exists at %s\n", keyFile)
-		fmt.Printf("This will OVERWRITE the current node identity.\n")
-		fmt.Printf("Type 'yes' to confirm: ")
-		var confirm string
-		fmt.Scanln(&confirm)
-		if confirm != "yes" {
-			fmt.Println("Aborted.")
-			return
-		}
-	}
-
-	if err := node.SaveWalletKey(w, keyFile); err != nil {
-		log.Fatalf("Failed to write key file: %v", err)
-	}
-
-	fmt.Println("========================================")
-	fmt.Println("  Node identity restored!")
-	fmt.Printf("  Cold address: %s\n", w.NodeID)
-	fmt.Printf("  Hot address:  %s\n", w.HotNodeID)
-	fmt.Println("========================================")
-	fmt.Println("Restart the server for the new identity to take effect.")
-}
-
-// cmdWalletInfo shows HD wallet addresses and derivation paths.
-func cmdWalletInfo() {
-	id := node.LoadOrCreateIdentity()
-	seed := id.PrivateKey.Seed()
-	w := node.WalletFromSeed(seed, "")
-
-	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║            StarClaw HD Wallet                     ║")
-	fmt.Println("╠══════════════════════════════════════════════════╣")
-	fmt.Printf("  Master (cold):  %s\n", w.NodeID)
-	fmt.Printf("  Path: m (master key)\n")
-	fmt.Println("")
-
-	// Show first 5 derived addresses
-	fmt.Println("  Derived addresses (BIP-44 / SLIP-0010):")
-	fmt.Println("  ─────────────────────────────────────────")
-	for i := uint32(0); i < 5; i++ {
-		key := w.DeriveAddress(0, 0, i)
-		marker := "  "
-		if i == 0 {
-			marker = "→ " // current hot wallet
-		}
-		fmt.Printf("  %s[%d] %s  (%s)\n", marker, i, key.NodeID(), key.Path)
-	}
-
-	fmt.Println("")
-	fmt.Printf("  Hot wallet:     %s\n", w.HotNodeID)
-	fmt.Printf("  Path: m/44'/9001'/0'/0'/0'\n")
-	fmt.Println("╚══════════════════════════════════════════════════╝")
-	fmt.Println("")
-	fmt.Println("Cold address = master wallet (high-value ops, backup with mnemonic)")
-	fmt.Println("Hot address  = everyday wallet (transfers, heartbeats)")
-}
-
-// cmdBalance queries and displays the star energy balance from Queen.
-func cmdBalance() {
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
-
-	identity := node.LoadOrCreateIdentity()
-	if cfg.Swarm.QueenURL == "" {
-		log.Fatalf("queen_url not configured in swarm settings")
-	}
-
-	cc := swarm.NewCreditClient(cfg.Swarm.QueenURL, identity)
-	balance, err := cc.QueryBalance()
-	if err != nil {
-		log.Fatalf("Failed to query balance: %v", err)
-	}
-
-	hpIcon := map[string]string{
-		"full": "\u2764\ufe0f", "healthy": "\U0001f49a", "low": "\U0001f49b",
-		"critical": "\u2764\ufe0f\u200d\U0001fa79", "hibernated": "\U0001f480",
-	}[balance.HPStatus]
-	if hpIcon == "" {
-		hpIcon = "\u2753"
-	}
-
-	fmt.Println("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
-	fmt.Println("\u2551       StarClaw Star Energy                     \u2551")
-	fmt.Println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563")
-	fmt.Printf("  Claw ID:     %s\n", identity.NodeID)
-	fmt.Printf("  Balance:     %.2f Stars\n", balance.BalanceEnergy)
-	fmt.Printf("  Frozen:      %.2f Stars\n", balance.FrozenEnergy)
-	fmt.Printf("  Total In:    %d units\n", balance.TotalIn)
-	fmt.Printf("  Total Out:   %d units\n", balance.TotalOut)
-	fmt.Printf("  Nonce:       %d\n", balance.Nonce)
-	fmt.Printf("  HP Status:   %s %s\n", hpIcon, balance.HPStatus)
-	fmt.Printf("  Trust Level: %s\n", balance.TrustLevel)
-	fmt.Printf("  Status:      %s\n", balance.Status)
-	fmt.Println("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
-}
-
-// cmdTransfer sends star energy to another claw address.
-func cmdTransfer() {
-	if len(os.Args) < 4 {
-		fmt.Println("Usage: starclaw transfer <claw:address> <amount_stars> [remark]")
-		fmt.Println("  amount is in Stars (e.g. 10.5 = 10.5 Stars)")
-		os.Exit(1)
-	}
-
-	target := os.Args[2]
-	amountStr := os.Args[3]
-	remark := ""
-	if len(os.Args) > 4 {
-		remark = strings.Join(os.Args[4:], " ")
-	}
-
-	if !strings.HasPrefix(target, "claw:") {
-		log.Fatalf("Invalid target address: must start with claw:")
-	}
-
-	amountEnergy, err := strconv.ParseFloat(amountStr, 64)
-	if err != nil || amountEnergy <= 0 {
-		log.Fatalf("Invalid amount: must be a positive number")
-	}
-	amountUnits := int64(amountEnergy * 10000) // 1 Star = 10000 units
-
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
-
-	identity := node.LoadOrCreateIdentity()
-	if cfg.Swarm.QueenURL == "" {
-		log.Fatalf("queen_url not configured in swarm settings")
-	}
-
-	cc := swarm.NewCreditClient(cfg.Swarm.QueenURL, identity)
-
-	fmt.Printf("Transferring %.2f Stars (%d units) to %s...\n", amountEnergy, amountUnits, target)
-
-	result, err := cc.Transfer(swarm.TransferRequest{
-		ToClaw: target,
-		Amount: amountUnits,
-		Remark: remark,
-	})
-	if err != nil {
-		log.Fatalf("Transfer failed: %v", err)
-	}
-
-	fmt.Println("========================================")
-	fmt.Printf("  Transaction ID: %s\n", result.TxnID)
-	fmt.Printf("  From:           %s\n", result.From)
-	fmt.Printf("  To:             %s\n", result.To)
-	fmt.Printf("  Amount:         %.2f Stars\n", result.AmountEnergy)
-	fmt.Printf("  New Balance:    %d units\n", result.NewBalance)
-	fmt.Println("========================================")
-}
-
-// cmdTransactions lists recent transaction history.
-func cmdTransactions() {
-	page := 1
-	pageSize := 20
-	txnType := ""
-
-	for i := 2; i < len(os.Args); i++ {
-		switch os.Args[i] {
-		case "--type":
-			if i+1 < len(os.Args) {
-				txnType = os.Args[i+1]
-				i++
-			}
-		case "--page":
-			if i+1 < len(os.Args) {
-				page, _ = strconv.Atoi(os.Args[i+1])
-				i++
-			}
-		case "--size":
-			if i+1 < len(os.Args) {
-				pageSize, _ = strconv.Atoi(os.Args[i+1])
-				i++
-			}
-		}
-	}
-
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
-
-	identity := node.LoadOrCreateIdentity()
-	if cfg.Swarm.QueenURL == "" {
-		log.Fatalf("queen_url not configured in swarm settings")
-	}
-
-	cc := swarm.NewCreditClient(cfg.Swarm.QueenURL, identity)
-	list, err := cc.ListTransactions(page, pageSize, txnType)
-	if err != nil {
-		log.Fatalf("Failed to list transactions: %v", err)
-	}
-
-	if len(list.Transactions) == 0 {
-		fmt.Println("No transactions found.")
-		return
-	}
-
-	fmt.Printf("Transactions (page %d, total %d):\n", list.Page, list.Total)
-	fmt.Printf("%-12s %-10s %-16s %-16s %12s  %s\n", "TYPE", "STATUS", "FROM", "TO", "AMOUNT", "TIME")
-	fmt.Println(strings.Repeat("-", 90))
-
-	for _, txn := range list.Transactions {
-		from := truncate(txn.FromClaw, 16)
-		to := truncate(txn.ToClaw, 16)
-		stars := fmt.Sprintf("%.2f", float64(txn.Amount)/10000)
-		t := txn.CreatedAt.Format("01-02 15:04")
-		fmt.Printf("%-12s %-10s %-16s %-16s %10s \u2b50  %s\n", txn.Type, txn.Status, from, to, stars, t)
-	}
-}
-
-// cmdResetPassword resets the owner password.
-func cmdResetPassword() {
-	password := ""
-	for i, arg := range os.Args {
-		if arg == "--password" && i+1 < len(os.Args) {
-			password = os.Args[i+1]
-		}
-	}
-	if password == "" {
-		fmt.Println("Usage: starclaw reset-password --password <new-password>")
-		os.Exit(1)
-	}
-	if len(password) < 6 {
-		fmt.Println("Error: password must be at least 6 characters")
-		os.Exit(1)
-	}
-
-	cfg, err := openCLIDB()
-	if err != nil {
-		log.Fatal(err)
-	}
-	db, err := database.InitDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-
-	var user model.User
-	if err := db.Where("owner_token IS NOT NULL").First(&user).Error; err != nil {
-		log.Fatalf("No owner user found. Run initial setup first.")
-	}
-
-	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		log.Fatalf("Failed to hash password: %v", err)
-	}
-
-	if err := db.Model(&user).Update("password", string(hashed)).Error; err != nil {
-		log.Fatalf("Failed to update password: %v", err)
-	}
-
-	fmt.Println("========================================")
-	fmt.Printf("Owner: %s (id: %s)\n", user.Username, user.ID)
-	fmt.Println("Password has been reset successfully.")
-	fmt.Println("========================================")
+	agentpkg.GlobalManifests = manifests
+	agentpkg.SeedFromManifests(db, manifests, ownerID)
+	log.Printf("[discovery] Seeded %d manifest-based agents", len(manifests))
 }

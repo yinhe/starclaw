@@ -112,5 +112,8 @@ func (a *Agent) BeforeCreate(tx *gorm.DB) error {
 	if a.Config == "" {
 		a.Config = "{}"
 	}
+	if a.Gene == "" {
+		a.Gene = "{}"
+	}
 	return nil
 }

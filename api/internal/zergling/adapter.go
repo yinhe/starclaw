@@ -76,7 +76,7 @@ type RobotStatus struct {
 	BodyHeight  float64    `json:"body_height"`
 	GaitType    GaitType   `json:"gait_type"`
 	Battery     Battery    `json:"battery"`
-	FootForce   [4]float64 `json:"foot_force"`  // FR, FL, RR, RL
+	FootForce   [4]float64 `json:"foot_force"` // FR, FL, RR, RL
 	IMU         IMUData    `json:"imu"`
 	Obstacle    bool       `json:"obstacle_avoidance"`
 	Terrain     bool       `json:"terrain_adapt"`
@@ -96,19 +96,19 @@ type Euler struct {
 }
 
 type Battery struct {
-	SOC         int     `json:"soc"`          // 0-100%
+	SOC         int     `json:"soc"` // 0-100%
 	Voltage     float64 `json:"voltage"`
 	Current     float64 `json:"current"`
 	Temperature float64 `json:"temperature"`
 }
 
 type IMUData struct {
-	AccX  float64 `json:"acc_x"`
-	AccY  float64 `json:"acc_y"`
-	AccZ  float64 `json:"acc_z"`
-	GyroX float64 `json:"gyro_x"`
-	GyroY float64 `json:"gyro_y"`
-	GyroZ float64 `json:"gyro_z"`
+	AccX  float64    `json:"acc_x"`
+	AccY  float64    `json:"acc_y"`
+	AccZ  float64    `json:"acc_z"`
+	GyroX float64    `json:"gyro_x"`
+	GyroY float64    `json:"gyro_y"`
+	GyroZ float64    `json:"gyro_z"`
 	Quat  [4]float64 `json:"quaternion"` // w, x, y, z
 }
 
@@ -116,15 +116,15 @@ type IMUData struct {
 
 // SafetyConfig defines hard limits that cannot be overridden by agents
 type SafetyConfig struct {
-	MaxLinearSpeed  float64 `json:"max_linear_speed"`   // m/s
-	MaxAngularSpeed float64 `json:"max_angular_speed"`  // rad/s
-	MinBattery      int     `json:"min_battery"`        // % — force return below this
-	CriticalBattery int     `json:"critical_battery"`   // % — emergency stop
-	GeofenceRadius  float64 `json:"geofence_radius"`    // m from origin
+	MaxLinearSpeed  float64 `json:"max_linear_speed"`  // m/s
+	MaxAngularSpeed float64 `json:"max_angular_speed"` // rad/s
+	MinBattery      int     `json:"min_battery"`       // % — force return below this
+	CriticalBattery int     `json:"critical_battery"`  // % — emergency stop
+	GeofenceRadius  float64 `json:"geofence_radius"`   // m from origin
 	GeofenceEnabled bool    `json:"geofence_enabled"`
-	CliffThreshold  float64 `json:"cliff_threshold"`    // m — edge detection
-	MaxTiltAngle    float64 `json:"max_tilt_angle"`     // degrees — rollover protection
-	CollisionForce  float64 `json:"collision_force"`    // N — emergency stop threshold
+	CliffThreshold  float64 `json:"cliff_threshold"` // m — edge detection
+	MaxTiltAngle    float64 `json:"max_tilt_angle"`  // degrees — rollover protection
+	CollisionForce  float64 `json:"collision_force"` // N — emergency stop threshold
 }
 
 // DefaultSafetyConfig returns conservative safety defaults
@@ -145,7 +145,7 @@ func DefaultSafetyConfig() *SafetyConfig {
 // SafetyGuard enforces hard limits on all robot commands
 type SafetyGuard struct {
 	config     *SafetyConfig
-	origin     Vec3       // geofence center
+	origin     Vec3 // geofence center
 	violations []SafetyViolation
 	mu         sync.RWMutex
 }
@@ -264,10 +264,10 @@ func (sg *SafetyGuard) Violations(limit int) []SafetyViolation {
 
 // AdapterConfig holds connection settings
 type AdapterConfig struct {
-	BridgeURL    string         `json:"bridge_url"`    // Python DDS bridge URL
-	PollInterval time.Duration  `json:"poll_interval"` // status poll interval
-	Safety       *SafetyConfig  `json:"safety"`
-	Model        RobotModel     `json:"model"`
+	BridgeURL    string        `json:"bridge_url"`    // Python DDS bridge URL
+	PollInterval time.Duration `json:"poll_interval"` // status poll interval
+	Safety       *SafetyConfig `json:"safety"`
+	Model        RobotModel    `json:"model"`
 }
 
 // DefaultAdapterConfig returns development defaults
@@ -282,29 +282,29 @@ func DefaultAdapterConfig() *AdapterConfig {
 
 // Adapter bridges Claw to Unitree robots via the Python DDS bridge
 type Adapter struct {
-	mu          sync.RWMutex
-	config      *AdapterConfig
-	nodeID      string
-	safety      *SafetyGuard
-	status      *RobotStatus
-	connected   bool
-	httpClient  *http.Client
-	stopCh      chan struct{}
-	stats       AdapterStats
+	mu         sync.RWMutex
+	config     *AdapterConfig
+	nodeID     string
+	safety     *SafetyGuard
+	status     *RobotStatus
+	connected  bool
+	httpClient *http.Client
+	stopCh     chan struct{}
+	stats      AdapterStats
 }
 
 // AdapterStats tracks adapter metrics
 type AdapterStats struct {
-	CommandsSent    int            `json:"commands_sent"`
-	CommandsFailed  int            `json:"commands_failed"`
-	CommandsBlocked int            `json:"commands_blocked"` // by safety
-	StatusPolls     int            `json:"status_polls"`
-	PollErrors      int            `json:"poll_errors"`
-	SafetyEvents    int            `json:"safety_events"`
-	Connected       bool           `json:"connected"`
-	Uptime          string         `json:"uptime,omitempty"`
-	LastCommand     string         `json:"last_command,omitempty"`
-	LastCommandAt   time.Time      `json:"last_command_at,omitempty"`
+	CommandsSent    int       `json:"commands_sent"`
+	CommandsFailed  int       `json:"commands_failed"`
+	CommandsBlocked int       `json:"commands_blocked"` // by safety
+	StatusPolls     int       `json:"status_polls"`
+	PollErrors      int       `json:"poll_errors"`
+	SafetyEvents    int       `json:"safety_events"`
+	Connected       bool      `json:"connected"`
+	Uptime          string    `json:"uptime,omitempty"`
+	LastCommand     string    `json:"last_command,omitempty"`
+	LastCommandAt   time.Time `json:"last_command_at,omitempty"`
 }
 
 var (
@@ -343,29 +343,11 @@ func GetAdapter() *Adapter {
 
 // bridgeRequest sends a command to the Python DDS bridge
 func (a *Adapter) bridgeRequest(method, path string, body interface{}) (map[string]interface{}, error) {
-	var bodyReader io.Reader
 	if body != nil {
-		data, err := json.Marshal(body)
+		bodyBytes, err := json.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
-		bodyReader = io.NopCloser(
-			io.LimitReader(
-				func() io.Reader {
-					r, _ := io.Pipe()
-					go func() {
-						defer r.Close()
-					}()
-					return r
-				}(),
-				0,
-			),
-		)
-		// Use bytes.NewReader instead
-		bodyReader = nil
-		_ = data
-		// Simplified: marshal to bytes, create request
-		bodyBytes, _ := json.Marshal(body)
 		req, err := http.NewRequest(method, a.config.BridgeURL+path, jsonReader(bodyBytes))
 		if err != nil {
 			return nil, err
@@ -387,7 +369,6 @@ func (a *Adapter) bridgeRequest(method, path string, body interface{}) (map[stri
 	}
 
 	// GET request (no body)
-	_ = bodyReader
 	req, err := http.NewRequest(method, a.config.BridgeURL+path, nil)
 	if err != nil {
 		return nil, err

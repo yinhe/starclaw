@@ -70,6 +70,7 @@ func (c *Cerebrate) DistillFromArtifacts(artifacts []*broodmind.ReflectionArtifa
 		if skillKey == "" || skillContent == "" {
 			continue
 		}
+		room, anchor, path := defaultPalaceFields(trajectory.AgentID, model.MemCatSkill, skillKey, "", model.MemScopeAgent)
 
 		// Check if a similar skill already exists (dedup by key)
 		var existing model.Memory
@@ -87,6 +88,9 @@ func (c *Cerebrate) DistillFromArtifacts(artifacts []*broodmind.ReflectionArtifa
 				"content":      skillContent,
 				"importance":   newImportance,
 				"access_count": gorm.Expr("access_count + 1"),
+				"room":         room,
+				"anchor":       anchor,
+				"path":         path,
 			})
 			log.Printf("[distill] reinforced skill: %s (importance=%.2f)", skillKey, newImportance)
 			distilled++
@@ -125,6 +129,9 @@ func (c *Cerebrate) DistillFromArtifacts(artifacts []*broodmind.ReflectionArtifa
 			Category:   model.MemCatSkill,
 			Source:     "distill",
 			Scope:      model.MemScopeAgent,
+			Room:       room,
+			Anchor:     anchor,
+			Path:       path,
 			Importance: importance,
 		}
 		c.db.Create(&mem)

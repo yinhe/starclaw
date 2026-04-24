@@ -13,10 +13,12 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/sandbox"
@@ -27,12 +29,19 @@ import (
 //   - POST /v1/characters/generate-appearance  → AI 一键生成外观卡
 //   - POST /v1/cdn/upload                      → 上传参考图到 cdn.starclaw.net（env 配置 scp，未配置 fallback 到 /v1/uploads）
 type CharacterStudioHandler struct {
+	cfg       *config.Config
 	db        *gorm.DB
 	providers *provider.Registry
+
+	// Lazy ensure state for the owned TOS bucket. Guarded by ensureBucketMu;
+	// once ensureBucketOK flips to true we stop re-running HEAD/PUT on the bucket.
+	ensureBucketMu    sync.Mutex
+	ensureBucketOK    bool
+	ensureBucketLabel string
 }
 
-func NewCharacterStudioHandler(db *gorm.DB, providers *provider.Registry) *CharacterStudioHandler {
-	return &CharacterStudioHandler{db: db, providers: providers}
+func NewCharacterStudioHandler(cfg *config.Config, db *gorm.DB, providers *provider.Registry) *CharacterStudioHandler {
+	return &CharacterStudioHandler{cfg: cfg, db: db, providers: providers}
 }
 
 // ── Appearance Card AI 生成 ──────────────────────────────────────────
@@ -281,13 +290,131 @@ func (h *CharacterStudioHandler) CDNUpload(c *gin.Context) {
 	}
 	localURL := fmt.Sprintf("%s://%s/v1/uploads/%s", origin, host, storedName)
 	c.JSON(http.StatusOK, gin.H{
-		"target":        "local",
-		"url":           localURL,
-		"relative_url":  "/v1/uploads/" + storedName,
-		"size":          len(data),
-		"mime":          header.Header.Get("Content-Type"),
+		"target":         "local",
+		"url":            localURL,
+		"relative_url":   "/v1/uploads/" + storedName,
+		"size":           len(data),
+		"mime":           header.Header.Get("Content-Type"),
 		"cdn_configured": false,
-		"note":          "CDN env not configured; returned local stable URL. Configure CDN_SSH_HOST/USER/KEY_PATH/REMOTE_ROOT/PUBLIC_BASE/CLAW_ID to enable cdn.starclaw.net upload.",
+		"note":           "CDN env not configured; returned local stable URL. Configure CDN_SSH_HOST/USER/KEY_PATH/REMOTE_ROOT/PUBLIC_BASE/CLAW_ID to enable cdn.starclaw.net upload.",
+	})
+}
+
+// ── CDN Upload From Local URL ─────────────────────────────────────
+//
+// POST /v1/cdn/upload-from-local
+//
+//	body: { image_url, drama, asset_type, filename? }
+//	resp: same shape as /cdn/upload
+//
+// Why this exists:
+//   The Workflow NodePropertyPanel stores images as string URLs (e.g.
+//   "/v1/projects/swarm-universe/entities/characters/lin_jianyue/sheets/unified_sheet_v6.png"
+//   or a generated /v1/uploads/<id>.png). The multipart /cdn/upload endpoint
+//   is useless there — we already have the bytes on the server. This endpoint
+//   takes that string, reads bytes via loadImageBytes (same helper used by
+//   tos_launder), and pushes to CDN with the identical scp flow.
+
+type uploadFromLocalReq struct {
+	ImageURL  string `json:"image_url" binding:"required"`
+	Drama     string `json:"drama"`
+	AssetType string `json:"asset_type"`
+	Filename  string `json:"filename"`
+}
+
+// UploadFromLocal reads an image by URL (http OR /v1/projects|/v1/uploads|/v1/images)
+// and pushes it to cdn.starclaw.net via scp. Mirrors CDNUpload's response.
+func (h *CharacterStudioHandler) UploadFromLocal(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req uploadFromLocalReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body", "detail": err.Error()})
+		return
+	}
+	raw := strings.TrimSpace(req.ImageURL)
+	if raw == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image_url is required"})
+		return
+	}
+
+	data, mime, srcLabel, err := loadImageBytes(raw)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(data) > maxUploadSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("image too large, max %dMB", maxUploadSize/(1024*1024))})
+		return
+	}
+
+	drama := strings.TrimSpace(req.Drama)
+	assetType := strings.TrimSpace(req.AssetType)
+	filename := strings.TrimSpace(req.Filename)
+	if drama == "" {
+		drama = "default"
+	}
+	if assetType == "" {
+		assetType = "misc"
+	}
+	drama = sanitizeFilenamePath(drama)
+	assetType = sanitizeFilenamePath(assetType)
+
+	// Infer extension from source URL / mime if caller didn't specify.
+	ext := strings.ToLower(filepath.Ext(raw))
+	if ext == "" || len(ext) > 6 {
+		ext = ".png"
+		if strings.HasPrefix(mime, "image/jpeg") {
+			ext = ".jpg"
+		} else if strings.HasPrefix(mime, "image/webp") {
+			ext = ".webp"
+		}
+	}
+	if filename == "" {
+		// Prefer the basename of the source so users recognize it in the CDN.
+		base := filepath.Base(raw)
+		base = strings.Split(base, "?")[0]
+		base = strings.Split(base, "#")[0]
+		if base == "" || base == "/" || base == "." {
+			filename = uuid.New().String() + ext
+		} else {
+			filename = sanitizeFilenamePath(base)
+			if filepath.Ext(filename) == "" {
+				filename += ext
+			}
+		}
+	} else {
+		filename = sanitizeFilenamePath(filename)
+		if filepath.Ext(filename) == "" {
+			filename += ext
+		}
+	}
+
+	cfg, ok := loadCDNConfig()
+	if !ok {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "CDN_SSH_HOST/USER/KEY_PATH/REMOTE_ROOT/PUBLIC_BASE/CLAW_ID 没配全；当前容器没法推 CDN",
+			"hint":  "把图先挂到本地 /v1/uploads/ 也能喂 Seedance；或把 6 个环境变量配好再点",
+		})
+		return
+	}
+	remotePath := path.Join(cfg.RemoteRoot, cfg.ClawID, drama, assetType, filename)
+	publicURL := strings.TrimRight(cfg.PublicBase, "/") + "/" + path.Join(cfg.ClawID, drama, assetType, filename)
+	if err := scpUploadBytes(cfg, data, remotePath); err != nil {
+		log.Printf("[cdn_upload_from_local] scp failed src=%s remote=%s: %v", srcLabel, remotePath, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "scp to CDN failed", "detail": err.Error(), "remote_path": remotePath})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"target":      "cdn",
+		"url":         publicURL,
+		"remote_path": remotePath,
+		"size":        len(data),
+		"mime":        mime,
+		"source":      srcLabel,
 	})
 }
 

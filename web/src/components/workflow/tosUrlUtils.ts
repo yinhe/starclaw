@@ -101,7 +101,7 @@ function formatDuration(sec: number): string {
 
 export interface RefreshResult {
   tosUrl: string
-  source: 'resign' | 'launder'
+  source: 'resign' | 'promote' | 'launder'
   expiresSec?: number
 }
 
@@ -127,15 +127,33 @@ export async function refreshTOS(oldTOSUrl: string, fallbackSource: string): Pro
       // Typical reasons: 501 env not set, 502 HEAD denied, 400 malformed.
       const err = e as { response?: { status?: number; data?: { error?: string } } }
       console.info(
-        `[refreshTOS] resign failed (HTTP ${err.response?.status ?? '?'}: ${err.response?.data?.error ?? 'unknown'}), falling back to launder`,
+        `[refreshTOS] resign failed (HTTP ${err.response?.status ?? '?'}: ${err.response?.data?.error ?? 'unknown'}), falling back to promote`,
       )
     }
   }
-  // Path B: full re-launder via Seedream
-  if (!fallbackSource) {
-    throw new Error('No fallback source for laundering (need local or CDN URL)')
+  const promoteSource = fallbackSource || oldTOSUrl
+  if (promoteSource) {
+    try {
+      const { data } = await cdnAPI.promoteTOS(promoteSource, {
+        class: 'derived',
+        asset_kind: 'character_sheet',
+        variant: 'workflow',
+      })
+      if (data.tos_url) {
+        return { tosUrl: data.tos_url, source: 'promote', expiresSec: data.expires_sec }
+      }
+    } catch (e) {
+      const err = e as { response?: { status?: number; data?: { error?: string } } }
+      console.info(
+        `[refreshTOS] promote failed (HTTP ${err.response?.status ?? '?'}: ${err.response?.data?.error ?? 'unknown'}), falling back to launder`,
+      )
+    }
   }
-  const { data } = await cdnAPI.launderTOS(fallbackSource)
+  const launderSource = fallbackSource || oldTOSUrl
+  if (!launderSource) {
+    throw new Error('No source for laundering (need local/CDN URL or a still-valid TOS URL)')
+  }
+  const { data } = await cdnAPI.launderTOS(launderSource)
   if (!data.tos_url) throw new Error('Launder returned empty tos_url')
   return { tosUrl: data.tos_url, source: 'launder' }
 }

@@ -15,7 +15,7 @@ type VideoRecord struct {
 	Model            string         `json:"model" gorm:"type:varchar(100)"`
 	Prompt           string         `json:"prompt" gorm:"type:text"`
 	VideoURL         string         `json:"video_url" gorm:"type:varchar(1000)"`
-	ImgURL           string         `json:"img_url" gorm:"type:varchar(1000)"`
+	ImgURL           string         `json:"img_url" gorm:"type:varchar(4000)"`
 	Size             string         `json:"size" gorm:"type:varchar(20)"`
 	Duration         int            `json:"duration" gorm:"default:5"`
 	Scene            string         `json:"scene" gorm:"type:varchar(50)"`

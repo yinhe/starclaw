@@ -531,16 +531,25 @@ func (h *OverlordInternalHandler) ListModels(c *gin.Context) {
 // Returns all available skills/tools from the ToolRegistry and installed plugins.
 func (h *OverlordInternalHandler) ListSkills(c *gin.Context) {
 	type SkillInfo struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Type        string `json:"type"`   // builtin, plugin, mcp
-		Status      string `json:"status"` // active
+		Name             string   `json:"name"`
+		Description      string   `json:"description"`
+		Type             string   `json:"type"`   // builtin, plugin, mcp
+		Status           string   `json:"status"` // active
+		Category         string   `json:"category"`
+		CategoryLabel    string   `json:"category_label"`
+		Subcategory      string   `json:"subcategory,omitempty"`
+		SubcategoryLabel string   `json:"subcategory_label,omitempty"`
+		Industry         string   `json:"industry"`
+		Tags             []string `json:"tags,omitempty"`
 	}
 
 	builtinNames := map[string]bool{
 		"system": true, "code": true, "web_search": true, "http_request": true,
-		"browser": true, "video_generation": true, "deploy_web": true,
-		"bind_domain": true, "verify_online": true,
+		"browser": true, "video_generation": true, "image_generation": true,
+		"music_generation": true, "audio_analysis": true, "mv_production": true,
+		"dubbing": true, "comic_production": true, "document": true,
+		"desktop": true, "deploy_web": true, "bind_domain": true,
+		"verify_online": true,
 	}
 
 	var skills []SkillInfo
@@ -553,17 +562,24 @@ func (h *OverlordInternalHandler) ListSkills(c *gin.Context) {
 			}
 			typ := "builtin"
 			if !builtinNames[name] {
-				if strings.HasPrefix(name, "mcp_") {
+				if catalog := tool.DescribeCapability(name, "plugin", tool.MetadataFor(t)); catalog.Subcategory == "mcp" {
 					typ = "mcp"
 				} else {
 					typ = "plugin"
 				}
 			}
+			catalog := tool.DescribeCapability(name, typ, tool.MetadataFor(t))
 			skills = append(skills, SkillInfo{
-				Name:        name,
-				Description: t.Description(),
-				Type:        typ,
-				Status:      "active",
+				Name:             name,
+				Description:      t.Description(),
+				Type:             typ,
+				Status:           "active",
+				Category:         catalog.Category,
+				CategoryLabel:    catalog.CategoryLabel,
+				Subcategory:      catalog.Subcategory,
+				SubcategoryLabel: catalog.SubcategoryLabel,
+				Industry:         catalog.Industry,
+				Tags:             catalog.Tags,
 			})
 		}
 	}

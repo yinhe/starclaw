@@ -126,6 +126,10 @@ func (h *ModelHandler) List(c *gin.Context) {
 		}
 	}
 
+	for i := range models {
+		models[i].HasKey = models[i].APIKey != ""
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"models":    models,
 		"providers": h.registry.List(),

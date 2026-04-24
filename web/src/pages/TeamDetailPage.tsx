@@ -1,143 +1,88 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bot, CheckCircle2, GitBranch, Rocket, ShieldCheck } from 'lucide-react'
-import { agentAPI, taskAPI, teamAPI } from '../lib/api'
+import { ArrowLeft, Crown, Users, Loader2, GitBranch, FolderSync, RefreshCw, ChevronRight, MessageSquare } from 'lucide-react'
+import { teamAPI, workflowAPI } from '../lib/api'
+import { formatAgentDisplayName } from '../lib/agentDisplay'
 
-interface TeamMember {
-  role: string
-  agentName: string
-  responsibility: string
-}
-
-interface AgentLite {
-  id: string
-  name: string
-  description: string
-}
-
-const TEAM_DATA: Record<string, { name: string; description: string; members: TeamMember[]; flow: string[] }> = {
-  'team-devops-rnd': {
-    name: '研发DevOps团队',
-    description: '面向软件全生命周期交付：需求拆解、研发实现、测试验收、部署上线、监控回滚。',
-    members: [
-      { role: 'PM', agentName: '产品经理Agent', responsibility: '需求澄清、任务拆解、验收标准定义' },
-      { role: 'Frontend', agentName: '前端研发Agent', responsibility: 'UI实现、交互细节、页面性能优化' },
-      { role: 'Backend', agentName: '后端研发Agent', responsibility: 'API设计、业务逻辑、数据模型落地' },
-      { role: 'QA', agentName: '测试Agent', responsibility: '测试用例、回归验证、风险检查' },
-      { role: 'DevOps', agentName: '运维部署Agent', responsibility: '构建发布、域名绑定、线上验证与回滚' },
-    ],
-    flow: [
-      '需求澄清与任务拆分',
-      '前后端并行开发',
-      '联调 + 测试回归',
-      '生产部署（需审批）',
-      '域名绑定（需审批）',
-      '上线巡检与交付报告',
-    ],
-  },
-}
+interface Agent { id: string; name: string; description: string }
+interface Member { id: string; team_id: string; agent_id: string; role: string; specialty: string; order: number; agent?: Agent }
+interface Team { id: string; name: string; description: string; icon: string; coordinator_id: string; topology: string; status: string; template_id: string; members: Member[]; created_at: string }
+interface Workflow { id: string; name: string; agent_id: string; created_at: string; updated_at: string }
 
 export default function TeamDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const [backendAgents, setBackendAgents] = useState<AgentLite[]>([])
-  const [orchestratorFromBackend, setOrchestratorFromBackend] = useState<AgentLite | null>(null)
-  const [taskGoal, setTaskGoal] = useState('请研发DevOps团队从需求到上线完成官网交付，发布前和 DNS 变更前都需要审批确认。')
-  const [submitting, setSubmitting] = useState(false)
-  const [taskStatus, setTaskStatus] = useState('')
-
-  const team = useMemo(() => {
-    if (!id) return null
-    return TEAM_DATA[id] || null
-  }, [id])
-
-  useEffect(() => {
-    const loadAgents = async () => {
-      try {
-        const res = await agentAPI.list()
-        setBackendAgents(res.data.agents || [])
-      } catch {
-        setBackendAgents([])
-      }
-    }
-    loadAgents()
-  }, [])
+  const [team, setTeam] = useState<Team | null>(null)
+  const [workflows, setWorkflows] = useState<Workflow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  // Sync project
+  const [showSyncModal, setShowSyncModal] = useState(false)
+  const [projects, setProjects] = useState<{ name: string; has_bible: boolean; has_drama: boolean }[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [syncStats, setSyncStats] = useState<Record<string, number> | null>(null)
 
   useEffect(() => {
-    if (!id) return
-    const loadOrchestrator = async () => {
-      try {
-        const res = await teamAPI.get(id)
-        const team = res.data?.team
-        if (team?.coordinator_id) {
-          const coordMember = team.members?.find((m: any) => m.role === 'coordinator')
-          setOrchestratorFromBackend(coordMember?.agent || null)
-        } else {
-          setOrchestratorFromBackend(null)
-        }
-      } catch {
-        setOrchestratorFromBackend(null)
-      }
-    }
-    loadOrchestrator()
+    if (id) load()
   }, [id])
 
-  const resolveAgentName = (fallbackName: string) => {
-    const exact = backendAgents.find((a) => a.name === fallbackName)
-    if (exact) return exact.name
-
-    const keyword = fallbackName.replace('Agent', '').replace('团队', '').trim().toLowerCase()
-    const fuzzy = backendAgents.find((a) => a.name.toLowerCase().includes(keyword))
-    return fuzzy?.name || `${fallbackName}（待创建）`
-  }
-
-  const resolveTeamOrchestratorAgent = () => {
-    if (orchestratorFromBackend) return orchestratorFromBackend
-
-    const preferredKeywords = ['全能助手', '编程Agent', '研发', 'devops', 'orchestrator']
-    for (const keyword of preferredKeywords) {
-      const hit = backendAgents.find((a) => a.name.toLowerCase().includes(keyword.toLowerCase()))
-      if (hit) return hit
-    }
-    return backendAgents[0] || null
-  }
-
-  const createTeamTask = async () => {
-    if (!taskGoal.trim()) return
-    setSubmitting(true)
-    setTaskStatus('')
-    const orchestrator = resolveTeamOrchestratorAgent()
-    if (!orchestrator) {
-      setTaskStatus('未找到可用编排代理，请先创建“全能助手”或“编程Agent”。')
-      setSubmitting(false)
-      return
-    }
+  const load = async () => {
+    setLoading(true)
+    setError('')
     try {
-      await taskAPI.create({
-        title: `${team?.name || '团队'}协作任务`,
-        goal: taskGoal.trim(),
-        agent_id: orchestrator.id,
-        priority: 'high',
-      })
-      setTaskStatus(`团队任务已创建，执行代理：${orchestrator.name}。可到「自主任务」查看进度。`)
+      const [tRes, wRes] = await Promise.all([
+        teamAPI.get(id!),
+        workflowAPI.list(),
+      ])
+      const t = tRes.data?.team
+      if (!t) { setError('团队不存在'); setLoading(false); return }
+      setTeam(t)
+      // Filter workflows belonging to any member of this team
+      const memberIds = new Set((t.members || []).map((m: Member) => m.agent_id))
+      const allWf = wRes.data?.workflows || []
+      setWorkflows(allWf.filter((w: Workflow) => memberIds.has(w.agent_id)))
     } catch {
-      setTaskStatus('创建任务失败，请检查登录状态或稍后重试。')
-    } finally {
-      setSubmitting(false)
+      setError('加载失败')
     }
+    setLoading(false)
   }
 
-  if (!team) {
+  const loadProjects = async () => {
+    try {
+      const res = await workflowAPI.listProjects()
+      setProjects(res.data.projects || [])
+    } catch { /* */ }
+  }
+
+  const handleSyncProject = async (projectName: string) => {
+    setSyncing(true)
+    setSyncStats(null)
+    try {
+      const res = await workflowAPI.syncProject({ project_name: projectName, agent_id: team?.coordinator_id })
+      setSyncStats(res.data.stats)
+      load() // reload workflows
+      if (res.data.workflow?.id) {
+        setTimeout(() => {
+          setShowSyncModal(false)
+          navigate(`/workflows/editor?id=${res.data.workflow.id}`)
+        }, 1500)
+      }
+    } catch { alert('同步失败') }
+    setSyncing(false)
+  }
+
+  const isDramaTeam = team && (team.name.includes('短剧') || team.name.includes('影视') || ['short-drama', 'video'].includes(team.template_id || ''))
+
+  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+
+  if (error || !team) {
     return (
       <div className="h-full overflow-y-auto">
         <div className="max-w-5xl mx-auto p-8">
-          <button
-            onClick={() => navigate('/agents')}
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" /> 返回 Agents
+          <button onClick={() => navigate('/teams')} className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
+            <ArrowLeft className="w-4 h-4" /> 返回团队
           </button>
-          <div className="bg-white border rounded-xl p-8 text-center text-gray-500">团队不存在</div>
+          <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-8 text-center text-gray-500">{error || '团队不存在'}</div>
         </div>
       </div>
     )
@@ -146,110 +91,140 @@ export default function TeamDetailPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto p-8 space-y-6">
-        <button
-          onClick={() => navigate('/agents')}
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-        >
-          <ArrowLeft className="w-4 h-4" /> 返回 Agents
+        {/* Header */}
+        <button onClick={() => navigate('/teams')} className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+          <ArrowLeft className="w-4 h-4" /> 返回团队
         </button>
 
-        <div className="bg-white border rounded-xl p-6">
+        <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{team.name}</h1>
-              <p className="text-gray-600 mt-2">{team.description}</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{team.name}</h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-2">{team.description}</p>
               <div className="flex items-center gap-2 mt-3">
-                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded-full">官方</span>
-                <span className="px-2 py-0.5 bg-purple-50 text-purple-600 text-xs rounded-full">团队代理</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full ${team.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500'}`}>
+                  {team.status === 'active' ? '运行中' : '已暂停'}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                  {team.topology === 'sequential' ? '顺序执行' : team.topology === 'parallel' ? '并行执行' : team.topology}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  {team.members?.length || 0} 成员
+                </span>
               </div>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-              <Bot className="w-6 h-6 text-purple-600" />
+            <div className="flex items-center gap-2">
+              <a href={`/chat?team=${team.id}`}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                <MessageSquare className="w-4 h-4" /> 团队对话
+              </a>
+              {isDramaTeam && (
+                <button onClick={() => { setShowSyncModal(true); loadProjects() }}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">
+                  <FolderSync className="w-4 h-4" /> 同步剧本项目
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <section className="bg-white border rounded-xl p-6">
-            <h2 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" /> 团队成员角色
-            </h2>
-            <div className="space-y-3">
-              {team.members.map((member) => (
-                <div key={member.role} className="border rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{member.role}</span>
-                    <span className="text-sm font-medium text-gray-900">{resolveAgentName(member.agentName)}</span>
+        {/* Members */}
+        <section className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Users className="w-4 h-4 text-violet-600" /> 团队成员 ({team.members?.length || 0})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {(team.members || []).map(m => (
+              <div key={m.id}
+                onClick={() => navigate(`/agents/${m.agent_id}`)}
+                className="border dark:border-gray-700 rounded-xl p-4 cursor-pointer hover:border-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-all group">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${m.role === 'coordinator' ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-gray-100 dark:bg-gray-700'}`}>
+                    {m.role === 'coordinator' ? <Crown className="w-5 h-5 text-amber-600" /> : <Users className="w-5 h-5 text-gray-500" />}
                   </div>
-                  <p className="text-sm text-gray-600 mt-2">{member.responsibility}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 dark:text-white text-sm truncate group-hover:text-primary-600">
+                      {formatAgentDisplayName(m.agent?.name || '未知')}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">{m.specialty || (m.role === 'coordinator' ? '团长' : '成员')}</div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-primary-500" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Workflows */}
+        <section className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-cyan-600" /> 团队工作流 ({workflows.length})
+          </h2>
+          {workflows.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              {isDramaTeam ? '还没有工作流，点击上方「同步剧本项目」自动生成' : '暂无工作流'}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {workflows.map(wf => (
+                <div key={wf.id}
+                  onClick={() => navigate(`/workflows/editor?id=${wf.id}`)}
+                  className="flex items-center justify-between p-4 border dark:border-gray-700 rounded-xl cursor-pointer hover:border-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-900/10 transition-all group">
+                  <div className="flex items-center gap-3">
+                    <GitBranch className="w-5 h-5 text-cyan-500" />
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white text-sm group-hover:text-cyan-600">{wf.name}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">更新于 {new Date(wf.updated_at).toLocaleString('zh-CN')}</div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-cyan-500" />
                 </div>
               ))}
             </div>
-          </section>
-
-          <section className="bg-white border rounded-xl p-6">
-            <h2 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <GitBranch className="w-4 h-4 text-primary-600" /> 协作流程
-            </h2>
-            <ol className="space-y-3">
-              {team.flow.map((step, idx) => (
-                <li key={step} className="flex items-start gap-3 text-sm text-gray-700">
-                  <span className="mt-0.5 inline-flex w-5 h-5 items-center justify-center rounded-full bg-primary-100 text-primary-700 text-xs font-semibold">
-                    {idx + 1}
-                  </span>
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </div>
-
-        <section className="bg-white border rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Rocket className="w-4 h-4 text-orange-600" /> 快速测试建议
-          </h2>
-          <div className="text-sm text-gray-700 space-y-2">
-            <p>1. 在对话中输入："请研发DevOps团队从需求到上线完成一个官网交付"</p>
-            <p>2. 观察任务拆分是否包含：研发、测试、部署、验证</p>
-            <p>3. 在发布前和 DNS 变更前，确认是否触发审批提示</p>
-            <p className="inline-flex items-center gap-1 text-emerald-700">
-              <CheckCircle2 className="w-4 h-4" /> 通过后即可作为团队模板复用
-            </p>
-          </div>
-        </section>
-
-        <section className="bg-white border rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-3">创建团队任务</h2>
-          <p className="text-sm text-gray-600 mb-2">
-            当前编排代理：{resolveTeamOrchestratorAgent()?.name || '未匹配'}
-          </p>
-          <p className="text-sm text-gray-600 mb-3">
-            当前已连接后端代理：{backendAgents.length} 个。点击下方按钮会创建一个高优先级团队协作任务。
-          </p>
-          <textarea
-            value={taskGoal}
-            onChange={(e) => setTaskGoal(e.target.value)}
-            rows={4}
-            className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <button
-              onClick={createTeamTask}
-              disabled={submitting || !taskGoal.trim()}
-              className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-            >
-              {submitting ? '创建中...' : '创建团队任务'}
-            </button>
-            <button
-              onClick={() => navigate('/tasks')}
-              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              查看任务列表
-            </button>
-          </div>
-          {taskStatus && <p className="mt-3 text-sm text-gray-600">{taskStatus}</p>}
+          )}
         </section>
       </div>
+
+      {/* Sync Project Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowSyncModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-[420px] max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b dark:border-gray-700">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">同步剧本项目</h2>
+              <p className="text-sm text-gray-500 mt-1">扫描项目目录，自动生成生产看板工作流</p>
+            </div>
+            <div className="p-6 space-y-3">
+              {projects.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin opacity-50" />
+                  <p className="text-sm">扫描项目目录中...</p>
+                </div>
+              ) : (
+                projects.map(p => (
+                  <button key={p.name}
+                    onClick={() => handleSyncProject(p.name)}
+                    disabled={syncing}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border dark:border-gray-700 hover:border-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors disabled:opacity-50">
+                    <div className="text-left">
+                      <div className="font-semibold text-gray-900 dark:text-gray-100">{p.name}</div>
+                      <div className="text-xs text-gray-500 mt-0.5 flex gap-2">
+                        {p.has_bible && <span className="text-violet-500">bible.md</span>}
+                        {p.has_drama && <span className="text-cyan-500">drama/</span>}
+                      </div>
+                    </div>
+                    {syncing ? <Loader2 className="w-5 h-5 text-violet-500 animate-spin" /> : <FolderSync className="w-5 h-5 text-gray-400" />}
+                  </button>
+                ))
+              )}
+              {syncStats && (
+                <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-sm text-green-700 dark:text-green-300">
+                  ✓ 同步完成：{syncStats.characters} 角色 · {syncStats.episodes} 剧集 · {syncStats.images} 张图 · {syncStats.clips} 片段
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

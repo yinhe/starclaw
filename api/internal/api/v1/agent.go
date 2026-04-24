@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/security"
 	"gorm.io/gorm"
 )
 
@@ -159,6 +160,11 @@ func (h *AgentHandler) Create(c *gin.Context) {
 
 	// Auto-create swarm unit (虫群成员) for this agent
 	CreateSwarmUnitFromAgent(h.db, userID, agent)
+
+	// Auto-set trust level: user-created agents get TrustBasic (can use standard + read_only tools)
+	if guard := security.GetGuard(); guard != nil {
+		guard.TrustRegistry.SetLevel(agent.ID, security.TrustBasic)
+	}
 
 	// Stardust reward for creating a new agent
 	go NewStardustEngine(h.db).RewardAgentCreated(userID)

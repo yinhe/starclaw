@@ -35,6 +35,7 @@ export default function VideosPage() {
   const addToast = useToastStore(s => s.addToast)
   const [videos, setVideos] = useState<VideoRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [playingId, setPlayingId] = useState<string | null>(null)
   const [expandedMerge, setExpandedMerge] = useState<string | null>(null)
   const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null)
@@ -60,13 +61,20 @@ export default function VideosPage() {
     return () => clearInterval(timer)
   }, [videos])
 
-  const loadVideos = async () => {
+  const loadVideos = async (retry = true) => {
     setLoading(true)
+    setLoadError(false)
     try {
       const res = await videoAPI.list()
       setVideos(res.data.videos || [])
     } catch (e) {
       console.error('Failed to load videos', e)
+      if (retry) {
+        // Auto-retry once after a short delay
+        await new Promise(r => setTimeout(r, 1500))
+        return loadVideos(false)
+      }
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -207,7 +215,8 @@ export default function VideosPage() {
   const renderVideoPreview = (video: VideoRecord, small = false) => {
     const isPlaying = playingId === video.id
     const aspectClass = small ? 'aspect-video' : 'aspect-video'
-    const thumbStyle = video.img_url ? { backgroundImage: `url(${video.img_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}
+    const posterUrl = (video.img_url || '').split(',').map(s => s.trim()).find(Boolean) || ''
+    const thumbStyle = posterUrl ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}
     return (
       <div className={`relative ${aspectClass} bg-gray-900 flex items-center justify-center`} style={!isPlaying ? thumbStyle : {}}>
         {video.status === 'succeeded' && video.video_url ? (
@@ -329,7 +338,7 @@ export default function VideosPage() {
           <div className="ml-auto flex items-center gap-3 pb-1">
             {runningCount > 0 && <span className="text-xs text-blue-500"><Loader2 className="w-3 h-3 inline animate-spin mr-0.5" />{runningCount} 生成中</span>}
             {failedCount > 0 && <span className="text-xs text-red-500">{failedCount} 失败</span>}
-            <button onClick={loadVideos} className="text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400">刷新</button>
+            <button onClick={() => loadVideos()} className="text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400">刷新</button>
           </div>
         </div>
 
@@ -337,6 +346,14 @@ export default function VideosPage() {
           <div className="text-center py-20 text-gray-400">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
             加载中...
+          </div>
+        ) : loadError && videos.length === 0 ? (
+          <div className="text-center py-20">
+            <XCircle className="w-12 h-12 text-red-300 dark:text-red-600 mx-auto mb-3" />
+            <p className="text-gray-400 dark:text-gray-500 text-sm">加载失败，请检查网络连接</p>
+            <button onClick={() => loadVideos()} className="mt-3 px-4 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 dark:text-violet-400 dark:bg-violet-900/30 dark:hover:bg-violet-900/50 rounded-lg transition-colors">
+              <RefreshCw className="w-4 h-4 inline mr-1 -mt-0.5" />重试
+            </button>
           </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20">

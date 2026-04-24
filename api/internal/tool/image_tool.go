@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -61,6 +62,8 @@ func (t *ImageTool) Description() string {
 - flux-2-gallery-realism / flux-2-gallery-comic / flux-2-gallery-sketch
 - flux-2-gallery-vintage / flux-2-gallery-hdr / flux-2-gallery-satellite
 - flux-2-gallery-tryon / flux-2-gallery-background / flux-2-gallery-portrait / flux-2-gallery-angles / flux-2-gallery-staging
+- nano-banana-2：Nano Banana 2
+- nano-banana-2/edit：Nano Banana 2 编辑
 
 操作：generate_image（生成单张图片）、batch_generate（批量生成多张图片，一次提交所有分镜）、check_status（检查状态）、list_images（列出已生成图片）。
 漫剧制作：用一致的 style 和 prompt 风格前缀保持角色和画面一致性。用 scene 字段标注分镜序号。`
@@ -73,7 +76,8 @@ func (t *ImageTool) Parameters() interface{} {
 			"action":          {Type: "string", Description: "Action: generate_image, batch_generate, check_status, list_images"},
 			"prompt":          {Type: "string", Description: "Image description. Be detailed: subject, action, composition, lighting, art style. For comics: include 'comic book style' or 'manga style' etc."},
 			"negative_prompt": {Type: "string", Description: "What to avoid. Example: 'blurry, low quality, text, watermark, deformed'"},
-			"model":           {Type: "string", Description: "Model: flux-schnell (default), flux-dev, flux-pro, flux-realism, stable-diffusion-v35-large, flux-2 (recommended), flux-2-pro, flux-2-max, flux-2-flex, flux-2-turbo, flux-2-flash, flux-2-edit, flux-2-pro-edit, flux-2-max-edit, flux-2-flex-edit, flux-2-turbo-edit, flux-2-flash-edit, flux-2-lora, flux-2-lora-edit, flux-2-klein-4b, flux-2-klein-9b, flux-2-klein-realtime, flux-2-gallery-realism, flux-2-gallery-comic, flux-2-gallery-sketch, flux-2-gallery-vintage, flux-2-gallery-hdr, flux-2-gallery-satellite, flux-2-gallery-tryon, flux-2-gallery-background, flux-2-gallery-portrait, flux-2-gallery-angles, flux-2-gallery-staging"},
+			"model":           {Type: "string", Description: "Model: flux-schnell (default), flux-dev, flux-pro, flux-realism, stable-diffusion-v35-large, nano-banana-2, nano-banana-2/edit, flux-2 (recommended), flux-2-pro, flux-2-max, flux-2-flex, flux-2-turbo, flux-2-flash, flux-2-edit, flux-2-pro-edit, flux-2-max-edit, flux-2-flex-edit, flux-2-turbo-edit, flux-2-flash-edit, flux-2-lora, flux-2-lora-edit, flux-2-klein-4b, flux-2-klein-9b, flux-2-klein-realtime, flux-2-gallery-realism, flux-2-gallery-comic, flux-2-gallery-sketch, flux-2-gallery-vintage, flux-2-gallery-hdr, flux-2-gallery-satellite, flux-2-gallery-tryon, flux-2-gallery-background, flux-2-gallery-portrait, flux-2-gallery-angles, flux-2-gallery-staging"},
+			"image_url":       {Type: "string", Description: "Reference image URL. Required for edit models such as flux-2-pro-edit. For batch_generate this acts as the shared reference image unless overridden per prompt entry."},
 			"size":            {Type: "string", Description: "Image size: square_hd (1024x1024, default), portrait_4_3 (768x1024), portrait_16_9 (576x1024), landscape_4_3 (1024x768), landscape_16_9 (1024x576). Or WxH like 720x1280."},
 			"style":           {Type: "string", Description: "Style tag stored with record. Example: 'comic', 'manga', 'realistic', 'anime', 'watercolor'"},
 			"scene":           {Type: "string", Description: "Panel/scene label for ordering (e.g. 'panel_1', 'panel_2'). Used by compose_comic."},
@@ -90,12 +94,173 @@ type imageArgs struct {
 	Prompt         string `json:"prompt"`
 	NegativePrompt string `json:"negative_prompt"`
 	Model          string `json:"model"`
+	ImageURL       string `json:"image_url"`
 	Size           string `json:"size"`
 	Style          string `json:"style"`
 	Scene          string `json:"scene"`
 	N              string `json:"n"`
 	TaskID         string `json:"task_id"`
 	Prompts        string `json:"prompts"`
+}
+
+func isEditModel(model string) bool {
+	return strings.Contains(strings.ToLower(model), "edit")
+}
+
+func isNanoBananaModel(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "nano-banana-2", "nano-banana-2/edit":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseImageURLList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if strings.HasPrefix(raw, "[") {
+		var urls []string
+		if err := json.Unmarshal([]byte(raw), &urls); err == nil {
+			var cleaned []string
+			for _, u := range urls {
+				u = strings.TrimSpace(u)
+				if u != "" {
+					cleaned = append(cleaned, u)
+				}
+			}
+			if len(cleaned) > 0 {
+				return cleaned
+			}
+		}
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == '\t'
+	})
+	var urls []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			urls = append(urls, part)
+		}
+	}
+	if len(urls) == 0 && raw != "" {
+		return []string{raw}
+	}
+	return urls
+}
+
+func chooseClosestAspectRatio(width, height int) string {
+	if width <= 0 || height <= 0 {
+		return "1:1"
+	}
+	target := float64(width) / float64(height)
+	candidates := []struct {
+		label string
+		ratio float64
+	}{
+		{label: "21:9", ratio: 21.0 / 9.0},
+		{label: "16:9", ratio: 16.0 / 9.0},
+		{label: "3:2", ratio: 3.0 / 2.0},
+		{label: "4:3", ratio: 4.0 / 3.0},
+		{label: "5:4", ratio: 5.0 / 4.0},
+		{label: "1:1", ratio: 1.0},
+		{label: "4:5", ratio: 4.0 / 5.0},
+		{label: "3:4", ratio: 3.0 / 4.0},
+		{label: "2:3", ratio: 2.0 / 3.0},
+		{label: "9:16", ratio: 9.0 / 16.0},
+		{label: "4:1", ratio: 4.0},
+		{label: "1:4", ratio: 1.0 / 4.0},
+		{label: "8:1", ratio: 8.0},
+		{label: "1:8", ratio: 1.0 / 8.0},
+	}
+	best := candidates[0].label
+	bestDiff := math.Abs(target - candidates[0].ratio)
+	for _, candidate := range candidates[1:] {
+		diff := math.Abs(target - candidate.ratio)
+		if diff < bestDiff {
+			best = candidate.label
+			bestDiff = diff
+		}
+	}
+	return best
+}
+
+func buildNanoBananaAspectRatio(size string) string {
+	switch strings.TrimSpace(size) {
+	case "", "square_hd", "square":
+		return "1:1"
+	case "portrait_4_3":
+		return "3:4"
+	case "portrait_16_9":
+		return "9:16"
+	case "landscape_4_3":
+		return "4:3"
+	case "landscape_16_9":
+		return "16:9"
+	}
+	normalized := strings.ReplaceAll(strings.TrimSpace(size), "*", "x")
+	parts := strings.SplitN(normalized, "x", 2)
+	if len(parts) == 2 {
+		w, e1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+		h, e2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if e1 == nil && e2 == nil {
+			return chooseClosestAspectRatio(w, h)
+		}
+	}
+	return "1:1"
+}
+
+func buildNanoBananaResolution(size string) string {
+	switch strings.TrimSpace(size) {
+	case "", "square_hd", "square", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9":
+		return "1K"
+	}
+	normalized := strings.ReplaceAll(strings.TrimSpace(size), "*", "x")
+	parts := strings.SplitN(normalized, "x", 2)
+	if len(parts) == 2 {
+		w, e1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+		h, e2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if e1 == nil && e2 == nil {
+			maxDim := w
+			if h > maxDim {
+				maxDim = h
+			}
+			switch {
+			case maxDim <= 768:
+				return "0.5K"
+			case maxDim <= 1280:
+				return "1K"
+			case maxDim <= 2048:
+				return "2K"
+			default:
+				return "4K"
+			}
+		}
+	}
+	return "1K"
+}
+
+func buildNanoBananaBody(prompt, imageURL, size string, n int, model string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"prompt":            prompt,
+		"num_images":        n,
+		"aspect_ratio":      buildNanoBananaAspectRatio(size),
+		"output_format":     "png",
+		"safety_tolerance":  "4",
+		"resolution":        buildNanoBananaResolution(size),
+		"limit_generations": true,
+	}
+	if strings.EqualFold(strings.TrimSpace(model), "nano-banana-2/edit") {
+		imageURLs := parseImageURLList(imageURL)
+		if len(imageURLs) == 0 {
+			return nil, fmt.Errorf("image_url is required for edit models such as %s", model)
+		}
+		body["image_urls"] = imageURLs
+	}
+	return body, nil
 }
 
 func (t *ImageTool) Execute(ctx context.Context, argsJSON string) (string, error) {
@@ -118,12 +283,10 @@ func (t *ImageTool) Execute(ctx context.Context, argsJSON string) (string, error
 	}
 }
 
-// getFalAPIKeyCtx checks StarAI provider first, then falls back to user config
 func (t *ImageTool) getFalAPIKeyCtx(ctx context.Context, userID string) string {
 	return GetFalAPIKeyCtx(ctx, t.db, userID)
 }
 
-// modelToEndpoint maps user-facing model name to fal.ai endpoint
 func modelToEndpoint(m string) string {
 	switch m {
 	// ── FLUX.1 ──
@@ -137,6 +300,10 @@ func modelToEndpoint(m string) string {
 		return "fal-ai/flux-realism"
 	case "stable-diffusion-v35-large":
 		return "fal-ai/stable-diffusion-v35-large"
+	case "nano-banana-2":
+		return "fal-ai/nano-banana-2"
+	case "nano-banana-2/edit":
+		return "fal-ai/nano-banana-2/edit"
 	// ── FLUX.2 text-to-image ──
 	case "flux-2":
 		return "fal-ai/flux-2"
@@ -231,7 +398,6 @@ func modelToEndpoint(m string) string {
 	}
 }
 
-// buildImageSize converts size string to fal.ai image_size parameter
 func buildImageSize(size string) interface{} {
 	// Named presets
 	switch size {
@@ -256,6 +422,10 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 		return "", fmt.Errorf("prompt is required for image generation")
 	}
 
+	if isEditModel(args.Model) && strings.TrimSpace(args.ImageURL) == "" {
+		return "", fmt.Errorf("image_url is required for edit models such as %s", args.Model)
+	}
+
 	userID := ""
 	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
 		userID = uid
@@ -272,7 +442,7 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 
 	// Defaults
 	if args.Model == "" {
-		args.Model = "flux-schnell"
+		args.Model = "nano-banana-2"
 	}
 	if args.Size == "" {
 		args.Size = "square_hd"
@@ -286,11 +456,22 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 
 	endpoint := modelToEndpoint(args.Model)
 
-	// Build fal.ai request body
-	body := map[string]interface{}{
-		"prompt":     args.Prompt,
-		"image_size": buildImageSize(args.Size),
-		"num_images": n,
+	var body map[string]interface{}
+	var err error
+	if isNanoBananaModel(args.Model) {
+		body, err = buildNanoBananaBody(args.Prompt, args.ImageURL, args.Size, n, args.Model)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		body = map[string]interface{}{
+			"prompt":     args.Prompt,
+			"image_size": buildImageSize(args.Size),
+			"num_images": n,
+		}
+		if strings.TrimSpace(args.ImageURL) != "" {
+			body["image_url"] = strings.TrimSpace(args.ImageURL)
+		}
 	}
 
 	// Submit to fal.ai queue (supports StarAI proxy)
@@ -376,14 +557,12 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 	}), nil
 }
 
-// batchPrompt is a single prompt entry in the batch_generate prompts array
 type batchPrompt struct {
-	Prompt string `json:"prompt"`
-	Scene  string `json:"scene"`
+	Prompt   string `json:"prompt"`
+	Scene    string `json:"scene"`
+	ImageURL string `json:"image_url"`
 }
 
-// batchGenerate submits multiple image generation tasks at once via fal.ai.
-// This drastically reduces the number of LLM round-trips needed for multi-panel comics.
 func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, error) {
 	if args.Prompts == "" {
 		return "", fmt.Errorf("prompts JSON array is required for batch_generate")
@@ -415,14 +594,29 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 	}
 
 	if args.Model == "" {
-		args.Model = "flux-schnell"
+		args.Model = "nano-banana-2"
+	}
+	if isEditModel(args.Model) && strings.TrimSpace(args.ImageURL) == "" {
+		hasPerPromptImage := false
+		for _, bp := range prompts {
+			if strings.TrimSpace(bp.ImageURL) != "" {
+				hasPerPromptImage = true
+				break
+			}
+		}
+		if !hasPerPromptImage {
+			return "", fmt.Errorf("image_url is required for batch edit models such as %s", args.Model)
+		}
 	}
 	if args.Size == "" {
 		args.Size = "square_hd"
 	}
 
 	endpoint := modelToEndpoint(args.Model)
-	imageSize := buildImageSize(args.Size)
+	var imageSize interface{}
+	if !isNanoBananaModel(args.Model) {
+		imageSize = buildImageSize(args.Size)
+	}
 
 	var results []map[string]interface{}
 
@@ -440,13 +634,31 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 			scene = fmt.Sprintf("panel_%d", i+1)
 		}
 
-		body := map[string]interface{}{
-			"prompt":     prompt,
-			"image_size": imageSize,
-			"num_images": 1,
+		imageURL := strings.TrimSpace(bp.ImageURL)
+		if imageURL == "" {
+			imageURL = strings.TrimSpace(args.ImageURL)
 		}
 
-		requestID, _, err := SubmitToFal(apiKey, endpoint, body)
+		var body map[string]interface{}
+		var err error
+		if isNanoBananaModel(args.Model) {
+			body, err = buildNanoBananaBody(prompt, imageURL, args.Size, 1, args.Model)
+			if err != nil {
+				log.Printf("[ImageTool] batch: invalid input for %s: %v", scene, err)
+				continue
+			}
+		} else {
+			body = map[string]interface{}{
+				"prompt":     prompt,
+				"image_size": imageSize,
+				"num_images": 1,
+			}
+			if imageURL != "" {
+				body["image_url"] = imageURL
+			}
+		}
+
+		requestID, statusEndpoint, err := SubmitToFal(apiKey, endpoint, body)
 		if err != nil {
 			log.Printf("[ImageTool] batch: failed to submit %s: %v", scene, err)
 			continue
@@ -476,7 +688,7 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 		})
 
 		// Poll in background
-		go t.pollAndDownloadWithLog(apiKey, endpoint, requestID, record.ID, genLogID) // batch: background poll is OK
+		go t.pollAndDownloadWithLog(apiKey, statusEndpoint, requestID, record.ID, genLogID) // batch: background poll is OK
 
 		results = append(results, map[string]interface{}{
 			"image_id": record.ID,
@@ -551,6 +763,35 @@ func (t *ImageTool) pollAndDownloadWithLog(apiKey, endpoint, requestID, recordID
 	log.Printf("[ImageTool] Image %s completed: %s", recordID, localURL)
 }
 
+func (t *ImageTool) tryRecoverImageRecord(apiKey string, rec *model.ImageRecord) bool {
+	if rec == nil || rec.TaskID == "" || rec.Model == "" {
+		return false
+	}
+	endpoint := modelToEndpoint(rec.Model)
+	result, err := FetchFalResult(apiKey, endpoint, rec.TaskID)
+	if err != nil {
+		return false
+	}
+	imageURL := extractFalImageURL(result)
+	if imageURL == "" {
+		return false
+	}
+	localURL := rec.LocalURL
+	if localURL == "" {
+		localURL = t.downloadImage(imageURL, rec.ID)
+		if localURL == "" {
+			return false
+		}
+	}
+	updates := map[string]interface{}{"status": "succeeded", "image_url": imageURL, "local_url": localURL}
+	t.db.Model(&model.ImageRecord{}).Where("id = ?", rec.ID).Updates(updates)
+	rec.Status = "succeeded"
+	rec.ImageURL = imageURL
+	rec.LocalURL = localURL
+	log.Printf("[ImageTool] Recovered completed image %s from upstream result", rec.ID)
+	return true
+}
+
 // downloadImage downloads a remote image to /app/images/ and returns the local serve URL
 func (t *ImageTool) downloadImage(remoteURL, recordID string) string {
 	imgDir := ImagesDir()
@@ -580,6 +821,11 @@ func (t *ImageTool) checkStatus(ctx context.Context, args imageArgs) (string, er
 	if args.TaskID == "" {
 		return "", fmt.Errorf("task_id (image record ID) is required for check_status")
 	}
+	userID := ""
+	if uid, ok := ctx.Value(CtxKeyUserID).(string); ok {
+		userID = uid
+	}
+	apiKey := t.getFalAPIKeyCtx(ctx, userID)
 
 	// Block and poll DB until terminal status or timeout (3 min)
 	deadline := time.Now().Add(3 * time.Minute)
@@ -590,6 +836,9 @@ func (t *ImageTool) checkStatus(ctx context.Context, args imageArgs) (string, er
 			if err2 := t.db.Where("task_id = ?", args.TaskID).First(&rec).Error; err2 != nil {
 				return "", fmt.Errorf("image record not found: %s", args.TaskID)
 			}
+		}
+		if rec.Status != "succeeded" && apiKey != "" {
+			_ = t.tryRecoverImageRecord(apiKey, &rec)
 		}
 		if rec.Status == "succeeded" || rec.Status == "failed" {
 			break

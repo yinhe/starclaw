@@ -386,8 +386,8 @@ function RejectedTakesSection({ rejected }: { rejected: Take[] }) {
           {rejected.map(t => (
             <div key={t.take_id} className="group relative rounded border border-red-900/40 bg-red-950/20 overflow-hidden">
               <div className="h-16 bg-gray-900 relative">
-                {t.video_url ? (
-                  <video src={t.video_url} muted loop className="w-full h-full object-cover opacity-60 hover:opacity-100 transition"
+                {(t.local_url || t.video_url) ? (
+                  <video src={t.local_url || t.video_url} muted loop className="w-full h-full object-cover opacity-60 hover:opacity-100 transition"
                     onMouseEnter={e => (e.currentTarget as HTMLVideoElement).play()}
                     onMouseLeave={e => { const v = e.currentTarget as HTMLVideoElement; v.pause(); v.currentTime = 0 }} />
                 ) : (
@@ -738,7 +738,9 @@ export function EpisodeLogsPane({ data }: { data: EpisodeData }) {
                   {take.ref_image_url && <LogRow label="角色参考图" value={take.ref_image_url} link onCopy={copyText} />}
                   {take.ref_video_url && <LogRow label="上场尾帧视频" value={take.ref_video_url} link onCopy={copyText} />}
                   {take.ref_video_id && <LogRow label="上场 VideoRecord" value={take.ref_video_id} mono onCopy={copyText} />}
-                  {take.video_url && <LogRow label="本场产出" value={take.video_url} link onCopy={copyText} />}
+                  {take.video_url && <LogRow label="本场产出 (TOS)" value={take.video_url} link onCopy={copyText} />}
+                  {take.local_url && <LogRow label="本地归档" value={take.local_url} link onCopy={copyText} />}
+                  {take.local_path && <LogRow label="剧本目录路径" value={take.local_path} mono onCopy={copyText} />}
                   {take.lastframe_url && <LogRow label="本场尾帧" value={take.lastframe_url} link onCopy={copyText} />}
 
                   {/* Prompt */}
@@ -791,8 +793,8 @@ function TakeThumb({ take, isPicked, small }: { take: Take; isPicked?: boolean; 
   const Icon = TAKE_STATUS_ICON[take.status]
   return (
     <div className={`relative rounded overflow-hidden ${small ? 'h-12' : 'h-20'} ${TAKE_STATUS_COLOR[take.status]} border`}>
-      {take.video_url || take.thumbnail_url ? (
-        <video src={take.video_url} muted className="w-full h-full object-cover" />
+      {take.local_url || take.video_url || take.thumbnail_url ? (
+        <video src={take.local_url || take.video_url} muted className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full flex items-center justify-center">
           <ImageIcon className="w-4 h-4 opacity-40" />
@@ -818,8 +820,8 @@ function TakeCard({ take, isPicked, onPick, onRemove }: { take: Take; isPicked: 
       isPicked ? 'border-emerald-500 ring-1 ring-emerald-500/40' : `${TAKE_STATUS_COLOR[take.status]}`
     }`}>
       <div className="h-20 bg-gray-900 relative">
-        {take.video_url ? (
-          <video src={take.video_url} muted loop className="w-full h-full object-cover"
+        {(take.local_url || take.video_url) ? (
+          <video src={take.local_url || take.video_url} muted loop className="w-full h-full object-cover"
             onMouseEnter={e => (e.currentTarget as HTMLVideoElement).play()}
             onMouseLeave={e => { const v = e.currentTarget as HTMLVideoElement; v.pause(); v.currentTime = 0 }} />
         ) : (

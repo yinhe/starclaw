@@ -15,16 +15,17 @@ import (
 
 // PluginSpec defines the JSON schema for a tool plugin
 type PluginSpec struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Version     string                 `json:"version"`
-	Author      string                 `json:"author"`
-	Parameters  *JSONSchema            `json:"parameters"`
-	Endpoint    PluginEndpoint         `json:"endpoint"`
-	Headers     map[string]string      `json:"headers,omitempty"`
-	BodyTemplate string               `json:"body_template,omitempty"` // Go template with {{.arg_name}}
-	ResponsePath string               `json:"response_path,omitempty"` // JSON path to extract result
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description"`
+	Version      string                 `json:"version"`
+	Author       string                 `json:"author"`
+	Parameters   *JSONSchema            `json:"parameters"`
+	Endpoint     PluginEndpoint         `json:"endpoint"`
+	Handler      string                 `json:"handler,omitempty"`
+	Headers      map[string]string      `json:"headers,omitempty"`
+	BodyTemplate string                 `json:"body_template,omitempty"` // Go template with {{.arg_name}}
+	ResponsePath string                 `json:"response_path,omitempty"` // JSON path to extract result
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type PluginEndpoint struct {
@@ -37,13 +38,39 @@ type PluginTool struct {
 	spec PluginSpec
 }
 
+type LocalPluginExecutor interface {
+	Execute(userID string, params map[string]interface{}) (string, error)
+}
+
+type LocalPluginTool struct {
+	spec    PluginSpec
+	handler LocalPluginExecutor
+}
+
+var localPluginHandlers = make(map[string]LocalPluginExecutor)
+
 func NewPluginTool(spec PluginSpec) *PluginTool {
 	return &PluginTool{spec: spec}
 }
 
-func (t *PluginTool) Name() string        { return t.spec.Name }
-func (t *PluginTool) Description() string  { return t.spec.Description }
+func NewLocalPluginTool(spec PluginSpec, handler LocalPluginExecutor) *LocalPluginTool {
+	return &LocalPluginTool{spec: spec, handler: handler}
+}
+
+func RegisterLocalPluginHandler(name string, handler LocalPluginExecutor) {
+	if name == "" || handler == nil {
+		return
+	}
+	localPluginHandlers[name] = handler
+}
+
+func (t *PluginTool) Name() string            { return t.spec.Name }
+func (t *PluginTool) Description() string     { return t.spec.Description }
 func (t *PluginTool) Parameters() interface{} { return t.spec.Parameters }
+
+func (t *LocalPluginTool) Name() string            { return t.spec.Name }
+func (t *LocalPluginTool) Description() string     { return t.spec.Description }
+func (t *LocalPluginTool) Parameters() interface{} { return t.spec.Parameters }
 
 func (t *PluginTool) Execute(ctx context.Context, args string) (string, error) {
 	// Parse arguments
@@ -108,6 +135,18 @@ func (t *PluginTool) Execute(ctx context.Context, args string) (string, error) {
 	return string(respBody), nil
 }
 
+func (t *LocalPluginTool) Execute(ctx context.Context, args string) (string, error) {
+	var argMap map[string]interface{}
+	if err := json.Unmarshal([]byte(args), &argMap); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if argMap == nil {
+		argMap = make(map[string]interface{})
+	}
+	userID, _ := ctx.Value(CtxKeyUserID).(string)
+	return t.handler.Execute(userID, argMap)
+}
+
 // LoadPluginsFromDir scans a directory for .json plugin specs and registers them
 func LoadPluginsFromDir(registry *Registry, dir string) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -138,8 +177,25 @@ func LoadPluginsFromDir(registry *Registry, dir string) error {
 			continue
 		}
 
-		if spec.Name == "" || spec.Endpoint.URL == "" {
-			log.Printf("[Plugin] Skipping %s: missing name or endpoint", entry.Name())
+		if spec.Name == "" {
+			log.Printf("[Plugin] Skipping %s: missing plugin name", entry.Name())
+			continue
+		}
+
+		if spec.Handler != "" {
+			handler, ok := localPluginHandlers[spec.Handler]
+			if !ok {
+				log.Printf("[Plugin] Skipping %s: local handler %s not registered", entry.Name(), spec.Handler)
+				continue
+			}
+			registry.Register(NewLocalPluginTool(spec, handler))
+			count++
+			log.Printf("[Plugin] Loaded local handler plugin: %s (%s)", spec.Name, entry.Name())
+			continue
+		}
+
+		if spec.Endpoint.URL == "" {
+			log.Printf("[Plugin] Skipping %s: missing endpoint or local handler", entry.Name())
 			continue
 		}
 

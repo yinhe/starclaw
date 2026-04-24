@@ -269,6 +269,15 @@ func (h *TeamHandler) ListTemplates(c *gin.Context) {
 				{Specialty: "视频生成与合成", Role: "member", AgentHint: "视频"},
 			},
 		},
+		{
+			ID: "short-drama", Name: "短剧团队", Description: "导演 + 编剧 + 角色设计 + 视频生成 + 配音 + 合成", Icon: "Clapperboard", Topology: "sequential",
+			Roles: []TeamTemplateRole{
+				{Specialty: "导演统筹·剧本解析·分镜表", Role: "coordinator", AgentHint: "短剧"},
+				{Specialty: "角色设计·三视图·服装", Role: "member", AgentHint: "短剧"},
+				{Specialty: "视频生成·Seedance", Role: "member", AgentHint: "视频"},
+				{Specialty: "TTS配音·BGM配乐", Role: "member", AgentHint: "音乐"},
+			},
+		},
 	}
 	c.JSON(http.StatusOK, gin.H{"templates": templates})
 }

@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -82,13 +84,20 @@ func (h *CharacterStudioHandler) ResignTOSURL(c *gin.Context) {
 
 	now := time.Now().UTC()
 	var (
-		lastErr       string
-		lastURL       string
-		lastStatus    = -1
-		triedLabels   []string
-		matchedLabel  string
-		debugFirst    struct{ CanonicalRequest, StringToSign string }
-		skLensSummary []string
+		lastErr            string
+		lastURL            string
+		lastStatus         = -1
+		lastRemote         gin.H
+		accessDeniedErr    string
+		accessDeniedURL    string
+		accessDeniedStatus = -1
+		accessDeniedRemote gin.H
+		accessDeniedLabel  string
+		probeSummaries     []gin.H
+		triedLabels        []string
+		matchedLabel       string
+		debugFirst         struct{ CanonicalRequest, StringToSign string }
+		skLensSummary      []string
 	)
 	for i, cand := range skCandidates {
 		triedLabels = append(triedLabels, cand.label)
@@ -113,33 +122,65 @@ func (h *CharacterStudioHandler) ResignTOSURL(c *gin.Context) {
 			})
 			return
 		}
-		status, herr := validateTOSByHEAD(c.Request.Context(), newURL)
-		log.Printf("[resign-tos] sk_variant=%s status=%d err=%q", cand.label, status, herr)
-		if status >= 200 && status < 400 {
+		probe := validateTOSByHEAD(c.Request.Context(), newURL)
+		probeSummaries = append(probeSummaries, gin.H{
+			"sk_variant": cand.label,
+			"status":     probe.StatusCode,
+			"code":       probe.Code,
+			"error":      probe.Err,
+			"request_id": probe.RequestID,
+		})
+		log.Printf("[resign-tos] sk_variant=%s status=%d err=%q request_id=%q code=%q", cand.label, probe.StatusCode, probe.Err, probe.RequestID, probe.Code)
+		if probe.StatusCode >= 200 && probe.StatusCode < 400 {
 			matchedLabel = cand.label
 			c.JSON(http.StatusOK, gin.H{
 				"tos_url":     newURL,
 				"expires_sec": expires,
 				"source":      "resign",
 				"sk_variant":  matchedLabel,
-				"head_status": status,
+				"head_status": probe.StatusCode,
 				"tried":       triedLabels,
 			})
 			return
 		}
-		lastErr = herr
+		lastErr = probe.Err
 		lastURL = newURL
-		lastStatus = status
+		lastStatus = probe.StatusCode
+		lastRemote = probe.toGin()
+		if probe.Code == "AccessDenied" && accessDeniedRemote == nil {
+			accessDeniedErr = probe.Err
+			accessDeniedURL = newURL
+			accessDeniedStatus = probe.StatusCode
+			accessDeniedRemote = probe.toGin()
+			accessDeniedLabel = cand.label
+			break
+		}
 	}
 
 	log.Printf("[resign-tos] all %d SK variants failed (tried=%v last_status=%d)", len(skCandidates), triedLabels, lastStatus)
+	errMsg := fmt.Sprintf("resigned URL validation failed: all %d SK variants returned non-2xx (last HTTP %d)", len(skCandidates), lastStatus)
+	detail := lastErr
+	attemptedURL := lastURL
+	headStatus := lastStatus
+	remote := lastRemote
+	hint := "AKSK mismatch or no GetObject on this bucket; fall back to /v1/cdn/launder-tos"
+	if accessDeniedRemote != nil {
+		errMsg = fmt.Sprintf("resigned URL reached TOS but got AccessDenied (sk_variant=%s, HTTP %d)", accessDeniedLabel, accessDeniedStatus)
+		detail = accessDeniedErr
+		attemptedURL = accessDeniedURL
+		headStatus = accessDeniedStatus
+		remote = accessDeniedRemote
+		hint = "raw-style SK reached TOS but lacks GetObject on the Ark bucket/object; self-signing will not work for this URL, fall back to /v1/cdn/launder-tos"
+	}
 	c.JSON(http.StatusBadGateway, gin.H{
-		"error":             fmt.Sprintf("resigned URL validation failed: all %d SK variants returned non-2xx (last HTTP %d)", len(skCandidates), lastStatus),
-		"detail":            lastErr,
-		"head_status":       lastStatus,
-		"tos_url_attempted": lastURL,
+		"error":             errMsg,
+		"detail":            detail,
+		"head_status":       headStatus,
+		"tos_url_attempted": attemptedURL,
 		"tried":             triedLabels,
 		"sk_lengths":        skLensSummary,
+		"variants":          probeSummaries,
+		"remote":            remote,
 		// Debug: our computed canonical_request + string_to_sign for the first
 		// variant. Compare these byte-for-byte with what Volcengine returns in
 		// its SignatureDoesNotMatch error response. If they differ, the bug is
@@ -147,7 +188,7 @@ func (h *CharacterStudioHandler) ResignTOSURL(c *gin.Context) {
 		// SK bytes / algorithm chain.
 		"my_canonical_request": debugFirst.CanonicalRequest,
 		"my_string_to_sign":    debugFirst.StringToSign,
-		"hint":                 "AKSK mismatch or no GetObject on this bucket; fall back to /v1/cdn/launder-tos",
+		"hint":                 hint,
 	})
 	_ = matchedLabel
 }
@@ -191,6 +232,16 @@ func buildSKCandidates(envVal string) []skCandidate {
 		if isPrintableASCII(d1) {
 			if d2, err := decodeB64Padded(string(d1)); err == nil {
 				appendIfNew("b64_2", d2)
+
+				// Layer 3: if b64_2 is ASCII AND looks like a hex string
+				// (Volcengine IAM console sometimes double-encodes: raw SK
+				// bytes → hex → base64 → base64 for copy-paste safety).
+				// Hex-decode to get the actual HMAC key bytes.
+				if isPrintableASCII(d2) && looksHex(d2) {
+					if hx, err := hex.DecodeString(string(d2)); err == nil {
+						appendIfNew("b64_2_hex", hx)
+					}
+				}
 			}
 			// Alt: if b64_1 looks like a hex string, decode as hex.
 			if looksHex(d1) {
@@ -377,21 +428,103 @@ func hmacSHA256(key, data []byte) []byte {
 	return h.Sum(nil)
 }
 
+type tosProbeResult struct {
+	StatusCode int
+	Err        string
+	RequestID  string
+	ID2        string
+	Code       string
+	Body       string
+}
+
+func (r tosProbeResult) toGin() gin.H {
+	if r.StatusCode == 0 && r.Err == "" && r.RequestID == "" && r.ID2 == "" && r.Code == "" && r.Body == "" {
+		return nil
+	}
+	return gin.H{
+		"status":     r.StatusCode,
+		"error":      r.Err,
+		"request_id": r.RequestID,
+		"id_2":       r.ID2,
+		"code":       r.Code,
+		"body":       r.Body,
+	}
+}
+
 // validateTOSByHEAD issues a HEAD request with a short timeout. Returns the
 // HTTP status code (or -1) and a compact error string.
-func validateTOSByHEAD(parent context.Context, urlStr string) (int, string) {
+func validateTOSByHEAD(parent context.Context, urlStr string) tosProbeResult {
 	ctx, cancel := context.WithTimeout(parent, tosHeadTimeoutSec*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "HEAD", urlStr, nil)
 	if err != nil {
-		return -1, err.Error()
+		return tosProbeResult{StatusCode: -1, Err: err.Error()}
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return -1, err.Error()
+		return tosProbeResult{StatusCode: -1, Err: err.Error()}
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode, ""
+	result := tosProbeResult{
+		StatusCode: resp.StatusCode,
+		RequestID:  resp.Header.Get("x-tos-request-id"),
+		ID2:        resp.Header.Get("x-tos-id-2"),
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		return result
+	}
+	getReq, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	if err != nil {
+		result.Err = err.Error()
+		return result
+	}
+	getReq.Header.Set("Range", "bytes=0-0")
+	getResp, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		result.Err = err.Error()
+		return result
+	}
+	defer getResp.Body.Close()
+	if result.RequestID == "" {
+		result.RequestID = getResp.Header.Get("x-tos-request-id")
+	}
+	if result.ID2 == "" {
+		result.ID2 = getResp.Header.Get("x-tos-id-2")
+	}
+	body, readErr := io.ReadAll(io.LimitReader(getResp.Body, 4096))
+	if readErr != nil {
+		result.Err = readErr.Error()
+		return result
+	}
+	bodyStr := strings.TrimSpace(string(body))
+	result.Body = bodyStr
+	if strings.HasPrefix(bodyStr, "{") {
+		var remoteJSON struct {
+			Code      string `json:"Code"`
+			RequestID string `json:"RequestId"`
+		}
+		if err := json.Unmarshal(body, &remoteJSON); err == nil {
+			result.Code = remoteJSON.Code
+			if result.RequestID == "" {
+				result.RequestID = remoteJSON.RequestID
+			}
+		}
+	}
+	if result.Code == "" && strings.Contains(bodyStr, "<Code>SignatureDoesNotMatch</Code>") {
+		result.Code = "SignatureDoesNotMatch"
+	} else if result.Code == "" && strings.Contains(bodyStr, "<Code>AccessDenied</Code>") {
+		result.Code = "AccessDenied"
+	} else if result.Code == "" && bodyStr != "" {
+		if i := strings.Index(bodyStr, "<Code>"); i >= 0 {
+			if j := strings.Index(bodyStr[i+6:], "</Code>"); j >= 0 {
+				result.Code = bodyStr[i+6 : i+6+j]
+			}
+		}
+	}
+	if result.Err == "" {
+		result.Err = fmt.Sprintf("HEAD %d, GET %d", resp.StatusCode, getResp.StatusCode)
+	}
+	return result
 }
 
 func isPrintableASCII(b []byte) bool {

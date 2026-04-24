@@ -25,9 +25,108 @@ func NewVideoHandler(db *gorm.DB, toolRegistry *tool.Registry) *VideoHandler {
 
 func (h *VideoHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
+	q := h.db.Where("user_id = ?", userID)
+	if scene := c.Query("scene"); scene != "" {
+		q = q.Where("scene = ?", scene)
+	}
+	if status := c.Query("status"); status != "" {
+		q = q.Where("status = ?", status)
+	}
+	if model := c.Query("model"); model != "" {
+		q = q.Where("model = ?", model)
+	}
+	if taskID := c.Query("task_id"); taskID != "" {
+		q = q.Where("task_id = ?", taskID)
+	}
 	var records []model.VideoRecord
-	h.db.Where("user_id = ?", userID).Order("created_at DESC").Limit(500).Find(&records)
+	q.Order("created_at DESC").Limit(500).Find(&records)
 	c.JSON(200, gin.H{"videos": records})
+}
+
+func (h *VideoHandler) Generate(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req struct {
+		Prompt          string `json:"prompt"`
+		Model           string `json:"model"`
+		ImgURL          string `json:"img_url"`
+		Size            string `json:"size"`
+		Duration        int    `json:"duration"`
+		Scene           string `json:"scene"`
+		StylePrefix     string `json:"style_prefix"`
+		RefVideoID      string `json:"ref_video_id"`
+		RefVideoURL     string `json:"ref_video_url"`
+		RefAudioURL     string `json:"ref_audio_url"`
+		GenerateAudio   *bool  `json:"generate_audio"`
+		Watermark       *bool  `json:"watermark"`
+		ReturnLastFrame *bool  `json:"return_last_frame"`
+		Category        string `json:"category"`
+		ConversationID  string `json:"conversation_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request body", "detail": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		c.JSON(400, gin.H{"error": "prompt is required"})
+		return
+	}
+	videoTool, ok := h.toolRegistry.Get("video_generation")
+	if !ok {
+		c.JSON(500, gin.H{"error": "video tool not available"})
+		return
+	}
+	duration := req.Duration
+	if duration == 0 || duration < -1 {
+		duration = 5
+	}
+	args := map[string]interface{}{
+		"action":       "generate_video",
+		"prompt":       req.Prompt,
+		"model":        req.Model,
+		"img_url":      req.ImgURL,
+		"size":         req.Size,
+		"duration":     fmt.Sprintf("%d", duration),
+		"scene":        req.Scene,
+		"style_prefix": req.StylePrefix,
+		"ref_video_id": req.RefVideoID,
+		"category":     req.Category,
+	}
+	if strings.TrimSpace(req.RefVideoURL) != "" {
+		args["ref_video_url"] = strings.TrimSpace(req.RefVideoURL)
+	}
+	if strings.TrimSpace(req.RefAudioURL) != "" {
+		args["ref_audio_url"] = strings.TrimSpace(req.RefAudioURL)
+	}
+	if req.GenerateAudio != nil {
+		args["generate_audio"] = *req.GenerateAudio
+	}
+	if req.Watermark != nil {
+		args["watermark"] = *req.Watermark
+	}
+	if req.ReturnLastFrame != nil {
+		args["return_last_frame"] = *req.ReturnLastFrame
+	}
+	argsBytes, err := json.Marshal(args)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to marshal video args"})
+		return
+	}
+	argsJSON := string(argsBytes)
+	ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, userID)
+	if strings.TrimSpace(req.ConversationID) != "" {
+		ctx = context.WithValue(ctx, tool.CtxKeyConversationID, strings.TrimSpace(req.ConversationID))
+	}
+	result, err := videoTool.Execute(ctx, argsJSON)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &data); err != nil {
+		c.JSON(200, gin.H{"result": result})
+		return
+	}
+	c.JSON(200, data)
 }
 
 func (h *VideoHandler) Delete(c *gin.Context) {
@@ -168,12 +267,17 @@ func (h *VideoHandler) Dub(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var req struct {
-		Text          string `json:"text"`
-		Voice         string `json:"voice"`
-		SubtitleStyle string `json:"subtitle_style"`
+		Text          string          `json:"text"`
+		Narrations    json.RawMessage `json:"narrations"`
+		Voice         string          `json:"voice"`
+		SubtitleStyle string          `json:"subtitle_style"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Text == "" {
-		c.JSON(400, gin.H{"error": "text (配音文案) is required"})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request body"})
+		return
+	}
+	if strings.TrimSpace(req.Text) == "" && len(req.Narrations) == 0 {
+		c.JSON(400, gin.H{"error": "text or narrations is required"})
 		return
 	}
 
@@ -193,8 +297,15 @@ func (h *VideoHandler) Dub(c *gin.Context) {
 		return
 	}
 
-	// Auto-split text into timed segments
-	segments := tool.SplitNarrationToSegments(req.Text, 0, float64(rec.Duration), 15)
+	var segments []tool.NarrationSegment
+	if len(req.Narrations) > 0 {
+		if err := json.Unmarshal(req.Narrations, &segments); err != nil || len(segments) == 0 {
+			c.JSON(400, gin.H{"error": "invalid narrations"})
+			return
+		}
+	} else {
+		segments = tool.SplitNarrationToSegments(req.Text, 0, float64(rec.Duration), 15)
+	}
 	segJSON, _ := json.Marshal(segments)
 
 	voice := req.Voice
@@ -221,7 +332,7 @@ func (h *VideoHandler) Dub(c *gin.Context) {
 
 	c.JSON(200, gin.H{
 		"status":   "dubbing",
-		"message":  fmt.Sprintf("配音任务已开始，音色: %s，共%d段旁白", voice, len(segments)),
+		"message":  fmt.Sprintf("配音任务已开始，默认音色: %s，共%d段配音", voice, len(segments)),
 		"segments": len(segments),
 	})
 }

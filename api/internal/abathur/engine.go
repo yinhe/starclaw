@@ -149,7 +149,7 @@ type Lesson struct {
 	SprintID  string    `json:"sprint_id"`
 	Type      string    `json:"type"` // success_pattern, failure_lesson, optimization, tool_gap
 	Content   string    `json:"content"`
-	Impact    string    `json:"impact,omitempty"`    // high, medium, low
+	Impact    string    `json:"impact,omitempty"` // high, medium, low
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -251,7 +251,7 @@ func (e *Engine) CreatePlan(title, description string, goals []string, tasks []P
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	status := PlanDraft
+	var status PlanStatus
 	if !e.config.HumanApproval {
 		status = PlanApproved
 	} else {

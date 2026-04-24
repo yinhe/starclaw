@@ -124,8 +124,8 @@ export default function SceneStepNode({ data, selected }: NodeProps) {
                         className={`relative rounded border-2 overflow-hidden aspect-video hover:scale-105 transition-transform ${
                           isThisPicked ? 'border-emerald-400' : 'border-gray-700 hover:border-cyan-400'
                         }`}>
-                  {t.video_url ? (
-                    <video src={t.video_url} className="w-full h-full object-cover" muted preload="metadata" />
+                  {(t.local_url || t.video_url) ? (
+                    <video src={t.local_url || t.video_url} className="w-full h-full object-cover" muted preload="metadata" />
                   ) : (
                     <div className="w-full h-full bg-gray-800 flex items-center justify-center">
                       <Film className="w-4 h-4 text-gray-600" />

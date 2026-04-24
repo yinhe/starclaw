@@ -12,6 +12,7 @@ interface ModelConfig {
   temperature: number
   is_platform: boolean
   is_enabled: boolean
+  has_key: boolean
 }
 
 interface EditForm {
@@ -213,7 +214,7 @@ export default function ModelsPage() {
                         <div className="text-xs text-gray-400 flex items-center gap-3 mt-0.5">
                           <span className="flex items-center gap-1">
                             <Key className="w-3 h-3" />
-                            {m.is_platform ? '平台共享 Key' : 'API Key 已配置'}
+                            {m.is_platform ? '平台共享 Key' : m.has_key ? 'API Key 已配置' : m.provider === 'custom' || m.provider === 'ollama' ? '无需 API Key' : 'API Key 未配置'}
                           </span>
                           {m.base_url && REGION_LABELS[m.base_url] && (
                             <span className="flex items-center gap-1">
@@ -221,7 +222,10 @@ export default function ModelsPage() {
                               {REGION_LABELS[m.base_url]}
                             </span>
                           )}
-                          <span className="text-primary-500 font-medium">{modelCount} 个模型可用</span>
+                          {m.provider === 'custom'
+                            ? <span className="text-primary-500 font-medium">自定义模型</span>
+                            : <span className="text-primary-500 font-medium">{modelCount} 个模型可用</span>
+                          }
                         </div>
                       </div>
                     </div>
@@ -229,22 +233,20 @@ export default function ModelsPage() {
                       <span className={`px-2 py-0.5 rounded-full text-xs ${m.is_enabled ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
                         {m.is_enabled ? '已启用' : '已停用'}
                       </span>
-                      {!m.is_platform && <>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); startEdit(m) }}
-                          className="p-1.5 text-gray-300 hover:text-primary-500 transition-colors"
-                          title="编辑"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(m.id) }}
-                          className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                          title="删除"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); startEdit(m) }}
+                        className="p-1.5 text-gray-300 hover:text-primary-500 transition-colors"
+                        title="编辑"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(m.id) }}
+                        className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                     </div>
                   </div>
@@ -330,7 +332,11 @@ export default function ModelsPage() {
                         </div>
                       )}
                       {/* Available models */}
-                      {availableModels[m.id] && (
+                      {m.provider === 'custom' ? (
+                        <div className="px-5 py-4 bg-gray-50/50">
+                          <p className="text-xs text-gray-500">自定义提供商支持任意 OpenAI 兼容模型，在创建 Agent 时直接输入模型名称即可使用。</p>
+                        </div>
+                      ) : availableModels[m.id] && availableModels[m.id].length > 0 && (
                         <div className="px-5 py-4 bg-gray-50/50">
                           <p className="text-xs text-gray-500 mb-3">可用模型（{availableModels[m.id].length} 个）：</p>
                           <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">

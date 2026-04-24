@@ -43,18 +43,21 @@ const (
 )
 
 type MemoryEntry struct {
-	ID        string      `json:"id"`
-	Layer     MemoryLayer `json:"layer"`
-	Type      MemoryType  `json:"type"`
-	Content   string      `json:"content"`
-	Tags      []string    `json:"tags,omitempty"`
-	Source    string      `json:"source,omitempty"`    // which agent/tool produced it
-	NodeID    string      `json:"node_id,omitempty"`   // originating claw node
-	Score     float64     `json:"score,omitempty"`     // relevance score (for search results)
-	CreatedAt time.Time   `json:"created_at"`
-	ExpiresAt *time.Time  `json:"expires_at,omitempty"`
-	AccessCnt int         `json:"access_count"`
-	LastAccess time.Time  `json:"last_access"`
+	ID         string      `json:"id"`
+	Layer      MemoryLayer `json:"layer"`
+	Type       MemoryType  `json:"type"`
+	Content    string      `json:"content"`
+	Room       string      `json:"room,omitempty"`
+	Anchor     string      `json:"anchor,omitempty"`
+	Path       string      `json:"path,omitempty"`
+	Tags       []string    `json:"tags,omitempty"`
+	Source     string      `json:"source,omitempty"`  // which agent/tool produced it
+	NodeID     string      `json:"node_id,omitempty"` // originating claw node
+	Score      float64     `json:"score,omitempty"`   // relevance score (for search results)
+	CreatedAt  time.Time   `json:"created_at"`
+	ExpiresAt  *time.Time  `json:"expires_at,omitempty"`
+	AccessCnt  int         `json:"access_count"`
+	LastAccess time.Time   `json:"last_access"`
 }
 
 // MemoryStore is the v0 in-memory implementation.
@@ -99,7 +102,7 @@ func (ms *MemoryStore) Store(entry *MemoryEntry) string {
 		case LayerWorking:
 			t := time.Now().Add(24 * time.Hour)
 			entry.ExpiresAt = &t
-		// LongTerm: no expiry
+			// LongTerm: no expiry
 		}
 	}
 

@@ -16,7 +16,7 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera, Coins } from 'lucide-react'
+import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera, Coins, CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import LLMNode from '../components/workflow/LLMNode'
 import ToolNode from '../components/workflow/ToolNode'
@@ -27,6 +27,7 @@ import MediaNode from '../components/workflow/MediaNode'
 import SceneStepNode from '../components/workflow/SceneStepNode'
 import NodePropertyPanel from '../components/workflow/NodePropertyPanel'
 import EpisodeWorkflowPanel, { EpisodeLogsPane } from '../components/workflow/EpisodeWorkflowPanel'
+import PreflightModal from '../components/workflow/PreflightModal'
 import CostAnalysisModal from '../components/workflow/CostAnalysisModal'
 import PropEditorModal, { type PropData } from '../components/workflow/PropEditorModal'
 import SnapshotsModal from '../components/workflow/SnapshotsModal'
@@ -34,7 +35,7 @@ import type { WorkflowSnapshot } from '../components/workflow/snapshots'
 import UniverseOverviewModal from '../components/workflow/UniverseOverviewModal'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
-import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData } from '../components/workflow/episodeTypes'
+import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData, type Take } from '../components/workflow/episodeTypes'
 import { buildSeedNodes } from '../components/workflow/swarmUniverseSeed'
 import { modelAPI, toolAPI, workflowAPI, videoAPI } from '../lib/api'
 import { parseTOSFreshness, refreshTOS } from '../components/workflow/tosUrlUtils'
@@ -71,10 +72,20 @@ export default function WorkflowPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+  // selectedNode 是在点击时拍的一张快照，不会随 setNodes 自动更新。
+  // 派生一个「实时版本」供右侧属性面板/日志面板读取，这样 runEpisodeProduction
+  // 新写入的 take 才能即时出现在 UI 上（否则面板一直停留在点击时的 0 takes 状态）。
+  const selectedNodeLive = useMemo(
+    () => (selectedNode ? nodes.find(n => n.id === selectedNode.id) || selectedNode : null),
+    [selectedNode, nodes],
+  )
   const [workflowName, setWorkflowName] = useState('未命名工作流')
   const [saving, setSaving] = useState(false)
   // 保存反馈（toast），3s 后自动消失
   const [saveToast, setSaveToast] = useState<{ kind: 'ok' | 'err' | 'info'; msg: string } | null>(null)
+  // 富通知 toast（浮动于画布右下角，支持多行 / 图标 / 关闭按钮，替代原生 alert）
+  const [appToast, setAppToast] = useState<{ kind: 'ok' | 'err' | 'warn' | 'info'; title: string; body?: string; ctaLabel?: string; onCta?: () => void } | null>(null)
+  const appToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 自动保存：每次 nodes/edges 变化后 debounce 3s 触发（仅当 workflowId 存在）
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedDefRef = useRef<string>('')
@@ -117,6 +128,9 @@ export default function WorkflowPage() {
   const [focusedEpisodeId, setFocusedEpisodeId] = useState<string | null>(null)
   const [focusedSceneId, setFocusedSceneId] = useState<string | null>(null)
   const [focusMode, setFocusMode] = useState(true)
+
+  // 派单前自检（点「开始生产 EPxx」先开 modal，自检通过才真正 runEpisodeProduction）
+  const [preflightTarget, setPreflightTarget] = useState<{ episode: EpisodeData; nodeId: string } | null>(null)
 
   // 场景子图节点位置的本地存储覆盖（key: __scene__<epId>__<sceneId> → {x,y}）
   const SCENE_POS_KEY = 'wf-scene-positions'
@@ -639,7 +653,7 @@ export default function WorkflowPage() {
 
   const runEpisodeProduction = useCallback(async (episodeData: EpisodeData, nodeId: string, opts?: { initialRefVideoUrl?: string }) => {
     const scenes = episodeData.scenes || []
-    if (scenes.length === 0) { alert('该集没有场景，请先添加场景'); return }
+    if (scenes.length === 0) { showAppToast('warn', '该集没有场景', '请先在面板里添加至少 1 个场景再开始生产。'); return }
 
     // Optimistic UI: composition.status = generating
     setNodes(nds => nds.map(n => {
@@ -694,20 +708,24 @@ export default function WorkflowPage() {
       const nodeUpdates: Record<string, string> = {}
       const refreshFailures: string[] = []
       let resignCount = 0
+      let promoteCount = 0
       let launderCount = 0
       for (const r of results) {
         if (r.status === 'fulfilled') {
           const { p, r: rr } = r.value
+          const refreshSource = rr.source as 'resign' | 'promote' | 'launder'
           charList[p.idx].url = rr.tosUrl
           if (p.tag) byTag[p.tag] = rr.tosUrl
           nodeUpdates[p.nodeId] = rr.tosUrl
-          if (rr.source === 'resign') resignCount++; else launderCount++
+          if (refreshSource === 'resign') resignCount++
+          else if (refreshSource === 'promote') promoteCount++
+          else launderCount++
         } else {
           const rr = r.reason as { response?: { data?: { error?: string } }; message?: string }
           refreshFailures.push(rr?.response?.data?.error || rr?.message || 'unknown')
         }
       }
-      console.log(`[runEpisodeProduction] TOS refresh done: resign=${resignCount} launder=${launderCount} fail=${refreshFailures.length}`)
+      console.log(`[runEpisodeProduction] TOS refresh done: resign=${resignCount} promote=${promoteCount} launder=${launderCount} fail=${refreshFailures.length}`)
       if (Object.keys(nodeUpdates).length > 0) {
         setNodes(nds => nds.map(n => nodeUpdates[n.id]
           ? { ...n, data: { ...(n.data as Record<string, unknown>), tos_url: nodeUpdates[n.id] } }
@@ -760,8 +778,10 @@ export default function WorkflowPage() {
         promptsSnippet ? `\n\n[镜别细则（摘自提示词总稿）]\n${promptsSnippet}` : '',
       ].join('').slice(0, 4000)
 
-      // img_url 优先使用本场角色参考图，兜底使用上一场尾帧
-      const imgUrl = usedUrls[0] || ''
+      // img_url：把本场 prompt 中所有 [图N] 对应的角色参考图全部传给 Seedance
+      //   后端 parseImageURLList 支持逗号分隔 → 每个 URL 会作为一个 reference_image
+      //   （早期只传 usedUrls[0]，导致 S1 里 [图1][图2][图3] 只上 [图3] 苏蜜）
+      const imgUrl = usedUrls.filter(Boolean).join(',')
       // ref_video_url 始终使用上一场 picked_take 的 video_url（Seedance 多模态参考）
       const refVideoUrl = prevRefVideoUrl
       const modelName = 'doubao-seedance-2-0-260128'
@@ -868,6 +888,46 @@ export default function WorkflowPage() {
       if (ok) {
         prevRefVideoUrl = videoUrl   // 下一场用本场片段整段作为多模态参考
         prevRecordId = recordId       // 也传 record_id，后端会自动 extract_last_frame
+
+        // 5f) 归档到本地剧本目录（fire-and-forget）——不阻塞下一场
+        //   docs/<project>/production/<ep>/clips_v2/<scene>_<take>.mp4
+        //   + _generated_urls.json 追写。成功后把 take.local_path 挂上，UI 优先用本地源。
+        const episodeKey = `${episodeData.is_spinoff ? 'sp' : 'ep'}${String(episodeData.episode_number).padStart(2, '0')}`
+        const archiveReq = {
+          video_url: videoUrl,
+          project: 'swarm-universe',
+          episode: episodeKey,
+          scene: scene.id,
+          take_id: takeId,
+          prompt: fullPrompt,
+          ref_images: usedUrls.filter(Boolean),
+          task_id: taskId,
+          model: modelName,
+          overwrite: true,
+        }
+        void videoAPI.archive(archiveReq)
+          .then(res => {
+            const { local_path, local_url, size, ledger_entries } = res.data || {}
+            console.log(`[runEpisodeProduction] ${sceneLabelFull} archived: ${local_path} (${(size / 1024 / 1024).toFixed(2)} MB, ledger=${ledger_entries})`)
+            setNodes(nds => nds.map(n => {
+              if (n.id !== nodeId) return n
+              const d = n.data as unknown as EpisodeData
+              const newScenes = (d.scenes || []).map(s => {
+                if (s.id !== scene.id) return s
+                const takes = (s.takes || []).map(t => t.take_id !== takeId ? t : ({
+                  ...t,
+                  local_path: local_path || (t as unknown as { local_path?: string }).local_path,
+                  local_url: local_url || (t as unknown as { local_url?: string }).local_url,
+                } as Take))
+                return { ...s, takes }
+              })
+              return { ...n, data: { ...d, scenes: newScenes } as unknown as Record<string, unknown> }
+            }))
+          })
+          .catch(err => {
+            const ax = err as { response?: { data?: { error?: string } }; message?: string }
+            console.warn(`[runEpisodeProduction] ${sceneLabelFull} archive failed:`, ax?.response?.data?.error || ax?.message || err)
+          })
       } else {
         failures.push(`${scene.id}(${statusNote.slice(0, 200)})`)
         // 失败则中断整集，避免错误扩散
@@ -890,13 +950,23 @@ export default function WorkflowPage() {
       const hint = needsKey
         ? '\n\n🔑 看起来缺少模型供应商密钥。请到「模型配置」页新增一条 volcengine（豆包/Seedance）或 StarAI 密钥，保存后重试。'
         : '\n\n已完成的镜头已保留，可在右侧面板点击对应场景「重拍」单独重试。'
-      if (needsKey && confirm(`⚠️ ${episodeData.label} 生产失败：\n${failures.join('\n')}${hint}\n\n是否现在前往「模型配置」页？`)) {
-        navigate('/models')
-      } else if (!needsKey) {
-        alert(`⚠️ ${episodeData.label} 生产部分失败：\n${failures.join('\n')}${hint}`)
+      if (needsKey) {
+        showAppToast(
+          'err',
+          `${episodeData.label} 生产失败`,
+          `${failures.join('\n')}${hint}`,
+          { durationMs: 15000, ctaLabel: '前往模型配置', onCta: () => navigate('/models') },
+        )
+      } else {
+        showAppToast('err', `${episodeData.label} 生产部分失败`, `${failures.join('\n')}${hint}`, { durationMs: 12000 })
       }
     } else {
-      alert(`✅ ${episodeData.label} 全部 ${scenes.length} 镜已生成，picked_take 已自动选中。\n请在"合成链路" tab 检查并推进 BGM / 最终合成。`)
+      showAppToast(
+        'ok',
+        `${episodeData.label} 全部 ${scenes.length} 镜已生成`,
+        `picked_take 已自动选中。请在"合成链路" tab 检查并推进 BGM / 最终合成。`,
+        { durationMs: 8000 },
+      )
     }
   }, [setNodes, fetchTextCached, collectCharacterRefs, pollVideoStatus, navigate])
 
@@ -929,6 +999,22 @@ export default function WorkflowPage() {
     setSaveToast({ kind, msg })
     setTimeout(() => setSaveToast(null), 3000)
   }, [])
+
+  // ── 富通知 toast：带图标 + 多行 body + 可选操作按钮，替代原生 alert ──
+  const showAppToast = useCallback(
+    (
+      kind: 'ok' | 'err' | 'warn' | 'info',
+      title: string,
+      body?: string,
+      opts?: { durationMs?: number; ctaLabel?: string; onCta?: () => void },
+    ) => {
+      if (appToastTimerRef.current) clearTimeout(appToastTimerRef.current)
+      setAppToast({ kind, title, body, ctaLabel: opts?.ctaLabel, onCta: opts?.onCta })
+      const dur = opts?.durationMs ?? (kind === 'err' ? 10000 : body ? 7000 : 4000)
+      appToastTimerRef.current = setTimeout(() => setAppToast(null), dur)
+    },
+    [],
+  )
 
   // ── 核心保存：auto=true 时走静默模式（不弹 alert，toast 用 info） ──
   const doSave = useCallback(async (opts?: { auto?: boolean }) => {
@@ -978,10 +1064,14 @@ export default function WorkflowPage() {
   const handleRun = async () => {
     setRunning(true)
     try {
-      if (!workflowId) { alert('请先保存工作流'); setRunning(false); return }
+      if (!workflowId) { showAppToast('warn', '请先保存工作流', '保存后再点击开始生产。'); setRunning(false); return }
       const res = await workflowAPI.run(workflowId, { input: '' })
-      alert(`运行完成！\n输出: ${JSON.stringify(res.data.output || res.data.result, null, 2)}`)
-    } catch { alert('运行失败') }
+      const out = JSON.stringify(res.data.output || res.data.result, null, 2)
+      showAppToast('ok', '运行完成', out.length > 400 ? out.slice(0, 400) + '…' : out, { durationMs: 8000 })
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error || (e as { message?: string })?.message || '未知错误'
+      showAppToast('err', '运行失败', msg)
+    }
     setRunning(false)
   }
 
@@ -1459,18 +1549,18 @@ export default function WorkflowPage() {
           </ReactFlow>
 
           {/* 画布底部·生产日志 Dock（选中剧集节点时出现，可折叠） */}
-          {selectedNode && selectedNode.type === 'media' && (selectedNode.data as Record<string, unknown>).category === 'scene' && (
+          {selectedNodeLive && selectedNodeLive.type === 'media' && (selectedNodeLive.data as Record<string, unknown>).category === 'scene' && (
             <div className={`absolute left-0 right-0 bottom-0 z-40 bg-gray-950/95 backdrop-blur-xl border-t border-gray-800 shadow-2xl transition-all ${logsDockOpen ? 'h-72' : 'h-8'}`}>
               <button onClick={() => setLogsDockOpen(v => !v)}
                 className="w-full h-8 px-3 flex items-center gap-2 bg-gray-900/80 hover:bg-gray-800 border-b border-gray-800 transition">
                 <ChevronRight className={`w-3 h-3 text-gray-500 transition-transform ${logsDockOpen ? 'rotate-90' : ''}`} />
                 <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">生产日志</span>
                 <span className="text-[10px] text-gray-500">
-                  · {((selectedNode.data as unknown as EpisodeData).label) || selectedNode.id}
+                  · {((selectedNodeLive.data as unknown as EpisodeData).label) || selectedNodeLive.id}
                 </span>
                 <span className="ml-auto text-[10px] text-gray-600">
                   {(() => {
-                    const ep = selectedNode.data as unknown as EpisodeData
+                    const ep = selectedNodeLive.data as unknown as EpisodeData
                     const takes = (ep.scenes || []).reduce((n, s) => n + (s.takes?.length || 0), 0)
                     return `${takes} takes`
                   })()}
@@ -1478,7 +1568,7 @@ export default function WorkflowPage() {
               </button>
               {logsDockOpen && (
                 <div className="absolute top-8 left-0 right-0 bottom-0 overflow-y-auto">
-                  <EpisodeLogsPane data={selectedNode.data as unknown as EpisodeData} />
+                  <EpisodeLogsPane data={selectedNodeLive.data as unknown as EpisodeData} />
                 </div>
               )}
             </div>
@@ -1547,20 +1637,20 @@ export default function WorkflowPage() {
         </div>
 
         {/* Right Property Panel — episode gets the rich workflow panel (pt-14 avoids toolbar overlap) */}
-        {selectedNode && selectedNode.type === 'media' && (selectedNode.data as Record<string, unknown>).category === 'scene' ? (
+        {selectedNodeLive && selectedNodeLive.type === 'media' && (selectedNodeLive.data as Record<string, unknown>).category === 'scene' ? (
           <div className="pt-14 h-full">
             <EpisodeWorkflowPanel
-              node={selectedNode}
+              node={selectedNodeLive}
               onUpdate={handleNodeDataUpdate}
               onClose={() => { setSelectedNode(null); setFocusedSceneId(null) }}
-              onProduce={(ep) => runEpisodeProduction(ep, selectedNode.id)}
+              onProduce={(ep) => setPreflightTarget({ episode: ep, nodeId: selectedNodeLive.id })}
               initialSceneId={focusedSceneId || undefined}
             />
           </div>
-        ) : selectedNode ? (
+        ) : selectedNodeLive ? (
           <div className="pt-14 h-full">
             <NodePropertyPanel
-              node={selectedNode}
+              node={selectedNodeLive}
               models={models}
               tools={availableTools}
               onUpdate={handleNodeDataUpdate}
@@ -1571,6 +1661,63 @@ export default function WorkflowPage() {
           </div>
         ) : null}
       </div>
+
+      {/* Floating App Toast（替代原生 alert · 右下角，自动消失） */}
+      {appToast && (
+        <div className="fixed bottom-4 right-4 z-[120] w-[min(460px,calc(100vw-32px))] animate-in slide-in-from-bottom-4 fade-in duration-200">
+          <div className={`group flex items-start gap-3 p-3.5 rounded-xl backdrop-blur-xl border shadow-2xl ${
+            appToast.kind === 'ok' ? 'bg-emerald-950/85 border-emerald-500/40 shadow-emerald-900/50'
+            : appToast.kind === 'err' ? 'bg-red-950/85 border-red-500/40 shadow-red-900/50'
+            : appToast.kind === 'warn' ? 'bg-amber-950/85 border-amber-500/40 shadow-amber-900/50'
+            : 'bg-gray-900/90 border-gray-700/50 shadow-black/50'
+          }`}>
+            <div className={`flex-shrink-0 mt-0.5 ${
+              appToast.kind === 'ok' ? 'text-emerald-400'
+              : appToast.kind === 'err' ? 'text-red-400'
+              : appToast.kind === 'warn' ? 'text-amber-400'
+              : 'text-cyan-400'
+            }`}>
+              {appToast.kind === 'ok' ? <CheckCircle2 className="w-5 h-5" />
+                : appToast.kind === 'err' ? <XCircle className="w-5 h-5" />
+                : appToast.kind === 'warn' ? <AlertTriangle className="w-5 h-5" />
+                : <Info className="w-5 h-5" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-semibold leading-snug ${
+                appToast.kind === 'ok' ? 'text-emerald-100'
+                : appToast.kind === 'err' ? 'text-red-100'
+                : appToast.kind === 'warn' ? 'text-amber-100'
+                : 'text-gray-100'
+              }`}>{appToast.title}</div>
+              {appToast.body && (
+                <div className={`mt-1 text-xs leading-relaxed whitespace-pre-line break-words ${
+                  appToast.kind === 'ok' ? 'text-emerald-200/85'
+                  : appToast.kind === 'err' ? 'text-red-200/85'
+                  : appToast.kind === 'warn' ? 'text-amber-200/85'
+                  : 'text-gray-300'
+                }`}>{appToast.body}</div>
+              )}
+              {appToast.ctaLabel && appToast.onCta && (
+                <button
+                  onClick={() => { appToast.onCta?.(); setAppToast(null); if (appToastTimerRef.current) clearTimeout(appToastTimerRef.current) }}
+                  className={`mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                    appToast.kind === 'err' ? 'bg-red-500/20 border-red-400/40 text-red-100 hover:bg-red-500/30'
+                    : appToast.kind === 'warn' ? 'bg-amber-500/20 border-amber-400/40 text-amber-100 hover:bg-amber-500/30'
+                    : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100 hover:bg-emerald-500/30'
+                  }`}
+                >{appToast.ctaLabel}</button>
+              )}
+            </div>
+            <button
+              onClick={() => { setAppToast(null); if (appToastTimerRef.current) clearTimeout(appToastTimerRef.current) }}
+              className="flex-shrink-0 -mr-1 -mt-1 p-1 rounded-md text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="关闭通知"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <CharacterCreatorModal
@@ -1641,6 +1788,21 @@ export default function WorkflowPage() {
         onClose={() => setShowCostModal(false)}
         nodes={nodes}
       />
+
+      {/* 🛫 派单前自检（preflight）——点「开始生产 EPxx」时打开，通过后才真正派 Seedance */}
+      {preflightTarget && (
+        <PreflightModal
+          episode={preflightTarget.episode}
+          nodes={nodes}
+          project="swarm-universe"
+          onClose={() => setPreflightTarget(null)}
+          onProceed={() => {
+            const t = preflightTarget
+            setPreflightTarget(null)
+            if (t) runEpisodeProduction(t.episode, t.nodeId)
+          }}
+        />
+      )}
 
       {/* 🌌 宇宙总览 */}
       <UniverseOverviewModal

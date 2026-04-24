@@ -200,7 +200,7 @@ Write-Output "formula_result=$result"
 
 // ── word_read: Read Word document content ──
 
-func (t *DesktopTool) wordRead(ctx context.Context, a desktopArgs) (string, error) {
+func (t *DesktopTool) wordRead(ctx context.Context, _ desktopArgs) (string, error) {
 	psScript := `
 $word = [Runtime.Interopservices.Marshal]::GetActiveObject('Word.Application')
 $doc = $word.ActiveDocument

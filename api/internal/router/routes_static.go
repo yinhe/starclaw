@@ -125,6 +125,25 @@ func registerStaticServeRoutes(apiV1 *gin.RouterGroup) {
 		c.String(200, script)
 	})
 
+	// Project assets (character images, scene refs, etc.) from mounted docs directory
+	// URL: /v1/projects/:project/*filepath → /app/docs/:project/*filepath
+	apiV1.GET("/projects/:project/*filepath", func(c *gin.Context) {
+		project := c.Param("project")
+		fp := c.Param("filepath")
+		// Security: reject path traversal
+		if strings.Contains(fp, "..") || strings.Contains(project, "..") {
+			c.JSON(400, gin.H{"error": "invalid path"})
+			return
+		}
+		filePath := filepath.Join("/app/docs", project, fp)
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			c.JSON(404, gin.H{"error": "project asset not found"})
+			return
+		}
+		c.Header("Cache-Control", "public, max-age=3600")
+		c.File(filePath)
+	})
+
 	// Music files (public, secured by UUID filename)
 	apiV1.GET("/music/:filename", func(c *gin.Context) {
 		filename := c.Param("filename")

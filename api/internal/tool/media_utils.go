@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,6 +67,35 @@ func GetFalAPIKeyCtx(ctx context.Context, db *gorm.DB, userID string) string {
 		return "starai://fal"
 	}
 	return "" // fal.ai not available without StarAI connection
+}
+
+func GetVolcengineAPIKey(db *gorm.DB, userID string) (string, string) {
+	defaultBaseURL := "https://ark.cn-beijing.volces.com/api/v3"
+	if userID == "" {
+		return "", defaultBaseURL
+	}
+	var cfg model.ModelConfig
+	if err := db.Where("user_id = ? AND provider = ? AND api_key != ''", userID, "volcengine").First(&cfg).Error; err != nil {
+		if err := db.Where("is_platform = ? AND provider = ? AND api_key != ''", true, "volcengine").First(&cfg).Error; err != nil {
+			if err := db.Where("user_id = ? AND provider = ? AND api_key != ''", "system", "volcengine").First(&cfg).Error; err != nil {
+				return "", defaultBaseURL
+			}
+		}
+	}
+	if cfg.BaseURL != "" {
+		return cfg.APIKey, cfg.BaseURL
+	}
+	return cfg.APIKey, defaultBaseURL
+}
+
+func GetVolcengineAPIKeyCtx(_ context.Context, db *gorm.DB, userID string) (string, string) {
+	if key, baseURL := GetVolcengineAPIKey(db, userID); key != "" {
+		return key, baseURL
+	}
+	if client, _ := GetStarAIClient(); client != nil {
+		return "starai://volcengine", "starai-proxy"
+	}
+	return "", ""
 }
 
 // ── Generation Audit Log ──
@@ -288,7 +318,16 @@ func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, 
 		if strings.HasPrefix(statusURL, prefix) {
 			path := strings.TrimPrefix(statusURL, prefix)
 			if idx := strings.Index(path, "/requests/"); idx > 0 {
-				statusEndpoint = path[:idx]
+				derivedEndpoint := path[:idx]
+				if strings.Contains(endpoint, "nano-banana") && strings.Contains(endpoint, "/edit") && !strings.Contains(derivedEndpoint, "/edit") {
+					statusEndpoint = derivedEndpoint
+					log.Printf("[fal.ai] using nano-banana status endpoint: submit=%s status=%s", endpoint, derivedEndpoint)
+				} else if strings.Contains(endpoint, "/edit") && !strings.Contains(derivedEndpoint, "/edit") {
+					log.Printf("[fal.ai] keeping edit endpoint: submit=%s status=%s", endpoint, derivedEndpoint)
+					statusEndpoint = endpoint
+				} else {
+					statusEndpoint = derivedEndpoint
+				}
 				if statusEndpoint != endpoint {
 					log.Printf("[fal.ai] status endpoint differs: submit=%s status=%s", endpoint, statusEndpoint)
 				}
@@ -297,6 +336,31 @@ func SubmitToFal(apiKey, endpoint string, body map[string]interface{}) (string, 
 	}
 
 	return requestID, statusEndpoint, nil
+}
+
+func hasFalResultPayload(result map[string]interface{}) bool {
+	if images, ok := result["images"].([]interface{}); ok && len(images) > 0 {
+		if img, ok := images[0].(map[string]interface{}); ok {
+			if u, ok := img["url"].(string); ok && u != "" {
+				return true
+			}
+		}
+	}
+	if img, ok := result["image"].(map[string]interface{}); ok {
+		if u, ok := img["url"].(string); ok && u != "" {
+			return true
+		}
+	}
+	if u, ok := result["image_url"].(string); ok && u != "" {
+		return true
+	}
+	if u, ok := result["video_url"].(string); ok && u != "" {
+		return true
+	}
+	if u, ok := result["audio_url"].(string); ok && u != "" {
+		return true
+	}
+	return false
 }
 
 // PollFalStatus polls a fal.ai queue request until completion or timeout.
@@ -359,6 +423,9 @@ func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (m
 		json.Unmarshal(body, &status)
 
 		s, _ := status["status"].(string)
+		if hasFalResultPayload(status) && s != "FAILED" {
+			return status, nil
+		}
 		if s == "COMPLETED" {
 			return FetchFalResult(apiKey, endpoint, requestID)
 		}
@@ -373,42 +440,67 @@ func PollFalStatus(apiKey, endpoint, requestID string, timeout time.Duration) (m
 	return nil, fmt.Errorf("fal.ai polling timeout after %v", timeout)
 }
 
+func falEndpointVariants(endpoint string) []string {
+	variants := []string{endpoint}
+	trimmed := strings.TrimSuffix(endpoint, "/edit")
+	if trimmed != endpoint && trimmed != "" {
+		variants = append(variants, trimmed)
+	}
+	return variants
+}
+
 // FetchFalResult fetches the completed result from fal.ai
 func FetchFalResult(apiKey, endpoint, requestID string) (map[string]interface{}, error) {
-	var url string
-	var client *http.Client
-	var authHeader string
+	var lastErr error
+	for _, candidate := range falEndpointVariants(endpoint) {
+		var url string
+		var client *http.Client
+		var authHeader string
 
-	if isStarAIKey(apiKey) {
-		url = StarAIProxyURL("fal", "/"+endpoint+"/requests/"+requestID)
-		c, _ := GetStarAIClient()
-		if c == nil {
-			return nil, fmt.Errorf("StarAI proxy not initialized")
+		if isStarAIKey(apiKey) {
+			url = StarAIProxyURL("fal", "/"+candidate+"/requests/"+requestID)
+			c, _ := GetStarAIClient()
+			if c == nil {
+				return nil, fmt.Errorf("StarAI proxy not initialized")
+			}
+			client = c
+		} else {
+			url = fmt.Sprintf("https://queue.fal.run/%s/requests/%s", candidate, requestID)
+			client = http.DefaultClient
+			authHeader = "Key " + apiKey
 		}
-		client = c
-	} else {
-		url = fmt.Sprintf("https://queue.fal.run/%s/requests/%s", endpoint, requestID)
-		client = http.DefaultClient
-		authHeader = "Key " + apiKey
-	}
 
-	req, _ := http.NewRequest("GET", url, nil)
-	if authHeader != "" {
-		req.Header.Set("Authorization", authHeader)
-	}
+		req, _ := http.NewRequest("GET", url, nil)
+		if authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			lastErr = fmt.Errorf("fal.ai result error (HTTP %d): %s", resp.StatusCode, string(body))
+			continue
+		}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse result: %s", string(body))
+		var result map[string]interface{}
+		if err := json.Unmarshal(body, &result); err != nil {
+			lastErr = fmt.Errorf("failed to parse result: %s", string(body))
+			continue
+		}
+		if hasFalResultPayload(result) || len(result) > 0 {
+			return result, nil
+		}
+		lastErr = fmt.Errorf("empty fal result for endpoint %s", candidate)
 	}
-	return result, nil
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("fal.ai result fetch failed for request %s", requestID)
 }
 
 // ── Video/Audio Probing ──
@@ -613,6 +705,155 @@ func generateTTSViaPython(apiKey, text, voice, outputPath string) error {
 	return fmt.Errorf("TTS unexpected output: %s", outputStr)
 }
 
+// ── Volcengine TTS 2.0 ──
+
+// isVolcengineVoice returns true if the voice_type is a Volcengine TTS voice.
+// Volcengine voices contain suffixes like _bigtts, _streaming, or _tob.
+// DashScope CosyVoice voices are short names like "longyuan", "longhua".
+func isVolcengineVoice(voice string) bool {
+	return strings.Contains(voice, "_bigtts") || strings.Contains(voice, "_streaming") ||
+		strings.Contains(voice, "_tob") || strings.HasPrefix(voice, "BV")
+}
+
+// isVolcengine2Voice returns true for Volcengine 2.0 voices that support context_texts.
+func isVolcengine2Voice(voice string) bool {
+	return strings.Contains(voice, "_uranus_bigtts") || strings.Contains(voice, "_mars_bigtts") ||
+		strings.Contains(voice, "_jupiter_bigtts") || strings.Contains(voice, "_moon_bigtts")
+}
+
+// GetVolcengineTTSAPIKey retrieves the Volcengine TTS API key (X-Api-Key for openspeech.bytedance.com).
+// Checks model_configs table (provider="volcengine-tts"), then env var VOLCENGINE_TTS_API_KEY.
+func GetVolcengineTTSAPIKey(db *gorm.DB, userID string) string {
+	if db != nil {
+		var cfg model.ModelConfig
+		// Try user's own key
+		if userID != "" {
+			if err := db.Where("user_id = ? AND provider = ? AND api_key != ''", userID, "volcengine-tts").First(&cfg).Error; err == nil {
+				return cfg.APIKey
+			}
+		}
+		// Try platform-level key
+		if err := db.Where("is_platform = ? AND provider = ? AND api_key != ''", true, "volcengine-tts").First(&cfg).Error; err == nil {
+			return cfg.APIKey
+		}
+		// Try system user's key
+		if err := db.Where("user_id = ? AND provider = ? AND api_key != ''", "system", "volcengine-tts").First(&cfg).Error; err == nil {
+			return cfg.APIKey
+		}
+	}
+	return os.Getenv("VOLCENGINE_TTS_API_KEY")
+}
+
+// GenerateVolcengineTTS calls Volcengine TTS V3 HTTP Chunked API (openspeech.bytedance.com).
+// instruction is the emotion/style context for 2.0 voices (mapped to context_texts, not billed).
+// Example instructions: "用害怕紧张的语气说", "你可以用撒娇的语气说话吗？"
+func GenerateVolcengineTTS(apiKey, text, voice, instruction, outputPath string) error {
+	is2 := isVolcengine2Voice(voice)
+	resourceID := "seed-tts-1.0"
+	if is2 {
+		resourceID = "seed-tts-2.0"
+	}
+
+	log.Printf("[TTS/Volcengine] request: voice=%s, resource=%s, text_len=%d, instruction=%q, output=%s",
+		voice, resourceID, len(text), instruction, outputPath)
+
+	reqParams := map[string]interface{}{
+		"text":    text,
+		"speaker": voice,
+		"audio_params": map[string]interface{}{
+			"format":      "mp3",
+			"sample_rate": 24000,
+		},
+	}
+
+	// Add context_texts for emotion instruction (TTS 2.0 only, not billed)
+	if instruction != "" && is2 {
+		additionsMap := map[string]interface{}{
+			"context_texts": []string{instruction},
+		}
+		additionsJSON, _ := json.Marshal(additionsMap)
+		reqParams["additions"] = string(additionsJSON)
+	}
+
+	reqBody := map[string]interface{}{
+		"user":       map[string]interface{}{"uid": "claw-tts"},
+		"req_params": reqParams,
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		"https://openspeech.bytedance.com/api/v3/tts/unidirectional",
+		strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return fmt.Errorf("build Volcengine TTS request failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Api-Key", apiKey)
+	req.Header.Set("X-Api-Resource-Id", resourceID)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("Volcengine TTS HTTP failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Volcengine TTS HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Read chunked response: each line is JSON with base64 audio in "data" field
+	// Response format: {"code":0,"data":"BASE64"}...{"code":20000000,"message":"ok","data":null}
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("Volcengine TTS read failed: %v", err)
+	}
+
+	var audioData []byte
+	for _, line := range strings.Split(string(respBody), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var chunk struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Data    string `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
+			continue
+		}
+		if chunk.Code == 20000000 {
+			break // success end marker
+		}
+		if chunk.Code != 0 {
+			return fmt.Errorf("Volcengine TTS error: code=%d msg=%s", chunk.Code, chunk.Message)
+		}
+		if chunk.Data != "" {
+			decoded, err := base64.StdEncoding.DecodeString(chunk.Data)
+			if err != nil {
+				log.Printf("[TTS/Volcengine] base64 decode error on chunk: %v", err)
+				continue
+			}
+			audioData = append(audioData, decoded...)
+		}
+	}
+
+	if len(audioData) == 0 {
+		return fmt.Errorf("Volcengine TTS: no audio data received (resp=%d bytes)", len(respBody))
+	}
+
+	if err := os.WriteFile(outputPath, audioData, 0644); err != nil {
+		return fmt.Errorf("Volcengine TTS write failed: %v", err)
+	}
+
+	log.Printf("[TTS/Volcengine] succeeded: %d bytes → %s", len(audioData), outputPath)
+	return nil
+}
+
 // ── TTS Duration Fitting (professional dubbing sync) ──
 
 const (
@@ -802,9 +1043,11 @@ func FitNarrationSegments(segments []NarrationSegment, audioDurations []float64,
 
 // NarrationSegment represents one voiceover segment with timing
 type NarrationSegment struct {
-	Text  string  `json:"text"`
-	Start float64 `json:"start"`
-	End   float64 `json:"end"`
+	Text        string  `json:"text"`
+	Start       float64 `json:"start"`
+	End         float64 `json:"end"`
+	Voice       string  `json:"voice,omitempty"`
+	Instruction string  `json:"instruction,omitempty"` // Volcengine 2.0: emotion/style instruction (context_texts, not billed)
 }
 
 // SubtitleStyle holds adaptive subtitle rendering parameters based on video orientation
@@ -1145,4 +1388,62 @@ func ResolveImageURL(db *gorm.DB, imageID string) (string, error) {
 		return rec.ImageURL, nil
 	}
 	return "", fmt.Errorf("image has no remote URL: %s", imageID)
+}
+
+func ResolveImageInputForProvider(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", fmt.Errorf("empty image input")
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "asset://") || strings.HasPrefix(raw, "data:image/") {
+		return raw, nil
+	}
+	localPath := ""
+	if strings.HasPrefix(raw, "/v1/images/") {
+		filename := strings.TrimPrefix(raw, "/v1/images/")
+		localPath = filepath.Join(ImagesDir(), filename)
+	} else if strings.HasPrefix(raw, "/v1/projects/") {
+		// /v1/projects/<project>/<fp> → $DOCS_DIR/<project>/<fp>（默认 /app/docs）
+		// 用于直接把 manifest/剧本目录下的本地图片（如 lin_jianyue/unified_sheet_v6.png）
+		// 读盘编码为 base64 data URL，供 Seedance 等远端 API 直接消费，无需再上传 TOS。
+		stripped := strings.TrimPrefix(raw, "/v1/projects/")
+		if q := strings.IndexByte(stripped, '?'); q >= 0 {
+			stripped = stripped[:q]
+		}
+		if strings.Contains(stripped, "..") {
+			return "", fmt.Errorf("path traversal blocked: %s", raw)
+		}
+		parts := strings.SplitN(stripped, "/", 2)
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			docsDir := os.Getenv("DOCS_DIR")
+			if docsDir == "" {
+				docsDir = "/app/docs"
+			}
+			localPath = filepath.Join(docsDir, parts[0], parts[1])
+		}
+	} else if strings.HasPrefix(raw, "/app/") || filepath.IsAbs(raw) {
+		localPath = raw
+	}
+	if localPath == "" {
+		return raw, nil
+	}
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return "", fmt.Errorf("read image failed: %v", err)
+	}
+	ext := strings.ToLower(filepath.Ext(localPath))
+	mime := "image/png"
+	switch ext {
+	case ".jpg", ".jpeg":
+		mime = "image/jpeg"
+	case ".webp":
+		mime = "image/webp"
+	case ".bmp":
+		mime = "image/bmp"
+	case ".gif":
+		mime = "image/gif"
+	case ".tif", ".tiff":
+		mime = "image/tiff"
+	}
+	return fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(data)), nil
 }

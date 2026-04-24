@@ -1179,6 +1179,21 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/videos/:id/dub", videoHandler.Dub)
 			protected.POST("/videos/:id/add-music", videoHandler.AddMusic)
 			protected.GET("/videos/voices", videoHandler.ListVoices)
+			// Archive a generated video (Seedance TOS URL) into docs/<project>/production/<ep>/clips_v2/
+			protected.POST("/videos/archive", videoHandler.Archive)
+
+			// Project manifest helpers (used by workflow preflight self-check "一键修复")
+			projectManifestH := media.NewProjectManifestHandler(db)
+			protected.POST("/projects/:project/ref/suggest", projectManifestH.SuggestRef)
+			protected.PUT("/projects/:project/manifest/characters/:key", projectManifestH.SetCharacterRef)
+			// v2: promote a candidate image (raw/nano/variants or external URL) into
+			// entities/<kind>/<key>/sheets/unified_sheet_v<N+1>.png and patch manifest.ref.
+			protected.POST("/projects/:project/entities/:kind/:key/promote", projectManifestH.PromoteToSheet)
+
+			// nano-banana generate via StarAI provider: writes output to
+			// docs/<project>/entities/<kind>/<key>/nano/<ts>_<slug>.png + sidecar.
+			nanoH := media.NewNanoHandler(db)
+			protected.POST("/nano/generate", nanoH.Generate)
 
 			// Images, Music, Documents (media gallery)
 			mediaHandler := media.NewMediaHandler(db, toolRegistry)
@@ -1187,11 +1202,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.DELETE("/images/:id", mediaHandler.DeleteImage)
 
 			// Character Studio helpers (AI appearance card + CDN upload + TOS launder)
-			charStudioHandler := media.NewCharacterStudioHandler(db, providerRegistry)
+			charStudioHandler := media.NewCharacterStudioHandler(cfg, db, providerRegistry)
 			protected.POST("/characters/generate-appearance", charStudioHandler.GenerateAppearance)
 			protected.POST("/cdn/upload", charStudioHandler.CDNUpload)
+			// Same as /cdn/upload but body is { image_url, drama, asset_type, filename }
+			// — no multipart, reads bytes server-side. Used by the workflow
+			// NodePropertyPanel's "🔼 同步本地图到 CDN" button.
+			protected.POST("/cdn/upload-from-local", charStudioHandler.UploadFromLocal)
 			protected.POST("/cdn/launder-tos", charStudioHandler.LaunderTOSURL)
 			protected.POST("/cdn/resign-tos", charStudioHandler.ResignTOSURL)
+			protected.POST("/cdn/promote-tos", charStudioHandler.PromoteToOwnedTOS)
 
 			// Drama Writer Agent（短剧编剧 AI · 多维度审稿 + 发布文案）
 			writerHandler := media.NewDramaWriterHandler(db, providerRegistry)

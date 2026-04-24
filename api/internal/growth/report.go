@@ -203,9 +203,12 @@ func GenerateDailyReport(db *gorm.DB, p provider.ModelProvider, userID string, d
 		AgentID:  "",
 		Key:      cacheKey,
 		Content:  summary,
-		Category: "summary",
+		Category: model.MemCatSummary,
 		Source:   "system",
-		Scope:    "global",
+		Scope:    model.MemScopeGlobal,
+		Room:     model.MemRoomUser,
+		Anchor:   "user/growth_report",
+		Path:     "user/default > user/growth_report",
 	}
 	db.Create(&mem)
 

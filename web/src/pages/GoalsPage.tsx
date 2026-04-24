@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, Flag, Play, Plus, RefreshCw, Target, Users, XCircle } from 'lucide-react'
 import { goalAPI, collaborationAPI, agentAPI } from '../lib/api'
+import { formatAgentDisplayName } from '../lib/agentDisplay'
 
 type Tab = 'goals' | 'collaborations'
 
@@ -128,7 +129,7 @@ export default function GoalsPage() {
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 space-y-3">
               <select value={newGoal.agent_id} onChange={e => setNewGoal({ ...newGoal, agent_id: e.target.value })} className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
                 <option value="">选择执行 Agent</option>
-                {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {agents.map((a: any) => <option key={a.id} value={a.id}>{formatAgentDisplayName(a.name)}</option>)}
               </select>
               <input value={newGoal.title} onChange={e => setNewGoal({ ...newGoal, title: e.target.value })} placeholder="目标标题" className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg" />
               <textarea value={newGoal.description} onChange={e => setNewGoal({ ...newGoal, description: e.target.value })} placeholder="详细描述（可选）" rows={2} className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg" />

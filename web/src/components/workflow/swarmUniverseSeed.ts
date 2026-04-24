@@ -54,6 +54,7 @@ function charactersFromManifest(m: SwarmManifest): CharacterData[] {
   return m.characters.map(c => ({
     category: 'character',
     label: c.label, tag: c.tag, role: c.role,
+    key: c.key,
     appearance_card: c.appearance_card,
     description: c.description,
     imageUrl: abs(m, c.ref),

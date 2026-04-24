@@ -46,7 +46,27 @@ type Config struct {
 }
 
 type StorageConfig struct {
-	DataDir string `mapstructure:"data_dir"` // root data directory, default /app (container) or ./data (host)
+	DataDir string           `mapstructure:"data_dir"` // root data directory, default /app (container) or ./data (host)
+	TOS     TOSStorageConfig `mapstructure:"tos"`
+}
+
+type TOSStorageConfig struct {
+	Enabled                  bool   `mapstructure:"enabled"`
+	Region                   string `mapstructure:"region"`
+	Endpoint                 string `mapstructure:"endpoint"`
+	AccessKey                string `mapstructure:"access_key"`
+	SecretKey                string `mapstructure:"secret_key"`
+	LogicalClaw              string `mapstructure:"logical_claw"`
+	OwnedBucket              string `mapstructure:"owned_bucket"`
+	DefaultStorageClass      string `mapstructure:"default_storage_class"`
+	PreSignTTLSeconds        int64  `mapstructure:"presign_ttl_seconds"`
+	PromoteOnIngest          bool   `mapstructure:"promote_on_ingest"`
+	RawRetentionHours        int    `mapstructure:"raw_retention_hours"`
+	DerivedRetentionHours    int    `mapstructure:"derived_retention_hours"`
+	TmpRetentionHours        int    `mapstructure:"tmp_retention_hours"`
+	QuarantineRetentionHours int    `mapstructure:"quarantine_retention_hours"`
+	SSEAlgorithm             string `mapstructure:"sse_algorithm"`
+	KMSKeyID                 string `mapstructure:"kms_key_id"`
 }
 
 type NodeConfig struct {
@@ -223,6 +243,22 @@ func Load() (*Config, error) {
 	viper.SetDefault("contributor.max_jobs", 2)
 	viper.SetDefault("contributor.external_addr", "")
 	viper.SetDefault("storage.data_dir", "/app")
+	viper.SetDefault("storage.tos.enabled", false)
+	viper.SetDefault("storage.tos.region", "")
+	viper.SetDefault("storage.tos.endpoint", "")
+	viper.SetDefault("storage.tos.access_key", "")
+	viper.SetDefault("storage.tos.secret_key", "")
+	viper.SetDefault("storage.tos.logical_claw", "")
+	viper.SetDefault("storage.tos.owned_bucket", "")
+	viper.SetDefault("storage.tos.default_storage_class", "STANDARD")
+	viper.SetDefault("storage.tos.presign_ttl_seconds", int64(604800))
+	viper.SetDefault("storage.tos.promote_on_ingest", true)
+	viper.SetDefault("storage.tos.raw_retention_hours", 168)
+	viper.SetDefault("storage.tos.derived_retention_hours", 2160)
+	viper.SetDefault("storage.tos.tmp_retention_hours", 24)
+	viper.SetDefault("storage.tos.quarantine_retention_hours", 720)
+	viper.SetDefault("storage.tos.sse_algorithm", "AES256")
+	viper.SetDefault("storage.tos.kms_key_id", "")
 	viper.SetDefault("hive.url", "")
 	viper.SetDefault("forge.url", "")
 	viper.SetDefault("trading.enabled", false)

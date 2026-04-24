@@ -107,10 +107,34 @@ func (r *Registry) GetDefinitions(names []string) []provider.ToolDefinition {
 
 // Execute runs a tool by name with the given JSON arguments.
 // If an ExecuteHook is set (e.g. billing gateway), the hook wraps the execution.
+// Supports dotted names like "video_generation.list_videos" — splits into tool
+// "video_generation" and injects action "list_videos" into args.
 func (r *Registry) Execute(ctx context.Context, name string, args string) (string, error) {
 	t, ok := r.tools[name]
 	if !ok {
-		return "", fmt.Errorf("tool not found: %s", name)
+		// Handle dotted tool names: "tool_name.action_name" → tool "tool_name" + action "action_name"
+		if dot := strings.IndexByte(name, '.'); dot > 0 {
+			baseName := name[:dot]
+			actionName := name[dot+1:]
+			if bt, bok := r.tools[baseName]; bok {
+				// Inject the action into args JSON
+				var argsMap map[string]interface{}
+				if err := json.Unmarshal([]byte(args), &argsMap); err != nil || argsMap == nil {
+					argsMap = make(map[string]interface{})
+				}
+				if _, hasAction := argsMap["action"]; !hasAction {
+					argsMap["action"] = actionName
+				}
+				merged, _ := json.Marshal(argsMap)
+				args = string(merged)
+				t = bt
+				name = baseName
+				ok = true
+			}
+		}
+		if !ok {
+			return "", fmt.Errorf("tool not found: %s", name)
+		}
 	}
 	if r.hook != nil {
 		return r.hook(ctx, t, name, args)
