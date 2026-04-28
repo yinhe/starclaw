@@ -2,7 +2,7 @@
 
 export interface Take {
   take_id: string          // e.g. "t1", "t2"
-  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
   video_url?: string
   lastframe_url?: string
   task_id?: string
@@ -22,6 +22,8 @@ export interface Take {
   // docs/<project>/production/<ep>/clips_v2/<scene>_<take>.mp4
   local_path?: string      // "/production/ep05/clips_v2/S1_t1.mp4"
   local_url?: string       // "/v1/projects/swarm-universe/production/ep05/clips_v2/S1_t1.mp4"
+  // —— API 请求记录（POST /v1/videos/generate 的请求体，便于日志复盘） ——
+  request_body?: Record<string, unknown>
 }
 
 export interface SceneSpec {
@@ -32,6 +34,19 @@ export interface SceneSpec {
   takes: Take[]
   picked_take?: string     // take_id reference
   rejected_takes?: Take[]  // 历史废稿（早期版本 / 已弃用）
+  deleted_task_ids?: string[] // 手动删除过的 task_id，防止 backfill 再次回灌
+  // —— 故事板静帧（GPT Image 2 / Nano Banana 等生成的一张 720×1280 静帧） ——
+  // 作为 Seedance i2v 首帧锚定镜头构图、角色动作、光影。
+  //   storyboard_url     静帧的可访问 URL（/v1/images/<id>.png 或外链）
+  //   storyboard_prompt  生成静帧用的视觉 prompt（独立于 scene.prompt —— 后者是给 Seedance 的运镜/动态描述）
+  //   storyboard_model   生成时用的模型（gpt-image-2 / nano-banana-2 / flux-pro 等）
+  //   storyboard_status  pending / running / succeeded / failed
+  //   storyboard_task_id 生成任务 ID（fal.ai request_id），用于回轮询
+  storyboard_url?: string
+  storyboard_prompt?: string
+  storyboard_model?: string
+  storyboard_status?: 'pending' | 'running' | 'succeeded' | 'failed'
+  storyboard_task_id?: string
 }
 
 export interface EpisodeScript {
@@ -65,6 +80,12 @@ export interface EpisodeData {
   duration?: number        // target seconds
   description?: string
   cover_url?: string
+  // Seedance 2.0 视频规格（per-episode, 应用到所有 scene）
+  //   resolution: "480p" | "720p" | "1080p"     默认 "1080p"
+  //   ratio:      "9:16" | "16:9" | "1:1" 等    默认 "9:16"
+  // 后端会把这两个字段直接透传给 Seedance，覆盖掉旧的 size 推导逻辑。
+  video_resolution?: string
+  video_ratio?: string
   // production
   scenes?: SceneSpec[]
   composition?: Composition
@@ -72,6 +93,24 @@ export interface EpisodeData {
   script?: EpisodeScript
   history_preview?: EpisodeHistoryPreview
 }
+
+// Seedance 2.0 支持的分辨率/宽高比选项 —— 面板下拉 + runEpisodeProduction 默认值共用
+export const VIDEO_RESOLUTION_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: '480p',  label: '480p',  hint: '最便宜、快速预览' },
+  { value: '720p',  label: '720p',  hint: '平衡画质/成本' },
+  { value: '1080p', label: '1080p（默认）', hint: '短剧推荐，电影级画质' },
+]
+export const VIDEO_RATIO_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: '9:16', label: '9:16（默认）', hint: '抖音/TikTok 竖屏' },
+  { value: '16:9', label: '16:9',         hint: 'B站/YouTube 横屏' },
+  { value: '1:1',  label: '1:1',          hint: '朋友圈/Instagram' },
+  { value: '3:4',  label: '3:4',          hint: '小幅竖屏' },
+  { value: '4:3',  label: '4:3',          hint: '复古/老电视' },
+  { value: '21:9', label: '21:9',         hint: '超宽银幕' },
+]
+// 短剧默认值 —— 对齐 style_guide.md 的「9:16 竖屏 · 抖音优先」+ 用户偏好 1080p
+export const DEFAULT_VIDEO_RESOLUTION = '1080p'
+export const DEFAULT_VIDEO_RATIO = '9:16'
 
 export interface CharacterData {
   category: 'character'

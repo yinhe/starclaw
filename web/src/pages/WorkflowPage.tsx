@@ -16,7 +16,7 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save, Play, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera, Coins, CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react'
+import { Save, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera, Coins, CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import LLMNode from '../components/workflow/LLMNode'
 import ToolNode from '../components/workflow/ToolNode'
@@ -36,7 +36,7 @@ import UniverseOverviewModal from '../components/workflow/UniverseOverviewModal'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
 import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData, type Take } from '../components/workflow/episodeTypes'
-import { buildSeedNodes } from '../components/workflow/swarmUniverseSeed'
+import { buildSeedNodes, loadSwarmManifest } from '../components/workflow/swarmUniverseSeed'
 import { modelAPI, toolAPI, workflowAPI, videoAPI } from '../lib/api'
 import { parseTOSFreshness, refreshTOS } from '../components/workflow/tosUrlUtils'
 
@@ -80,6 +80,7 @@ export default function WorkflowPage() {
     [selectedNode, nodes],
   )
   const [workflowName, setWorkflowName] = useState('未命名工作流')
+  const [workflowCategory, setWorkflowCategory] = useState<string>('')
   const [saving, setSaving] = useState(false)
   // 保存反馈（toast），3s 后自动消失
   const [saveToast, setSaveToast] = useState<{ kind: 'ok' | 'err' | 'info'; msg: string } | null>(null)
@@ -89,7 +90,10 @@ export default function WorkflowPage() {
   // 自动保存：每次 nodes/edges 变化后 debounce 3s 触发（仅当 workflowId 存在）
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedDefRef = useRef<string>('')
-  const [running, setRunning] = useState(false)
+  // Fix #1: flush save ref —— runEpisodeProduction 在 take 状态变化后立刻调一下，
+  // 把 3s debounce 收到 200ms 内落盘。否则 Seedance 秒失败 → 用户秒刷新 → takes 消失。
+  // 用 ref 打破 doSave 定义顺序（doSave 在组件后半段 useCallback，此处用 ref 绕开）
+  const doSaveRef = useRef<(() => Promise<void>) | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -108,8 +112,10 @@ export default function WorkflowPage() {
   const [models, setModels] = useState<{ id: string; provider: string; model_name: string; display_name: string }[]>([])
   const [availableTools, setAvailableTools] = useState<string[]>([])
   const [showLeftPanel, setShowLeftPanel] = useState(true)
-  // 画布底部日志 dock：选中剧集节点时可展开
+  // 画布底部日志 dock：选中剧集节点时可展开，支持拖拽调高
   const [logsDockOpen, setLogsDockOpen] = useState(false)
+  const [logsDockHeight, setLogsDockHeight] = useState(288) // default h-72 = 288px
+  const logsDragRef = useRef<{ startY: number; startH: number } | null>(null)
   // 成本分析 Modal
   const [showCostModal, setShowCostModal] = useState(false)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ characters: true, episodes: true, props: true, pipeline: false, spinoff: true, 's1': true, 's2': false, 's3': false, 's4': false, 's5': false })
@@ -124,10 +130,18 @@ export default function WorkflowPage() {
   const nodeIdCounter = useRef(100)
   const rfRef = useRef<ReactFlowInstance | null>(null)
 
+  // 短剧工作流判定：category === 'content' 或画布已有剧集节点（兼容老工作流）
+  const isDramaWorkflow = useMemo(() => {
+    if (workflowCategory === 'content') return true
+    return nodes.some(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene')
+  }, [workflowCategory, nodes])
+
   // 聚焦模式：选中某一集时隐藏其他剧集节点，突出当前集的工作流
   const [focusedEpisodeId, setFocusedEpisodeId] = useState<string | null>(null)
   const [focusedSceneId, setFocusedSceneId] = useState<string | null>(null)
   const [focusMode, setFocusMode] = useState(true)
+  // 点击 Final Cut 节点时让右侧面板默认到 composition tab（一次性信号，面板消费后清空）
+  const [panelInitialTab, setPanelInitialTab] = useState<'scenes' | 'composition' | 'script' | 'meta' | null>(null)
 
   // 派单前自检（点「开始生产 EPxx」先开 modal，自检通过才真正 runEpisodeProduction）
   const [preflightTarget, setPreflightTarget] = useState<{ episode: EpisodeData; nodeId: string } | null>(null)
@@ -156,6 +170,170 @@ export default function WorkflowPage() {
 
   // runEpisodeProduction 在下面定义，用 ref 打破循环依赖
   const runEpisodeProductionRef = useRef<(ep: EpisodeData, id: string, opts?: { initialRefVideoUrl?: string }) => void>(() => {})
+  // Cancel production: set to true to abort the scene loop + polling
+  const cancelProductionRef = useRef(false)
+
+  // Fix #2: archive backfill —— 从后端 /v1/videos 捞回这一集每个场景已经归档的 takes，
+  // 合并进 scene.takes[]。解决「派单过的 take 只在 workflow.definition 里，workflow 没保存就丢」
+  // 的问题：workflow 没保存也没关系 —— DB 里的 VideoRecord 永远是 source of truth。
+  // 只在「聚焦一集」时触发一次，避免把所有集都拉一遍打爆 API。
+  const backfilledEpisodesRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!focusedEpisodeId) return
+    // 一集只回灌一次 —— 避免 takes 变化 → 触发 useEffect → 再次 fetch → 无限循环。
+    if (backfilledEpisodesRef.current.has(focusedEpisodeId)) return
+    const epNode = nodes.find(n => n.id === focusedEpisodeId)
+    if (!epNode) return
+    const ep = epNode.data as unknown as EpisodeData
+    if (!ep?.scenes?.length) return
+    const epLabel = ep.label
+    if (!epLabel) return
+    backfilledEpisodesRef.current.add(focusedEpisodeId)
+    void (async () => {
+      try {
+        // 没有 episode 维度的 filter，只能 scene 过滤后客户端按 label 前缀筛
+        // 后端 videoAPI.list 可选 `scene` query param（精确匹配），为了减少请求数，
+        // 一次拉 100 条不带 scene 再按「<label>.<Sx>」前缀过滤更简洁。
+        const res = await videoAPI.list()
+        const records: Array<{
+          id: string
+          task_id: string
+          model: string
+          prompt: string
+          video_url: string
+          img_url: string
+          scene: string
+          status: string
+          duration: number
+          created_at: string
+        }> = res.data?.videos || []
+        const prefix = `${epLabel}.`
+        const byScene = new Map<string, typeof records>()
+        for (const r of records) {
+          if (!r.scene?.startsWith(prefix)) continue
+          const sceneId = r.scene.slice(prefix.length)
+          if (!sceneId) continue
+          if (!byScene.has(sceneId)) byScene.set(sceneId, [])
+          byScene.get(sceneId)!.push(r)
+        }
+        let touched = 0
+        setNodes(nds => nds.map(n => {
+          if (n.id !== focusedEpisodeId) return n
+          const d = n.data as unknown as EpisodeData
+          // Stale take cleanup: mark running/pending takes older than 10 min as failed
+          const STALE_MS = 10 * 60 * 1000
+          const now = Date.now()
+          const cleanStaleTakes = (takes: Take[]) => takes.map(t => {
+            if ((t.status === 'running' || t.status === 'pending') && t.created_at) {
+              const age = now - new Date(t.created_at).getTime()
+              if (age > STALE_MS) {
+                return { ...t, status: 'failed' as const, note: t.note || '超时未完成（自动清理）' }
+              }
+            }
+            return t
+          })
+          // Deduplicate take_ids: if two takes share the same id, rename the later one
+          const deduplicateTakes = (takes: Take[]) => {
+            const seen = new Set<string>()
+            let maxNum = takes.reduce((max, t) => {
+              const m = /^t(\d+)$/.exec(t.take_id || '')
+              return m ? Math.max(max, Number(m[1])) : max
+            }, 0)
+            return takes.map(t => {
+              if (seen.has(t.take_id)) {
+                maxNum += 1
+                return { ...t, take_id: `t${maxNum}` }
+              }
+              seen.add(t.take_id)
+              return t
+            })
+          }
+          const newScenes = (d.scenes || []).map(s => {
+            const recs = byScene.get(s.id)
+            if (!recs?.length) {
+              // No backfill records, but still clean stale takes + deduplicate
+              const cleaned = deduplicateTakes(cleanStaleTakes(s.takes || []))
+              if (cleaned.every((t, i) => t === (s.takes || [])[i])) return s
+              return { ...s, takes: cleaned }
+            }
+            const existingTaskIds = new Set((s.takes || []).map(t => t.task_id).filter(Boolean))
+            const deletedTaskIds = new Set(s.deleted_task_ids || [])
+            const maxTakeNum = (s.takes || []).reduce((max, t) => {
+              const m = /^t(\d+)$/.exec(t.take_id || '')
+              return m ? Math.max(max, Number(m[1])) : max
+            }, 0)
+            // Fix: 先同步已有 take 的状态（task_id 匹配的，用后端真实状态覆盖）
+            const recByTaskId = new Map(recs.map(r => [r.task_id, r]))
+            let updatedExisting = (s.takes || []).map(t => {
+              if (!t.task_id) return t
+              const r = recByTaskId.get(t.task_id)
+              if (!r) return t
+              const backendStatus = r.status === 'succeeded' ? 'succeeded' as const
+                : r.status === 'failed' ? 'failed' as const
+                : t.status
+              if (backendStatus === t.status && (t.video_url || !r.video_url)) return t
+              touched++
+              return {
+                ...t,
+                status: backendStatus,
+                video_url: r.video_url || t.video_url,
+                finished_at: t.finished_at || (backendStatus === 'succeeded' || backendStatus === 'failed' ? new Date().toISOString() : undefined),
+                note: t.note || '从视频库回灌',
+              }
+            })
+            const toAdd: Take[] = []
+            // 按 created_at 升序补 take_id，保证 t1/t2/... 不打架
+            const sortedRecs = [...recs].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+            let nextTakeNum = maxTakeNum
+            for (const r of sortedRecs) {
+              if (existingTaskIds.has(r.task_id) || deletedTaskIds.has(r.task_id)) continue
+              nextTakeNum += 1
+              toAdd.push({
+                take_id: `t${nextTakeNum}`,
+                status: r.status === 'succeeded' ? 'succeeded'
+                  : r.status === 'failed' ? 'failed'
+                  : r.status === 'running' ? 'running'
+                  : 'pending',
+                video_url: r.video_url,
+                task_id: r.task_id,
+                created_at: r.created_at,
+                finished_at: r.status === 'succeeded' || r.status === 'failed' ? r.created_at : undefined,
+                prompt: r.prompt,
+                ref_image_url: r.img_url,
+                model: r.model,
+                duration: r.duration,
+                note: '从视频库回灌',
+              } as Take)
+            }
+            if (toAdd.length === 0 && updatedExisting.every((t, i) => t === (s.takes || [])[i])) {
+              // 只做 stale/dedup 清理
+              const cleaned = deduplicateTakes(cleanStaleTakes(s.takes || []))
+              if (cleaned.every((t, i) => t === (s.takes || [])[i])) return s
+              return { ...s, takes: cleaned }
+            }
+            touched += toAdd.length
+            const mergedTakes = [...updatedExisting, ...toAdd]
+            // 如果本场还没 picked_take，且有 succeeded 的，自动 pick 最新一个
+            let picked = s.picked_take
+            if (!picked) {
+              const latestSucc = [...mergedTakes].reverse().find(t => t.status === 'succeeded')
+              if (latestSucc) picked = latestSucc.take_id
+            }
+            return { ...s, takes: deduplicateTakes(cleanStaleTakes(mergedTakes)), picked_take: picked }
+          })
+          const picked_clips = newScenes.map(s => s.picked_take ? `${s.id}.${s.picked_take}` : '').filter(Boolean)
+          const composition = { ...(d.composition || { picked_clips: [], status: 'pending' as const }), picked_clips }
+          return { ...n, data: { ...d, scenes: newScenes, composition } as unknown as Record<string, unknown> }
+        }))
+        if (touched > 0) {
+          console.log(`[archive-backfill] ${epLabel}: 回灌 ${touched} 个 takes（来自 /v1/videos）`)
+        }
+      } catch (e) {
+        const ax = e as { response?: { data?: { error?: string } }; message?: string }
+        console.warn(`[archive-backfill] ${epLabel}: 拉 /v1/videos 失败`, ax?.response?.data?.error || ax?.message || e)
+      }
+    })()
+  }, [focusedEpisodeId, nodes, setNodes])
 
   // 重拍单场景：构造只含该场景的 EpisodeData 投递给同一工作流
   // 关键：从前一场景的 picked_take 抽取 video_url 作为 initialRefVideoUrl 保证尾帧链式不断
@@ -172,13 +350,38 @@ export default function WorkflowPage() {
       const prevPicked = prev ? prev.takes.find(t => t.take_id === prev.picked_take) : undefined
       const initialRefVideoUrl = prevPicked?.video_url || ''
 
+      // 立即在 UI 上添加一个 running take 作为视觉反馈
+      // Fix: 先把该场景里所有残留的 running/pending take 标为 cancelled（容器重启后孤儿 take）
+      const cleanedTakes = (scene.takes || []).map(t =>
+        (t.status === 'running' || t.status === 'pending')
+          ? { ...t, status: 'cancelled' as const, note: t.note || '被新一次重拍取代' }
+          : t
+      )
+      const takeNum = cleanedTakes.reduce((max, t) => {
+        const m = /^t(\d+)$/.exec(t.take_id || '')
+        return m ? Math.max(max, Number(m[1])) : max
+      }, 0) + 1
+      const newTakeId = `t${takeNum}`
+      const updatedScenes = allScenes.map(s => s.id !== sceneId ? s : {
+        ...s,
+        takes: [...cleanedTakes, {
+          take_id: newTakeId,
+          status: 'running' as const,
+          created_at: new Date().toISOString(),
+          model: 'doubao-seedance-2-0-260128',
+          duration: scene.duration || 5,
+        }],
+      })
+
       // 异步触发生产（scoped 只含该场景 + 传上一场尾帧）
-      // NOTE: runEpisodeProduction 内部会自行把 take 标记为 running/succeeded/failed
+      // NOTE: runEpisodeProduction 内部会检测已存在的 running take 并更新而非重复创建
       setTimeout(() => {
         const scopedEp: EpisodeData = { ...ep, scenes: [scene] }
         void runEpisodeProductionRef.current(scopedEp, epId, { initialRefVideoUrl })
       }, 0)
-      return nds
+      return nds.map(n => n.id === epId
+        ? { ...n, data: { ...ep, scenes: updatedScenes } as unknown as Record<string, unknown> }
+        : n)
     })
   }, [setNodes])
 
@@ -222,6 +425,13 @@ export default function WorkflowPage() {
     const startX = (focused.position?.x ?? 0) - rowWidth / 2 + 100 // 大致居中
     const y = (focused.position?.y ?? 0) + SCENE_H_OFFSET
 
+    // 归档目录约定：docs/<project>/production/<epKey>/clips_v2/<scene>_<take>.mp4
+    //   被静态路由 /v1/projects/:project/*filepath 映射为可访问 URL。
+    //   当 takes 里的 TOS video_url 过期（24h）但本地 mp4 还在时，SceneStepNode
+    //   会用 archiveProject/archiveEpKey 派生出 /v1/projects/... 的播放退路。
+    const archiveProject = 'swarm-universe'
+    const archiveEpKey = `${ep.is_spinoff ? 'sp' : 'ep'}${String(ep.episode_number || 0).padStart(2, '0')}`
+
     const sceneNodes: Node[] = ep.scenes.map((s, i) => {
       const pickedTake = s.picked_take ? s.takes?.find(t => t.take_id === s.picked_take) : undefined
       const anyTake = s.takes?.find(t => t.status === 'succeeded')
@@ -237,12 +447,26 @@ export default function WorkflowPage() {
           duration: s.duration,
           hasClip: !!anyTake,
           isPicked: !!pickedTake,
-          videoUrl: pickedTake?.video_url || anyTake?.video_url,
+          // 注意：只用 local_url 填 videoUrl；TOS video_url 放到 takes[] 里按需 fallback。
+          // 避免顶层 videoUrl 锁定一个过期 URL，导致 SceneStepNode fallback 派生逻辑失效。
+          videoUrl: pickedTake?.local_url || anyTake?.local_url,
+          archiveProject,
+          archiveEpKey,
           thumbnail: (s as unknown as Record<string, string>).thumbnail,
           takes: s.takes || [],
           pickedTakeId: s.picked_take,
+          prompt: s.prompt || '',
           onRerun: (sid: string) => rerunScene(focusedEpisodeId, sid),
           onPickTake: (sid: string, tid: string) => pickSceneTake(focusedEpisodeId, sid, tid),
+          onUpdatePrompt: (sid: string, prompt: string) => {
+            setNodes(nds => nds.map(nd => {
+              if (nd.id !== focusedEpisodeId) return nd
+              const dd = nd.data as unknown as EpisodeData
+              const newScenes = (dd.scenes || []).map(sc => sc.id === sid ? { ...sc, prompt } : sc)
+              return { ...nd, data: { ...dd, scenes: newScenes } as unknown as Record<string, unknown> }
+            }))
+          },
+          onSelectScene: (sid: string) => setFocusedSceneId(sid),
         },
         draggable: true,
         selectable: true,
@@ -256,7 +480,24 @@ export default function WorkflowPage() {
       id: finalNodeId,
       type: 'sceneStep',
       position: finalSaved || { x: startX + n * SCENE_W, y },
-      data: { isFinal: true, sceneId: 'FIN', label: '合成成片', duration: 0, hasClip: false, isPicked: false },
+      data: {
+        isFinal: true, sceneId: 'FIN', label: '合成成片', duration: 0,
+        hasClip: !!ep.composition?.final_video_url,
+        isPicked: !!ep.composition?.final_video_url,
+        videoUrl: ep.composition?.final_video_url,
+        // 点 Final Cut 节点 → 选中本集 + 切到 composition tab。
+        // SceneStepNode 在 isFinal 分支里调用 onSelectScene('__FINAL__')。
+        onSelectScene: (sid: string) => {
+          if (sid === '__FINAL__') {
+            const epNode = nodes.find(nn => nn.id === focusedEpisodeId)
+            if (epNode) {
+              setSelectedNode(epNode)
+              setFocusedSceneId(null)
+              setPanelInitialTab('composition')
+            }
+          }
+        },
+      },
       draggable: true,
       selectable: true,
     }
@@ -457,9 +698,77 @@ export default function WorkflowPage() {
       const wf = res.data.workflow
       if (wf) {
         setWorkflowName(wf.name || '未命名工作流')
+        setWorkflowCategory(wf.category || '')
         const def = typeof wf.definition === 'string' ? JSON.parse(wf.definition) : wf.definition
         // 只有当后端 definition 真的有内容时才覆盖本地草稿，避免空态擦掉用户数据
-        if (def?.nodes && Array.isArray(def.nodes) && def.nodes.length > 0) setNodes(def.nodes)
+        if (def?.nodes && Array.isArray(def.nodes) && def.nodes.length > 0) {
+          // Auto-sync character/prop nodes from manifest (单一真相源)
+          try {
+            const manifest = await loadSwarmManifest(true)
+            const charMap = new Map(manifest.characters.map(c => [c.key, c]))
+            const propMap = new Map(manifest.props.map(p => [p.key, p]))
+            for (const n of def.nodes) {
+              if (n.type !== 'media') continue
+              const d = n.data as Record<string, unknown>
+              if (d.category === 'character' && typeof d.key === 'string') {
+                const src = charMap.get(d.key)
+                if (src) {
+                  if (src.appearance_card) d.appearance_card = src.appearance_card
+                  if (src.tos_url) d.tos_url = src.tos_url
+                }
+              } else if (d.category === 'prop' && typeof d.key === 'string') {
+                const src = propMap.get(d.key)
+                if (src?.tos_url) d.tos_url = src.tos_url
+              }
+            }
+            // Auto-sync scene prompts from manifest (manifest 是 prompt 的单一真相源)
+            // Workflow node label 格式 "EP05 夜袭"；manifest 用 title "夜袭" + number 5
+            const epByTitle = new Map(manifest.episodes.map(e => {
+              const prefix = `EP${String(e.number).padStart(2, '0')} ${e.title}`
+              return [prefix, e]
+            }))
+            for (const n of def.nodes) {
+              if (n.type !== 'media') continue
+              const d = n.data as Record<string, unknown>
+              if (d.category !== 'scene') continue
+              const epLabel = d.label as string
+              if (!epLabel) continue
+              const mEp = epByTitle.get(epLabel)
+              if (!mEp?.scenes?.length || !Array.isArray(d.scenes)) continue
+              const mSceneMap = new Map(mEp.scenes.map(s => [s.id, s]))
+              for (const s of d.scenes as Array<{ id: string; prompt?: string; label?: string; duration?: number }>) {
+                const ms = mSceneMap.get(s.id)
+                if (!ms) continue
+                if (ms.prompt && ms.prompt !== s.prompt) {
+                  console.log(`[loadWorkflow] sync prompt ${epLabel}.${s.id}: "${(s.prompt || '').slice(0, 30)}…" → "${ms.prompt.slice(0, 30)}…"`)
+                  s.prompt = ms.prompt
+                }
+                if (ms.label && ms.label !== s.label) s.label = ms.label
+                if (ms.duration && ms.duration !== s.duration) s.duration = ms.duration
+              }
+            }
+          } catch { /* manifest unavailable — keep node data as-is */ }
+          // Fix: 页面刚加载时没有活跃的生产进程。
+          // 只取消没有 task_id 的 running/pending take（从未提交到后端的孤儿）。
+          // 有 task_id 的保持 running —— 后续 backfill 会从 /v1/videos 查询真实状态并同步。
+          for (const n of def.nodes) {
+            if (n.type !== 'media') continue
+            const d = n.data as Record<string, unknown>
+            if (d.category !== 'scene' || !Array.isArray(d.scenes)) continue
+            let dirty = false
+            for (const s of d.scenes as Array<{ takes?: Array<{ status: string; note?: string; task_id?: string }> }>) {
+              for (const t of (s.takes || [])) {
+                if ((t.status === 'running' || t.status === 'pending') && !t.task_id) {
+                  t.status = 'cancelled'
+                  t.note = t.note || '页面重载时自动取消（未提交的残留）'
+                  dirty = true
+                }
+              }
+            }
+            if (dirty) console.log(`[loadWorkflow] 清理无 task_id 的孤儿 takes: ${d.label || n.id}`)
+          }
+          setNodes(def.nodes)
+        }
         if (def?.edges && Array.isArray(def.edges) && def.edges.length > 0) setEdges(def.edges)
       }
     } catch { /* */ }
@@ -630,7 +939,13 @@ export default function WorkflowPage() {
     const start = Date.now()
     let pollInterval = 5000
     while ((Date.now() - start) / 1000 < maxSec) {
-      await new Promise(r => setTimeout(r, pollInterval))
+      if (cancelProductionRef.current) return { status: 'cancelled' }
+      // Sleep in 500ms chunks so cancel is detected quickly
+      for (let waited = 0; waited < pollInterval; waited += 500) {
+        if (cancelProductionRef.current) return { status: 'cancelled' }
+        await new Promise(r => setTimeout(r, Math.min(500, pollInterval - waited)))
+      }
+      if (cancelProductionRef.current) return { status: 'cancelled' }
       try {
         const res = await videoAPI.statusByTaskId(taskId)
         const videos: Array<{ id: string; task_id: string; video_url: string; status: string; lastframe_url?: string }> = res.data.videos || []
@@ -654,6 +969,9 @@ export default function WorkflowPage() {
   const runEpisodeProduction = useCallback(async (episodeData: EpisodeData, nodeId: string, opts?: { initialRefVideoUrl?: string }) => {
     const scenes = episodeData.scenes || []
     if (scenes.length === 0) { showAppToast('warn', '该集没有场景', '请先在面板里添加至少 1 个场景再开始生产。'); return }
+
+    // Reset cancel flag on new production run
+    cancelProductionRef.current = false
 
     // Optimistic UI: composition.status = generating
     setNodes(nds => nds.map(n => {
@@ -748,6 +1066,12 @@ export default function WorkflowPage() {
         const char = charList.find(c => c.tag === tag)
         return char ? `${char.label}` : _m
       })
+      // Fix: manifest prompt 写 "[图3]苏蜜…" 替换后变 "苏蜜苏蜜…"，折叠重复
+      for (const c of charList) {
+        if (c.label && out.includes(c.label + c.label)) {
+          out = out.split(c.label + c.label).join(c.label)
+        }
+      }
       const usedUrls = Array.from(usedTags).map(t => byTag[t]).filter(Boolean)
       return { resolved: out, usedUrls }
     }
@@ -765,47 +1089,108 @@ export default function WorkflowPage() {
     let prevRefVideoUrl: string = opts?.initialRefVideoUrl || ''
     let prevRecordId: string = ''
     const failures: string[] = []
+    const skipped: string[] = []
+    // Fix #5: 批量模式（scenes.length > 1）下，已经 picked_take 的场景视为"已完成"不再重跑。
+    // rerunScene 传进来的是 scopedEp（scenes.length === 1），不触发此逻辑，仍然能强制重拍。
+    // 解决用户「做过 3 次派单，每次都从 S1 开始」的问题 —— 现在会自动续接从第一个未完成场景开始。
+    const isBatch = scenes.length > 1
 
     for (const scene of scenes) {
-      const takeId = `t${(scene.takes?.length || 0) + 1}`
+      // Check cancel flag before each scene
+      if (cancelProductionRef.current) {
+        console.log('[runEpisodeProduction] 用户取消生产')
+        break
+      }
+
+      // Fix #5 核心：跳过已 picked 的场景，但仍然把它的 picked_take.video_url
+      // 挂到 prevRefVideoUrl，这样下一场的「尾帧链」不断。
+      if (isBatch && scene.picked_take) {
+        const picked = scene.takes?.find(t => t.take_id === scene.picked_take)
+        if (picked?.status === 'succeeded' && picked.video_url) {
+          prevRefVideoUrl = picked.video_url
+          prevRecordId = ''  // 没有缓存的 record_id，后端会 fallback 到 video_url 解析
+          skipped.push(scene.id)
+          console.log(`[runEpisodeProduction] 跳过 ${scene.id}（已 picked ${scene.picked_take}）`)
+          continue
+        }
+      }
+      const takeId = `t${(scene.takes || []).reduce((max, t) => {
+        const m = /^t(\d+)$/.exec(t.take_id || '')
+        return m ? Math.max(max, Number(m[1])) : max
+      }, 0) + 1}`
       const sceneLabelFull = `${episodeData.label} · ${scene.id}`
 
       // 5b) 组装 prompt + 参考图（先组装，再把 take 标 running 以便日志立即可见）
       const { resolved, usedUrls } = resolveScenePrompt(scene.prompt || scene.label || '')
       const promptsSnippet = sceneBlockFromPrompts(scene.id)
+
+      // Fix #10：古铜钱道具归属约束。
+      //   Seedance 在同画面 3 角色 + 多道具场景里会把小物件乱挂——实际已观察到
+      //   EP05 里古铜钱被画到了 [图3] 苏蜜胸口（铜钱是 [图1] 林见月的源文明信物）。
+      //   本场 prompt 若没提到 [图1] 林见月，或没提到古铜钱关键词，就在 prompt 末尾
+      //   塞一段负面约束，告诉模型"这一镜没有古铜钱，任何角色身上都不应该出现"。
+      const rawPromptText = (scene.prompt || '') + (promptsSnippet || '')
+      const hasLin = /\[图1\]|林见月|Lin Jianyue/i.test(rawPromptText)
+      const mentionsCoin = /古铜钱|铜钱|bronze coin|coin/i.test(rawPromptText)
+      const coinGuard = !mentionsCoin
+        ? '\n\n[道具归属约束] 本镜不要出现古铜钱 / 铜钱 / 任何挂坠铜器；苏蜜、ZERG、颜术、温婉身上绝对不要出现古铜钱。这部短剧是写实风格，真人短剧质感，绝不要卡通 / 动漫 / 插画风格。'
+        : !hasLin
+          ? '\n\n[道具归属约束] 古铜钱只属于 [图1] 林见月；本镜没有林见月出场时，苏蜜/ZERG/颜术/温婉身上绝对不要出现古铜钱挂饰。写实真人短剧风格，绝不卡通。'
+          : '\n\n[道具归属约束] 古铜钱/铜钱发光/金色光晕只能出现在 [图1] 林见月（女主）身上——绝对不能出现在苏蜜、ZERG、颜术、温婉或任何其他角色身上。古铜钱挂在林见月胸口汉服下，发光时金色光从她胸前透出。写实真人短剧质感，电影级画面，绝不要卡通 / 动漫 / 插画风格。'
+
       const fullPrompt = [
         resolved,
         promptsSnippet ? `\n\n[镜别细则（摘自提示词总稿）]\n${promptsSnippet}` : '',
+        coinGuard,
+        '\n\n[画面约束] 画面中绝对不要出现任何文字、字幕、水印、标题、对话气泡、歌词条。角色说话只生成语音和口型动作，不要把台词渲染成屏幕上的文字。纯视觉画面，无任何文字叠加。ABSOLUTELY NO on-screen text, subtitles, captions, watermarks, or dialogue bubbles. Dialogue is audio-only with lip sync, never rendered as visible text.',
       ].join('').slice(0, 4000)
 
-      // img_url：把本场 prompt 中所有 [图N] 对应的角色参考图全部传给 Seedance
-      //   后端 parseImageURLList 支持逗号分隔 → 每个 URL 会作为一个 reference_image
+      // img_url：优先用 scene.storyboard_url（GPT Image 2 生成的 720×1280 故事板静帧）
+      //   作为 Seedance i2v 首帧——能锚定构图、机位、角色站位、光影情绪，
+      //   比纯角色三视图参考更稳。后面再挂 [图N] 角色参考做次级约束。
+      //   后端 parseImageURLList 支持逗号分隔 → 多个 URL 会作为多张 reference_image
       //   （早期只传 usedUrls[0]，导致 S1 里 [图1][图2][图3] 只上 [图3] 苏蜜）
-      const imgUrl = usedUrls.filter(Boolean).join(',')
+      const refUrlList = [
+        scene.storyboard_url || '',          // 故事板首帧（最优锚定）
+        ...usedUrls,                         // [图N] 角色参考
+      ].filter(Boolean)
+      const imgUrl = refUrlList.join(',')
       // ref_video_url 始终使用上一场 picked_take 的 video_url（Seedance 多模态参考）
       const refVideoUrl = prevRefVideoUrl
       const modelName = 'doubao-seedance-2-0-260128'
 
       // 5a) 先把本场 take 标记为 running 入 UI（并塞入日志字段）
+      //     如果 rerunScene 已经预创建了同 takeId 的 running take，更新而非追加
+      const takePayload = {
+        take_id: takeId,
+        status: 'running' as const,
+        created_at: new Date().toISOString(),
+        prompt: fullPrompt,
+        ref_image_url: imgUrl,
+        ref_video_url: refVideoUrl,
+        ref_video_id: prevRecordId,
+        model: modelName,
+        duration: scene.duration || 5,
+      }
       setNodes(nds => nds.map(n => {
         if (n.id !== nodeId) return n
         const d = n.data as unknown as EpisodeData
-        const newScenes = (d.scenes || []).map(s => s.id !== scene.id ? s : {
-          ...s,
-          takes: [...(s.takes || []), {
-            take_id: takeId,
-            status: 'running' as const,
-            created_at: new Date().toISOString(),
-            prompt: fullPrompt,
-            ref_image_url: imgUrl,
-            ref_video_url: refVideoUrl,
-            ref_video_id: prevRecordId,
-            model: modelName,
-            duration: scene.duration || 5,
-          }],
+        const newScenes = (d.scenes || []).map(s => {
+          if (s.id !== scene.id) return s
+          const existing = (s.takes || []).find(t => t.take_id === takeId)
+          return {
+            ...s,
+            takes: existing
+              ? (s.takes || []).map(t => t.take_id === takeId ? { ...t, ...takePayload } : t)
+              : [...(s.takes || []), takePayload],
+          }
         })
         return { ...n, data: { ...d, scenes: newScenes } as unknown as Record<string, unknown> }
       }))
+      // Fix #1: flush save — 跳过 3s debounce。
+      // running 状态也落盘的原因： Seedance 单镜可能要跑 2–5 分钟，
+      // 中间刷页 / 系统崩 不会丢掉派单状态，task_id 还在，下次 open 能重接轮询。
+      if (workflowId) setTimeout(() => { void doSaveRef.current?.() }, 200)
 
       console.log(`[runEpisodeProduction] ${sceneLabelFull}`, { imgUrl, refVideoUrl, promptLen: fullPrompt.length })
 
@@ -816,21 +1201,37 @@ export default function WorkflowPage() {
       let recordId = ''
       let statusNote = ''
       try {
-        const res = await videoAPI.generate({
+        // Seedance 2.0 原生参数优先：resolution + ratio（对齐豆包文档表格）。
+        // size 仅作为 legacy fallback 保留；后端 video_tool_providers.go 会优先
+        // 读 resolution/ratio，没给才会从 size 推导。
+        // 集面板可以覆盖；没填时默认 1080p + 9:16（抖音短剧）。
+        const epRes = (episodeData.video_resolution || '').trim() || '1080p'
+        const epRatio = (episodeData.video_ratio || '').trim() || '9:16'
+        const requestBody = {
           prompt: fullPrompt,
           model: 'doubao-seedance-2-0-260128',
           img_url: imgUrl || undefined,
           ref_video_url: refVideoUrl || undefined,
           ref_video_id: prevRecordId || undefined,
           duration: scene.duration || 5,
-          size: '720*1280',
+          resolution: epRes,
+          ratio: epRatio,
           scene: `${episodeData.label}.${scene.id}`,
           style_prefix: stylePrefix,
           generate_audio: true,
           return_last_frame: true,
           watermark: false,
           category: 'short_drama',
-        })
+        }
+        // 把请求体存到 take 上，方便日志复盘
+        setNodes(nds => nds.map(n => {
+          if (n.id !== nodeId) return n
+          const d = n.data as unknown as EpisodeData
+          return { ...n, data: { ...d, scenes: (d.scenes || []).map(s => s.id !== scene.id ? s : {
+            ...s, takes: (s.takes || []).map(t => t.take_id !== takeId ? t : { ...t, request_body: requestBody })
+          })} as unknown as Record<string, unknown> }
+        }))
+        const res = await videoAPI.generate(requestBody)
         const data = res.data || {}
         taskId = data.task_id || data.result?.task_id || ''
         statusNote = data.message || data.status || ''
@@ -852,9 +1253,19 @@ export default function WorkflowPage() {
         const ax = e as { response?: { status?: number; data?: { error?: string; message?: string } }; message?: string }
         const backendErr = ax?.response?.data?.error || ax?.response?.data?.message
         const httpStatus = ax?.response?.status
-        statusNote = backendErr
+        const rawNote = backendErr
           ? `${backendErr}${httpStatus ? ` (HTTP ${httpStatus})` : ''}`
           : (ax?.message || String(e))
+        // Fix #3: Seedance 隐私过滤 —— `InputImageSensitiveContentDetected.PrivacyInformation`
+        // 表示服务端判定参考图含真人元素。这是 Seedance 端的硬拦截，我们绕不开。
+        // 但可以给用户一个能看懂的解释 + 下一步可执行动作。
+        if (/InputImageSensitiveContentDetected|PrivacyInformation|real person/i.test(rawNote)) {
+          statusNote = `[Seedance 隐私过滤] 服务端判定本镜的参考图像含真人元素，直接拦截未生成。\n` +
+            `可尝试：① 回角色面板点「洗 TOS URL」重新生成偏风格化的 ref（降低写实度）；② 改用 JPEG/低分辨率再试；③ 右键本镜「重拍」用另一套 ref 组合。\n` +
+            `原始错误：${rawNote}`
+        } else {
+          statusNote = rawNote
+        }
         console.error(`[runEpisodeProduction] ${sceneLabelFull} generate failed:`, e)
       }
 
@@ -884,6 +1295,10 @@ export default function WorkflowPage() {
         const composition = { ...(d.composition || { picked_clips: [] }), picked_clips }
         return { ...n, data: { ...d, scenes: newScenes, composition } as unknown as Record<string, unknown> }
       }))
+      // Fix #1: flush save — take 已落到 succeeded/failed。
+      // 它是「刷新后状态没保存」的关键点：privacy reject 失败后 → 用户立刻刷新 →
+      // 没有此 flush 的话 3s debounce 并没触发到 → takes 消失。
+      if (workflowId) setTimeout(() => { void doSaveRef.current?.() }, 200)
 
       if (ok) {
         prevRefVideoUrl = videoUrl   // 下一场用本场片段整段作为多模态参考
@@ -923,6 +1338,9 @@ export default function WorkflowPage() {
               })
               return { ...n, data: { ...d, scenes: newScenes } as unknown as Record<string, unknown> }
             }))
+            // Flush save immediately — local_url 是关键字段（TOS 24h 过期后的唯一退路），
+            // 不能让 autosave 3s debounce 决定它能否留下。
+            if (workflowId) setTimeout(() => { void doSaveRef.current?.() }, 200)
           })
           .catch(err => {
             const ax = err as { response?: { data?: { error?: string } }; message?: string }
@@ -945,8 +1363,12 @@ export default function WorkflowPage() {
       const allPicked = (d.scenes || []).every(s => s.picked_take)
       return { ...n, data: { ...d, composition: { ...(d.composition || { picked_clips: [] }), status: allPicked ? 'ready' : 'pending' } } as unknown as Record<string, unknown> }
     }))
+    // Fix #1: 一集跑完再 flush 一次 — 防止 composition.status 没保下。
+    if (workflowId) setTimeout(() => { void doSaveRef.current?.() }, 200)
 
-    if (failures.length) {
+    if (cancelProductionRef.current) {
+      showAppToast('warn', `${episodeData.label} 已停止生产`, '已完成的镜头已保留，未完成的场景可稍后继续。', { durationMs: 6000 })
+    } else if (failures.length) {
       const hint = needsKey
         ? '\n\n🔑 看起来缺少模型供应商密钥。请到「模型配置」页新增一条 volcengine（豆包/Seedance）或 StarAI 密钥，保存后重试。'
         : '\n\n已完成的镜头已保留，可在右侧面板点击对应场景「重拍」单独重试。'
@@ -961,10 +1383,14 @@ export default function WorkflowPage() {
         showAppToast('err', `${episodeData.label} 生产部分失败`, `${failures.join('\n')}${hint}`, { durationMs: 12000 })
       }
     } else {
+      // Fix #5: 在成功 toast 里显示"跳过"信息，让用户明白批量续跑时哪些没重拍。
+      const skippedNote = skipped.length > 0
+        ? `\n已跳过 ${skipped.length} 镜（已完成）：${skipped.join(', ')}\n本次新生成 ${scenes.length - skipped.length} 镜。`
+        : ''
       showAppToast(
         'ok',
-        `${episodeData.label} 全部 ${scenes.length} 镜已生成`,
-        `picked_take 已自动选中。请在"合成链路" tab 检查并推进 BGM / 最终合成。`,
+        `${episodeData.label} 全部 ${scenes.length} 镜已就绪`,
+        `picked_take 已自动选中。请在"合成链路" tab 检查并推进 BGM / 最终合成。${skippedNote}`,
         { durationMs: 8000 },
       )
     }
@@ -1061,19 +1487,9 @@ export default function WorkflowPage() {
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
   }, [nodes, edges, workflowId, doSave])
 
-  const handleRun = async () => {
-    setRunning(true)
-    try {
-      if (!workflowId) { showAppToast('warn', '请先保存工作流', '保存后再点击开始生产。'); setRunning(false); return }
-      const res = await workflowAPI.run(workflowId, { input: '' })
-      const out = JSON.stringify(res.data.output || res.data.result, null, 2)
-      showAppToast('ok', '运行完成', out.length > 400 ? out.slice(0, 400) + '…' : out, { durationMs: 8000 })
-    } catch (e) {
-      const msg = (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error || (e as { message?: string })?.message || '未知错误'
-      showAppToast('err', '运行失败', msg)
-    }
-    setRunning(false)
-  }
+  // Fix #1: sync doSave into ref so runEpisodeProduction (declared earlier) can trigger
+  // immediate save after take running/succeeded/failed transitions without waiting 3s。
+  useEffect(() => { doSaveRef.current = () => doSave({ auto: true }) }, [doSave])
 
   const onPaneContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
     e.preventDefault()
@@ -1122,7 +1538,7 @@ export default function WorkflowPage() {
             <ArrowLeft className="w-4 h-4" />
           </button>
           {/* 侧边栏折叠时的展开按钮（与 ArrowLeft 平行，避免与 back 按钮重叠） */}
-          {!showLeftPanel && (
+          {!showLeftPanel && isDramaWorkflow && (
             <button onClick={() => setShowLeftPanel(true)}
               title="展开侧边栏（项目资产）"
               className="p-2 rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700/80 transition-all">
@@ -1143,6 +1559,7 @@ export default function WorkflowPage() {
 
         <div className="flex items-center gap-1.5 pointer-events-auto">
           {/* 聚焦模式开关 */}
+          {isDramaWorkflow && (
           <button onClick={() => {
               const next = !focusMode
               setFocusMode(next)
@@ -1160,8 +1577,9 @@ export default function WorkflowPage() {
             {focusMode ? <Film className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
             {focusMode ? '聚焦' : '总览'}
           </button>
+          )}
           {/* 退出聚焦快捷键（focused 时） */}
-          {focusMode && focusedEpisodeId && (
+          {isDramaWorkflow && focusMode && focusedEpisodeId && (
             <button onClick={() => {
                 setFocusedEpisodeId(null)
                 setTimeout(() => { try { rfRef.current?.fitView({ duration: 400, padding: 0.2 }) } catch {} }, 50)
@@ -1171,11 +1589,13 @@ export default function WorkflowPage() {
               <ArrowLeft className="w-3.5 h-3.5" /> 全部
             </button>
           )}
+          {isDramaWorkflow && (
           <button onClick={loadSwarmUniverse}
             title="一键加载虫群宇宙完整资产 (5角色 + 7道具 + 50集 + 衍生剧)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-violet-600/90 to-cyan-600/90 backdrop-blur border border-violet-500/50 text-white hover:from-violet-500 hover:to-cyan-500 transition-all shadow-lg shadow-violet-900/30">
             <Sparkles className="w-3.5 h-3.5" /> 虫群宇宙
           </button>
+          )}
           <button onClick={() => setShowPalette(!showPalette)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-300 hover:text-white hover:bg-gray-700/80 transition-all">
             <Plus className="w-3.5 h-3.5" /> 添加
@@ -1212,11 +1632,6 @@ export default function WorkflowPage() {
               {saveToast.msg}
             </div>
           )}
-          <button onClick={handleRun} disabled={running}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 backdrop-blur border border-emerald-500/50 text-white hover:bg-emerald-500 disabled:opacity-50 transition-all shadow-lg shadow-emerald-900/30">
-            {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} 开始生产
-          </button>
-          <div className="w-px h-6 bg-gray-700/50 mx-1" />
           <button onClick={toggleFullscreen}
             className="p-2 rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700/80 transition-all">
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -1227,7 +1642,7 @@ export default function WorkflowPage() {
       {/* ── Canvas + Left Panel ── */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Asset Panel */}
-        {showLeftPanel && (
+        {showLeftPanel && isDramaWorkflow && (
           <div className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden z-30">
             <div className="px-3 py-2.5 pt-14 border-b border-gray-800 flex items-center justify-between">
               <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">项目资产</span>
@@ -1548,9 +1963,30 @@ export default function WorkflowPage() {
             )}
           </ReactFlow>
 
-          {/* 画布底部·生产日志 Dock（选中剧集节点时出现，可折叠） */}
+          {/* 画布底部·生产日志 Dock（选中剧集节点时出现，可折叠，可拖拽调高） */}
           {selectedNodeLive && selectedNodeLive.type === 'media' && (selectedNodeLive.data as Record<string, unknown>).category === 'scene' && (
-            <div className={`absolute left-0 right-0 bottom-0 z-40 bg-gray-950/95 backdrop-blur-xl border-t border-gray-800 shadow-2xl transition-all ${logsDockOpen ? 'h-72' : 'h-8'}`}>
+            <div className="absolute left-0 right-0 bottom-0 z-40 bg-gray-950/95 backdrop-blur-xl border-t border-gray-800 shadow-2xl"
+                 style={{ height: logsDockOpen ? logsDockHeight : 32 }}>
+              {/* 拖拽手柄 */}
+              {logsDockOpen && (
+                <div className="absolute -top-1 left-0 right-0 h-2 cursor-ns-resize z-50 hover:bg-cyan-500/30 active:bg-cyan-500/50 transition"
+                     onMouseDown={(e) => {
+                       e.preventDefault()
+                       logsDragRef.current = { startY: e.clientY, startH: logsDockHeight }
+                       const onMove = (ev: MouseEvent) => {
+                         if (!logsDragRef.current) return
+                         const delta = logsDragRef.current.startY - ev.clientY
+                         setLogsDockHeight(Math.max(120, Math.min(window.innerHeight * 0.7, logsDragRef.current.startH + delta)))
+                       }
+                       const onUp = () => {
+                         logsDragRef.current = null
+                         document.removeEventListener('mousemove', onMove)
+                         document.removeEventListener('mouseup', onUp)
+                       }
+                       document.addEventListener('mousemove', onMove)
+                       document.addEventListener('mouseup', onUp)
+                     }} />
+              )}
               <button onClick={() => setLogsDockOpen(v => !v)}
                 className="w-full h-8 px-3 flex items-center gap-2 bg-gray-900/80 hover:bg-gray-800 border-b border-gray-800 transition">
                 <ChevronRight className={`w-3 h-3 text-gray-500 transition-transform ${logsDockOpen ? 'rotate-90' : ''}`} />
@@ -1644,7 +2080,28 @@ export default function WorkflowPage() {
               onUpdate={handleNodeDataUpdate}
               onClose={() => { setSelectedNode(null); setFocusedSceneId(null) }}
               onProduce={(ep) => setPreflightTarget({ episode: ep, nodeId: selectedNodeLive.id })}
+              onFlushSave={() => { if (workflowId) setTimeout(() => { void doSaveRef.current?.() }, 300) }}
+              onCancel={() => {
+                cancelProductionRef.current = true
+                showAppToast('warn', '正在停止生产…', '当前场景轮询结束后将停止，已完成镜头保留。', { durationMs: 5000 })
+                // Reset composition status + mark all running takes as cancelled
+                setNodes(nds => nds.map(n => {
+                  if (n.id !== selectedNodeLive!.id) return n
+                  const d = n.data as unknown as EpisodeData
+                  const scenes = (d.scenes || []).map(s => ({
+                    ...s,
+                    takes: (s.takes || []).map(t =>
+                      t.status === 'running' ? { ...t, status: 'failed' as const, note: '用户取消生产' } : t
+                    ),
+                  }))
+                  return { ...n, data: { ...d, scenes, composition: { ...(d.composition || { picked_clips: [] }), status: 'pending' } } as unknown as Record<string, unknown> }
+                }))
+                // Flush save immediately so status persists across refresh
+                if (workflowId) setTimeout(() => { void doSaveRef.current?.() }, 300)
+              }}
               initialSceneId={focusedSceneId || undefined}
+              initialTab={panelInitialTab || undefined}
+              onConsumeInitialTab={() => setPanelInitialTab(null)}
             />
           </div>
         ) : selectedNodeLive ? (
@@ -1796,10 +2253,24 @@ export default function WorkflowPage() {
           nodes={nodes}
           project="swarm-universe"
           onClose={() => setPreflightTarget(null)}
+          onPatchNode={handleNodeDataUpdate}
           onProceed={() => {
             const t = preflightTarget
             setPreflightTarget(null)
             if (t) runEpisodeProduction(t.episode, t.nodeId)
+          }}
+          onRegenAll={() => {
+            const t = preflightTarget
+            setPreflightTarget(null)
+            if (!t) return
+            // Clear all picked_take → batch mode won't skip any scene
+            const clearedScenes = (t.episode.scenes || []).map(s => ({ ...s, picked_take: undefined }))
+            const clearedEp = { ...t.episode, scenes: clearedScenes, composition: { picked_clips: [] as string[], status: 'pending' as const } }
+            // Write cleared state back to the node
+            setNodes(nds => nds.map(n => n.id === t.nodeId
+              ? { ...n, data: { ...(n.data as Record<string, unknown>), scenes: clearedScenes, composition: clearedEp.composition } }
+              : n))
+            runEpisodeProduction(clearedEp, t.nodeId)
           }}
         />
       )}

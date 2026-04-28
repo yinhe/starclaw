@@ -495,7 +495,7 @@ func generateWorkflowDefinition(p scannedProject) wfDef {
 			Data:     data,
 		})
 		edges = append(edges, wfEdge{
-			ID: fmt.Sprintf("e-bible-%s", strings.ToLower(ep.Code)),
+			ID:     fmt.Sprintf("e-bible-%s", strings.ToLower(ep.Code)),
 			Source: bibleID, Target: id,
 		})
 	}
@@ -503,13 +503,23 @@ func generateWorkflowDefinition(p scannedProject) wfDef {
 	// Row 3: Production pipeline (y=600)
 	nodes = append(nodes, wfNode{
 		ID: "parse", Type: "llm",
-		Position: wfPos{X: 150, Y: 600},
-		Data:     map[string]any{"label": "解析分镜表", "description": "故事剧本 → Seedance prompt"},
+		Position: wfPos{X: 100, Y: 600},
+		Data:     map[string]any{"label": "解析分镜表", "description": "故事剧本 → 镜别拆解 + 视觉 prompt"},
+	})
+	// 新增：GPT Image 2 故事板静帧（作为 Seedance i2v 首帧，保证构图和角色一致性）
+	nodes = append(nodes, wfNode{
+		ID: "storyboard", Type: "tool",
+		Position: wfPos{X: 280, Y: 600},
+		Data: map[string]any{
+			"label":       "故事板静帧",
+			"toolName":    "image_generation",
+			"description": "GPT Image 2 · 构图理解最强 · 每镜 1 张 720×1280 静帧 → Seedance i2v 首帧锚定",
+		},
 	})
 	nodes = append(nodes, wfNode{
 		ID: "seedance", Type: "tool",
-		Position: wfPos{X: 400, Y: 600},
-		Data:     map[string]any{"label": "Seedance 2.0 生成", "toolName": "video_generation", "description": "[图N] + 尾帧链式 · 逐镜生成"},
+		Position: wfPos{X: 460, Y: 600},
+		Data:     map[string]any{"label": "Seedance 2.0 生成", "toolName": "video_generation", "description": "故事板静帧做首帧 + 尾帧链式 · 逐镜生成"},
 	})
 	nodes = append(nodes, wfNode{
 		ID: "dub", Type: "tool",
@@ -532,7 +542,8 @@ func generateWorkflowDefinition(p scannedProject) wfDef {
 		Data:     map[string]any{"label": "交付"},
 	})
 
-	edges = append(edges, wfEdge{ID: "e-parse-sd", Source: "parse", Target: "seedance"})
+	edges = append(edges, wfEdge{ID: "e-parse-sb", Source: "parse", Target: "storyboard"})
+	edges = append(edges, wfEdge{ID: "e-sb-sd", Source: "storyboard", Target: "seedance"})
 	edges = append(edges, wfEdge{ID: "e-sd-dub", Source: "seedance", Target: "dub"})
 	edges = append(edges, wfEdge{ID: "e-sd-bgm", Source: "seedance", Target: "bgm"})
 	edges = append(edges, wfEdge{ID: "e-dub-comp", Source: "dub", Target: "compose"})
