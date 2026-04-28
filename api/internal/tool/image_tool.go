@@ -64,6 +64,8 @@ func (t *ImageTool) Description() string {
 - flux-2-gallery-tryon / flux-2-gallery-background / flux-2-gallery-portrait / flux-2-gallery-angles / flux-2-gallery-staging
 - nano-banana-2：Nano Banana 2
 - nano-banana-2/edit：Nano Banana 2 编辑
+- gpt-image-2：OpenAI GPT Image 2（文生图，alpha）
+- gpt-image-2/edit：OpenAI GPT Image 2 编辑（图生图）
 
 操作：generate_image（生成单张图片）、batch_generate（批量生成多张图片，一次提交所有分镜）、check_status（检查状态）、list_images（列出已生成图片）。
 漫剧制作：用一致的 style 和 prompt 风格前缀保持角色和画面一致性。用 scene 字段标注分镜序号。`
@@ -110,6 +112,18 @@ func isEditModel(model string) bool {
 func isNanoBananaModel(model string) bool {
 	switch strings.ToLower(strings.TrimSpace(model)) {
 	case "nano-banana-2", "nano-banana-2/edit":
+		return true
+	default:
+		return false
+	}
+}
+
+// isGPTImage2Model reports whether the model is OpenAI GPT Image 2 family.
+// These models share the same body shape (image_size/quality/num_images/output_format)
+// but differ from nano-banana / flux in not accepting aspect_ratio/resolution/safety_tolerance.
+func isGPTImage2ModelHelper(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "gpt-image-2", "gpt-image-2/edit":
 		return true
 	default:
 		return false
@@ -243,6 +257,45 @@ func buildNanoBananaResolution(size string) string {
 	return "1K"
 }
 
+// buildGPTImage2Body builds the request payload for OpenAI GPT Image 2.
+// Schema differs from nano-banana / flux: accepts image_size (preset|auto|{w,h}),
+// quality (low/medium/high), num_images, output_format. /edit takes image_urls list.
+func buildGPTImage2Body(prompt, imageURL, size string, n int, model string) (map[string]interface{}, error) {
+	var imgSize interface{} = "square_hd" // default
+	switch strings.TrimSpace(size) {
+	case "square_hd", "square", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9":
+		imgSize = strings.TrimSpace(size)
+	case "":
+		// keep default
+	default:
+		// Custom WxH → {"width": w, "height": h}
+		normalized := strings.ReplaceAll(strings.TrimSpace(size), "*", "x")
+		parts := strings.SplitN(normalized, "x", 2)
+		if len(parts) == 2 {
+			w, e1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+			h, e2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+			if e1 == nil && e2 == nil && w > 0 && h > 0 {
+				imgSize = map[string]int{"width": w, "height": h}
+			}
+		}
+	}
+	body := map[string]interface{}{
+		"prompt":        prompt,
+		"num_images":    n,
+		"image_size":    imgSize,
+		"quality":       "high",
+		"output_format": "png",
+	}
+	if strings.EqualFold(strings.TrimSpace(model), "gpt-image-2/edit") {
+		imageURLs := parseImageURLList(imageURL)
+		if len(imageURLs) == 0 {
+			return nil, fmt.Errorf("image_url is required for edit models such as %s", model)
+		}
+		body["image_urls"] = imageURLs
+	}
+	return body, nil
+}
+
 func buildNanoBananaBody(prompt, imageURL, size string, n int, model string) (map[string]interface{}, error) {
 	body := map[string]interface{}{
 		"prompt":            prompt,
@@ -304,6 +357,11 @@ func modelToEndpoint(m string) string {
 		return "fal-ai/nano-banana-2"
 	case "nano-banana-2/edit":
 		return "fal-ai/nano-banana-2/edit"
+	// ── OpenAI GPT Image 2 (alpha) ──
+	case "gpt-image-2":
+		return "openai/gpt-image-2"
+	case "gpt-image-2/edit":
+		return "openai/gpt-image-2/edit"
 	// ── FLUX.2 text-to-image ──
 	case "flux-2":
 		return "fal-ai/flux-2"
@@ -463,6 +521,11 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 		if err != nil {
 			return "", err
 		}
+	} else if isGPTImage2ModelHelper(args.Model) {
+		body, err = buildGPTImage2Body(args.Prompt, args.ImageURL, args.Size, n, args.Model)
+		if err != nil {
+			return "", err
+		}
 	} else {
 		body = map[string]interface{}{
 			"prompt":     args.Prompt,
@@ -614,7 +677,7 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 
 	endpoint := modelToEndpoint(args.Model)
 	var imageSize interface{}
-	if !isNanoBananaModel(args.Model) {
+	if !isNanoBananaModel(args.Model) && !isGPTImage2ModelHelper(args.Model) {
 		imageSize = buildImageSize(args.Size)
 	}
 
@@ -643,6 +706,12 @@ func (t *ImageTool) batchGenerate(ctx context.Context, args imageArgs) (string, 
 		var err error
 		if isNanoBananaModel(args.Model) {
 			body, err = buildNanoBananaBody(prompt, imageURL, args.Size, 1, args.Model)
+			if err != nil {
+				log.Printf("[ImageTool] batch: invalid input for %s: %v", scene, err)
+				continue
+			}
+		} else if isGPTImage2ModelHelper(args.Model) {
+			body, err = buildGPTImage2Body(prompt, imageURL, args.Size, 1, args.Model)
 			if err != nil {
 				log.Printf("[ImageTool] batch: invalid input for %s: %v", scene, err)
 				continue
