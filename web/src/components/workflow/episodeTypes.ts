@@ -47,6 +47,18 @@ export interface SceneSpec {
   storyboard_model?: string
   storyboard_status?: 'pending' | 'running' | 'succeeded' | 'failed'
   storyboard_task_id?: string
+  // 是否把 storyboard_url 作为 Seedance i2v 首帧 ref 注入。默认 false（仅作为人工预览/构图参考）。
+  // 即便勾选，运行时还会校验 URL 必须 https:// 公网可达——本地 /v1/images/... Seedance 抓不到。
+  storyboard_use_as_ref?: boolean
+  // 候选缩略图画廊：一次批量生成 N 张，用户挑一张 promote 到 storyboard_url。
+  //   每张 = { url, image_id?, model? }；storyboard_url 代表当前"入选"那张。
+  storyboard_candidates?: Array<{ url: string; image_id?: string; model?: string }>
+  // —— 场景级额外参考资产（独立于 Take 调用时传入的 ref）——
+  // ref_video_url、ref_image_extra 不覆盖角色 ref，是叠加上去的。
+  // 比如某场主体是“金链子混混被击飞”，场景本身可以额外指一个 EP03 S2 的动作参考视频。
+  // 运行时 mergeRefs(scene, characters_in_scene) 负责去重+上传 TOS。
+  ref_video_url?: string
+  ref_image_extra?: string
 }
 
 export interface EpisodeScript {
@@ -66,6 +78,12 @@ export interface Composition {
   final_video_url?: string
   status: 'pending' | 'generating' | 'ready' | 'published'
   updated_at?: string
+  // 用户反馈：生成的发布文案刷新就没了。原来 promo 只存在 React local state，
+  // 不写回 workflow definition。这里把成功生成的 PromoResponse 落到 comp 里，
+  // 由 WorkflowPage 的常规持久化路径写进 workflow JSON，刷新页面自动恢复。
+  // 故意用 Record<string, unknown> 避免 episodeTypes 反向依赖 lib/api 的类型，
+  // 持有方在使用时再 cast 成 PromoResponse。
+  promo?: Record<string, unknown>
 }
 
 export interface EpisodeData {
@@ -120,6 +138,10 @@ export interface CharacterData {
   appearance_card?: string // 外观卡文案
   imageUrl?: string        // 参考图/三视图（/v1/projects/... path）
   tos_url?: string         // Seedance TOS URL (24h)
+  // 角色级参考视频（Seedance 2.0 v2v）——用于人物一致性。
+  // 路径示例：/v1/projects/swarm-universe/production/ep03/clips_v2/ep03_S2_sumi_thugs.mp4
+  // 项目里 EP07 三个混混复用 EP03 S2 的片段作为角色参考。
+  ref_video?: string
   description?: string
   role?: string            // 女一 | 女二 | 男一 | 配角
 }

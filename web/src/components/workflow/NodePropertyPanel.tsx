@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { X, Wand2, Sparkles, Loader2, ImageIcon, RefreshCw, Pin, Banana, Upload, Link2 } from 'lucide-react'
+import { X, Wand2, Sparkles, Loader2, ImageIcon, RefreshCw, Pin, Banana, Upload, Link2, Trash2, Copy, ExternalLink } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import { parseTOSFreshness, freshnessLabel, refreshTOS } from './tosUrlUtils'
 import { projectAPI, nanoAPI, cdnAPI } from '../../lib/api'
@@ -60,9 +60,38 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
     onUpdate(node.id, next)
   }
 
+  // 把字段写回 manifest.json —— 用于 tos_url / cdn_url 这些「生成出来的值」，
+  // 否则只活在 React state 里，刷新页面从 manifest re-seed 就丢了（用户反馈：
+  // 「我生成过的 tos URL 没有自动保存」）。只对有 category+key 的 media 节点生效。
+  // 失败不 throw：调用点在 finally 外 await，失败只打日志 + 显示错误提示，
+  // React state 里的值不回退（本会话仍可用）。
+  const persistFieldToManifest = async (field: string, value: string) => {
+    const category = (localData.category as string) || ''
+    const key = (localData.key as string) || ''
+    if (!key) return { ok: false, reason: 'no-key' as const }
+    let kind: 'characters' | 'props' | null = null
+    if (category === 'character') kind = 'characters'
+    else if (category === 'prop') kind = 'props'
+    if (!kind) return { ok: false, reason: 'unsupported-category' as const }
+    try {
+      // Only project currently alive in this workspace; matches the literal
+      // used by syncImageToCDN above and the hard-coded 'swarm-universe' in
+      // WorkflowPage.tsx. When we go multi-project, thread project as a prop.
+      await projectAPI.patchManifestEntity('swarm-universe', kind, key, { [field]: value })
+      return { ok: true as const }
+    } catch (e) {
+      const ax = e as { response?: { data?: { error?: string; detail?: string } }; message?: string }
+      const msg = ax?.response?.data?.error || ax?.response?.data?.detail || ax?.message || '写回 manifest 失败'
+      console.warn(`[NodePropertyPanel] persistFieldToManifest(${field}) failed:`, msg)
+      return { ok: false as const, reason: 'api-error' as const, detail: msg }
+    }
+  }
+
   // launder 过程中若被 Seedream 敏感检测挡下（HTTP 422 + reason=seedream_sensitive_content），
   // 面板会显示「📎 用 CDN URL 代替」按钮让用户一键兜底。
   const [tosSensitiveBlock, setTosSensitiveBlock] = useState(false)
+  // 成功后的简短提示（4s 自动消失）。用户反馈「点完什么都没变」—— 实际有变化只是没 affordance。
+  const [launderOk, setLaunderOk] = useState<string | null>(null)
 
   // 生成 / 刷新 TOS URL。首选 resign（HMAC 7d，零成本）→ promote → Seedream launder（24h）
   const launderTOS = async () => {
@@ -73,12 +102,34 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
       return
     }
     setLaunderErr('')
+    setLaunderOk(null)
     setTosSensitiveBlock(false)
     setLaunderingTOS(true)
     try {
-      const r = await refreshTOS(oldTOSUrl, fallbackSrc)
+      // Forward character context to the backend so Seedream retry prompts are
+      // anchored ("Subject is [图1]林见月, 薄荷绿古装汉服…, live-action realism,
+      // not cartoon") instead of the generic photorealism-only nudges.
+      // Reads directly from localData — populated from manifest.json on open.
+      const char = {
+        appearance_card: (localData.appearance_card as string) || '',
+        label: (localData.label as string) || '',
+        tag: (localData.tag as string) || '',
+      }
+      const r = await refreshTOS(oldTOSUrl, fallbackSrc, char)
       update('tos_url', r.tosUrl)
       console.log(`[NodePropertyPanel] tos_url refreshed via ${r.source}${r.expiresSec ? ` (${r.expiresSec}s)` : ''}`)
+      // 持久化到 manifest.json —— 这样刷新页面重新 seed 也能读到新 TOS URL。
+      const persist = await persistFieldToManifest('tos_url', r.tosUrl)
+      if (!persist.ok && persist.reason === 'api-error') {
+        setLaunderErr(`TOS URL 已生成但写回 manifest 失败：${persist.detail}。当前会话内可用，刷新后会丢失。`)
+      } else {
+        // 成功 → 显示 toast 4s 然后自动消失
+        const tag = r.source === 'launder' ? 'Seedream 重新生成（3K PNG · 24h）'
+          : r.source === 'resign' ? 'HMAC 重签（源文件未变 · 7d）'
+          : r.source === 'promote' ? 'promote 到 sheet（24h）' : r.source
+        setLaunderOk(`✓ TOS 已更新 · ${tag}`)
+        setTimeout(() => setLaunderOk(null), 4000)
+      }
     } catch (e) {
       const err = e as { response?: { status?: number; data?: { error?: string; detail?: string; reason?: string; hint?: string } }; message?: string }
       // Special-case Seedream 敏感内容：422 + reason="seedream_sensitive_content"
@@ -129,7 +180,7 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
 
   // 「用 CDN URL 代替 TOS」：当 Seedream 连续 3 次被敏感过滤挡下时，直接把 cdn_url 赋给 tos_url。
   // Seedance 对 cdn.starclaw.net 域是白名单（EP04 已验证），完全可用，只是没有 24h 过期那层保护。
-  const useCdnAsTos = () => {
+  const useCdnAsTos = async () => {
     const cdn = ((localData.cdn_url as string) || '').trim()
     if (!cdn) {
       setLaunderErr('还没有 CDN URL —— 先点「🔼 同步到 CDN」把本地图推上去')
@@ -138,6 +189,11 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
     update('tos_url', cdn)
     setTosSensitiveBlock(false)
     setLaunderErr('')
+    // 同 launderTOS：写回 manifest 才能跨会话保留
+    const persist = await persistFieldToManifest('tos_url', cdn)
+    if (!persist.ok && persist.reason === 'api-error') {
+      setLaunderErr(`已用 CDN URL 代替 TOS 但写回 manifest 失败：${persist.detail}。当前会话可用，刷新后会丢。`)
+    }
   }
 
   // TOS URL 新鲜度（每 30s 重算一次以驱动 label 更新，不做高频 setInterval 避免浪费）
@@ -264,7 +320,7 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
                   title="把「本地图片 URL」读出来，SCP 推到 cdn.starclaw.net，回写到本框"
                 >
                   {cdnSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  {cdnSyncing ? '推送中' : '同步到 CDN'}
+                  {cdnSyncing ? '推送中' : ((localData.cdn_url as string) || '').trim() ? '重新同步' : '同步到 CDN'}
                 </button>
               </div>
               <UrlThumb url={(localData.cdn_url as string) || ''} badge="CDN" tint="indigo" onOpen={openLightbox} />
@@ -312,6 +368,9 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
                 )
               })()}
               {launderErr && <p className="text-[10px] text-rose-400 mt-1 leading-relaxed">{launderErr}</p>}
+              {launderOk && !launderErr && (
+                <p className="text-[10px] text-emerald-400 mt-1 leading-relaxed font-medium">{launderOk}</p>
+              )}
               {tosSensitiveBlock && (
                 <div className="mt-2 px-2.5 py-2 rounded-md border border-amber-500/40 bg-amber-500/10 text-[10px] leading-relaxed">
                   <p className="text-amber-300 font-medium mb-1.5">Seedream 过滤了这张图（已重试 3 次，含风格化 prompt 变体）</p>
@@ -478,6 +537,13 @@ function LocalCandidateBar({ project, entityKind, characterKey, characterLabel, 
   const [promoteLoading, setPromoteLoading] = useState(false)
   const [promoteMsg, setPromoteMsg] = useState<{ tone: 'ok'|'err'; text: string } | null>(null)
 
+  // 右键菜单：右键任一候选缩略图弹浮窗，支持「复制路径 / 新窗口打开 / 删除」。
+  // 删除只对 /entities/* 下生效（后端也有同样的保护）；manifest 当前指向的那张
+  // 会被后端 409 拒绝，UI 把原因直接显示给用户。
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; cand: LocalCandidate } | null>(null)
+  const [deletingPath, setDeletingPath] = useState<string>('')
+  const [deleteMsg, setDeleteMsg] = useState<{ tone: 'ok'|'err'; text: string } | null>(null)
+
   // 至少有 key 或 label 才能扫
   const canScan = !!(characterKey || characterLabel)
 
@@ -584,18 +650,27 @@ function LocalCandidateBar({ project, entityKind, characterKey, characterLabel, 
           {filtered.map(c => {
             const active = currentImageUrl === c.url || currentImageUrl.endsWith(c.path)
             const kindDot = kindDotColor(c.kind)
+            const deleting = deletingPath === c.path
             return (
               <div key={c.path} className="flex-none snap-start">
                 <button
                   type="button"
                   onClick={() => onPick(c.url)}
                   onDoubleClick={() => onOpen(c.url, `${characterLabel || characterKey}（${c.path}）`)}
-                  title={`${c.path}\n${c.reason} · ${Math.round(c.size / 1024)} KB · score ${c.score} · ${c.kind || 'other'}\n点: 作为本地 ref  双击: 看大图`}
+                  onContextMenu={(e) => {
+                    // 先自己处理右键，浏览器菜单就不弹了。
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setDeleteMsg(null)
+                    setCtxMenu({ x: e.clientX, y: e.clientY, cand: c })
+                  }}
+                  disabled={deleting}
+                  title={`${c.path}\n${c.reason} · ${Math.round(c.size / 1024)} KB · score ${c.score} · ${c.kind || 'other'}\n点: 作为本地 ref  双击: 看大图  右键: 更多`}
                   className={`relative w-16 h-20 rounded overflow-hidden border transition ${
                     active
                       ? 'border-emerald-400 ring-1 ring-emerald-500/60'
                       : 'border-gray-800 hover:border-cyan-600'
-                  }`}>
+                  } ${deleting ? 'opacity-40' : ''}`}>
                   <img src={c.url} alt="" loading="lazy" className="w-full h-full object-cover" />
                   {active && (
                     <span className="absolute top-0.5 left-0.5 px-1 py-0.5 rounded bg-emerald-500/90 text-white text-[8px] font-semibold leading-none">本地</span>
@@ -606,11 +681,75 @@ function LocalCandidateBar({ project, entityKind, characterKey, characterLabel, 
                   <span className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/70 text-[8px] font-mono text-gray-300 text-center truncate">
                     {shortPathLabel(c.path)}
                   </span>
+                  {deleting && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/60">
+                      <Loader2 className="w-4 h-4 animate-spin text-rose-300" />
+                    </span>
+                  )}
                 </button>
               </div>
             )
           })}
         </div>
+      )}
+
+      {deleteMsg && (
+        <div className={`mt-1 text-[10px] px-2 py-1 rounded border ${
+          deleteMsg.tone === 'ok'
+            ? 'border-emerald-900/50 bg-emerald-950/30 text-emerald-300'
+            : 'border-rose-900/50 bg-rose-950/30 text-rose-300'
+        }`}>{deleteMsg.text}</div>
+      )}
+
+      {ctxMenu && (
+        <CandidateContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          cand={ctxMenu.cand}
+          currentImageUrl={currentImageUrl}
+          onClose={() => setCtxMenu(null)}
+          onCopyPath={() => {
+            navigator.clipboard?.writeText(ctxMenu.cand.path).catch(() => {})
+            setDeleteMsg({ tone: 'ok', text: `已复制路径：${ctxMenu.cand.path}` })
+            setCtxMenu(null)
+          }}
+          onOpenNewTab={() => {
+            window.open(ctxMenu.cand.url, '_blank', 'noopener,noreferrer')
+            setCtxMenu(null)
+          }}
+          onDelete={async () => {
+            const cand = ctxMenu.cand
+            setCtxMenu(null)
+            // 二次确认 —— 删除是破坏性操作，避免误触。
+            const ok = window.confirm(
+              `确定删除这张候选图？\n\n` +
+              `路径：${cand.path}\n大小：${Math.round(cand.size / 1024)} KB\n分类：${cand.kind || 'other'}\n\n` +
+              `注意：\n• 只能删 /entities/* 下的文件（旧 /production 和 /assets 受保护）\n` +
+              `• 如果这张正在被 manifest.json 作为 ref 引用，后端会拒绝`,
+            )
+            if (!ok) return
+            setDeletingPath(cand.path)
+            setDeleteMsg(null)
+            try {
+              const res = await projectAPI.deleteRef(project, cand.path)
+              const d = res.data as { deleted?: string; size_bytes?: number; note?: string }
+              setDeleteMsg({ tone: 'ok', text: d.note || `已删 ${d.deleted}` })
+              // 删完重扫 —— 本地 state 自动去掉那一张
+              await fetchCandidates()
+              // 如果刚删的正好是当前 imageUrl，清掉避免指向 404
+              if (currentImageUrl === cand.url || currentImageUrl.endsWith(cand.path)) {
+                onPick('')
+              }
+            } catch (e) {
+              const ax = e as { response?: { status?: number; data?: { error?: string; hint?: string } }; message?: string }
+              const msg = ax?.response?.data?.error || ax?.message || '删除失败'
+              const hint = ax?.response?.data?.hint
+              setDeleteMsg({ tone: 'err', text: hint ? `${msg} · ${hint}` : msg })
+            } finally {
+              setDeletingPath('')
+            }
+          }}
+        />
       )}
 
       {/* 动作按钮：🍌 nano 润色 / 📌 设为 sheet */}
@@ -736,6 +875,98 @@ function LocalCandidateBar({ project, entityKind, characterKey, characterLabel, 
   )
 }
 
+// CandidateContextMenu ── 候选图缩略图右键菜单
+// 绝对定位浮窗：复制路径 / 新窗口打开 / 删除（危险操作，红色）
+// 点外部或按 ESC 自动关。如果弹出位置靠近右下角会自动反向翻转。
+function CandidateContextMenu({
+  x, y, cand, currentImageUrl, onClose, onCopyPath, onOpenNewTab, onDelete,
+}: {
+  x: number
+  y: number
+  cand: LocalCandidate
+  currentImageUrl: string
+  onClose: () => void
+  onCopyPath: () => void
+  onOpenNewTab: () => void
+  onDelete: () => void
+}) {
+  // 下拉位置：如果靠近右/下边缘则向上或向左偏移，避免切掉。
+  // 菜单体积约 180x150px。
+  const W = 200
+  const H = 130
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1920
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 1080
+  const left = Math.min(x, vw - W - 8)
+  const top = Math.min(y, vh - H - 8)
+
+  // 删除是否会被后端拒绝（已在 manifest 引用 或 不在 /entities/*）。
+  // UI 预先灰掉按钮，省得用户点一下等后端返 403/409 再猜。
+  const notUnderEntities = !cand.path.startsWith('/entities/')
+  const isCurrentRef = currentImageUrl === cand.url || currentImageUrl.endsWith(cand.path)
+  const deleteBlocked = notUnderEntities || isCurrentRef
+  const deleteBlockReason = notUnderEntities
+    ? '此文件不在 /entities/* 下（受保护）'
+    : isCurrentRef
+      ? '这张是 manifest.ref 当前指向，先 promote 另一张再删'
+      : ''
+
+  // 点外部或 ESC 关菜单
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onDown = (e: MouseEvent) => {
+      // onClose 已在每个 action 里调了，这里兜底外部点击
+      const t = e.target as HTMLElement | null
+      if (t && t.closest('[data-candidate-ctx-menu]')) return
+      onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    // 延迟一帧绑 mousedown，避免吃掉当前的右键事件
+    const id = setTimeout(() => window.addEventListener('mousedown', onDown), 0)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onDown)
+      clearTimeout(id)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      data-candidate-ctx-menu
+      className="fixed z-50 w-[200px] rounded-md border border-gray-700 bg-gray-900 shadow-xl shadow-black/60 py-1 text-[11px]"
+      style={{ left, top }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div className="px-2 py-1 border-b border-gray-800 text-[10px] text-gray-500 font-mono truncate" title={cand.path}>
+        {cand.path.split('/').slice(-2).join('/')}
+      </div>
+      <button type="button" onClick={onCopyPath}
+        className="w-full px-2 py-1.5 flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition">
+        <Copy className="w-3 h-3" /> 复制路径
+      </button>
+      <button type="button" onClick={onOpenNewTab}
+        className="w-full px-2 py-1.5 flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition">
+        <ExternalLink className="w-3 h-3" /> 在新窗口打开
+      </button>
+      <div className="h-px bg-gray-800 my-0.5" />
+      <button type="button"
+        onClick={deleteBlocked ? undefined : onDelete}
+        disabled={deleteBlocked}
+        title={deleteBlocked ? deleteBlockReason : `从磁盘删除这张候选图（${Math.round(cand.size / 1024)} KB）`}
+        className={`w-full px-2 py-1.5 flex items-center gap-2 transition ${
+          deleteBlocked
+            ? 'text-gray-600 cursor-not-allowed'
+            : 'text-rose-400 hover:bg-rose-950/40 hover:text-rose-200'
+        }`}>
+        <Trash2 className="w-3 h-3" /> 删除
+        {deleteBlocked && <span className="ml-auto text-[9px] text-gray-600">受保护</span>}
+      </button>
+      {deleteBlocked && (
+        <div className="px-2 pb-1.5 text-[9.5px] text-gray-600 leading-tight">{deleteBlockReason}</div>
+      )}
+    </div>
+  )
+}
+
 // stripProjectPrefix converts "/v1/projects/<project>/entities/.../x.png" to
 // "/entities/.../x.png" so promote/suggest endpoints can consume it. Returns
 // "" if the URL doesn't live under the expected project prefix.
@@ -813,7 +1044,11 @@ function UrlThumb({ url, badge, tint, onOpen }: {
       className={`mt-2 w-full h-16 rounded-md overflow-hidden relative ring-1 ${tintRing[tint].split(' ')[0]} hover:ring-2 transition cursor-zoom-in group`}
       title={`点击查看 ${badge} 大图`}
     >
+      {/* key={url} 强制 img 在 URL 变化时 unmount+remount —— 解决用户反馈的"点生成后缩略图
+          没刷新"：React 会重用同一个 <img> 元素，部分浏览器不会立刻重新 fetch 新 URL 的
+          图像。给 key 绑死后每次 URL 换（新 TOS 签名 / 新 CDN 上传）都会走清空重载路径。 */}
       <img
+        key={url}
         src={url}
         alt={badge}
         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"

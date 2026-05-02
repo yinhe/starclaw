@@ -87,13 +87,15 @@ function buildRefPrompt(name: string, desc: string): string {
   ].filter(Boolean).join(' ')
 }
 
-function buildThreeViewPrompt(name: string): string {
+function buildThreeViewPrompt(name: string, desc?: string): string {
+  const d = (desc || '').trim().slice(0, 300)
   return [
     `Three-view orthographic reference sheet of ${name || 'the prop'}, same object as reference image.`,
+    d,
     'Left: front view. Center: side view. Right: back view.',
     'Equal scale, white background, clean product photography lighting.',
     'Realistic style, 4K, no text, no watermark.',
-  ].join(' ')
+  ].filter(Boolean).join(' ')
 }
 
 function buildFinalPrompt(name: string, desc: string): string {
@@ -129,6 +131,7 @@ export default function PropEditorModal({ open, initial, onClose, onSave }: Prop
     if (w.stages.s1.selectedId) return 's2'
     return 's1'
   })
+  const [sheetModel, setSheetModel] = useState<'nano-banana-2/edit' | 'gpt-image-2/edit'>('nano-banana-2/edit')
   const [busy, setBusy] = useState<null | { stage: 's1' | 's2' | 's3'; op: string }>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -183,10 +186,11 @@ export default function PropEditorModal({ open, initial, onClose, onSave }: Prop
     setBusy({ stage: 's1', op: 'ai' }); setError(null)
     try {
       const prompt = buildRefPrompt(name, description)
-      const res = await imageAPI.generate({ prompt, model: 'nano-banana-2', size: 'square_hd' })
+      const s1Model = sheetModel.replace('/edit', '')
+      const res = await imageAPI.generate({ prompt, model: s1Model, size: 'square_hd' })
       const url = res.data.url || res.data.image_url || res.data.display_url
       if (!url) throw new Error('图片生成接口未返回 url')
-      addImage('s1', { id: newId(), localUrl: url, source: 'ai', createdAt: Date.now(), prompt, model: 'nano-banana-2' })
+      addImage('s1', { id: newId(), localUrl: url, source: 'ai', createdAt: Date.now(), prompt, model: s1Model })
     } catch (e) { setError('S1 AI 生成失败：' + errMsg(e)) }
     finally { setBusy(null) }
   }
@@ -214,16 +218,16 @@ export default function PropEditorModal({ open, initial, onClose, onSave }: Prop
     if (!s1sel?.cdnUrl) { setError('请先在 S1 选中图片并上传到 CDN（三视图需要稳定公网 URL）'); return }
     setBusy({ stage: 's2', op: 'ai' }); setError(null)
     try {
-      const prompt = buildThreeViewPrompt(name)
+      const prompt = buildThreeViewPrompt(name, description)
       const res = await imageAPI.generate({
         prompt,
-        model: 'nano-banana-2/edit',
+        model: sheetModel,
         image_url: s1sel.cdnUrl,
         size: 'landscape_16_9',
       })
       const url = res.data.url || res.data.image_url || res.data.display_url
       if (!url) throw new Error('图片生成接口未返回 url')
-      addImage('s2', { id: newId(), localUrl: url, source: 'ai', createdAt: Date.now(), prompt, model: 'nano-banana-2/edit' })
+      addImage('s2', { id: newId(), localUrl: url, source: 'ai', createdAt: Date.now(), prompt, model: sheetModel })
     } catch (e) { setError('S2 三视图生成失败：' + errMsg(e)) }
     finally { setBusy(null) }
   }
@@ -298,7 +302,7 @@ export default function PropEditorModal({ open, initial, onClose, onSave }: Prop
         <div className="px-6 py-2 border-b border-gray-800 flex items-center gap-2 flex-shrink-0 bg-gray-950/50">
           <StageTab k="s1" label="① 起始参考图" active={activeStage === 's1'} ok={s1Cdn} onClick={() => setActiveStage('s1')} />
           <ChevronRight className="w-3 h-3 text-gray-700" />
-          <StageTab k="s2" label="② 三视图 (nano-banana-2)" active={activeStage === 's2'} ok={s2Cdn} locked={!s1Cdn} onClick={() => s1Cdn && setActiveStage('s2')} />
+          <StageTab k="s2" label={`② 三视图 (${sheetModel === 'gpt-image-2/edit' ? 'gpt-image-2' : 'nano-banana'})`} active={activeStage === 's2'} ok={s2Cdn} locked={!s1Cdn} onClick={() => s1Cdn && setActiveStage('s2')} />
           <ChevronRight className="w-3 h-3 text-gray-700" />
           <StageTab k="s3" label="③ 最终定妆图 (最小变化 0.01)" active={activeStage === 's3'} ok={!!selectedImage('s3')?.cdnUrl} locked={!s2Cdn} onClick={() => s2Cdn && setActiveStage('s3')} />
         </div>
@@ -363,6 +367,8 @@ export default function PropEditorModal({ open, initial, onClose, onSave }: Prop
                 stage={stage('s2')}
                 s1Selected={selectedImage('s1')}
                 busy={busy}
+                sheetModel={sheetModel}
+                setSheetModel={setSheetModel}
                 onSelect={(id) => selectImage('s2', id)}
                 onGenerate={handleS2Generate}
                 onPushCDN={() => pushToCDN('s2')}
@@ -496,8 +502,10 @@ function StageS1({ stage, busy, onSelect, onUploadClick, onAIGen, onPushCDN }: {
   )
 }
 
-function StageS2({ stage, s1Selected, busy, onSelect, onGenerate, onPushCDN }: {
+function StageS2({ stage, s1Selected, busy, sheetModel, setSheetModel, onSelect, onGenerate, onPushCDN }: {
   stage: WorkshopStage; s1Selected: WorkshopImage | null; busy: null | { stage: string; op: string };
+  sheetModel: 'nano-banana-2/edit' | 'gpt-image-2/edit';
+  setSheetModel: (m: 'nano-banana-2/edit' | 'gpt-image-2/edit') => void;
   onSelect: (id: string) => void; onGenerate: () => void; onPushCDN: () => void
 }) {
   const b = busy?.stage === 's2' ? busy.op : null
@@ -505,7 +513,20 @@ function StageS2({ stage, s1Selected, busy, onSelect, onGenerate, onPushCDN }: {
   const refReady = !!s1Selected?.cdnUrl
   return (
     <>
-      <StageHeader title="② 三视图（nano-banana-2/edit）" hint="以 S1 的 CDN 图为参考，nano-banana-2 编辑模式生成正/侧/背三视图。确认满意再上传到 CDN，进入 S3。" />
+      <StageHeader title="② 三视图" hint="以 S1 的 CDN 图为参考，用 i2i 编辑模式生成正/侧/背三视图。选择模型后点生成，确认满意再上传到 CDN，进入 S3。" />
+      {/* Model selector */}
+      <div className="flex gap-2 mb-2">
+        <button type="button" onClick={() => setSheetModel('nano-banana-2/edit')}
+          className={`px-2.5 py-1.5 text-[11px] rounded-lg border transition text-left ${sheetModel === 'nano-banana-2/edit' ? 'bg-violet-500/20 border-violet-500/60 text-violet-200' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+          <div className="font-medium font-mono">nano-banana-2/edit</div>
+          <div className="text-[9px] opacity-70">Gemini 2.5 Flash · EP01-06 验证 · 默认</div>
+        </button>
+        <button type="button" onClick={() => setSheetModel('gpt-image-2/edit')}
+          className={`px-2.5 py-1.5 text-[11px] rounded-lg border transition text-left ${sheetModel === 'gpt-image-2/edit' ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-200' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+          <div className="font-medium font-mono">gpt-image-2/edit</div>
+          <div className="text-[9px] opacity-70">OpenAI alpha · 4K · 文字渲染更稳</div>
+        </button>
+      </div>
       {!refReady && <div className="text-[11px] text-amber-300 mb-2">需要 S1 已上传 CDN</div>}
       <div className="flex gap-2 mb-2 items-center">
         {s1Selected && (
@@ -514,7 +535,9 @@ function StageS2({ stage, s1Selected, busy, onSelect, onGenerate, onPushCDN }: {
             <span className="text-[10px] text-gray-500 pr-1.5">参考 S1</span>
           </div>
         )}
-        <ActionBtn onClick={onGenerate} disabled={!refReady || !!busy} icon={<Wand2 className="w-3.5 h-3.5" />} loading={b === 'ai'} variant="violet">生成三视图</ActionBtn>
+        <ActionBtn onClick={onGenerate} disabled={!refReady || !!busy} icon={<Wand2 className="w-3.5 h-3.5" />} loading={b === 'ai'} variant="violet">
+          {sheetModel === 'gpt-image-2/edit' ? 'gpt-image-2 生成' : 'nano 生成三视图'}
+        </ActionBtn>
         <ActionBtn onClick={onPushCDN} disabled={!!busy || !sel || !!sel?.cdnUrl} icon={<RefreshCw className="w-3.5 h-3.5" />} loading={b === 'cdn'} variant="emerald">
           {sel?.cdnUrl ? 'CDN ✓' : '上传到 CDN'}
         </ActionBtn>

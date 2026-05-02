@@ -13,11 +13,14 @@ export interface SwarmManifest {
     description: string; appearance_card: string
     ref: string | null
     tos_url?: string  // Volcengine Ark TOS signed URL (bypasses Seedance privacy filter)
+    // 角色级参考视频 (Seedance 2.0 v2v) — 项目里 EP07 三个混混复用 EP03 S2 片段
+    ref_video?: string
     extras?: Record<string, string>
   }>
   props: Array<{
     key: string; label: string; description: string
     ref: string | null; ref_clip?: string
+    tag?: string      // [图N] tag (从 [图7] 起，与角色 [图1]-[图6] 接续)；用于 prompt 里 [图N] 引用道具
     tos_url?: string  // Volcengine Ark TOS signed URL (bypasses Seedance privacy filter)
   }>
   episodes: Array<{
@@ -28,6 +31,10 @@ export interface SwarmManifest {
     scenes: Array<{
       id: string; label: string; duration: number; clip: string; prompt: string
       rejected_takes?: Array<{ id: string; duration: number; clip: string; note?: string }>
+      // —— 故事板静帧（可选，manifest 是单一真相源）——
+      storyboard_url?: string       // 静帧可访问 URL（/v1/images/<id>.png 或外链；abs() 自动补前缀）
+      storyboard_prompt?: string    // 生成静帧用的 prompt
+      storyboard_model?: string     // 生成时用的模型
     }>
   }>
 }
@@ -35,8 +42,8 @@ export interface SwarmManifest {
 const MANIFEST_URL = '/v1/projects/swarm-universe/assets/manifest.json'
 let _manifestCache: SwarmManifest | null = null
 
-export async function loadSwarmManifest(): Promise<SwarmManifest> {
-  if (_manifestCache) return _manifestCache
+export async function loadSwarmManifest(force = false): Promise<SwarmManifest> {
+  if (_manifestCache && !force) return _manifestCache
   const res = await fetch(MANIFEST_URL, { cache: 'no-cache' })
   if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`)
   _manifestCache = await res.json() as SwarmManifest
@@ -59,15 +66,19 @@ function charactersFromManifest(m: SwarmManifest): CharacterData[] {
     description: c.description,
     imageUrl: abs(m, c.ref),
     tos_url: c.tos_url,
+    // ref_video 不走 abs() 拼接 —— manifest 里已经是 /v1/projects/... 绝对路径。
+    ref_video: c.ref_video,
   }))
 }
 
-function propsFromManifest(m: SwarmManifest): Array<{ category: 'prop'; label: string; description: string; imageUrl?: string; tos_url?: string }> {
+function propsFromManifest(m: SwarmManifest): Array<{ category: 'prop'; key: string; label: string; description: string; imageUrl?: string; tos_url?: string; tag?: string }> {
   return m.props.map(p => ({
     category: 'prop' as const,
+    key: p.key,
     label: p.label, description: p.description,
     imageUrl: p.ref ? abs(m, p.ref) : undefined,
     tos_url: p.tos_url,
+    tag: p.tag,
   }))
 }
 
@@ -78,6 +89,9 @@ function ep(
   scenes: Array<{
     id: string; label: string; duration: number; prompt?: string; clip?: string
     rejected_takes?: Array<{ id: string; duration: number; clip: string; note?: string }>
+    storyboard_url?: string
+    storyboard_prompt?: string
+    storyboard_model?: string
   }>,
   description: string,
   isSpinoff = false, spinoffGroup?: string,
@@ -106,7 +120,14 @@ function ep(
           note: rt.note || '早期废稿',
         }))
       : undefined
-    return { id: s.id, label: s.label, duration: s.duration, prompt: s.prompt, takes, picked_take, rejected_takes }
+    return {
+      id: s.id, label: s.label, duration: s.duration, prompt: s.prompt,
+      takes, picked_take, rejected_takes,
+      storyboard_url: s.storyboard_url,
+      storyboard_prompt: s.storyboard_prompt,
+      storyboard_model: s.storyboard_model,
+      storyboard_status: s.storyboard_url ? 'succeeded' : undefined,
+    }
   })
   const picked_clips = fullScenes.filter(s => s.picked_take).map(s => `${s.id}.${s.picked_take}`)
   const hasReal = !!finalVideoUrl
@@ -148,6 +169,9 @@ function episodesFromManifest(m: SwarmManifest): EpisodeData[] {
       rejected_takes: s.rejected_takes?.map(rt => ({
         id: rt.id, duration: rt.duration, clip: abs(m, rt.clip), note: rt.note,
       })),
+      storyboard_url: s.storyboard_url ? abs(m, s.storyboard_url) : undefined,
+      storyboard_prompt: s.storyboard_prompt,
+      storyboard_model: s.storyboard_model,
     })),
     e.description,
     false, undefined,
@@ -167,8 +191,7 @@ function episodesFromManifest(m: SwarmManifest): EpisodeData[] {
 // EP05 已从 stub 移除 — 现在由 manifest.json 提供（挂 md/prompts_md，待生产）
 export const STUB_EPISODES: EpisodeData[] = [
   // EP06-EP10 stubs (大纲写好但未分镜)
-  ep(1, 6, '记忆', 55, placeholderScenes(6, 55), '6镜·55s·仙道武术闪回+灵气冲击首次觉醒'),
-  ep(1, 7, '合力', 60, placeholderScenes(7, 60), '7镜·60s·林+ZERG+苏蜜三人配合战斗'),
+  // EP06、EP07 已迁到 manifest.json（带完整分镜+prompts），从此处移除避免 fallback 出占位
   ep(1, 8, '日常', 60, placeholderScenes(6, 60), '6镜·60s·买衣服化妆+林第一次看K线指股票'),
   ep(1, 9, '大裂隙', 60, placeholderScenes(8, 60), '8镜·60s·S1高潮战斗+共鸣链接首次激活'),
   ep(1, 10, '信号', 55, placeholderScenes(6, 55), '6镜·55s·ZERG感知远方信号·S2钩子'),
@@ -248,7 +271,9 @@ export async function buildSeedNodes(opts: SeedLoadOptions) {
   const nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }> = []
 
   // 1. 运行时拉取 manifest（单一真相源）
-  const manifest = await loadSwarmManifest()
+  // force=true：用户点「虫群宇宙」是显式重置画布的动作，必须绕过 _manifestCache
+  // 拉磁盘最新内容；否则改了 manifest.json 后即使再点按钮也会吃老缓存。
+  const manifest = await loadSwarmManifest(true)
   const characters = charactersFromManifest(manifest)
   const props = propsFromManifest(manifest)
   const realEpisodes = episodesFromManifest(manifest)

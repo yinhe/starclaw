@@ -3,7 +3,7 @@ import {
   X, Film, Clapperboard, Play, Plus, Check, CircleDot, CircleAlert, CircleX,
   Music, Scissors, Sparkles, Image as ImageIcon, Trash2, ChevronRight, Layers,
   Archive, FileText, History, Wand2, AlertTriangle, Lightbulb, Wrench,
-  Copy, ExternalLink, Terminal, PlayCircle, Maximize2, Loader2,
+  Copy, ExternalLink, Terminal, PlayCircle, Maximize2, Loader2, RefreshCw,
 } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import {
@@ -17,6 +17,7 @@ import VideoPreviewModal from './VideoPreviewModal'
 
 interface Props {
   node: Node
+  nodes?: Node[]            // 全部 canvas 节点 —— 用于按 [图N] tag 解析角色 ref 图
   onUpdate: (id: string, data: Record<string, unknown>) => void
   onClose: () => void
   onProduce?: (episode: EpisodeData) => void
@@ -68,10 +69,22 @@ function takeUrlCandidates(
   return out
 }
 
-export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduce, onCancel, onFlushSave, initialSceneId, initialTab, onConsumeInitialTab }: Props) {
+export default function EpisodeWorkflowPanel({ node, nodes, onUpdate, onClose, onProduce, onCancel, onFlushSave, initialSceneId, initialTab, onConsumeInitialTab }: Props) {
   const data = node.data as unknown as EpisodeData
   const [tab, setTab] = useState<TabKey>(initialTab || 'scenes')
   const [expandedScene, setExpandedScene] = useState<string | null>(initialSceneId || null)
+
+  // 抽出 canvas 上的角色节点 → 故事板静帧生成时按 [图N] tag 自动注入三视图 ref。
+  const characterNodes = (nodes || [])
+    .filter(n => (n.data as Record<string, unknown> | undefined)?.category === 'character')
+    .map(n => {
+      const d = n.data as Record<string, unknown>
+      return {
+        tag: typeof d.tag === 'string' ? d.tag : undefined,
+        label: typeof d.label === 'string' ? d.label : undefined,
+        imageUrl: typeof d.imageUrl === 'string' ? d.imageUrl : undefined,
+      }
+    })
 
   // 外部切换 initialSceneId 时（sceneStep 节点点击），自动跳到 scenes tab 并展开该场景
   useEffect(() => {
@@ -137,36 +150,102 @@ export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduc
     const picked_clips = newScenes.map(s => s.picked_take ? `${s.id}.${s.picked_take}` : '').filter(Boolean)
     update({ scenes: newScenes, composition: { ...comp, picked_clips } })
   }
-  // ── Storyboard frame (GPT Image 2) ───────────────────────────
-  // 调 /v1/images/generate 同步生成一张 720×1280 故事板静帧，
-  // 完成后把 storyboard_url 写回 scene，后续 runEpisodeProduction
-  // 会优先用这张图做 Seedance i2v 首帧。
-  const generateStoryboard = async (sid: string, prompt: string, model = 'gpt-image-2') => {
+  // ── Storyboard frame (多模型并行生成 → 候选 gallery → 挑选) ───────
+  // 调 /v1/images/generate 批量生成 N 张 720×1280 故事板静帧——每个入选模型各一张，
+  // 用户从缩略图画廊里挑效果最好的一张 promote 为 storyboard_url（Seedance i2v 首帧）。
+  //
+  // 关键：从 prompt 里扫 [图N] tag → 查 canvas 上 category=character 节点的 imageUrl
+  //   →逗号拼接传给 image_url。这样模型必须以角色三视图为参考生成，避免角色走样。
+  // 检测到 ref 图后自动把支持 /edit 的模型切到 /edit 版
+  //   （gpt-image-2 → gpt-image-2/edit ; nano-banana-2 → nano-banana-2/edit）。
+  //   flux-pro / flux-2 本身就走 image_url，不需要改名。
+  const generateStoryboard = async (sid: string, prompt: string, models: string[] = ['gpt-image-2']) => {
     const scene = scenes.find(s => s.id === sid)
     if (!scene) return
-    updateScene(sid, { storyboard_status: 'running', storyboard_prompt: prompt, storyboard_model: model })
-    try {
-      const resp = await imageAPI.generate({
-        prompt,
-        model,
-        size: '720x1280',
-        scene: `${data.label.split(' ')[0]}-${sid}`,
-        style: 'storyboard',
-      })
-      const body = resp.data as { image_url?: string; url?: string; local_url?: string; display_url?: string; image_id?: string }
-      const url = body.display_url || body.local_url || body.image_url || body.url || ''
-      if (!url) throw new Error('no image url in response')
-      updateScene(sid, {
-        storyboard_status: 'succeeded',
-        storyboard_url: url,
-        storyboard_task_id: body.image_id,
-      })
-      onFlushSave?.()
-    } catch (e) {
-      const err = e as { response?: { data?: { error?: string } }; message?: string }
-      const note = err?.response?.data?.error || err?.message || String(e)
-      updateScene(sid, { storyboard_status: 'failed', storyboard_prompt: `${prompt}\n\n[失败] ${note}` })
+    if (!models.length) return
+
+    // 收集 prompt 引用的角色 ref 图
+    const tags = Array.from(new Set((prompt.match(/\[图\d+\]/g) || [])))
+    const refUrls: string[] = []
+    if (nodes && tags.length) {
+      for (const tag of tags) {
+        const charNode = nodes.find(n => {
+          const d = (n.data || {}) as Record<string, unknown>
+          return d.category === 'character' && d.tag === tag
+        })
+        const url = charNode?.data && (charNode.data as Record<string, unknown>).imageUrl
+        if (typeof url === 'string' && url) {
+          const absUrl = url.startsWith('http') || url.startsWith('/') ? url : `/${url}`
+          if (!refUrls.includes(absUrl)) refUrls.push(absUrl)
+        }
+      }
     }
+
+    // 每个模型根据是否有 ref 自动选 edit 变体
+    const resolveModel = (m: string) => {
+      if (refUrls.length > 0 && !m.endsWith('/edit')) {
+        if (m === 'gpt-image-2' || m === 'nano-banana-2') return `${m}/edit`
+      }
+      return m
+    }
+    const effectiveModels = models.map(resolveModel)
+
+    updateScene(sid, {
+      storyboard_status: 'running',
+      storyboard_prompt: prompt,
+      storyboard_model: effectiveModels.join(','),
+    })
+
+    const scenePrefix = `${data.label.split(' ')[0]}-${sid}`
+    const tasks = effectiveModels.map(async (m) => {
+      try {
+        const resp = await imageAPI.generate({
+          prompt,
+          model: m,
+          size: '720x1280',
+          scene: `${scenePrefix}-${m.replace(/[^\w-]/g, '_')}`,
+          style: refUrls.length ? `storyboard·refs:${refUrls.length}` : 'storyboard',
+          ...(refUrls.length ? { image_url: refUrls.join(',') } : {}),
+        })
+        const body = resp.data as { image_url?: string; url?: string; local_url?: string; display_url?: string; image_id?: string }
+        const url = body.display_url || body.local_url || body.image_url || body.url || ''
+        if (!url) throw new Error('no image url in response')
+        return { ok: true as const, model: m, url, image_id: body.image_id }
+      } catch (e) {
+        const err = e as { response?: { data?: { error?: string } }; message?: string }
+        const note = err?.response?.data?.error || err?.message || String(e)
+        return { ok: false as const, model: m, note }
+      }
+    })
+
+    const results = await Promise.all(tasks)
+    const ok = results.filter(r => r.ok) as Array<{ ok: true; model: string; url: string; image_id?: string }>
+    const failed = results.filter(r => !r.ok) as Array<{ ok: false; model: string; note: string }>
+
+    // 合并进 candidates（按模型去重——同模型新结果替换旧的）
+    const current = (scene.storyboard_candidates || []).filter(c =>
+      !ok.some(r => r.model === c.model)
+    )
+    const merged = [
+      ...current,
+      ...ok.map(r => ({ url: r.url, image_id: r.image_id, model: r.model })),
+    ]
+
+    // 默认 storyboard_url：若当前无入选、或入选那张被覆盖了，则用新批次第一张
+    const prevUrl = scene.storyboard_url
+    const stillValid = prevUrl && merged.some(c => c.url === prevUrl)
+    const nextPicked = stillValid ? prevUrl : (merged[0]?.url || '')
+
+    updateScene(sid, {
+      storyboard_status: ok.length > 0 ? 'succeeded' : 'failed',
+      storyboard_candidates: merged,
+      storyboard_url: nextPicked,
+      storyboard_task_id: ok[0]?.image_id,
+      storyboard_prompt: failed.length
+        ? `${prompt}\n\n[${failed.length} 个失败] ${failed.map(f => `${f.model}: ${f.note}`).join(' | ')}`
+        : prompt,
+    })
+    onFlushSave?.()
   }
 
   const removeTake = (sid: string, tid: string) => {
@@ -267,10 +346,11 @@ export default function EpisodeWorkflowPanel({ node, onUpdate, onClose, onProduc
                 onAddTake={() => addTake(scene.id)}
                 onPickTake={(tid) => pickTake(scene.id, tid)}
                 onRemoveTake={(tid) => removeTake(scene.id, tid)}
-                onGenerateStoryboard={(prompt, model) => generateStoryboard(scene.id, prompt, model)}
+                onGenerateStoryboard={(prompt, models) => generateStoryboard(scene.id, prompt, models)}
                 sequenceNumber={idx + 1}
                 archiveProject={archiveProject}
                 archiveEpKey={archiveEpKey}
+                characterNodes={characterNodes}
               />
             ))}
             {scenes.length > 0 && (
@@ -369,17 +449,43 @@ function CompositionStatusPill({ status }: { status: Composition['status'] }) {
 //   - 无 → 显示一个 prompt 输入框 + 「生成静帧」 按钮
 //   - 状态 running → 显示 spinner，禁用按钮
 function StoryboardFrameSection({
-  scene, onUpdate, onGenerate,
+  scene, onUpdate, onGenerate, characterNodes,
 }: {
   scene: SceneSpec
   onUpdate: (p: Partial<SceneSpec>) => void
-  onGenerate?: (prompt: string, model?: string) => void
+  onGenerate?: (prompt: string, models: string[]) => void
+  characterNodes?: Array<{ tag?: string; label?: string; imageUrl?: string }>
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(scene.storyboard_prompt || scene.prompt || '')
-  const [model, setModel] = useState<string>(scene.storyboard_model || 'gpt-image-2')
+  // 多模型并行选择：默认 gpt-image-2（构图最稳）单选；用户可勾选加模型对比效果。
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(
+    () => new Set((scene.storyboard_model || 'gpt-image-2').split(',').map(m => m.replace('/edit', '')).filter(Boolean))
+  )
+  const toggleModel = (m: string) => {
+    setSelectedModels(prev => {
+      const next = new Set(prev)
+      if (next.has(m)) next.delete(m)
+      else next.add(m)
+      return next
+    })
+  }
+  const candidates = scene.storyboard_candidates || []
   const status = scene.storyboard_status
   const isRunning = status === 'running'
+
+  // 解析当前 prompt 引用的 [图N] tag → canvas 上的角色 ref 图（用于 UI 预览）
+  const refs = (() => {
+    const text = draft || scene.prompt || ''
+    const tags = Array.from(new Set((text.match(/\[图\d+\]/g) || [])))
+    if (!characterNodes || !tags.length) return [] as Array<{ tag: string; label: string; url: string }>
+    return tags
+      .map(tag => {
+        const c = characterNodes.find(n => n.tag === tag)
+        return c?.imageUrl ? { tag, label: c.label || '', url: c.imageUrl } : null
+      })
+      .filter((x): x is { tag: string; label: string; url: string } => !!x)
+  })()
 
   // 当父组件更新 scene 时（外部 prompt 改了），同步本地 draft 默认值
   useEffect(() => {
@@ -392,68 +498,123 @@ function StoryboardFrameSection({
         <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
           <ImageIcon className="w-3 h-3" />
           故事板静帧
-          {scene.storyboard_url && <span className="text-emerald-400 normal-case tracking-normal">· i2v 锚定</span>}
+          {scene.storyboard_url && scene.storyboard_use_as_ref && <span className="text-emerald-400 normal-case tracking-normal">· i2v 锚定</span>}
         </label>
-        {scene.storyboard_url && (
-          <button
-            onClick={() => onUpdate({ storyboard_url: undefined, storyboard_status: undefined, storyboard_task_id: undefined })}
-            className="text-[10px] text-gray-500 hover:text-red-400 transition">
-            清除
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {scene.storyboard_url && (
+            <label
+              title="勾选后，本场 Seedance 派单会把这张静帧作为 i2v 首帧（仅当 URL 是公网 https 时实际生效）"
+              className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-200 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-3 h-3 accent-emerald-500"
+                checked={scene.storyboard_use_as_ref === true}
+                onChange={e => onUpdate({ storyboard_use_as_ref: e.target.checked })}
+              />
+              用作 i2v 首帧
+            </label>
+          )}
+          {scene.storyboard_url && (
+            <button
+              onClick={() => onUpdate({ storyboard_url: undefined, storyboard_status: undefined, storyboard_task_id: undefined, storyboard_use_as_ref: false })}
+              className="text-[10px] text-gray-500 hover:text-red-400 transition">
+              清除
+            </button>
+          )}
+        </div>
       </div>
 
-      {scene.storyboard_url ? (
-        <div className="flex items-start gap-2">
-          <a href={scene.storyboard_url} target="_blank" rel="noreferrer"
-            className="block w-16 h-28 flex-shrink-0 rounded overflow-hidden bg-gray-950 border border-gray-700 hover:border-cyan-500 transition">
-            <img src={scene.storyboard_url} alt={`${scene.id} storyboard`}
-              className="w-full h-full object-cover" />
-          </a>
-          <div className="flex-1 min-w-0 text-[10px] text-gray-500 space-y-0.5">
-            <div>模型 <span className="text-gray-300">{scene.storyboard_model || 'gpt-image-2'}</span></div>
-            <div>720×1280 · 9:16</div>
-            <button
-              onClick={() => onGenerate?.(draft || scene.prompt || scene.label, model)}
-              disabled={isRunning || !onGenerate}
-              className="mt-1 px-2 py-0.5 rounded text-[10px] bg-violet-700/40 hover:bg-violet-600/50 border border-violet-600/40 text-violet-200 disabled:opacity-40 transition inline-flex items-center gap-1">
-              {isRunning ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
-              重新生成
-            </button>
+      {/* 候选 gallery：每个已生成的模型一张；点击 = 入选为 storyboard_url（Seedance i2v 用） */}
+      {candidates.length > 0 && (
+        <div className="grid grid-cols-4 gap-1.5">
+          {candidates.map(c => {
+            const isPicked = c.url === scene.storyboard_url
+            return (
+              <div key={c.url} className="relative group">
+                <button
+                  type="button"
+                  onClick={() => onUpdate({ storyboard_url: c.url })}
+                  title={`${c.model || '?'}\n点击选为 i2v 锚定帧`}
+                  className={`block w-full aspect-[9/16] rounded overflow-hidden bg-gray-950 border-2 transition ${isPicked ? 'border-emerald-400 ring-1 ring-emerald-400/40' : 'border-gray-700 hover:border-violet-500'}`}>
+                  <img src={c.url} alt={c.model || 'candidate'} className="w-full h-full object-cover" />
+                </button>
+                <div className={`absolute left-0.5 bottom-0.5 right-0.5 px-1 py-0.5 rounded text-[8px] text-center truncate ${isPicked ? 'bg-emerald-600/80 text-white font-semibold' : 'bg-gray-900/80 text-gray-300'}`}>
+                  {isPicked && '✓ '}{(c.model || '?').replace('-2/edit', '/e').replace('-2', '2')}
+                </div>
+                <a href={c.url} target="_blank" rel="noreferrer"
+                  title="新窗口放大查看"
+                  className="absolute top-0.5 right-0.5 p-0.5 rounded bg-black/60 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 transition">
+                  <Maximize2 className="w-2.5 h-2.5" />
+                </a>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 参数 + 生成按钮（始终显示，方便追加模型或重跑） */}
+      <textarea
+        value={draft}
+        onFocus={() => setEditing(true)}
+        onBlur={() => setEditing(false)}
+        onChange={e => setDraft(e.target.value)}
+        rows={2}
+        placeholder="复用左侧 Prompt，或单独写一段视觉描述（构图、机位、光影、人物动作）"
+        className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-200 placeholder-gray-600 focus:border-violet-500 focus:outline-none resize-none font-mono" />
+
+      {/* 角色 ref 图预览：自动按 [图N] tag 注入，避免角色走样 */}
+      {refs.length > 0 && (
+        <div className="flex items-center gap-1.5 px-1 py-1 rounded bg-emerald-900/15 border border-emerald-700/30">
+          <span className="text-[10px] text-emerald-300/80 whitespace-nowrap">注入 {refs.length} 张三视图：</span>
+          <div className="flex items-center gap-1 flex-wrap">
+            {refs.map(r => (
+              <span key={r.tag} title={`${r.tag} ${r.label}\n${r.url}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-900/30 border border-emerald-600/30 text-[10px] text-emerald-200">
+                <img src={r.url} alt={r.label} className="w-3 h-3 rounded-sm object-cover" />
+                {r.tag}
+              </span>
+            ))}
           </div>
         </div>
-      ) : (
-        <>
-          <textarea
-            value={draft}
-            onFocus={() => setEditing(true)}
-            onBlur={() => setEditing(false)}
-            onChange={e => setDraft(e.target.value)}
-            rows={2}
-            placeholder="复用左侧 Prompt，或单独写一段视觉描述（构图、机位、光影、人物动作）"
-            className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-200 placeholder-gray-600 focus:border-violet-500 focus:outline-none resize-none font-mono" />
-          <div className="flex items-center gap-1.5">
-            <select
-              value={model}
-              onChange={e => setModel(e.target.value)}
-              className="px-1.5 py-0.5 bg-gray-900 border border-gray-700 rounded text-[10px] text-gray-300 focus:border-violet-500 focus:outline-none">
-              <option value="gpt-image-2">gpt-image-2（构图王）</option>
-              <option value="nano-banana-2">nano-banana-2</option>
-              <option value="flux-pro">flux-pro</option>
-              <option value="flux-2">flux-2</option>
-            </select>
+      )}
+
+      {/* 多模型勾选 —— 并行生成对比 */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[10px] text-gray-500 whitespace-nowrap">模型</span>
+        {[
+          { id: 'gpt-image-2', label: 'gpt-image-2', hint: '构图王' },
+          { id: 'nano-banana-2', label: 'nano-banana-2', hint: '角色保真' },
+          { id: 'flux-pro', label: 'flux-pro', hint: '写实' },
+          { id: 'flux-2', label: 'flux-2', hint: '快' },
+        ].map(opt => {
+          const on = selectedModels.has(opt.id)
+          return (
             <button
-              onClick={() => onGenerate?.(draft || scene.prompt || scene.label, model)}
-              disabled={isRunning || !onGenerate || !(draft || scene.prompt)}
-              className="flex-1 px-2 py-1 rounded text-[10px] font-medium bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition inline-flex items-center justify-center gap-1">
-              {isRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-              {isRunning ? '生成中…' : '生成故事板静帧'}
+              key={opt.id}
+              type="button"
+              onClick={() => toggleModel(opt.id)}
+              title={opt.hint}
+              className={`px-1.5 py-0.5 rounded text-[10px] border transition ${on ? 'bg-violet-600/40 border-violet-400 text-violet-100' : 'bg-gray-900 border-gray-700 text-gray-500 hover:text-gray-300'}`}>
+              {on && '✓ '}{opt.label}{on && refs.length && (opt.id === 'gpt-image-2' || opt.id === 'nano-banana-2') ? '/edit' : ''}
             </button>
-          </div>
-          {status === 'failed' && (
-            <div className="text-[10px] text-red-400">⚠ 上次生成失败，重试一下</div>
-          )}
-        </>
+          )
+        })}
+      </div>
+
+      <button
+        onClick={() => onGenerate?.(draft || scene.prompt || scene.label, Array.from(selectedModels))}
+        disabled={isRunning || !onGenerate || selectedModels.size === 0 || !(draft || scene.prompt)}
+        className="w-full px-2 py-1.5 rounded text-[11px] font-medium bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition inline-flex items-center justify-center gap-1">
+        {isRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+        {isRunning
+          ? `并行生成 ${selectedModels.size} 张中…`
+          : candidates.length > 0
+            ? `追加/重跑（${selectedModels.size} 张）`
+            : `生成 ${selectedModels.size} 张候选`}
+      </button>
+
+      {status === 'failed' && candidates.length === 0 && (
+        <div className="text-[10px] text-red-400">⚠ 上次生成失败，重试一下</div>
       )}
     </div>
   )
@@ -463,8 +624,10 @@ function SceneCard({
   scene, expanded, sequenceNumber, onToggle, onUpdate, onRemove, onAddTake, onPickTake, onRemoveTake,
   onGenerateStoryboard,
   archiveProject, archiveEpKey,
+  characterNodes,
 }: {
   scene: SceneSpec
+  characterNodes?: Array<{ tag?: string; label?: string; imageUrl?: string }>
   expanded: boolean
   sequenceNumber: number
   onToggle: () => void
@@ -473,10 +636,11 @@ function SceneCard({
   onAddTake: () => void
   onPickTake: (tid: string) => void
   onRemoveTake: (tid: string) => void
-  onGenerateStoryboard?: (prompt: string, model?: string) => void
+  onGenerateStoryboard?: (prompt: string, models: string[]) => void
   archiveProject: string
   archiveEpKey: string
 }) {
+  void characterNodes // (kept for symmetry; consumed via prop drill below)
   const summary = sceneTakesSummary(scene)
   const pickedTake = scene.takes.find(t => t.take_id === scene.picked_take)
 
@@ -530,11 +694,12 @@ function SceneCard({
               className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-200 placeholder-gray-600 focus:border-cyan-500 focus:outline-none resize-none font-mono" />
           </div>
 
-          {/* 故事板静帧 (GPT Image 2) */}
+          {/* 故事板静帧 (GPT Image 2 / Nano Banana) */}
           <StoryboardFrameSection
             scene={scene}
             onUpdate={onUpdate}
             onGenerate={onGenerateStoryboard}
+            characterNodes={characterNodes}
           />
 
           {/* Duration */}
@@ -1296,10 +1461,15 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
   const archiveProject = 'swarm-universe'
   const archiveEpKey = `${data.is_spinoff ? 'sp' : 'ep'}${String(data.episode_number || 0).padStart(2, '0')}`
 
-  // 推广文案生成状态
+  // 推广文案生成状态。刷新后从 comp.promo 复活（持久化在 workflow definition 里）。
   const [promoLoading, setPromoLoading] = useState(false)
-  const [promo, setPromo] = useState<PromoResponse | null>(null)
-  const [promoErr, setPromoErr] = useState<string | null>(null)
+  const [promo, setPromo] = useState<PromoResponse | null>(
+    comp.promo ? (comp.promo as unknown as PromoResponse) : null,
+  )
+  // promoErr 之前只存 string；后端 JSON 解析失败时会带 raw + parse_err，
+  // 现在保留这两段方便用户直接复制原文复盘 / 反馈给我们。
+  const [promoErr, setPromoErr] = useState<{ message: string; raw?: string; parseErr?: string } | null>(null)
+  const [promoErrCopied, setPromoErrCopied] = useState(false)
 
   // Fix #9：发布到剧本目录状态。
   //  从 label 推出 episode 目录名（"EP05 夜袭" → "ep05"）。如果命中不到就禁用按钮。
@@ -1313,9 +1483,12 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
     return s || data.label
   })()
   const [publishLoading, setPublishLoading] = useState(false)
-  const [publishResult, setPublishResult] = useState<{ published: number; missing: number; dir: string; readme: string } | null>(null)
+  const [publishResult, setPublishResult] = useState<{ published: number; missing: number; dir: string; readme: string; finalVideo?: string } | null>(null)
   const [publishErr, setPublishErr] = useState<string | null>(null)
-  const runPublish = async () => {
+  // finalVideoOverride：合成刚结束时 comp.final_video_url 还没 setState 进来，
+  // 由 runMerge 显式把 merged.video_url 透传过来，确保后端能拿到正确 URL 把
+  // /v1/videos/merged/<uuid>.mp4 拷到 docs/<project>/episodes/<ep>/final.mp4。
+  const runPublish = async (finalVideoOverride?: string) => {
     setPublishLoading(true); setPublishErr(null); setPublishResult(null)
     try {
       const picked = pickedScenes.map(s => ({ scene: s.id, take_id: s.picked_take as string }))
@@ -1325,13 +1498,15 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
         picked,
         title: epTitle,
         description: data.description,
+        final_video_url: finalVideoOverride || comp.final_video_url || undefined,
       })
-      const r = res.data as { published?: unknown[]; missing?: unknown[]; episode_dir?: string; readme?: string }
+      const r = res.data as { published?: unknown[]; missing?: unknown[]; episode_dir?: string; readme?: string; final_video?: string }
       setPublishResult({
         published: (r.published || []).length,
         missing: (r.missing || []).length,
         dir: r.episode_dir || `/episodes/${epId}`,
         readme: r.readme || `/episodes/${epId}/README.md`,
+        finalVideo: r.final_video,
       })
     } catch (e) {
       const detail = (e as { response?: { data?: { error?: string } }; message?: string })
@@ -1360,9 +1535,17 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
         picked_clips: comp.picked_clips,
       })
       setPromo(res.data)
+      // 持久化到 workflow definition，刷新页面后还能拿回。
+      onUpdate({ ...comp, promo: res.data as unknown as Record<string, unknown> })
     } catch (e) {
-      const detail = (e as { response?: { data?: { error?: string; raw?: string } }; message?: string })
-      setPromoErr(detail.response?.data?.error || detail.message || String(e))
+      const detail = (e as { response?: { data?: { error?: string; raw?: string; parse_err?: string } }; message?: string })
+      const data = detail.response?.data
+      setPromoErr({
+        message: data?.error || detail.message || String(e),
+        raw: data?.raw,
+        parseErr: data?.parse_err,
+      })
+      setPromoErrCopied(false)
     } finally { setPromoLoading(false) }
   }
 
@@ -1403,7 +1586,9 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
               // 自动同步到剧本目录：把 picked takes 拷到 /episodes/<ep>/scenes/ 并写 README。
               // 不阻塞 / 失败也不影响合成成功。
               if (epId && pickedScenes.length > 0) {
-                void runPublish().catch(() => { /* 已在 runPublish 内显示错误 */ })
+                // 把 merged.video_url 透传给 publish，让后端把整片拷到
+                // docs/<project>/episodes/<ep>/final.mp4 —— 否则 docs 树看不到成片。
+                void runPublish(merged.video_url).catch(() => { /* 已在 runPublish 内显示错误 */ })
               }
               return
             }
@@ -1420,8 +1605,33 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
     }
   }
 
-  const copy = async (text: string) => {
-    try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+  // 用户反馈：复制按钮点了没反应。原因可能有几种：
+  //   1) 非 https / 非 localhost 时 navigator.clipboard 在新版 Chrome 里被禁
+  //   2) 浏览器扩展或 iframe sandbox 拦截 Clipboard API
+  //   3) 用户当前焦点不在 document（比如刚从 DevTools 切回）
+  // 之前 catch 静默吞掉异常，UI 完全没反馈 ⇒ 看上去就是「点了没反应」。
+  // 改：先试 navigator.clipboard，失败回退到 execCommand('copy')；都失败时
+  // 抛错让上层显示提示（promoErr 复制按钮会捕获并展开 textarea 让用户手选）。
+  const copy = async (text: string): Promise<boolean> => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(text); return true } catch { /* fall through */ }
+    }
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      ta.style.top = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      ta.setSelectionRange(0, text.length)
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      return ok
+    } catch {
+      return false
+    }
   }
 
   return (
@@ -1565,6 +1775,7 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
           archiveEpKey={archiveEpKey}
           comp={comp}
           onUpdate={onUpdate}
+          episodeLabel={data.label}
         />
       )}
 
@@ -1587,7 +1798,7 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
           <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
             <Archive className="w-3 h-3 text-cyan-400" /> 同步到剧本目录
           </label>
-          <button onClick={runPublish}
+          <button onClick={() => runPublish()}
             disabled={publishLoading || pickedScenes.length === 0 || !epId}
             title={
               !epId ? '无法从 episode label 推出目录名（EP05 → ep05）'
@@ -1614,6 +1825,11 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
               <div className="text-amber-300">⚠ 有 <span className="font-semibold">{publishResult.missing}</span> 个场景的源文件缺失（检查 clips_v2 是否已归档）</div>
             )}
             <div className="text-[10px] text-cyan-400/80 font-mono truncate">README: {publishResult.readme}</div>
+            {publishResult.finalVideo && (
+              <div className="text-[10px] text-emerald-300 font-mono truncate">
+                🎬 成片: <a href={`/v1/projects/swarm-universe${publishResult.finalVideo}`} target="_blank" rel="noreferrer" className="underline hover:text-emerald-200">/swarm-universe{publishResult.finalVideo}</a>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1639,8 +1855,54 @@ function CompositionTab({ data, comp, scenes, onUpdate }: { data: EpisodeData; c
           </button>
         </div>
         {promoErr && (
-          <div className="p-2 rounded bg-red-900/20 border border-red-500/30 text-[11px] text-red-300">
-            生成失败：{promoErr}
+          <div className="p-2 rounded bg-red-900/20 border border-red-500/30 text-[11px] text-red-300 space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">生成失败：{promoErr.message}</div>
+                {promoErr.parseErr && (
+                  <div className="text-red-400/80 text-[10px] mt-0.5 break-all">parse_err: {promoErr.parseErr}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const text = [
+                    `error: ${promoErr.message}`,
+                    promoErr.parseErr ? `parse_err: ${promoErr.parseErr}` : '',
+                    promoErr.raw ? `\nraw:\n${promoErr.raw}` : '',
+                  ].filter(Boolean).join('\n')
+                  const ok = await copy(text)
+                  if (ok) {
+                    setPromoErrCopied(true)
+                    setTimeout(() => setPromoErrCopied(false), 1500)
+                  } else {
+                    // 两路都失败：手动 alert 提示用户用展开的 textarea 框选 Ctrl+C
+                    alert('剪贴板被浏览器拦截了，请展开下方"模型原始输出"，点文本框会自动全选，再按 Ctrl+C 复制。')
+                  }
+                }}
+                title="复制完整错误（含模型原始输出，方便复盘）"
+                className={`flex-none p-1 rounded border transition ${
+                  promoErrCopied
+                    ? 'border-emerald-600 text-emerald-300 bg-emerald-900/30'
+                    : 'border-red-700/60 text-red-300 hover:border-red-500 hover:bg-red-900/40'
+                }`}
+              >
+                {promoErrCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </div>
+            {promoErr.raw && (
+              <details className="text-[10px]">
+                <summary className="cursor-pointer text-red-300/80 hover:text-red-200 select-none">
+                  展开模型原始输出（{promoErr.raw.length} 字 · 可在文本框里手选复制）
+                </summary>
+                <textarea
+                  readOnly
+                  value={promoErr.raw}
+                  onClick={e => (e.target as HTMLTextAreaElement).select()}
+                  className="w-full mt-1 p-1.5 bg-gray-950/80 border border-red-900/40 rounded text-gray-300 font-mono text-[10px] leading-relaxed resize-y min-h-[120px] max-h-[320px] focus:outline-none focus:border-red-500/60"
+                />
+              </details>
+            )}
           </div>
         )}
         {promo && <PromoResultCard promo={promo} onCopy={copy} />}
@@ -1667,7 +1929,7 @@ function PromoResultCard({ promo, onCopy }: { promo: PromoResponse; onCopy: (t: 
         <div className="text-[10px] uppercase tracking-wider text-pink-400/70 mb-1">Core Hook</div>
         <div className="text-sm font-semibold text-pink-100 flex items-start gap-2">
           <span className="flex-1">{promo.core_hook}</span>
-          <button onClick={() => onCopy(promo.core_hook)} className="text-gray-500 hover:text-gray-300 mt-1"><Copy className="w-3 h-3" /></button>
+          <CopyBtn text={promo.core_hook} onCopy={onCopy} />
         </div>
         <div className="text-[10px] text-gray-500 mt-1">目标受众情绪：<span className="text-amber-300">{promo.audience_vibe}</span> · <span className="font-mono">{promo.model}</span></div>
       </div>
@@ -1747,15 +2009,13 @@ function PlatBtn({ active, label, color, onClick }: { active: boolean; label: st
   )
 }
 
-function PromoBlock({ label, value, onCopy, multiline, hint }: { label: string; value: string; onCopy: (t: string) => void; multiline?: boolean; hint?: string }) {
+function PromoBlock({ label, value, onCopy, multiline, hint }: { label: string; value: string; onCopy: (t: string) => Promise<boolean> | void; multiline?: boolean; hint?: string }) {
   if (!value) return null
   return (
     <div>
       <div className="flex items-center justify-between mb-0.5">
         <span className="text-[10px] uppercase tracking-wider text-gray-500">{label}{hint ? <span className="normal-case text-gray-600 ml-1 tracking-normal">· {hint}</span> : null}</span>
-        <button onClick={() => onCopy(value)} className="text-gray-500 hover:text-gray-300 inline-flex items-center gap-1 text-[10px]">
-          <Copy className="w-2.5 h-2.5" />复制
-        </button>
+        <CopyBtn text={value} onCopy={onCopy} label="复制" />
       </div>
       {multiline ? (
         <pre className="whitespace-pre-wrap break-words text-gray-200 bg-gray-900/60 border border-gray-800 rounded p-2 font-mono text-[10px] leading-relaxed">{value}</pre>
@@ -1763,6 +2023,47 @@ function PromoBlock({ label, value, onCopy, multiline, hint }: { label: string; 
         <div className="text-gray-200 bg-gray-900/60 border border-gray-800 rounded p-2 text-[11px]">{value}</div>
       )}
     </div>
+  )
+}
+
+// 用户反馈：PromoResultCard 里的复制按钮点了像没反应。问题是按钮没有任何
+// 视觉反馈——即使底层 copy() 成功也不会高亮，用户以为没生效。
+// CopyBtn 把 await + 临时态收一起：成功变 ✓ 1.2s，失败弹 alert 兜底。
+function CopyBtn({ text, onCopy, label }: { text: string; onCopy: (t: string) => Promise<boolean> | void; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  const [failed, setFailed] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation()
+        const result = onCopy(text) as Promise<boolean> | boolean | void
+        // 上游 copy() 返回 Promise<boolean>。老调用方可能是 () => void，
+        // 那种情况下按 "没抛异常即成功" 处理。
+        let ok = true
+        if (result instanceof Promise) {
+          try { ok = await result } catch { ok = false }
+        } else if (typeof result === 'boolean') {
+          ok = result
+        }
+        if (ok) {
+          setCopied(true); setFailed(false)
+          setTimeout(() => setCopied(false), 1200)
+        } else {
+          setFailed(true)
+          setTimeout(() => setFailed(false), 1500)
+          alert('剪贴板被浏览器拦截，请手动选中文本按 Ctrl+C 复制。')
+        }
+      }}
+      className={`inline-flex items-center gap-1 text-[10px] transition ${
+        copied ? 'text-emerald-300'
+          : failed ? 'text-red-300'
+          : 'text-gray-500 hover:text-gray-300'
+      }`}
+    >
+      {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+      {label && <span>{copied ? '已复制' : failed ? '失败' : label}</span>}
+    </button>
   )
 }
 
@@ -1873,14 +2174,47 @@ function MetaTab({ data, onUpdate }: { data: EpisodeData; onUpdate: (p: Partial<
 // 候选 URL 顺序与场景节点保持一致：local_url → 派生归档路径 → TOS。
 // 这样 EP05 这种"全选完未合成"的卡片也能在右侧面板看到效果。
 function PreMergePreview({
-  scenes, archiveProject, archiveEpKey, comp, onUpdate,
+  scenes, archiveProject, archiveEpKey, comp, onUpdate, episodeLabel,
 }: {
   scenes: SceneSpec[]
   archiveProject: string
   archiveEpKey: string
   comp: Composition
   onUpdate: (c: Composition) => void
+  // 用户反馈：合成完了 panel 还显示「尚未合成」。原因是 runMerge 的 60×3s 轮询
+  // 超时（合成耗时长于 3 分钟）就放弃了 onUpdate，但实际后端已经合好。这里
+  // 用 episodeLabel 重建 conversation_id，提供「找回成片」按钮，按需查询并回填。
+  episodeLabel: string
 }) {
+  const [recoverBusy, setRecoverBusy] = useState(false)
+  const [recoverMsg, setRecoverMsg] = useState<string | null>(null)
+  const recoverFinal = async () => {
+    setRecoverBusy(true); setRecoverMsg(null)
+    try {
+      // runMerge 用的 convId 模式
+      const convId = `workflow-${episodeLabel}`
+      const res = await videoAPI.list({ model: 'merged' })
+      const vids = (res.data as { videos?: Array<{ conversation_id?: string; video_url?: string; status?: string; created_at?: string }> }).videos || []
+      // 优先严格匹配本集 convId；都失败时落回最新一条 succeeded 让用户自己判断。
+      const exact = vids.find(v => v.conversation_id === convId && v.status === 'succeeded' && v.video_url)
+      if (exact && exact.video_url) {
+        onUpdate({ ...comp, status: 'ready', final_video_url: exact.video_url })
+        setRecoverMsg(`找回成功：${exact.video_url}`)
+        return
+      }
+      const latest = vids.find(v => v.status === 'succeeded' && v.video_url)
+      if (latest && latest.video_url) {
+        // 只提示不自动写，避免把别集的成片塞错
+        setRecoverMsg(
+          `没找到 conversation_id=${convId} 的合成记录。最近一次合成：${latest.video_url}（${latest.created_at || '?'}）—— 如果是这一集，请手动粘进下面"成片 URL"。`,
+        )
+        return
+      }
+      setRecoverMsg('视频库里没有任何 succeeded 的合成成片。')
+    } catch (e) {
+      setRecoverMsg(`查询失败：${(e as Error).message || String(e)}`)
+    } finally { setRecoverBusy(false) }
+  }
   // 收集所有已 picked 的 take 的候选 URL 列表（按场景顺序）
   const clips = scenes
     .map(s => {
@@ -1917,10 +2251,21 @@ function PreMergePreview({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wider">合成前预览（{clips.length} 镜 · {totalDur}s）</label>
-        <span className="text-[10px] text-amber-400">尚未合成 · 单镜顺播</span>
+      <div className="flex items-center justify-between gap-2">
+        <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">合成前预览（{clips.length} 镜 · {totalDur}s）</label>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={recoverFinal} disabled={recoverBusy}
+            title="如果之前合成过但 panel 没回填（合成耗时超过 3 分钟轮询超时），点这里从视频库找回成片 URL"
+            className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-700/60 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 disabled:opacity-50 inline-flex items-center gap-1">
+            {recoverBusy ? <CircleDot className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+            找回成片
+          </button>
+          <span className="text-[10px] text-amber-400 whitespace-nowrap">尚未合成 · 单镜顺播</span>
+        </div>
       </div>
+      {recoverMsg && (
+        <div className="text-[10px] p-1.5 rounded bg-gray-900/60 border border-gray-700 text-gray-300 break-all">{recoverMsg}</div>
+      )}
       <div className="relative rounded-lg overflow-hidden border border-amber-500/30 bg-black">
         <video
           key={playableUrl}

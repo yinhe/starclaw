@@ -105,6 +105,15 @@ export interface RefreshResult {
   expiresSec?: number
 }
 
+// Optional character context forwarded to the backend launder endpoint so
+// Seedream retry prompts know who this image is. Purely additive — legacy
+// callers that pass no context get the same behaviour as before.
+export interface CharacterContext {
+  appearance_card?: string
+  label?: string
+  tag?: string
+}
+
 /**
  * Hybrid refresh a TOS URL: try /v1/cdn/resign-tos first (cheap, 7d), fall
  * back to /v1/cdn/launder-tos (expensive, 24h). If `oldTOSUrl` is empty or
@@ -113,8 +122,11 @@ export interface RefreshResult {
  * @param oldTOSUrl existing (possibly expired) Ark TOS URL, may be empty
  * @param fallbackSource CDN URL or local /v1/projects/... path used when
  *                       resign fails or oldTOSUrl is absent
+ * @param char           optional character context (appearance_card, label,
+ *                       tag) forwarded to the launder fallback so the retry
+ *                       loop has a realistic-style anchor
  */
-export async function refreshTOS(oldTOSUrl: string, fallbackSource: string): Promise<RefreshResult> {
+export async function refreshTOS(oldTOSUrl: string, fallbackSource: string, char?: CharacterContext): Promise<RefreshResult> {
   // Path A: resign existing Ark URL if we have one
   if (oldTOSUrl && oldTOSUrl.includes('X-Tos-Algorithm=')) {
     try {
@@ -153,7 +165,9 @@ export async function refreshTOS(oldTOSUrl: string, fallbackSource: string): Pro
   if (!launderSource) {
     throw new Error('No source for laundering (need local/CDN URL or a still-valid TOS URL)')
   }
-  const { data } = await cdnAPI.launderTOS(launderSource)
+  // Forward character context so backend can anchor each retry prompt
+  // ("Subject is [图1]林见月, 薄荷绿古装汉服, live-action realism…").
+  const { data } = await cdnAPI.launderTOS(launderSource, char)
   if (!data.tos_url) throw new Error('Launder returned empty tos_url')
   return { tosUrl: data.tos_url, source: 'launder' }
 }

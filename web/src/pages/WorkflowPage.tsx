@@ -16,7 +16,7 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera, Coins, CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react'
+import { Save, Plus, Loader2, Maximize2, Minimize2, Cpu, Wrench, GitBranch, Image, Trash2, ArrowLeft, PanelLeftClose, PanelLeftOpen, Users, Film, Package, FileText, ChevronDown, ChevronRight, Clapperboard, Sparkles, Layers, Camera, Coins, CheckCircle2, XCircle, AlertTriangle, Info, X, ClipboardCheck } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import LLMNode from '../components/workflow/LLMNode'
 import ToolNode from '../components/workflow/ToolNode'
@@ -33,6 +33,7 @@ import PropEditorModal, { type PropData } from '../components/workflow/PropEdito
 import SnapshotsModal from '../components/workflow/SnapshotsModal'
 import type { WorkflowSnapshot } from '../components/workflow/snapshots'
 import UniverseOverviewModal from '../components/workflow/UniverseOverviewModal'
+import AssetCoverageModal from '../components/workflow/AssetCoverageModal'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
 import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData, type Take } from '../components/workflow/episodeTypes'
@@ -135,6 +136,11 @@ export default function WorkflowPage() {
     if (workflowCategory === 'content') return true
     return nodes.some(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene')
   }, [workflowCategory, nodes])
+
+  // 广告宣传片工作流判定：画布含 category=type 的 media 节点
+  const isAdWorkflow = useMemo(() => {
+    return nodes.some(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'type')
+  }, [nodes])
 
   // 聚焦模式：选中某一集时隐藏其他剧集节点，突出当前集的工作流
   const [focusedEpisodeId, setFocusedEpisodeId] = useState<string | null>(null)
@@ -402,6 +408,16 @@ export default function WorkflowPage() {
   //   · 在该集下方注入场景子图（S1→S2→…→Final）
   const { displayNodes, displayEdges } = useMemo(() => {
     if (!focusMode || !focusedEpisodeId) {
+      // 广告工作流：隐藏 type/style media 节点（已移至左侧边栏）
+      if (isAdWorkflow) {
+        const filtered = nodes.map(n => {
+          if (n.type !== 'media') return n
+          const cat = (n.data as Record<string, unknown>).category
+          if (cat === 'type' || cat === 'style') return { ...n, hidden: true }
+          return n
+        })
+        return { displayNodes: filtered, displayEdges: edges }
+      }
       return { displayNodes: nodes, displayEdges: edges }
     }
     const focused = nodes.find(n => n.id === focusedEpisodeId)
@@ -592,6 +608,125 @@ export default function WorkflowPage() {
     return () => clearTimeout(t)
   }, [nodes, edges, workflowName, DRAFT_KEY, hydrated])
 
+  // ── 一次性 manifest 同步（hydrated 后跑一次） ──
+  //
+  // 既覆盖 loadWorkflow 路径也覆盖 localStorage 草稿路径。即使 backend def 为空、
+  // localStorage 里有 stale 节点，这里也会把 manifest 里有但画布上没的角色/道具
+  // 节点补建，并把 ref_video / tos_url / appearance_card 同步到老节点。
+  //
+  // 触发条件：画布上至少有一个 character 节点（认为这是虫群宇宙工作流），避免
+  // 在空画布或非短剧工作流里乱注入角色。
+  const manifestSyncedRef = useRef(false)
+  useEffect(() => {
+    if (!hydrated) return
+    if (manifestSyncedRef.current) return
+    const hasCharNode = nodes.some(n => {
+      const d = n.data as Record<string, unknown> | undefined
+      return d?.category === 'character'
+    })
+    if (!hasCharNode) return
+    manifestSyncedRef.current = true
+    let cancelled = false
+    ;(async () => {
+      try {
+        const manifest = await loadSwarmManifest(true)
+        const charMap = new Map(manifest.characters.map(c => [c.key, c]))
+        const propMap = new Map(manifest.props.map(p => [p.key, p]))
+        const absUrl = (rel: string | null | undefined): string => {
+          if (!rel) return ''
+          if (rel.startsWith('http') || rel.startsWith('/v1/')) return rel
+          return manifest.url_prefix + rel
+        }
+        if (cancelled) return
+        setNodes(prev => {
+          const existingCharKeys = new Set<string>()
+          const existingPropKeys = new Set<string>()
+          let maxCharX = 0
+          let maxPropX = 0
+          // Pass 1: patch 已有节点（用 immutable map，避免 React 漏 re-render）
+          const patched: Node[] = prev.map(n => {
+            if (n.type !== 'media') return n
+            const d = n.data as Record<string, unknown>
+            if (d.category === 'character' && typeof d.key === 'string') {
+              existingCharKeys.add(d.key)
+              if (n.position?.x && n.position.x > maxCharX) maxCharX = n.position.x
+              const src = charMap.get(d.key)
+              if (!src) return n
+              const newD: Record<string, unknown> = { ...d }
+              if (src.appearance_card) newD.appearance_card = src.appearance_card
+              if (src.tos_url) newD.tos_url = src.tos_url
+              if (src.ref_video) newD.ref_video = src.ref_video
+              return { ...n, data: newD }
+            }
+            if (d.category === 'prop' && typeof d.key === 'string') {
+              existingPropKeys.add(d.key)
+              if (n.position?.x && n.position.x > maxPropX) maxPropX = n.position.x
+              const src = propMap.get(d.key)
+              if (!src) return n
+              const newD: Record<string, unknown> = { ...d }
+              if (src.tos_url) newD.tos_url = src.tos_url
+              if (src.tag) newD.tag = src.tag
+              return { ...n, data: newD }
+            }
+            return n
+          })
+          // Pass 2: 补建 manifest 里有、画布上没有的节点
+          const COL_W = 200
+          const CHAR_Y = 40
+          const PROPS_Y = 1380   // 与 buildSeedNodes 布局对齐
+          const additions: Node[] = []
+          let stamp = Date.now()
+          for (const c of manifest.characters) {
+            if (existingCharKeys.has(c.key)) continue
+            maxCharX += COL_W
+            additions.push({
+              id: `media-sync-${stamp++}`,
+              type: 'media',
+              position: { x: maxCharX || 80, y: CHAR_Y },
+              data: {
+                category: 'character',
+                label: c.label, tag: c.tag, role: c.role, key: c.key,
+                appearance_card: c.appearance_card,
+                description: c.description,
+                imageUrl: absUrl(c.ref),
+                tos_url: c.tos_url,
+                ref_video: c.ref_video,
+              },
+            } as unknown as Node)
+            console.log(`[manifestSync] add missing character: ${c.tag} ${c.label} (key=${c.key})`)
+          }
+          for (const p of manifest.props) {
+            if (existingPropKeys.has(p.key)) continue
+            maxPropX += COL_W
+            additions.push({
+              id: `media-sync-${stamp++}`,
+              type: 'media',
+              position: { x: maxPropX || 80, y: PROPS_Y },
+              data: {
+                category: 'prop',
+                key: p.key,
+                label: p.label,
+                description: p.description,
+                imageUrl: p.ref ? absUrl(p.ref) : undefined,
+                tos_url: p.tos_url,
+                tag: p.tag,
+              },
+            } as unknown as Node)
+            console.log(`[manifestSync] add missing prop: 「${p.label}」(key=${p.key})`)
+          }
+          if (additions.length === 0 && patched.every((n, i) => n === prev[i])) {
+            return prev   // 完全没变，避免触发重渲
+          }
+          return [...patched, ...additions]
+        })
+      } catch (e) {
+        console.warn('[manifestSync] failed:', e)
+        manifestSyncedRef.current = false   // 让下次 nodes 变化重试
+      }
+    })()
+    return () => { cancelled = true }
+  }, [hydrated, nodes, setNodes])
+
   // Fullscreen API
   useEffect(() => {
     const onFSChange = () => setIsFullscreen(!!document.fullscreenElement)
@@ -707,19 +842,86 @@ export default function WorkflowPage() {
             const manifest = await loadSwarmManifest(true)
             const charMap = new Map(manifest.characters.map(c => [c.key, c]))
             const propMap = new Map(manifest.props.map(p => [p.key, p]))
+            // 1) 已有 char/prop 节点：原地 patch（appearance_card / tos_url / ref_video）
+            const existingCharKeys = new Set<string>()
+            const existingPropKeys = new Set<string>()
+            let maxCharX = 0
+            let maxPropX = 0
             for (const n of def.nodes) {
               if (n.type !== 'media') continue
               const d = n.data as Record<string, unknown>
               if (d.category === 'character' && typeof d.key === 'string') {
+                existingCharKeys.add(d.key)
+                if (n.position?.x && n.position.x > maxCharX) maxCharX = n.position.x
                 const src = charMap.get(d.key)
                 if (src) {
                   if (src.appearance_card) d.appearance_card = src.appearance_card
                   if (src.tos_url) d.tos_url = src.tos_url
+                  // ref_video 是后加字段，老快照里没有；同步补上才能让 v2v-only
+                  // 角色（EP07 三个混混）的 preflight 短路分支正确触发。
+                  if (src.ref_video) d.ref_video = src.ref_video
                 }
               } else if (d.category === 'prop' && typeof d.key === 'string') {
+                existingPropKeys.add(d.key)
+                if (n.position?.x && n.position.x > maxPropX) maxPropX = n.position.x
                 const src = propMap.get(d.key)
                 if (src?.tos_url) d.tos_url = src.tos_url
+                if (src?.tag) d.tag = src.tag
               }
+            }
+            // 2) manifest 里有、画布上没有的角色/道具：直接补建节点（跟 buildSeedNodes 同布局）
+            // 修复场景：保存工作流后 manifest 又加了新角色（如 EP07 三个混混），
+            // 老 def 不会自动包含，preflight 会报「[图N] 找不到对应角色」。
+            const COL_W = 200
+            const CHAR_Y = 40
+            // PROPS_Y = EP_Y_START(300) + 6 * ROW_H(170) + 60 = 1380（与 buildSeedNodes 对齐）
+            const PROPS_Y = 1380
+            const absUrl = (rel: string | null | undefined): string => {
+              if (!rel) return ''
+              if (rel.startsWith('http') || rel.startsWith('/v1/')) return rel
+              return manifest.url_prefix + rel
+            }
+            let nextSyncId = Date.now()  // 防 ID 冲突，用毫秒戳起头
+            for (const c of manifest.characters) {
+              if (existingCharKeys.has(c.key)) continue
+              maxCharX += COL_W
+              def.nodes.push({
+                id: `media-sync-${nextSyncId++}`,
+                type: 'media',
+                position: { x: maxCharX || 80, y: CHAR_Y },
+                data: {
+                  category: 'character',
+                  label: c.label,
+                  tag: c.tag,
+                  role: c.role,
+                  key: c.key,
+                  appearance_card: c.appearance_card,
+                  description: c.description,
+                  imageUrl: absUrl(c.ref),
+                  tos_url: c.tos_url,
+                  ref_video: c.ref_video,
+                },
+              })
+              console.log(`[loadWorkflow] auto-add missing character: ${c.tag} ${c.label} (key=${c.key})`)
+            }
+            for (const p of manifest.props) {
+              if (existingPropKeys.has(p.key)) continue
+              maxPropX += COL_W
+              def.nodes.push({
+                id: `media-sync-${nextSyncId++}`,
+                type: 'media',
+                position: { x: maxPropX || 80, y: PROPS_Y },
+                data: {
+                  category: 'prop',
+                  key: p.key,
+                  label: p.label,
+                  description: p.description,
+                  imageUrl: p.ref ? absUrl(p.ref) : undefined,
+                  tos_url: p.tos_url,
+                  tag: p.tag,
+                },
+              })
+              console.log(`[loadWorkflow] auto-add missing prop: 「${p.label}」(key=${p.key})`)
             }
             // Auto-sync scene prompts from manifest (manifest 是 prompt 的单一真相源)
             // Workflow node label 格式 "EP05 夜袭"；manifest 用 title "夜袭" + number 5
@@ -849,6 +1051,7 @@ export default function WorkflowPage() {
   const [showSwarmConfirm, setShowSwarmConfirm] = useState(false)
   const [showSnapshots, setShowSnapshots] = useState(false)
   const [showOverview, setShowOverview] = useState(false)
+  const [showAssetCoverage, setShowAssetCoverage] = useState(false)
 
   const focusEpisodeFromOverview = useCallback((nodeId: string) => {
     const n = nodes.find(x => x.id === nodeId)
@@ -934,6 +1137,25 @@ export default function WorkflowPage() {
     return { byTag, list }
   }, [nodes])
 
+  // 收集道具参考（label → publicUrl）。和角色不同：道具一般不带 [图N] tag，只能按
+  // 中文 label 在 prompt 文本里 substring 匹配命中后注入 Seedance ref。
+  // Priority: tos_url > cdn_url（必须公网可达，本地 /v1/uploads 跳过）。
+  const collectPropRefs = useCallback((): Array<{ label: string; tag?: string; url: string }> => {
+    const out: Array<{ label: string; tag?: string; url: string }> = []
+    for (const n of nodes) {
+      if (n.type !== 'media') continue
+      const d = n.data as Record<string, unknown>
+      if (d.category !== 'prop') continue
+      const url = (d.tos_url as string) || (d.cdn_url as string) || ''
+      if (!url || !/^https?:\/\//.test(url)) continue // 必须公网
+      const label = (d.label as string) || ''
+      const tag = (d.tag as string) || ''
+      if (!label) continue
+      out.push({ label, tag, url })
+    }
+    return out
+  }, [nodes])
+
   // 轮询 Seedance 视频任务状态
   const pollVideoStatus = useCallback(async (taskId: string, sceneLabel: string, maxSec = 20 * 60): Promise<{ video_url?: string; lastframe_url?: string; status: string; record_id?: string }> => {
     const start = Date.now()
@@ -995,8 +1217,9 @@ export default function WorkflowPage() {
       return lines ? lines.slice(0, 600) : '竖屏短剧 720x1280，现代都市+奇幻元素，冷暖色对比，电影感构图，浅景深，自然光源'
     })()
 
-    // 2) 收集角色参考图
+    // 2) 收集角色参考图 + 道具参考图
     const { byTag, list: charList } = collectCharacterRefs()
+    const propList = collectPropRefs()
 
     // 2.5) 自动刷新即将过期的 TOS URL
     //   refreshTOS 混合策略：先调 /v1/cdn/resign-tos（HMAC 7d，零成本），失败 fallback 到
@@ -1055,16 +1278,21 @@ export default function WorkflowPage() {
       }
     }
 
-    // 3) 对场景 prompt 做占位符替换（把 [图1][图2] 替换为 "<label>(见附图)" 形式的文字描述，真实的 URL 通过 img_url 传递）
+    // 3) 对场景 prompt 做占位符替换（把 [图N] 替换为 label 文字描述，真实的 URL 通过 img_url 传递）
+    // 规则：[图1]-[图6] 是角色、[图7]+ 是道具（在 manifest.props[].tag 里声明）。同名 label
+    // 多次出现或 [图N] 重复出现，在最终 img_url 传递时会去重。
     const resolveScenePrompt = (rawPrompt: string): { resolved: string; usedUrls: string[] } => {
       const usedTags = new Set<string>()
       let out = rawPrompt || ''
-      // [图1]-[图9] 识别
+      // [图N] 识别——优先匹配角色表，未命中再查道具表
       out = out.replace(/\[图(\d+)\]/g, (_m, n) => {
         const tag = `[图${n}]`
         usedTags.add(tag)
         const char = charList.find(c => c.tag === tag)
-        return char ? `${char.label}` : _m
+        if (char) return char.label
+        const prop = propList.find(p => p.tag === tag)
+        if (prop) return prop.label
+        return _m
       })
       // Fix: manifest prompt 写 "[图3]苏蜜…" 替换后变 "苏蜜苏蜜…"，折叠重复
       for (const c of charList) {
@@ -1072,7 +1300,33 @@ export default function WorkflowPage() {
           out = out.split(c.label + c.label).join(c.label)
         }
       }
-      const usedUrls = Array.from(usedTags).map(t => byTag[t]).filter(Boolean)
+      for (const p of propList) {
+        if (p.label && out.includes(p.label + p.label)) {
+          out = out.split(p.label + p.label).join(p.label)
+        }
+      }
+      // 采集 ref URL：
+      // 1. 从 [图N] tag 查角色 byTag
+      // 2. 从 [图N] tag 查道具 propList
+      // 3. 后退：prompt 文本出现道具 label（未走 [图N]）也注入 ref
+      const usedUrls: string[] = []
+      const seen = new Set<string>()
+      const pushUrl = (u: string) => {
+        if (!u || seen.has(u)) return
+        usedUrls.push(u)
+        seen.add(u)
+      }
+      for (const t of usedTags) {
+        if (byTag[t]) pushUrl(byTag[t])
+        else {
+          const prop = propList.find(p => p.tag === t)
+          if (prop) pushUrl(prop.url)
+        }
+      }
+      for (const p of propList) {
+        if (!p.url) continue
+        if (out.includes(p.label)) pushUrl(p.url)
+      }
       return { resolved: out, usedUrls }
     }
 
@@ -1145,19 +1399,28 @@ export default function WorkflowPage() {
         '\n\n[画面约束] 画面中绝对不要出现任何文字、字幕、水印、标题、对话气泡、歌词条。角色说话只生成语音和口型动作，不要把台词渲染成屏幕上的文字。纯视觉画面，无任何文字叠加。ABSOLUTELY NO on-screen text, subtitles, captions, watermarks, or dialogue bubbles. Dialogue is audio-only with lip sync, never rendered as visible text.',
       ].join('').slice(0, 4000)
 
-      // img_url：优先用 scene.storyboard_url（GPT Image 2 生成的 720×1280 故事板静帧）
-      //   作为 Seedance i2v 首帧——能锚定构图、机位、角色站位、光影情绪，
-      //   比纯角色三视图参考更稳。后面再挂 [图N] 角色参考做次级约束。
+      // img_url：[图N] 角色参考 + 命中道具 ref。
       //   后端 parseImageURLList 支持逗号分隔 → 多个 URL 会作为多张 reference_image
       //   （早期只传 usedUrls[0]，导致 S1 里 [图1][图2][图3] 只上 [图3] 苏蜜）
+      //
+      //   故事板静帧 (scene.storyboard_url) 需同时满足：
+      //   - 用户勾选了“用作 i2v 首帧”（storyboard_use_as_ref === true）
+      //   - URL 是公网 https 开头（本地 /v1/images/... Seedance 后端无法访问）
+      const sbUrl = scene.storyboard_url || ''
+      const sbUsable = scene.storyboard_use_as_ref === true && /^https?:\/\//.test(sbUrl)
       const refUrlList = [
-        scene.storyboard_url || '',          // 故事板首帧（最优锚定）
-        ...usedUrls,                         // [图N] 角色参考
+        ...(sbUsable ? [sbUrl] : []),        // 故事板首帧（勾选且公网时）
+        ...usedUrls,                         // [图N] 角色参考 + 道具 ref
       ].filter(Boolean)
       const imgUrl = refUrlList.join(',')
       // ref_video_url 始终使用上一场 picked_take 的 video_url（Seedance 多模态参考）
       const refVideoUrl = prevRefVideoUrl
       const modelName = 'doubao-seedance-2-0-260128'
+      // Seedance 2.0 的 duration 参数合法范围是 4-15（或 -1 auto）。
+      // EP06 有些镜头 manifest 里标的 3s（S4a / S5a / S5b / S6a 等），直接派单会被
+      // 后端拒绝：InvalidParameter: "the parameter duration specified in the request is not valid"
+      // 这里统一 clamp 到 [4,15]，多出来的 1s 用户可以在剪辑时掐掉。
+      const seedanceDuration = Math.min(15, Math.max(4, scene.duration || 5))
 
       // 5a) 先把本场 take 标记为 running 入 UI（并塞入日志字段）
       //     如果 rerunScene 已经预创建了同 takeId 的 running take，更新而非追加
@@ -1170,7 +1433,7 @@ export default function WorkflowPage() {
         ref_video_url: refVideoUrl,
         ref_video_id: prevRecordId,
         model: modelName,
-        duration: scene.duration || 5,
+        duration: seedanceDuration,
       }
       setNodes(nds => nds.map(n => {
         if (n.id !== nodeId) return n
@@ -1213,7 +1476,7 @@ export default function WorkflowPage() {
           img_url: imgUrl || undefined,
           ref_video_url: refVideoUrl || undefined,
           ref_video_id: prevRecordId || undefined,
-          duration: scene.duration || 5,
+          duration: seedanceDuration,
           resolution: epRes,
           ratio: epRatio,
           scene: `${episodeData.label}.${scene.id}`,
@@ -1538,7 +1801,7 @@ export default function WorkflowPage() {
             <ArrowLeft className="w-4 h-4" />
           </button>
           {/* 侧边栏折叠时的展开按钮（与 ArrowLeft 平行，避免与 back 按钮重叠） */}
-          {!showLeftPanel && isDramaWorkflow && (
+          {!showLeftPanel && (isDramaWorkflow || isAdWorkflow) && (
             <button onClick={() => setShowLeftPanel(true)}
               title="展开侧边栏（项目资产）"
               className="p-2 rounded-lg bg-gray-800/80 backdrop-blur border border-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700/80 transition-all">
@@ -1594,6 +1857,13 @@ export default function WorkflowPage() {
             title="一键加载虫群宇宙完整资产 (5角色 + 7道具 + 50集 + 衍生剧)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-violet-600/90 to-cyan-600/90 backdrop-blur border border-violet-500/50 text-white hover:from-violet-500 hover:to-cyan-500 transition-all shadow-lg shadow-violet-900/30">
             <Sparkles className="w-3.5 h-3.5" /> 虫群宇宙
+          </button>
+          )}
+          {isDramaWorkflow && (
+          <button onClick={() => setShowAssetCoverage(true)}
+            title="全集物料对齐扫描：基础健康（角色/道具 ref+TOS）+ 跨集 preflight 汇总"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-emerald-700/40 text-emerald-200 hover:text-white hover:bg-emerald-900/40 transition-all">
+            <ClipboardCheck className="w-3.5 h-3.5" /> 物料对齐
           </button>
           )}
           <button onClick={() => setShowPalette(!showPalette)}
@@ -1885,6 +2155,106 @@ export default function WorkflowPage() {
           </div>
         )}
 
+        {/* Left Ad Panel — 广告宣传片类型/风格菜单 */}
+        {showLeftPanel && isAdWorkflow && !isDramaWorkflow && (
+          <div className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden z-30">
+            <div className="px-3 py-2.5 pt-14 border-b border-gray-800 flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">宣传片菜单</span>
+              <button onClick={() => setShowLeftPanel(false)} className="p-1 text-gray-600 hover:text-gray-400 transition-colors">
+                <PanelLeftClose className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+              {/* 广告类型 */}
+              {(() => {
+                const typeNodes = nodes.filter(n => n.type === 'media' && (n.data as Record<string,unknown>).category === 'type')
+                return (
+                  <div className="border-b border-gray-800/50">
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-400">
+                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>广告类型 ({typeNodes.length})</span>
+                    </div>
+                    <div className="pb-2 space-y-0.5">
+                      {typeNodes.map(n => {
+                        const d = n.data as Record<string,unknown>
+                        return (
+                          <button key={n.id} onClick={() => { setSelectedNode(n); rfRef.current?.setCenter(n.position.x + 100, n.position.y + 50, { zoom: 1, duration: 500 }) }}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-indigo-900/30 border-l-2 border-indigo-500' : ''}`}>
+                            <div className="w-8 h-8 rounded-lg bg-indigo-900/40 border border-indigo-700/50 flex items-center justify-center flex-shrink-0 text-base">
+                              {((d.label as string) || '').slice(0, 2)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs text-gray-200 truncate">{((d.label as string) || '').slice(2).trim()}</div>
+                              <div className="text-[10px] text-gray-500 truncate">{d.description as string}</div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* 视觉风格 */}
+              {(() => {
+                const styleNodes = nodes.filter(n => n.type === 'media' && (n.data as Record<string,unknown>).category === 'style')
+                if (styleNodes.length === 0) return null
+                return (
+                  <div className="border-b border-gray-800/50">
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-400">
+                      <Camera className="w-3.5 h-3.5 text-amber-400" />
+                      <span>视觉风格 ({styleNodes.length})</span>
+                    </div>
+                    <div className="pb-2 space-y-0.5">
+                      {styleNodes.map(n => {
+                        const d = n.data as Record<string,unknown>
+                        return (
+                          <button key={n.id} onClick={() => { setSelectedNode(n); rfRef.current?.setCenter(n.position.x + 100, n.position.y + 50, { zoom: 1, duration: 500 }) }}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-amber-900/30 border-l-2 border-amber-500' : ''}`}>
+                            <div className="w-8 h-8 rounded-lg bg-amber-900/40 border border-amber-700/50 flex items-center justify-center flex-shrink-0">
+                              <Camera className="w-3.5 h-3.5 text-amber-400" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs text-gray-200 truncate">{d.label as string}</div>
+                              <div className="text-[10px] text-gray-500 truncate">{d.description as string}</div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* 制作流水线 */}
+              {(() => {
+                const pipeline = nodes.filter(n => n.type === 'llm' || n.type === 'tool')
+                if (pipeline.length === 0) return null
+                return (
+                  <div className="border-b border-gray-800/50">
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-400">
+                      <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>制作流水线 ({pipeline.length})</span>
+                    </div>
+                    <div className="pb-2 space-y-0.5">
+                      {pipeline.map(n => {
+                        const d = n.data as Record<string,unknown>
+                        return (
+                          <button key={n.id} onClick={() => { setSelectedNode(n); rfRef.current?.setCenter(n.position.x + 100, n.position.y + 50, { zoom: 1, duration: 500 }) }}
+                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-cyan-900/30 border-l-2 border-cyan-500' : ''}`}>
+                            {n.type === 'llm' ? <Cpu className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" /> : <Wrench className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                            <div className="text-xs text-gray-300 truncate">{d.label as string}</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Left panel toggle when hidden → 已移到顶栏与 ArrowLeft 并排 */}
 
         <div className="flex-1 relative" style={{ touchAction: 'none' }}>
@@ -2077,6 +2447,7 @@ export default function WorkflowPage() {
           <div className="pt-14 h-full">
             <EpisodeWorkflowPanel
               node={selectedNodeLive}
+              nodes={nodes}
               onUpdate={handleNodeDataUpdate}
               onClose={() => { setSelectedNode(null); setFocusedSceneId(null) }}
               onProduce={(ep) => setPreflightTarget({ episode: ep, nodeId: selectedNodeLive.id })}
@@ -2281,6 +2652,14 @@ export default function WorkflowPage() {
         onClose={() => setShowOverview(false)}
         nodes={nodes}
         onFocusEpisode={focusEpisodeFromOverview}
+      />
+
+      {/* 📋 物料对齐 · 全集扫描 */}
+      <AssetCoverageModal
+        open={showAssetCoverage}
+        onClose={() => setShowAssetCoverage(false)}
+        nodes={nodes}
+        onPatchNode={handleNodeDataUpdate}
       />
 
       {/* 存档 / 快照管理 */}

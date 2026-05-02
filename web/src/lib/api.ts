@@ -135,7 +135,13 @@ export interface VideoGenerateRequest {
   prompt: string
   model?: string              // 默认 doubao-seedance-2-0-260128
   img_url?: string
-  size?: string               // "720*1280" (竖屏) / "1280*720" (横屏)
+  size?: string               // "720*1280" (竖屏) / "1280*720" (横屏) —— Seedance 被 resolution+ratio 覆盖
+  // Seedance 2.0 官方参数（优先级高于 size）
+  //   resolution: "480p" | "720p" | "1080p"（默认 short_drama=1080p）
+  //   ratio:      "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16"（默认 short_drama=9:16）
+  // wan2.7 同样用 resolution，大小写兼容（后端会归一）。
+  resolution?: string
+  ratio?: string
   duration?: number           // 秒
   scene?: string              // e.g. "EP05.S1"
   style_prefix?: string       // 从 bible 抽取的统一风格
@@ -159,6 +165,8 @@ export const videoAPI = {
   cancel: (id: string) => api.post(`/videos/${id}/cancel`),
   retry: (id: string) => api.post(`/videos/${id}/retry`),
   regenerate: (id: string) => api.post(`/videos/${id}/regenerate`),
+  merge: (taskIds: string[], episode: string, meta?: { season?: number; episode_number?: number; title?: string }) =>
+    api.post('/videos/merge', { task_ids: taskIds, episode, ...meta }),
   remerge: (id: string) => api.post(`/videos/${id}/remerge`),
   dub: (id: string, text: string, voice: string, subtitleStyle?: string) =>
     api.post(`/videos/${id}/dub`, { text, voice, subtitle_style: subtitleStyle || 'auto' }),
@@ -179,6 +187,18 @@ export const videoAPI = {
     model?: string
     overwrite?: boolean
   }) => api.post('/videos/archive', req),
+  // 把 picked takes 从 production/<ep>/clips_v2/ 发布到 episodes/<ep>/scenes/，
+  // 并重写 episodes/<ep>/README.md。Fix #9：解决「EP05 没出现在剧本目录」。
+  publishEpisode: (req: {
+    project: string
+    episode: string
+    picked: Array<{ scene: string; take_id: string }>
+    title?: string
+    description?: string
+    // 合成成片完成后传入 /v1/videos/merged/<uuid>.mp4，让后端把整片
+    // 拷到 docs/<project>/episodes/<ep>/final.mp4，docs 树里能直接看到。
+    final_video_url?: string
+  }) => api.post('/videos/publish-episode', req),
 }
 
 // Images
@@ -222,6 +242,27 @@ export const projectAPI = {
   }) => api.post(
     `/projects/${encodeURIComponent(project)}/entities/${encodeURIComponent(kind)}/${encodeURIComponent(key)}/promote`,
     body,
+  ),
+  // 删掉 /entities/* 下某张候选图（LocalCandidateBar 右键菜单用）。
+  // 后端会拒绝：非 /entities/ 前缀、非图片扩展名、manifest.json 等保护文件、
+  // 以及当前仍被 manifest.json 作为 ref 引用的文件（返回 409）。
+  // resp: { deleted, size_bytes, note }  err 409: { error, hint }
+  deleteRef: (project: string, path: string) =>
+    api.post(`/projects/${encodeURIComponent(project)}/ref/delete`, { path }),
+  // 增量更新 manifest.characters[key] 或 manifest.props[key] 的白名单字段：
+  //   tos_url / cdn_url / appearance_card / description / ref_clip
+  // 用于 launderTOS / syncImageToCDN 成功后把生成的 URL 写回 manifest，避免
+  // 用户反馈的「生成过的 TOS URL 刷新页面就丢了」。
+  // 空字符串表示清空该字段。
+  // resp: { entity, kind, key, patched_fields, previous_values, unknown_fields_ignored? }
+  patchManifestEntity: (
+    project: string,
+    kind: 'characters' | 'props',
+    key: string,
+    patch: Record<string, string>,
+  ) => api.patch(
+    `/projects/${encodeURIComponent(project)}/manifest/${encodeURIComponent(kind)}/${encodeURIComponent(key)}`,
+    patch,
   ),
 }
 
@@ -334,7 +375,7 @@ export const dramaAPI = {
 }
 
 // CDN 上传（cdn.starclaw.net，EP04 验证过）
-// 后端按 env 配置走 scp → 43.106.158.26:/opt/cdn/.../<claw_id>/<drama>/<asset_type>/<filename>
+// 后端按 env 配置走 scp → CDN_SSH_HOST:/opt/cdn/.../<claw_id>/<drama>/<asset_type>/<filename>
 // 若未配置或失败 → 自动 fallback 到 /v1/uploads/<uuid>（本地稳定 URL）
 export const cdnAPI = {
   upload: (file: File, opts: { drama: string; asset_type: string; filename?: string }) => {
@@ -359,10 +400,23 @@ export const cdnAPI = {
     ),
   // Re-launder a local / CDN image through Seedream 5.0 lite → fresh Volcengine
   // Ark TOS signed URL (bypasses Seedance privacy filter). Valid ~24h.
-  launderTOS: (image_url: string) =>
+  //
+  // Optional character context (2nd arg): when present, backend prepends
+  // "Subject is [图1] 林见月. Appearance: 薄荷绿古装汉服…. Live-action realism,
+  // not cartoon." to every Seedream retry prompt, so the model doesn't drift
+  // into anime on retries. Mirrors bible.md + style_guide.md.
+  launderTOS: (
+    image_url: string,
+    char?: { appearance_card?: string; label?: string; tag?: string },
+  ) =>
     api.post<{ tos_url: string; size: number; mime: string; source: string; note: string }>(
       '/cdn/launder-tos',
-      { image_url },
+      {
+        image_url,
+        appearance_card: char?.appearance_card || '',
+        character_label: char?.label || '',
+        character_tag: char?.tag || '',
+      },
       { timeout: 180000 },
     ),
   // Cheap path: re-sign an existing TOS URL with our VOLC_TOS_AK/SK for up to
@@ -579,7 +633,7 @@ export const teamAPI = {
 
 // Workflows
 export const workflowAPI = {
-  list: () => api.get('/workflows'),
+  list: (category?: string) => api.get('/workflows', { params: category ? { category } : undefined }),
   create: (data: Record<string, unknown>) => api.post('/workflows', data),
   get: (id: string) => api.get(`/workflows/${id}`),
   update: (id: string, data: Record<string, unknown>) => api.put(`/workflows/${id}`, data),
@@ -638,6 +692,7 @@ export const scheduleAPI = {
     api.post('/schedules', data),
   toggle: (id: string) => api.post(`/schedules/${id}/toggle`),
   delete: (id: string) => api.delete(`/schedules/${id}`),
+  batchDelete: (ids?: string[]) => api.delete('/schedules/batch', { data: ids?.length ? { ids } : {} }),
 }
 
 // Activities (Instinct — proactive behavior system)
@@ -651,6 +706,7 @@ export const activityAPI = {
   logs: (id: string) => api.get(`/activities/${id}/logs`),
   templates: () => api.get('/activities/templates'),
   seed: (agentId?: string) => api.post('/activities/seed', null, { params: agentId ? { agent_id: agentId } : {} }),
+  batchDisable: () => api.post('/activities/batch-disable'),
   fireEvent: (event: string) => api.post(`/activities/events/${event}`),
 }
 
@@ -745,7 +801,8 @@ export const codingAPI = {
 
 // Tasks (autonomous background execution)
 export const taskAPI = {
-  list: (status?: string) => api.get('/tasks', { params: status ? { status } : {} }),
+  list: (status?: string, conversationId?: string) => api.get('/tasks', { params: { ...(status ? { status } : {}), ...(conversationId ? { conversation_id: conversationId } : {}) } }),
+  batchCancel: (conversationId?: string) => api.post('/tasks/batch-cancel', null, { params: conversationId ? { conversation_id: conversationId } : {} }),
   get: (id: string) => api.get(`/tasks/${id}`),
   create: (data: { title: string; goal: string; agent_id?: string; priority?: string; scheduled_at?: string }) =>
     api.post('/tasks', data),

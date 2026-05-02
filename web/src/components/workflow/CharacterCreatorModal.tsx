@@ -36,15 +36,57 @@ const STYLE_PRESETS = [
   { value: '3d',        label: '3D',   hint: 'CG 风格' },
 ]
 
+// 服装阶段预设（B 路 · 对齐 docs/swarm-universe/production/characters/lin_jianyue/reference.md
+// 的 4 段服装表）。用户可以选一个，prompt 会在 appearance 后附上对应的完整服饰描述，
+// 生成出来的三视图自动换装 —— 不用每次都重写 appearance_card。
+// value='' 表示"跟随 appearance 原文"，对非林见月角色也兼容。
+const COSTUME_PRESETS: { value: string; label: string; desc: string }[] = [
+  { value: '', label: '跟随外观卡', desc: '用 appearance 原文生图' },
+  {
+    value: 'ancient_xianxia',
+    label: '古装仙侠（EP01-02）',
+    desc: 'mint-green ancient Chinese hanfu under sheer lace overcoat, lotus embroidery, silver star-shaped waist buckle, emerald tassel, barefoot or cloth shoes',
+  },
+  {
+    value: 'luxury_heaven',
+    label: '豪华天宫正装（觉醒）',
+    desc: 'deep crimson silk robe with gold phoenix embroidery, openwork gold waist belt with ruby, gold phoenix crown, long flowing cape',
+  },
+  {
+    value: 'modern_poor',
+    label: '现代旧衣（EP03-10）',
+    desc: 'oversized grey hoodie, worn-out blue jeans, scuffed canvas sneakers, slightly dishevelled',
+  },
+  {
+    value: 'modern_normal',
+    label: '现代正常装（EP11+）',
+    desc: 'clean contemporary women\'s wear (simple knit top, high-waisted trousers or midi skirt) with a subtle retro touch',
+  },
+]
+
 type Stage = 1 | 2 | 3
 
-// EP04 成熟经验：prompt 简短精确，总长 < 100 词
-// 结构：角色描述 + 布局说明 + 风格 + 质量
-function buildSheetPrompt(appearance: string, style: string): string {
-  const styleWord = style === 'realistic' ? 'realistic' : style === 'anime' ? 'anime' : '3D CG'
+// 对齐 @docs/swarm-universe/production/characters/style_guide.md 的 "Premium realism,
+// no cartoon" 铁律 —— 用户多次反馈生成出来的三视图跑偏成漫画风。只在 style=realistic
+// 时注入，动漫/3D 不强加（那两种本来就不写实）。
+const REALISM_CLAMP = 'live-action short-drama realism, cinematic photograph, natural lighting, real human skin pores and micro-texture, DSLR photographic quality, absolutely NOT cartoon / anime / illustration / 3D render / painting / CGI'
+
+// ⚠️ 1:1 还原参考图 —— 用户多次反馈 nano-banana-2/edit 经常"二次创作"脸：
+// 换脸、改瘦/改宽、改眼距、改肤色。明确强调 preserve identity / keep facial
+// structure / do NOT stylize，给 edit 模型一个硬锚点。
+const IDENTITY_PRESERVE_CLAMP = 'EXACT 1:1 identity match to the reference photo: preserve the same face, same facial structure, same eye shape and spacing, same nose bridge, same lip shape, same jawline, same skin tone, same hairline. Do NOT stylize, do NOT beautify, do NOT change proportions. Treat the reference as a photo of a real actress and reproduce her faithfully.'
+
+// EP04 成熟经验：prompt 简短精确，但身份锚点必须显式写明。
+// 结构：realism clamp → identity clamp → 角色描述 → costume → 布局 → 风格 → 质量
+function buildSheetPrompt(appearance: string, style: string, costumeDesc?: string): string {
+  const styleWord = style === 'realistic' ? 'realistic photograph' : style === 'anime' ? 'anime' : '3D CG'
+  const realismHead = style === 'realistic' ? `${REALISM_CLAMP}. ` : ''
+  // 身份还原钳子只对写实/3D 有意义；动漫路线保留旧行为。
+  const identityHead = style === 'anime' ? '' : `${IDENTITY_PRESERVE_CLAMP} `
   return [
-    `Character reference sheet, same face as reference image.`,
+    `${realismHead}${identityHead}Character reference sheet of the SAME person as the reference image.`,
     appearance.trim(),
+    costumeDesc ? `Costume: ${costumeDesc}.` : '',
     `Top: close-up portrait front and side view.`,
     `Middle: full body front, side, back view.`,
     `Bottom: 3 expressions side by side (neutral, smile, determined).`,
@@ -60,9 +102,17 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
   const [role, setRole] = useState(initial?.role || '女一')
   const [appearance, setAppearance] = useState(initial?.appearance_card || '')
   const [style, setStyle] = useState('realistic')
+  // 生图模型选择——默认 nano-banana-2/edit（EP01-06 验证），可切 gpt-image-2/edit（OpenAI alpha，2026-04 上线）。
+  // 两者后端都走 imageAPI.generate 同一路径，body schema 后端自动分支。
+  const [sheetModel, setSheetModel] = useState<'nano-banana-2/edit' | 'gpt-image-2/edit'>('nano-banana-2/edit')
+  // 服装阶段（B 路）—— 用户反馈 EP03+ 需要现代装版三视图但每次都要手改 appearance。
+  // 默认空字符串 = 用 appearance 原文（保持旧行为，兼容已存角色）。
+  const [costume, setCostume] = useState('')
   const [refUrl, setRefUrl] = useState(initial?.imageUrl || '')
   const [refPreview, setRefPreview] = useState(initial?.imageUrl || '')
   const [uploading, setUploading] = useState(false)
+  // 上传错误（替换掉旧的 alert() 弹窗）—— inline 展示更易复制/截图定位
+  const [uploadError, setUploadError] = useState<string | null>(null)
   // Stage 2 生成结果
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
@@ -111,6 +161,12 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
 
   // 首次打开时根据 initial 同步（同一 modal 实例被复用切换角色时）
   const [initKey, setInitKey] = useState<string>('')
+  // ── 参考图上传（优先 cdn.starclaw.net，失败 fallback /v1/uploads） ──
+  // ⚠️ 必须与其它 useState 一样在 early-return 之前声明。之前放在 `if (!open) return null`
+  //    之后，导致 open 从 false 翻到 true 时多出一个 hook → React 报
+  //    "Rendered more hooks than during the previous render"，表现为「角色 +」按钮点不动。
+  const [uploadTarget, setUploadTarget] = useState<'cdn' | 'local' | ''>('')
+
   if (open) {
     const key = (initial?.tag || '') + '|' + (initial?.label || '')
     if (key !== initKey) {
@@ -119,6 +175,7 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
       setName(initial?.label || '')
       setRole(initial?.role || '女一')
       setAppearance(initial?.appearance_card || '')
+      setCostume('') // 每次切角色重置 costume → 默认跟随 appearance
       setRefUrl(initial?.imageUrl || '')
       setRefPreview(initial?.imageUrl || '')
       setSheetUrl('')
@@ -141,21 +198,20 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
   })()
 
   const canNextFromStage1 = name.trim() && appearance.trim() && refUrl
-
-  // ── 参考图上传（优先 cdn.starclaw.net，失败 fallback /v1/uploads） ──
-  const [uploadTarget, setUploadTarget] = useState<'cdn' | 'local' | ''>('')
   const handleFilePick = async (file: File) => {
     setUploading(true)
     setUploadTarget('')
+    setUploadError(null)
     const preview = URL.createObjectURL(file)
     setRefPreview(preview)
-    // 基于角色名生成远端 filename（空则用原文件名）
+    // 基于角色名生成远端 filename（空则用原文件名）。中文角色名会被
+    // sanitize 成 _ _ _；保留下划线以便在 CDN 目录里区分同名资源。
     const baseName = (name.trim() || 'ref')
       .replace(/[^\w\u4e00-\u9fa5-]+/g, '_')
       .toLowerCase()
     const ext = (file.name.split('.').pop() || 'png').toLowerCase()
     try {
-      // Try CDN first
+      // Try CDN first (cdn.starclaw.net 走 scp；后端 CharacterStudioHandler.CDNUpload)
       const res = await cdnAPI.upload(file, {
         drama: 'swarm-universe',
         asset_type: 'characters',
@@ -166,8 +222,14 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
       if (!url) throw new Error('CDN 未返回 URL')
       setRefUrl(url)
       setUploadTarget((data.target as 'cdn' | 'local') || 'cdn')
+      // target=local 是 CDN 未配置（或 scp 失败）时的 fallback —— 提示一下，
+      // 让用户知道这张图只是本地稳定 URL，不是 cdn.starclaw.net 的。
+      if (data.target === 'local' && typeof data.note === 'string') {
+        setUploadError(`CDN 未启用，已落本地稳定 URL：${data.note}`)
+      }
     } catch (cdnErr) {
-      // Fallback: local /v1/uploads
+      // Fallback: local /v1/uploads —— 只有 CDN 端点彻底 500 时才走这里
+      console.warn('[Character] /cdn/upload failed, falling back to /v1/uploads:', cdnErr)
       try {
         const res = await fileAPI.upload(file)
         const url: string = (res.data as Record<string, unknown>).url as string
@@ -175,9 +237,11 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
         const absolute = url.startsWith('http') ? url : `${window.location.origin}${url}`
         setRefUrl(absolute)
         setUploadTarget('local')
-        console.warn('[Character] CDN upload failed, fell back to local:', cdnErr)
+        const cdnMsg = cdnErr instanceof Error ? cdnErr.message : String(cdnErr)
+        setUploadError(`CDN 上传失败已退到本地：${cdnMsg}`)
       } catch (e) {
-        alert(`上传失败：${e instanceof Error ? e.message : String(e)}`)
+        const msg = e instanceof Error ? e.message : String(e)
+        setUploadError(`上传失败：${msg}`)
       }
     } finally {
       setUploading(false)
@@ -190,20 +254,25 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
     setGenError(null)
     setStage(2)
     try {
-      const prompt = buildSheetPrompt(appearance, style)
+      // 解析 costume value → 完整描述（对齐 reference.md 的 4 段服装表）。
+      const costumeDesc = COSTUME_PRESETS.find(c => c.value === costume)?.desc || ''
+      const prompt = buildSheetPrompt(appearance, style, costumeDesc)
+      const negativeBase = 'blurry, low quality, text, watermark, deformed, extra fingers, bad anatomy'
+      const negativeRealism = style === 'realistic'
+        ? `${negativeBase}, cartoon, anime, illustration, 3d render, cgi, painting, drawing`
+        : negativeBase
       const res = await imageAPI.generate({
         prompt,
-        model: 'nano-banana-2/edit',
+        model: sheetModel,
         image_url: refUrl,
         size: 'landscape_16_9',
         scene: `character_${name.trim().replace(/\s+/g, '_')}`,
         style,
-        negative_prompt: 'blurry, low quality, text, watermark, deformed, extra fingers, bad anatomy',
+        negative_prompt: negativeRealism,
       })
       const data = res.data as Record<string, unknown>
       const url = (data.local_url || data.display_url || data.url || data.image_url) as string
       if (!url) throw new Error('生成未返回有效 URL')
-      // 若是相对 /v1/images/xxx，拼完整域名让外部模型后续也能拉
       const absolute = url.startsWith('http') ? url : `${window.location.origin}${url}`
       setSheetUrl(absolute)
       setAttempts(a => a + 1)
@@ -231,6 +300,8 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
 
   const reset = () => {
     setStage(1); setName(''); setRole('女一'); setAppearance(''); setStyle('realistic')
+    setCostume('')
+    setSheetModel('nano-banana-2/edit')
     setRefUrl(''); setRefPreview(''); setSheetUrl(''); setGenError(null); setAttempts(0)
   }
 
@@ -258,7 +329,7 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
         <div className="px-5 py-2.5 border-b border-gray-800 bg-gray-950/60 flex items-center gap-3 text-[11px]">
           <Step idx={1} active={stage === 1} done={stage > 1} label="① 基础设定" />
           <div className={`flex-1 h-px ${stage > 1 ? 'bg-violet-500' : 'bg-gray-700'}`} />
-          <Step idx={2} active={stage === 2} done={stage > 2} label="② nano-banana 生成三视图" />
+          <Step idx={2} active={stage === 2} done={stage > 2} label={`② ${sheetModel === 'gpt-image-2/edit' ? 'gpt-image-2' : 'nano-banana'} 生成三视图`} />
           <div className={`flex-1 h-px ${stage > 2 ? 'bg-emerald-500' : 'bg-gray-700'}`} />
           <Step idx={3} active={stage === 3} done={false} label="③ 确认入库" />
         </div>
@@ -271,6 +342,8 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
               role={role} setRole={setRole}
               appearance={appearance} setAppearance={setAppearance}
               style={style} setStyle={setStyle}
+              costume={costume} setCostume={setCostume}
+              sheetModel={sheetModel} setSheetModel={setSheetModel}
               refPreview={refPreview} refUrl={refUrl}
               uploading={uploading}
               onPickFile={() => fileRef.current?.click()}
@@ -288,6 +361,8 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
               onCloseRoleInput={() => { setRoleInputOpen(false); setRoleDraft('') }}
               onAddCustomRole={addCustomRole}
               uploadTarget={uploadTarget}
+              uploadError={uploadError}
+              onClearUploadError={() => setUploadError(null)}
               genAppearLoading={genAppearLoading}
               genAppearError={genAppearError}
               onGenerateAppearance={generateAppearance}
@@ -295,7 +370,11 @@ export default function CharacterCreatorModal({ open, existingTags, initial, onC
           )}
           {stage === 2 && (
             <Stage2
-              prompt={buildSheetPrompt(appearance, style)}
+              prompt={buildSheetPrompt(
+                appearance,
+                style,
+                COSTUME_PRESETS.find(c => c.value === costume)?.desc,
+              )}
               refUrl={refUrl}
               sheetUrl={sheetUrl}
               generating={generating}
@@ -396,6 +475,11 @@ function Stage1(props: {
   role: string; setRole: (v: string) => void
   appearance: string; setAppearance: (v: string) => void
   style: string; setStyle: (v: string) => void
+  // 服装阶段（B 路）——从 reference.md 表选一段，生图时追加到 prompt
+  costume: string; setCostume: (v: string) => void
+  // 生图模型——nano-banana-2/edit 默认，gpt-image-2/edit 是 OpenAI alpha 备选
+  sheetModel: 'nano-banana-2/edit' | 'gpt-image-2/edit'
+  setSheetModel: (v: 'nano-banana-2/edit' | 'gpt-image-2/edit') => void
   refPreview: string; refUrl: string; uploading: boolean
   onPickFile: () => void
   onPasteUrl: (url: string) => void
@@ -410,15 +494,20 @@ function Stage1(props: {
   onAddCustomRole: () => void
   // CDN 上传目标 + AI 外观卡
   uploadTarget: 'cdn' | 'local' | ''
+  uploadError: string | null
+  onClearUploadError: () => void
   genAppearLoading: boolean
   genAppearError: string | null
   onGenerateAppearance: () => void
 }) {
   const { name, setName, role, setRole, appearance, setAppearance, style, setStyle,
+    costume, setCostume,
+    sheetModel, setSheetModel,
     refPreview, refUrl, uploading, onPickFile, onPasteUrl,
     customRoles, onRemoveCustomRole, roleInputOpen, roleDraft, setRoleDraft,
     onOpenRoleInput, onCloseRoleInput, onAddCustomRole,
-    uploadTarget, genAppearLoading, genAppearError, onGenerateAppearance } = props
+    uploadTarget, uploadError, onClearUploadError,
+    genAppearLoading, genAppearError, onGenerateAppearance } = props
   return (
     <div className="space-y-4">
       {/* 角色名 */}
@@ -500,7 +589,8 @@ function Stage1(props: {
         <p className="mt-1 text-[10px] text-gray-600">示例：服装+发型+体型+配色。不写抽象词（"美丽""优雅"）· AI 会参考你填过的片段和上传的参考图</p>
       </div>
 
-      {/* 参考图上传 */}
+      {/* 参考图上传 —— 上传按钮做成主操作（实心），URL 粘贴做成次操作（虚线框）。
+          用户反馈：上一版两个同等灰按钮容易忽略「本地上传」入口。 */}
       <div>
         <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
           <Upload className="w-3 h-3" /> 参考图 * <span className="text-gray-600 font-normal normal-case">（原照或已有三视图，fal 需公网可访问）</span>
@@ -508,25 +598,56 @@ function Stage1(props: {
           {uploadTarget === 'local' && <span className="px-1.5 py-0.5 rounded bg-amber-600/20 border border-amber-500/40 text-[9px] text-amber-300 font-mono normal-case">LOCAL</span>}
         </label>
         <div className="grid grid-cols-[1fr_140px] gap-2">
-          <div>
+          <div className="space-y-1.5">
+            {/* 主操作：本地文件 → cdn.starclaw.net */}
+            <button onClick={onPickFile} disabled={uploading}
+              title="从本地选择图片，上传到 cdn.starclaw.net（公网可访问，30 天稳定）"
+              className="w-full px-3 py-2.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed
+                bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white shadow-md shadow-violet-900/30">
+              {uploading
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 上传中…</>
+                : <><Upload className="w-3.5 h-3.5" /> 选择本地图片上传到 cdn.starclaw.net</>}
+            </button>
+            {/* 次操作：粘贴公网 URL */}
             <input
               value={refUrl} onChange={e => onPasteUrl(e.target.value.trim())}
-              placeholder="粘贴公网 URL · 或 →"
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs font-mono text-gray-200 placeholder-gray-600 focus:border-violet-500 focus:outline-none" />
-            <button onClick={onPickFile} disabled={uploading}
-              className="mt-1.5 w-full px-3 py-2 bg-gray-800 border border-dashed border-gray-700 hover:border-violet-500/60 text-xs text-gray-300 rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50">
-              {uploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 上传中…</> : <><Upload className="w-3.5 h-3.5" /> 上传到 cdn.starclaw.net</>}
-            </button>
+              placeholder="或粘贴已有公网 URL（fal/Seedance 需可直接访问）"
+              className="w-full px-3 py-2 bg-gray-800 border border-dashed border-gray-700 rounded-lg text-xs font-mono text-gray-200 placeholder-gray-600 focus:border-violet-500 focus:outline-none" />
           </div>
           <div className="h-[88px] rounded-lg border border-gray-700 bg-gray-950 overflow-hidden flex items-center justify-center">
             {refPreview || refUrl ? (
-              <img src={refPreview || refUrl} alt="" className="w-full h-full object-cover"
+              <img
+                key={refPreview || refUrl}
+                src={refPreview || refUrl} alt="" className="w-full h-full object-cover"
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
             ) : (
               <ImageIcon className="w-6 h-6 text-gray-700" />
             )}
           </div>
         </div>
+        {/* 成功：CDN */}
+        {uploadTarget === 'cdn' && refUrl && !uploadError && (
+          <div className="mt-1.5 p-2 rounded-md bg-emerald-900/20 border border-emerald-700/30 text-[10px] text-emerald-300 flex items-start gap-1.5">
+            <Check className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <span className="font-medium">已上传到 cdn.starclaw.net</span>
+              <p className="font-mono text-emerald-400/80 mt-0.5 truncate" title={refUrl}>{refUrl}</p>
+            </div>
+          </div>
+        )}
+        {/* 失败 / fallback 到本地 —— inline 展示，可以截图/复制 */}
+        {uploadError && (
+          <div className="mt-1.5 p-2 rounded-md bg-amber-900/20 border border-amber-700/40 text-[10px] text-amber-300 flex items-start gap-1.5">
+            <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="leading-relaxed break-words">{uploadError}</p>
+            </div>
+            <button type="button" onClick={onClearUploadError}
+              className="text-amber-500 hover:text-amber-200 transition flex-shrink-0" title="关闭提示">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 风格 */}
@@ -547,10 +668,60 @@ function Stage1(props: {
         </div>
       </div>
 
+      {/* 服装阶段（B 路 · 对齐 reference.md 4 段服装表） */}
+      <div>
+        <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+          服装阶段 <span className="text-gray-600 font-normal normal-case">（按剧情阶段换装，会追加到生图 prompt）</span>
+        </label>
+        <select
+          value={costume}
+          onChange={e => setCostume(e.target.value)}
+          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-200 focus:border-violet-500 focus:outline-none">
+          {COSTUME_PRESETS.map(c => (
+            <option key={c.value || '_default'} value={c.value}>{c.label}</option>
+          ))}
+        </select>
+        {costume && (() => {
+          const desc = COSTUME_PRESETS.find(c => c.value === costume)?.desc
+          return desc ? (
+            <p className="mt-1 text-[10px] text-gray-500 leading-relaxed font-mono">
+              {'→ Costume: ' + desc}
+            </p>
+          ) : null
+        })()}
+      </div>
+
+      {/* 生图模型（nano-banana-2/edit 默认；gpt-image-2/edit 是 OpenAI alpha 备选） */}
+      <div>
+        <label className="block text-[11px] font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+          生图模型 <span className="text-gray-600 font-normal normal-case">（参考图 → 三视图 sheet 的 i2i 模型）</span>
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setSheetModel('nano-banana-2/edit')}
+            className={`px-2.5 py-2 text-xs rounded-lg border transition text-left ${
+              sheetModel === 'nano-banana-2/edit'
+                ? 'bg-violet-500/20 border-violet-500/60 text-violet-200'
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+            }`}>
+            <div className="font-medium font-mono">nano-banana-2/edit</div>
+            <div className="text-[9px] opacity-70 mt-0.5">Gemini 2.5 Flash · EP01-06 验证 · 默认</div>
+          </button>
+          <button type="button" onClick={() => setSheetModel('gpt-image-2/edit')}
+            className={`px-2.5 py-2 text-xs rounded-lg border transition text-left ${
+              sheetModel === 'gpt-image-2/edit'
+                ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-200'
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+            }`}>
+            <div className="font-medium font-mono">gpt-image-2/edit</div>
+            <div className="text-[9px] opacity-70 mt-0.5">OpenAI alpha · 4K · 文字渲染更稳</div>
+          </button>
+        </div>
+      </div>
+
       <div className="p-2.5 rounded-lg bg-cyan-900/20 border border-cyan-700/30 text-[11px] text-cyan-200 flex items-start gap-2">
         <Sparkles className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
         <p>
-          下一步会用 <span className="font-mono text-cyan-300">nano-banana-2/edit</span> 基于参考图生成一张综合 sheet：
+          下一步会用 <span className="font-mono text-cyan-300">{sheetModel}</span> 基于参考图生成一张综合 sheet：
           <span className="text-cyan-100">近景正侧 + 全身三视图 + 三表情</span>，横版 16:9。
           生成完确认满意后自动入库为 <span className="font-mono">{name ? `media-${name}` : '角色节点'}</span>。
         </p>
