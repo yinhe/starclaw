@@ -166,17 +166,21 @@ export default function WorkflowPage() {
     try { localStorage.setItem(SCENE_POS_KEY, JSON.stringify(scenePositions)) } catch { /* ignore */ }
   }, [scenePositions])
 
-  // 聚焦到某一集：中央画布缩放到该节点 + 打开右侧工作流面板
+  // 聚焦到某一集：中央画布缩放到该节点 + 自动包含派生的场景子图 + 打开右侧工作流面板
   const focusEpisode = useCallback((n: Node) => {
     setSelectedNode(n)
     setFocusedEpisodeId(n.id)
     setFocusedSceneId(null)
-    // 下一帧再 fitView，让 hidden 生效后再缩放
+    // 下一帧再 fitView，让 hidden 生效 + 子图节点已注入后再缩放
+    const ep = n.data as unknown as EpisodeData
+    const sceneIds = (ep?.scenes || []).map(s => `__scene__${n.id}__${s.id}`)
+    const finalId = `__scene__${n.id}__final`
+    const fitIds = [n.id, ...sceneIds, finalId]
     setTimeout(() => {
       try {
-        rfRef.current?.fitView({ nodes: [{ id: n.id }], duration: 500, padding: 0.4, maxZoom: 1.4 })
+        rfRef.current?.fitView({ nodes: fitIds.map(id => ({ id })), duration: 500, padding: 0.15, maxZoom: 1.0 })
       } catch { /* ignore */ }
-    }, 80)
+    }, 120)
   }, [])
 
   // 广告工作流：把导入的剧本（EpisodeData）落地为画布节点 + 类型连线 + 自动聚焦
@@ -450,12 +454,12 @@ export default function WorkflowPage() {
     }))
   }, [setNodes])
 
-  // 派生画布显示节点：focusMode 开启且选中某一集时
-  //   · 隐藏其他剧集节点
-  //   · 在该集下方注入场景子图（S1→S2→…→Final）
+  // 派生画布显示节点：选中某一集（focusedEpisodeId 已设）时
+  //   · 在该集下方注入场景子图（S1→S2→…→Final）—— 无需 focusMode
+  //   · 当 focusMode=true：还会隐藏其他剧集；广告工作流额外隐藏 chars/props/types/styles/pipeline
   const { displayNodes, displayEdges } = useMemo(() => {
-    if (!focusMode || !focusedEpisodeId) {
-      // 广告工作流：隐藏 type/style media 节点（已移至左侧边栏）
+    if (!focusedEpisodeId) {
+      // 没聚焦：广告工作流隐藏 type/style，短剧/通用维持原状
       if (isAdWorkflow) {
         const filtered = nodes.map(n => {
           if (n.type !== 'media') return n
@@ -469,10 +473,19 @@ export default function WorkflowPage() {
     }
     const focused = nodes.find(n => n.id === focusedEpisodeId)
     const visibleNodes = nodes.map(n => {
-      if (n.type !== 'media') return n
-      const cat = (n.data as Record<string, unknown>).category
-      if (cat !== 'scene') return n
-      return { ...n, hidden: n.id !== focusedEpisodeId }
+      // 其他剧集节点 → 永远隐藏（只显示当前剧本）
+      if (n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene') {
+        return { ...n, hidden: n.id !== focusedEpisodeId }
+      }
+      // focusMode + 广告：把噪音节点全部藏起来（chars/props/types/styles/pipeline）
+      if (isAdWorkflow && focusMode && n.id !== focusedEpisodeId) {
+        const cat = (n.data as Record<string, unknown>).category as string | undefined
+        const isPipeline = n.type === 'llm' || n.type === 'tool'
+        if ((n.type === 'media' && (cat === 'character' || cat === 'prop' || cat === 'type' || cat === 'style')) || isPipeline) {
+          return { ...n, hidden: true }
+        }
+      }
+      return n
     })
     // 如果聚焦节点不存在或没有 scenes，不注入子图
     const ep = focused?.data as unknown as EpisodeData | undefined
