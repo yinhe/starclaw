@@ -3,7 +3,9 @@ package media
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // webp decode support for Ark image laundering
 
 	"github.com/yinhe/starclaw/internal/sandbox"
@@ -47,13 +50,19 @@ const (
 	seedreamModel     = "doubao-seedream-5-0-260128"
 	arkMaxBytes       = 9 * 1024 * 1024 // Seedream input limit is 10 MiB; keep headroom
 	arkLaunderMaxSide = 2048            // resize long edge to this when downscaling is needed
-	arkLaunderOutSide = 3072            // target long edge of Seedream output ("3K") for max quality
-	arkLaunderMinSide = 512             // don't let the short edge collapse below this
-	arkLaunderRoundTo = 8               // diffusion-model friendly rounding
 )
 
 type launderTOSReq struct {
 	ImageURL string `json:"image_url" binding:"required"`
+	// Optional character context. When present (sent by NodePropertyPanel from
+	// the manifest's appearance_card / character label), we prepend it to each
+	// Seedream retry prompt so the model is told "this is [图1]林见月, 薄荷绿古装…
+	// 写实短剧风绝不卡通" instead of blindly shuffling generic photorealism
+	// hints. Drastically reduces drift / cartoonification on retries.
+	// All three are pure text, no images, no PII — safe to forward verbatim.
+	AppearanceCard string `json:"appearance_card"`
+	CharacterLabel string `json:"character_label"`
+	CharacterTag   string `json:"character_tag"`
 }
 
 // LaunderTOSURL turns a local / CDN image into a fresh Volcengine Ark TOS URL
@@ -80,19 +89,35 @@ func (h *CharacterStudioHandler) LaunderTOSURL(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	origLen := len(data)
 
 	// Enforce <= 9 MiB for Seedream input (10 MiB hard cap with headroom).
-	data, mime, err = shrinkUnderArkLimit(data, mime)
+	// 用户明确要求洗出来的 TOS URL 是 PNG，Seedream 输出格式跟着输入走，
+	// 所以优先保持 PNG（必要时降分辨率），仅在 1200px PNG 都放不下时才 fallback 到 JPEG。
+	data, mime, err = shrinkPreferPNG(data, mime)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 按原图宽高比计算 Seedream 输出尺寸（长边 3K），保持原图纵横比
-	origW, origH, _ := decodeImageDims(data)
-	outSize := computeLaunderSize(origW, origH, arkLaunderOutSide)
+	// 如果原始 URL 是公网 HTTPS 且 shrinkPreferPNG 未修改数据，直接把 URL 传给 Seedream，
+	// 跳过 base64 编码（省带宽 + 时间，对 cdn.starclaw.net 上的大图尤其有效）。
+	var directURL string
+	if strings.HasPrefix(raw, "https://") && len(data) == origLen {
+		directURL = raw
+		log.Printf("[launder-tos] using direct URL for Seedream (skip base64): %s", raw)
+	}
 
-	tosURL, err := seedreamLaunder(c.Request.Context(), data, mime, outSize)
+	// Seedream 5.0 lite 原生支持 "3K" 简写，模型自动根据输入图宽高比选择最佳输出尺寸
+	origW, origH, _ := decodeImageDims(data)
+	outSize := "3K"
+
+	// Build a short anchor string like "处理 [图1] 林见月：薄荷绿古装汉服…"
+	// that gets prepended to every Seedream retry prompt when provided.
+	// Empty string when the caller didn't send any character context —
+	// laundering falls back to the generic realism prompts as before.
+	anchor := buildCharacterAnchor(req.CharacterTag, req.CharacterLabel, req.AppearanceCard)
+	tosURL, err := seedreamLaunder(c.Request.Context(), data, mime, outSize, anchor, directURL)
 	if err != nil {
 		log.Printf("[launder-tos] src=%s mime=%s size=%dKB in=%dx%d out=%s err=%v", srcLabel, mime, len(data)/1024, origW, origH, outSize, err)
 		// Specialised response when Seedream's output filter rejected all
@@ -118,7 +143,7 @@ func (h *CharacterStudioHandler) LaunderTOSURL(c *gin.Context) {
 		"input_width":  origW,
 		"input_height": origH,
 		"output_size":  outSize,
-		"note":         fmt.Sprintf("Seedream 5.0 lite image_strength=0.01, size=%s (3K long edge, aspect preserved), png. TOS URL valid ~24h.", outSize),
+		"note":         "Seedream 5.0 lite image_strength=0.01, size=3K (auto aspect), png. TOS URL valid ~24h.",
 	})
 }
 
@@ -142,7 +167,11 @@ func loadImageBytes(raw string) ([]byte, string, string, error) {
 	}
 
 	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// Volcengine TOS pre-signed URLs (ark-acg-cn-…) sometimes throttle or
+		// have slow TTFB; 30s was tight enough that re-laundering an existing
+		// TOS source would intermittently hit "read image body: context deadline
+		// exceeded". Bumped to 120s — well below the 180s Seedream call below.
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)
 		if err != nil {
@@ -221,37 +250,98 @@ func guessMimeFromExt(ext string) string {
 	}
 }
 
-// shrinkUnderArkLimit ensures data is <= arkMaxBytes. It tries, in order:
-//  1. pass-through when already under the limit
-//  2. decode + re-encode as JPEG q=88 (huge wins for PNG photos)
-//  3. progressively lower JPEG quality down to 70
+// shrinkPreferPNG keeps the input as PNG whenever possible so Seedream's output
+// stays PNG too (user requirement — Seedream's output format follows input).
+// Strategy:
+//  1. Pass-through when already ≤ arkMaxBytes and still PNG
+//  2. If too big, decode + re-encode PNG at the original dimension (PNG
+//     re-encode can shrink thanks to DEFLATE on blocky source)
+//  3. If still too big, progressively resize long edge
+//     (2560→2048→1800→1600→1400→1200) and retry PNG at each step
+//  4. Only fall back to JPEG if even 1200px PNG doesn't fit
 //
 // Returns the (possibly) re-encoded bytes and mime.
-func shrinkUnderArkLimit(data []byte, mime string) ([]byte, string, error) {
-	if len(data) <= arkMaxBytes {
+func shrinkPreferPNG(data []byte, mime string) ([]byte, string, error) {
+	// Fast path: already small + already PNG → don't touch.
+	if len(data) <= arkMaxBytes && strings.EqualFold(mime, "image/png") {
 		return data, mime, nil
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, "", fmt.Errorf("decode oversized image (%d bytes, mime=%s): %v", len(data), mime, err)
 	}
-	// Optional: if PNG decoded and still >> limit, re-encode PNG first; else skip.
-	// Since JPEG is almost always much smaller, try it directly.
+
+	tryPNG := func(im image.Image) ([]byte, bool) {
+		buf := &bytes.Buffer{}
+		enc := &png.Encoder{CompressionLevel: png.BestCompression}
+		if err := enc.Encode(buf, im); err != nil {
+			return nil, false
+		}
+		if buf.Len() <= arkMaxBytes {
+			return buf.Bytes(), true
+		}
+		return nil, false
+	}
+
+	// Step 1/2: PNG at original dims.
+	if b, ok := tryPNG(img); ok {
+		return b, "image/png", nil
+	}
+
+	// Step 3: progressively resize long edge.
+	for _, longEdge := range []int{2560, 2048, 1800, 1600, 1400, 1200} {
+		resized := resizeLongEdge(img, longEdge)
+		if b, ok := tryPNG(resized); ok {
+			return b, "image/png", nil
+		}
+	}
+
+	// Step 4: JPEG fallback (q=92 at 1600). Rare — only for super-detailed
+	// photo sources. Seedream output format in this case will be JPEG.
+	fallback := resizeLongEdge(img, 1600)
 	for _, q := range []int{92, 88, 82, 75, 70} {
 		buf := &bytes.Buffer{}
-		if err := jpeg.Encode(buf, img, &jpeg.Options{Quality: q}); err != nil {
+		if err := jpeg.Encode(buf, fallback, &jpeg.Options{Quality: q}); err != nil {
 			return nil, "", fmt.Errorf("encode jpeg q=%d: %v", q, err)
 		}
 		if buf.Len() <= arkMaxBytes {
 			return buf.Bytes(), "image/jpeg", nil
 		}
 	}
-	// Still too big — try PNG re-encode (for flat graphics the compression may help).
-	buf := &bytes.Buffer{}
-	if err := png.Encode(buf, img); err == nil && buf.Len() <= arkMaxBytes {
-		return buf.Bytes(), "image/png", nil
-	}
 	return nil, "", fmt.Errorf("image is too large for Seedream (%d bytes); try a smaller source or resize to ≤ %dx%d", len(data), arkLaunderMaxSide, arkLaunderMaxSide)
+}
+
+// resizeLongEdge 按长边缩到 max、保持比例。max 大于或等于原长边则原图返回。
+// 采样算法用 CatmullRom —— 角色三视图缩时保持边缘锐利，不模糊。
+func resizeLongEdge(src image.Image, max int) image.Image {
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 || max <= 0 {
+		return src
+	}
+	long := w
+	if h > long {
+		long = h
+	}
+	if long <= max {
+		return src
+	}
+	var nw, nh int
+	if w >= h {
+		nw = max
+		nh = int(math.Round(float64(h) * float64(max) / float64(w)))
+	} else {
+		nh = max
+		nw = int(math.Round(float64(w) * float64(max) / float64(h)))
+	}
+	dst := image.NewNRGBA(image.Rect(0, 0, nw, nh))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, b, draw.Over, nil)
+	return dst
+}
+
+// shrinkUnderArkLimit: 老名字保留 — 让测试或其他调用处不破。新实现转发到 shrinkPreferPNG。
+func shrinkUnderArkLimit(data []byte, mime string) ([]byte, string, error) {
+	return shrinkPreferPNG(data, mime)
 }
 
 // decodeImageDims 返回图像的原始宽高，供算 Seedream 输出 size 使用。
@@ -262,29 +352,6 @@ func decodeImageDims(data []byte) (int, int, error) {
 		return 0, 0, fmt.Errorf("decode image config: %v", err)
 	}
 	return cfg.Width, cfg.Height, nil
-}
-
-// computeLaunderSize 按 maxSide 作长边按原宽高比求出目标尺寸，并取 8 的倍数。
-// 不让短边低于 arkLaunderMinSide。输入尺寸 <= 0 时退化为正方形。
-func computeLaunderSize(w, h, maxSide int) string {
-	if w <= 0 || h <= 0 {
-		return fmt.Sprintf("%dx%d", maxSide, maxSide)
-	}
-	var nw, nh int
-	if w >= h {
-		nw = maxSide
-		nh = int(math.Round(float64(h) * float64(maxSide) / float64(w)))
-	} else {
-		nh = maxSide
-		nw = int(math.Round(float64(w) * float64(maxSide) / float64(h)))
-	}
-	round := func(v int) int {
-		if v < arkLaunderMinSide {
-			v = arkLaunderMinSide
-		}
-		return (v / arkLaunderRoundTo) * arkLaunderRoundTo
-	}
-	return fmt.Sprintf("%dx%d", round(nw), round(nh))
 }
 
 // ── Seedream retry strategy ───────────────────────────────────────
@@ -303,14 +370,64 @@ func computeLaunderSize(w, h, maxSide int) string {
 var errSeedreamSensitive = errors.New("seedream_sensitive_content")
 
 // seedreamPromptVariants drives the retry loop. Index 0 = original prompt
-// (closest to identity), later indices add stylization to dodge the filter.
+// (closest to identity), later indices nudge the filter with DIFFERENT compositional
+// cues but deliberately stay REALISTIC — we are a live-action short-drama project,
+// an anime-leaning fallback here silently turned lin_jianyue's ref into a cartoon
+// and broke every EP05 scene (user: "怎么变卡通人物了"). NEVER introduce "anime"
+// or "illustration" here without a toggle — realism is a contract with the user.
 var seedreamPromptVariants = []struct {
 	Prompt string
 	Seed   int
 }{
-	{"same image, keep exact face and composition, no changes", 42},
-	{"same composition and characters, soft painterly colors, gentle film grain", 137},
-	{"stylized illustration rendering of the same scene, anime-leaning look, soft lighting, same pose", 2048},
+	{"same character reference sheet image with multiple views (front, side, back), keep exact face, exact composition, exact layout, exact panel arrangement, no changes, photorealistic, natural skin, film photography", 42},
+	{"identical multi-view character reference sheet, same panel layout and arrangement, identical subject and pose in every view, soft studio lighting, realistic skin texture, same composition, photojournalism, 35mm film", 137},
+	{"professional cinematic still photograph of the same character reference sheet with front/side/back views, preserve exact multi-panel layout, realistic, natural daylight, DSLR quality, 8K photo, same pose and outfit in every panel", 2048},
+}
+
+// buildCharacterAnchor composes the optional "who is this" preamble prepended
+// to every Seedream retry prompt when the caller supplied character context.
+// Format examples:
+//
+//	tag="[图1]"  label="林见月"  card="薄荷绿古装汉服…"
+//	   → "Subject is [图1] 林见月. Appearance: 薄荷绿古装汉服…. Live-action
+//	      short-drama realism — absolutely not cartoon / anime / illustration."
+//
+// All fields are optional — returns "" when every input is empty, in which case
+// the caller simply falls through to the generic variant prompts above.
+func buildCharacterAnchor(tag, label, card string) string {
+	tag = strings.TrimSpace(tag)
+	label = strings.TrimSpace(label)
+	card = strings.TrimSpace(card)
+	if tag == "" && label == "" && card == "" {
+		return ""
+	}
+	var head string
+	switch {
+	case tag != "" && label != "":
+		head = fmt.Sprintf("Subject is %s %s.", tag, label)
+	case label != "":
+		head = fmt.Sprintf("Subject is %s.", label)
+	case tag != "":
+		head = fmt.Sprintf("Subject is %s.", tag)
+	}
+	var parts []string
+	if head != "" {
+		parts = append(parts, head)
+	}
+	if card != "" {
+		// Cap appearance_card at 400 chars — avoids blowing through Seedream's
+		// prompt budget on extremely verbose bible entries. Nearly every card in
+		// the swarm-universe project sits well under this cap.
+		if len([]rune(card)) > 400 {
+			card = string([]rune(card)[:400])
+		}
+		parts = append(parts, "Appearance: "+card+".")
+	}
+	// Always append the realism clamp — this is the user's hard requirement
+	// ("这部短剧是写实风格，绝不要卡通"). Mirrors the style_guide.md prefix.
+	parts = append(parts, "Multi-view character reference sheet with front, side, and back views. Preserve exact panel layout and arrangement.")
+	parts = append(parts, "Live-action short-drama realism, cinematic photograph, natural lighting, absolutely NOT cartoon / anime / illustration / 3D render.")
+	return strings.Join(parts, " ")
 }
 
 // isSensitiveContentErr checks whether an error (from HTTP body, Error{} field,
@@ -324,25 +441,82 @@ func isSensitiveContentErr(msg string) bool {
 		strings.Contains(lower, "may contain sensitive")
 }
 
+// isSeedreamDownloadTimeout detects Seedream's "InvalidParameter: Timeout while
+// downloading url=…" error — the upstream backend couldn't fetch our directURL
+// reference (typical when CDN is slow from Volcengine's network or the URL
+// pre-sign already expired). Caller falls back to inline base64 upload.
+func isSeedreamDownloadTimeout(msg string) bool {
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "timeout while downloading") ||
+		strings.Contains(lower, "failed to download") ||
+		strings.Contains(lower, "download image failed")
+}
+
+// deterministicSeed derives a stable 31-bit seed from the input image bytes
+// XOR'd with a per-variant constant. Same image + same variant → same seed →
+// Seedream produces a (near-)deterministic output across runs. This was added
+// after the user reported "洗 TOS 出来的图老在变化" — the original code passed
+// the variant seed verbatim, so identical inputs got identical seed but the
+// upstream sampler still drifted slightly between calls; tying the seed to
+// the source bytes makes the variation noise-floor instead of macroscopic.
+func deterministicSeed(data []byte, variantSeed int) int {
+	sum := sha256.Sum256(data)
+	// Take first 4 bytes → uint32 → mask to 31-bit positive int (Seedream
+	// docs say seed is a non-negative int32).
+	h := binary.BigEndian.Uint32(sum[:4])
+	combined := int64(h) ^ int64(uint32(variantSeed))
+	return int(combined & 0x7FFFFFFF)
+}
+
 // seedreamLaunder posts the image to Ark Seedream 5.0 lite with retry.
 // Returns the TOS signed URL from the first successful attempt, or the
 // last error (possibly wrapped in errSeedreamSensitive) on full failure.
-func seedreamLaunder(parent context.Context, data []byte, mime, size string) (string, error) {
+//
+// `anchor` is optional — when non-empty it's prepended to every retry prompt
+// (see buildCharacterAnchor). It tells Seedream "Subject is [图1] 林见月,
+// 薄荷绿古装汉服…, live-action realism, not cartoon" so the model stops
+// drifting to anime on the 2nd/3rd retry.
+func seedreamLaunder(parent context.Context, data []byte, mime, size, anchor, directURL string) (string, error) {
 	if size == "" {
-		size = fmt.Sprintf("%dx%d", arkLaunderOutSide, arkLaunderOutSide)
+		size = "3K"
 	}
 
 	var lastErr error
 	sensitiveRejects := 0
 	for i, variant := range seedreamPromptVariants {
-		url, err := seedreamLaunderOnce(parent, data, mime, size, variant.Prompt, variant.Seed)
+		// Compose final prompt: character anchor (if any) + generic variant.
+		// Order matters — putting the anchor FIRST means it survives even if
+		// Seedream truncates long prompts.
+		prompt := variant.Prompt
+		if anchor != "" {
+			prompt = anchor + " " + variant.Prompt
+		}
+		// Bind seed to source bytes → reproducible across runs for the same
+		// input image. Different variants still get different seeds (via XOR
+		// with variant.Seed) so the sensitive-filter retry loop still sees
+		// genuinely different samplings.
+		seed := deterministicSeed(data, variant.Seed)
+		url, err := seedreamLaunderOnce(parent, data, mime, size, prompt, seed, directURL)
 		if err == nil {
 			if i > 0 {
-				log.Printf("[launder-tos] seedream retry #%d succeeded (prompt=%q, seed=%d)", i, variant.Prompt, variant.Seed)
+				log.Printf("[launder-tos] seedream retry #%d succeeded (anchor=%t, seed=%d)", i, anchor != "", variant.Seed)
 			}
 			return url, nil
 		}
 		lastErr = err
+		// Seedream's backend couldn't fetch our directURL (firewall, slow CDN,
+		// expired pre-sign, …). We already have the bytes locally — switch to
+		// base64 inline upload and retry the SAME variant immediately.
+		if directURL != "" && isSeedreamDownloadTimeout(err.Error()) {
+			log.Printf("[launder-tos] seedream couldn't fetch directURL (%s) — falling back to base64 inline upload", directURL)
+			directURL = "" // permanent for the rest of this call
+			url, err = seedreamLaunderOnce(parent, data, mime, size, prompt, seed, "")
+			if err == nil {
+				log.Printf("[launder-tos] base64 fallback succeeded on variant #%d", i)
+				return url, nil
+			}
+			lastErr = err
+		}
 		if isSensitiveContentErr(err.Error()) {
 			sensitiveRejects++
 			log.Printf("[launder-tos] seedream attempt %d/%d rejected by sensitive filter; trying a more stylized prompt next…", i+1, len(seedreamPromptVariants))
@@ -359,16 +533,33 @@ func seedreamLaunder(parent context.Context, data []byte, mime, size string) (st
 }
 
 // seedreamLaunderOnce does a single Seedream request without any retry logic.
-func seedreamLaunderOnce(parent context.Context, data []byte, mime, size, prompt string, seed int) (string, error) {
-	b64 := base64.StdEncoding.EncodeToString(data)
+//
+// Quality-critical params:
+//   - size:           explicit WxH e.g. "3072x2304" (3K long edge, aspect from input)
+//   - output_format:  "png" — user explicitly wants PNG out; docs list png/jpeg for 5.0-lite
+//     (without this Seedream silently returns JPEG, costing perceived quality)
+//   - watermark:      false — by default Ark adds a Doubao watermark that softens the bottom-right
+//     corner and drops effective resolution; users reported 画质不行
+//   - image_strength: 0.001 — minimal sampler influence; combined with a deterministic
+//     per-image seed (deterministicSeed) this produces near-identity, reproducible output.
+//     Older value 0.01 still produced visible drift between runs (user feedback "洗出来一直在变").
+func seedreamLaunderOnce(parent context.Context, data []byte, mime, size, prompt string, seed int, directURL string) (string, error) {
 	payload := map[string]any{
 		"model":           seedreamModel,
 		"prompt":          prompt,
 		"response_format": "url",
 		"size":            size,
-		"image_strength":  0.01,
+		"image_strength":  0.001,
 		"seed":            seed,
-		"image":           []string{fmt.Sprintf("data:%s;base64,%s", mime, b64)},
+		"output_format":   "png",
+		"watermark":       false,
+	}
+	// 当有公网 URL 时直接传 URL（对齐 SDK 格式：单字符串），否则 fallback 到 base64 data URI
+	if directURL != "" {
+		payload["image"] = directURL
+	} else {
+		b64 := base64.StdEncoding.EncodeToString(data)
+		payload["image"] = []string{fmt.Sprintf("data:%s;base64,%s", mime, b64)}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

@@ -73,10 +73,10 @@ type nanoGenReq struct {
 	Project    string `json:"project" binding:"required"`
 	EntityKind string `json:"entity_kind"` // characters | props | scenes
 	EntityKey  string `json:"entity_key" binding:"required"`
-	SourceURL  string `json:"source_url"`  // empty = text→image; non-empty = image→image edit
+	SourceURL  string `json:"source_url"` // empty = text→image; non-empty = image→image edit
 	Prompt     string `json:"prompt" binding:"required"`
-	Model      string `json:"model"`       // default: nano-banana-2 or nano-banana-2/edit
-	Size       string `json:"size"`        // passthrough to tool.buildNanoBananaBody
+	Model      string `json:"model"` // default: nano-banana-2 or nano-banana-2/edit
+	Size       string `json:"size"`  // passthrough to tool.buildNanoBananaBody
 	// Optional: the caller can override aspect_ratio / resolution, but for v1
 	// we just pass `size` and let the provider defaults stand.
 }
@@ -118,6 +118,7 @@ func (h *NanoHandler) Generate(c *gin.Context) {
 	}
 
 	// Pick model: editing an image → nano-banana-2/edit; pure text → nano-banana-2.
+	// Caller can override with model=gpt-image-2 / gpt-image-2/edit (alpha).
 	model := strings.TrimSpace(req.Model)
 	if model == "" {
 		if strings.TrimSpace(req.SourceURL) != "" {
@@ -125,6 +126,9 @@ func (h *NanoHandler) Generate(c *gin.Context) {
 		} else {
 			model = "nano-banana-2"
 		}
+	} else if isGPTImage2Model(model) && strings.TrimSpace(req.SourceURL) != "" && model == "gpt-image-2" {
+		// 用户选了 gpt-image-2 文生图但传了 source_url，自动升级到 /edit
+		model = "gpt-image-2/edit"
 	}
 
 	// We route through StarAI regardless — that's the only path that gives us
@@ -198,14 +202,14 @@ func (h *NanoHandler) Generate(c *gin.Context) {
 	// Sidecar JSON with audit metadata.
 	sidecarPath := strings.TrimSuffix(localFSPath, ".png") + ".json"
 	sidecar := map[string]interface{}{
-		"request_id":   requestID,
-		"model":        model,
-		"prompt":       req.Prompt,
-		"source_url":   req.SourceURL,
-		"generated_at": time.Now().UTC().Format(time.RFC3339),
+		"request_id":    requestID,
+		"model":         model,
+		"prompt":        req.Prompt,
+		"source_url":    req.SourceURL,
+		"generated_at":  time.Now().UTC().Format(time.RFC3339),
 		"generated_url": remoteURL,
-		"local_url":    localURL,
-		"size_bytes":   sizeBytes,
+		"local_url":     localURL,
+		"size_bytes":    sizeBytes,
 	}
 	if sb, err := json.MarshalIndent(sidecar, "", "  "); err == nil {
 		_ = os.WriteFile(sidecarPath, sb, 0o644)
@@ -232,12 +236,48 @@ func nanoEndpointForModel(model string) string {
 		return "fal-ai/nano-banana-2"
 	case "nano-banana-2/edit":
 		return "fal-ai/nano-banana-2/edit"
+	case "gpt-image-2":
+		return "openai/gpt-image-2"
+	case "gpt-image-2/edit":
+		return "openai/gpt-image-2/edit"
 	default:
 		return "fal-ai/nano-banana-2"
 	}
 }
 
+func isGPTImage2Model(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "gpt-image-2", "gpt-image-2/edit":
+		return true
+	}
+	return false
+}
+
 func nanoBuildBody(prompt, imageURL, size, model string) (map[string]interface{}, error) {
+	// OpenAI GPT Image 2 使用 image_size/quality 联合参数，不接受 aspect_ratio/resolution/safety_tolerance。
+	if isGPTImage2Model(model) {
+		imgSize := "auto"
+		switch strings.TrimSpace(size) {
+		case "square_hd", "square", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9":
+			imgSize = strings.TrimSpace(size)
+		}
+		body := map[string]interface{}{
+			"prompt":        prompt,
+			"num_images":    1,
+			"image_size":    imgSize,
+			"quality":       "high",
+			"output_format": "png",
+		}
+		if strings.EqualFold(strings.TrimSpace(model), "gpt-image-2/edit") {
+			urls := nanoSplitURLs(imageURL)
+			if len(urls) == 0 {
+				return nil, fmt.Errorf("source_url is required for gpt-image-2/edit")
+			}
+			body["image_urls"] = urls
+		}
+		return body, nil
+	}
+
 	aspect := nanoAspect(size)
 	resolution := nanoResolution(size)
 	body := map[string]interface{}{
@@ -276,12 +316,12 @@ func nanoAspect(size string) string {
 }
 
 func nanoResolution(size string) string {
-	// Seedream/nano historically caps at 1K for safety — keep parity.
+	// 4K for nano-banana character sheets — user requires max-res PNG output.
 	switch strings.TrimSpace(size) {
 	case "", "square_hd", "square", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9":
-		return "1K"
+		return "4K"
 	}
-	return "1K"
+	return "4K"
 }
 
 // nanoSplitURLs parses a comma-separated source_url into a []string list.

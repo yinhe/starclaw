@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/tool"
 )
 
@@ -168,13 +169,166 @@ func (h *VideoHandler) Archive(c *gin.Context) {
 		return
 	}
 
+	localURL := "/v1/projects/" + req.Project + toPublicPath(destPath, docsDir, req.Project)
+
+	// 把 local_url 回写到 VideoRecord（按 task_id 匹配）。
+	// /v1/videos 页面会用它做 TOS 过期退路。
+	if h.db != nil && req.TaskID != "" {
+		h.db.Model(&model.VideoRecord{}).
+			Where("task_id = ?", req.TaskID).
+			Update("local_url", localURL)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"local_path":     toPublicPath(destPath, docsDir, req.Project),
-		"local_url":      "/v1/projects/" + req.Project + toPublicPath(destPath, docsDir, req.Project),
+		"local_url":      localURL,
 		"size":           size,
 		"ledger_entries": entriesN,
 		"note":           fmt.Sprintf("Archived %s_%s.mp4 (%.2f MB) into %s/clips_v2/", req.Scene, req.TakeID, float64(size)/1024/1024, req.Episode),
 	})
+}
+
+// BackfillArchivedURLs scans every docs/<project>/production/<ep>/clips_v2/_generated_urls.json
+// and updates VideoRecord.local_url for each ledger entry that has a task_id but no local_url
+// in DB. Idempotent — safe to run multiple times.
+func (h *VideoHandler) BackfillArchivedURLs(c *gin.Context) {
+	if h.db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db not configured"})
+		return
+	}
+	docsDir := os.Getenv("DOCS_DIR")
+	if docsDir == "" {
+		docsDir = "/app/docs"
+	}
+	projects, err := os.ReadDir(docsDir)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "read docs dir failed", "detail": err.Error()})
+		return
+	}
+	type result struct {
+		Project  string `json:"project"`
+		Episode  string `json:"episode"`
+		Scene    string `json:"scene"`
+		TakeID   string `json:"take_id"`
+		TaskID   string `json:"task_id"`
+		LocalURL string `json:"local_url"`
+		Updated  bool   `json:"updated"`
+		Note     string `json:"note,omitempty"`
+	}
+	var results []result
+	updated, skipped, missing := 0, 0, 0
+	for _, p := range projects {
+		if !p.IsDir() {
+			continue
+		}
+		prodDir := filepath.Join(docsDir, p.Name(), "production")
+		eps, err := os.ReadDir(prodDir)
+		if err != nil {
+			continue
+		}
+		for _, ep := range eps {
+			if !ep.IsDir() {
+				continue
+			}
+			ledgerPath := filepath.Join(prodDir, ep.Name(), "clips_v2", "_generated_urls.json")
+			raw, err := os.ReadFile(ledgerPath)
+			if err != nil {
+				continue
+			}
+			var led archiveLedger
+			if err := json.Unmarshal(raw, &led); err != nil {
+				continue
+			}
+			for _, e := range led.Takes {
+				if e.TaskID == "" || e.LocalPath == "" {
+					continue
+				}
+				localURL := "/v1/projects/" + p.Name() + e.LocalPath
+				// Verify file actually exists on disk before pointing DB at it.
+				absPath := filepath.Join(docsDir, p.Name(), strings.TrimPrefix(e.LocalPath, "/"))
+				if _, err := os.Stat(absPath); err != nil {
+					missing++
+					results = append(results, result{
+						Project: p.Name(), Episode: ep.Name(), Scene: e.Scene, TakeID: e.TakeID,
+						TaskID: e.TaskID, LocalURL: localURL, Updated: false,
+						Note: "file missing on disk",
+					})
+					continue
+				}
+				res := h.db.Model(&model.VideoRecord{}).
+					Where("task_id = ? AND (local_url = '' OR local_url IS NULL)", e.TaskID).
+					Update("local_url", localURL)
+				if res.Error != nil {
+					results = append(results, result{
+						Project: p.Name(), Episode: ep.Name(), Scene: e.Scene, TakeID: e.TakeID,
+						TaskID: e.TaskID, LocalURL: localURL, Updated: false,
+						Note: res.Error.Error(),
+					})
+					continue
+				}
+				if res.RowsAffected > 0 {
+					updated++
+					results = append(results, result{
+						Project: p.Name(), Episode: ep.Name(), Scene: e.Scene, TakeID: e.TakeID,
+						TaskID: e.TaskID, LocalURL: localURL, Updated: true,
+					})
+				} else {
+					skipped++
+				}
+			}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"updated":         updated,
+		"skipped_existed": skipped,
+		"missing_on_disk": missing,
+		"details":         results,
+	})
+}
+
+// CleanupExpiredOrphans soft-deletes succeeded video records whose mp4 is no
+// longer reachable: local_url is empty and the original TOS URL has expired
+// (record older than 24h). Idempotent. Returns counts + sample task_ids.
+func (h *VideoHandler) CleanupExpiredOrphans(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if h.db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db not configured"})
+		return
+	}
+	cutoff := time.Now().Add(-24 * time.Hour)
+	// Count what's about to be removed for the response.
+	var victims []model.VideoRecord
+	h.db.Where(
+		"user_id = ? AND status = ? AND (local_url = '' OR local_url IS NULL) "+
+			"AND video_url LIKE '%tos-cn-beijing.volces.com%' AND created_at < ?",
+		userID, "succeeded", cutoff,
+	).Limit(1000).Find(&victims)
+	taskIDs := make([]string, 0, len(victims))
+	for _, v := range victims {
+		taskIDs = append(taskIDs, v.TaskID)
+	}
+	res := h.db.Where(
+		"user_id = ? AND status = ? AND (local_url = '' OR local_url IS NULL) "+
+			"AND video_url LIKE '%tos-cn-beijing.volces.com%' AND created_at < ?",
+		userID, "succeeded", cutoff,
+	).Delete(&model.VideoRecord{})
+	c.JSON(http.StatusOK, gin.H{
+		"deleted":         res.RowsAffected,
+		"sample_task_ids": taskIDs[:minInt(len(taskIDs), 50)],
+		"cutoff":          cutoff.Format(time.RFC3339),
+		"note":            "Soft-deleted succeeded records older than 24h with no local_url and a TOS video_url (废片 — TOS expired, unrecoverable).",
+	})
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // archiveFetchToFile writes the remote (or local /v1/videos/) video to dest.
@@ -308,6 +462,341 @@ type archiveLedger struct {
 	SchemaVersion int                  `json:"schema_version"`
 	UpdatedAt     string               `json:"updated_at"`
 	Takes         []archiveLedgerEntry `json:"takes"`
+}
+
+// ── Episode publish ────────────────────────────────────────────
+//
+// Why this exists:
+//   The per-scene takes produced by the workflow live in
+//     docs/<project>/production/<ep>/clips_v2/<Scene>_<takeId>.mp4
+//   but the *canonical* episode directory that ep01–ep04 use (and that
+//   manifest.json points at via `episodes[].scenes[].clip`) is
+//     docs/<project>/episodes/<ep>/scenes/<Scene>.mp4
+//   + an episode README.md.
+//
+//   Without this endpoint, EP05's picked takes stay invisible in the
+//   script directory (user: "生成的EP05也没出现在剧本目录里"). This
+//   publishes the currently-picked clips into the canonical tree so the
+//   script repo tree matches the finished episodes.
+//
+// Contract:
+//   POST /v1/videos/publish-episode
+//   body: {
+//     project: "swarm-universe",
+//     episode: "ep05",
+//     picked:  [ { scene: "S1", take_id: "t1" }, ... ],   (required, non-empty)
+//     title?:   "夜袭",                                    (written into README)
+//     description?: "...",
+//   }
+//   resp: {
+//     published: [ { scene, src, dst, size } ],
+//     missing:   [ { scene, expected } ],   // sources that didn't exist
+//     episode_dir: "/episodes/ep05",
+//     readme:     "/episodes/ep05/README.md",
+//     note:       "..."
+//   }
+//
+// Design notes:
+//   - Idempotent: overwrites existing <Scene>.mp4 on each call. The editor
+//     re-picks takes a lot during review so we always publish the CURRENT
+//     pick (no complicated reconciliation).
+//   - Only runs if the source file actually exists in clips_v2. If a scene
+//     is missing we report it back in `missing` instead of failing the whole
+//     publish — lets partial progress persist.
+//   - README.md is regenerated every call. If the user edits it by hand they
+//     should keep custom notes in a separate file (we only rewrite the header).
+
+type publishPickedEntry struct {
+	Scene  string `json:"scene" binding:"required"`
+	TakeID string `json:"take_id" binding:"required"`
+}
+
+type publishEpisodeReq struct {
+	Project     string               `json:"project" binding:"required"`
+	Episode     string               `json:"episode" binding:"required"`
+	Picked      []publishPickedEntry `json:"picked" binding:"required"`
+	Title       string               `json:"title,omitempty"`
+	Description string               `json:"description,omitempty"`
+	// 用户反馈：点合成成片后看不到成片在哪里。原来 PublishEpisode 只回流
+	// 各场景 picked take 到 episodes/<ep>/scenes/，合成后的整片留在 api 容器
+	// 内的 merged_videos/，docs 树里看不到。这里加 FinalVideoURL：传入
+	// "/v1/videos/merged/<uuid>.mp4"，后端解析出本地路径，拷到
+	// episodes/<ep>/final.mp4，与 ep04 等老剧集布局对齐。
+	FinalVideoURL string `json:"final_video_url,omitempty"`
+}
+
+type publishedEntry struct {
+	Scene string `json:"scene"`
+	Src   string `json:"src"`
+	Dst   string `json:"dst"`
+	Size  int64  `json:"size"`
+}
+
+type missingEntry struct {
+	Scene    string `json:"scene"`
+	Expected string `json:"expected"`
+}
+
+// PublishEpisode copies picked takes from production/<ep>/clips_v2/ to the
+// canonical episodes/<ep>/scenes/ directory and regenerates the episode README.
+func (h *VideoHandler) PublishEpisode(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req publishEpisodeReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body", "detail": err.Error()})
+		return
+	}
+	if !archiveValidEpRe.MatchString(req.Project) || !archiveValidEpRe.MatchString(req.Episode) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project or episode id"})
+		return
+	}
+	if len(req.Picked) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "picked[] must not be empty"})
+		return
+	}
+	for _, p := range req.Picked {
+		if !archiveValidIDRe.MatchString(p.Scene) || !archiveValidIDRe.MatchString(p.TakeID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scene or take_id", "scene": p.Scene, "take_id": p.TakeID})
+			return
+		}
+	}
+
+	docsDir := os.Getenv("DOCS_DIR")
+	if docsDir == "" {
+		docsDir = "/app/docs"
+	}
+	srcDir := filepath.Join(docsDir, req.Project, "production", req.Episode, "clips_v2")
+	dstDir := filepath.Join(docsDir, req.Project, "episodes", req.Episode, "scenes")
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "mkdir episodes/<ep>/scenes failed", "detail": err.Error()})
+		return
+	}
+
+	// De-dup by scene (if user passed multiple picks for same scene,
+	// later entry wins; usually shouldn't happen but belt-and-suspenders).
+	pickByScene := map[string]string{}
+	sceneOrder := []string{}
+	for _, p := range req.Picked {
+		if _, ok := pickByScene[p.Scene]; !ok {
+			sceneOrder = append(sceneOrder, p.Scene)
+		}
+		pickByScene[p.Scene] = p.TakeID
+	}
+
+	published := make([]publishedEntry, 0, len(sceneOrder))
+	missing := make([]missingEntry, 0)
+	for _, scene := range sceneOrder {
+		takeID := pickByScene[scene]
+		srcName := fmt.Sprintf("%s_%s.mp4", scene, takeID)
+		srcPath := filepath.Join(srcDir, srcName)
+		if _, err := os.Stat(srcPath); err != nil {
+			// Picked file missing — try fallback to the most recently modified
+			// <scene>_*.mp4 for this scene. Workflow state often has a stale
+			// picked_take id (e.g. user picked the in-memory take but archive
+			// stored under a different t-number, or the picked take was rerun).
+			fallbackName, fallbackPath := findLatestSceneTake(srcDir, scene)
+			if fallbackPath == "" {
+				missing = append(missing, missingEntry{
+					Scene:    scene,
+					Expected: toPublicPath(srcPath, docsDir, req.Project),
+				})
+				continue
+			}
+			srcName = fallbackName
+			srcPath = fallbackPath
+		}
+		dstName := scene + ".mp4"
+		dstPath := filepath.Join(dstDir, dstName)
+		n, err := copyFile(srcPath, dstPath)
+		if err != nil {
+			// Don't abort — surface the failure on this scene, keep going.
+			missing = append(missing, missingEntry{
+				Scene:    scene,
+				Expected: fmt.Sprintf("%s (copy failed: %v)", toPublicPath(srcPath, docsDir, req.Project), err),
+			})
+			continue
+		}
+		published = append(published, publishedEntry{
+			Scene: scene,
+			Src:   toPublicPath(srcPath, docsDir, req.Project),
+			Dst:   toPublicPath(dstPath, docsDir, req.Project),
+			Size:  n,
+		})
+	}
+
+	// 同步成片到 episodes/<ep>/final.mp4。来源优先级：
+	//   1) req.FinalVideoURL（前端 runMerge 完成后传入的 /v1/videos/merged/<uuid>.mp4）
+	//   2) clips_v2/final.mp4（老链路：用户手工把成片放进 clips_v2）
+	// 这样剧本目录布局就和 ep04 等老剧集保持一致，docs 树里能直接看到成片。
+	finalDst := filepath.Join(docsDir, req.Project, "episodes", req.Episode, "final.mp4")
+	finalPublished := false
+	var finalSize int64
+	var finalSrcResolved string
+	if req.FinalVideoURL != "" {
+		// 仅接受 /v1/videos/merged/<uuid>.mp4 形式（合成产物）。其它形式
+		// （TOS 公网、CDN 等）我们不在 publish 阶段下载，避免引入外网依赖。
+		const prefix = "/v1/videos/merged/"
+		if strings.HasPrefix(req.FinalVideoURL, prefix) {
+			leaf := strings.TrimPrefix(req.FinalVideoURL, prefix)
+			// 防穿目录
+			if !strings.Contains(leaf, "/") && !strings.Contains(leaf, "..") && strings.HasSuffix(leaf, ".mp4") {
+				candidate := filepath.Join(tool.MergedVideosDir(), leaf)
+				if _, err := os.Stat(candidate); err == nil {
+					finalSrcResolved = candidate
+				}
+			}
+		}
+	}
+	if finalSrcResolved == "" {
+		legacy := filepath.Join(srcDir, "final.mp4")
+		if _, err := os.Stat(legacy); err == nil {
+			finalSrcResolved = legacy
+		}
+	}
+	if finalSrcResolved != "" {
+		if n, err := copyFile(finalSrcResolved, finalDst); err == nil {
+			finalPublished = true
+			finalSize = n
+		}
+	}
+
+	// Write/refresh episode README.md with the current picked roster.
+	readmePath := filepath.Join(docsDir, req.Project, "episodes", req.Episode, "README.md")
+	readmeRel := "/episodes/" + req.Episode + "/README.md"
+	if err := writeEpisodeReadme(readmePath, req, published, missing, userID); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"published":    published,
+			"missing":      missing,
+			"episode_dir":  "/episodes/" + req.Episode,
+			"readme":       readmeRel,
+			"readme_error": err.Error(),
+			"note": fmt.Sprintf("Published %d scene(s) to episodes/%s/scenes/ — README write FAILED.",
+				len(published), req.Episode),
+		})
+		return
+	}
+
+	resp := gin.H{
+		"published":   published,
+		"missing":     missing,
+		"episode_dir": "/episodes/" + req.Episode,
+		"readme":      readmeRel,
+		"note": fmt.Sprintf("Published %d scene(s) to episodes/%s/scenes/%s.",
+			len(published), req.Episode,
+			func() string {
+				if len(missing) > 0 {
+					return fmt.Sprintf(" %d scene(s) missing; listed in `missing`", len(missing))
+				}
+				return ""
+			}()),
+	}
+	if finalPublished {
+		resp["final_video"] = "/episodes/" + req.Episode + "/final.mp4"
+		resp["final_size"] = finalSize
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// writeEpisodeReadme regenerates episodes/<ep>/README.md with title, description,
+// picked clips table, and any missing scenes. Intentionally idempotent — caller
+// should keep custom notes in a separate file.
+func writeEpisodeReadme(path string, req publishEpisodeReq, published []publishedEntry, missing []missingEntry, userID string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	var b strings.Builder
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = strings.ToUpper(req.Episode)
+	}
+	fmt.Fprintf(&b, "# %s · %s\n\n", strings.ToUpper(req.Episode), title)
+	if desc := strings.TrimSpace(req.Description); desc != "" {
+		fmt.Fprintf(&b, "%s\n\n", desc)
+	}
+	fmt.Fprintf(&b, "最后更新：%s  ·  操作人：%s\n\n", time.Now().UTC().Format(time.RFC3339), userID)
+
+	fmt.Fprintf(&b, "## 场景清单（picked takes）\n\n")
+	if len(published) == 0 {
+		fmt.Fprintf(&b, "_暂无已挑选的镜头。_\n\n")
+	} else {
+		fmt.Fprintf(&b, "| 场景 | 文件 | 大小 | 来源 |\n|---|---|---|---|\n")
+		for _, p := range published {
+			fmt.Fprintf(&b, "| `%s` | [`scenes/%s.mp4`](scenes/%s.mp4) | %.2f MB | `%s` |\n",
+				p.Scene, p.Scene, p.Scene, float64(p.Size)/1024/1024, p.Src)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "## 缺失场景\n\n")
+		for _, m := range missing {
+			fmt.Fprintf(&b, "- `%s` → 源文件不存在：`%s`\n", m.Scene, m.Expected)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	fmt.Fprintf(&b, "## 规范\n\n")
+	fmt.Fprintf(&b, "- 原始 take 归档：`/production/%s/clips_v2/<Scene>_<takeId>.mp4`\n", req.Episode)
+	fmt.Fprintf(&b, "- picked 镜头：`/episodes/%s/scenes/<Scene>.mp4`（本文件指向的那些）\n", req.Episode)
+	fmt.Fprintf(&b, "- 合成成片：`/episodes/%s/final.mp4`\n", req.Episode)
+	fmt.Fprintf(&b, "\n本 README 由 POST /v1/videos/publish-episode 自动重写，手工改动会在下次发布被覆盖。\n")
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// findLatestSceneTake scans srcDir for files matching <scene>_*.mp4 and
+// returns the most recently modified one. Used as a fallback when the
+// picked_take id stored in the workflow state doesn't match an archived
+// filename (rerun renumbered, partial save, etc.). Returns ("","") if no
+// take exists for the scene.
+func findLatestSceneTake(srcDir, scene string) (string, string) {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return "", ""
+	}
+	prefix := scene + "_"
+	var bestName, bestPath string
+	var bestMod time.Time
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".mp4") {
+			continue
+		}
+		// Reject scenes that share a prefix (e.g. S2 must not match S2b_*.mp4).
+		// After stripping prefix, the next segment up to '_' or '.' is the take id.
+		rest := name[len(prefix):]
+		if rest == "" || rest[0] < 't' {
+			// Take ids start with 't1', 't2', etc. — anything else means we
+			// matched a different scene that just shares the prefix.
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(bestMod) {
+			bestMod = info.ModTime()
+			bestName = name
+			bestPath = filepath.Join(srcDir, name)
+		}
+	}
+	return bestName, bestPath
 }
 
 // appendArchiveLedger reads the existing _generated_urls.json (if any),

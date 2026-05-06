@@ -14,7 +14,8 @@ type Workflow struct {
 	ConversationID string         `json:"conversation_id" gorm:"type:varchar(36);index"`
 	Name           string         `json:"name" gorm:"type:varchar(200);not null"`
 	Description    string         `json:"description" gorm:"type:text"`
-	Definition     string         `json:"definition" gorm:"type:longtext"` // JSON: {nodes, edges}
+	Category       string         `json:"category" gorm:"type:varchar(50);index;default:''"` // e.g. content, finance, automation, general
+	Definition     string         `json:"definition" gorm:"type:longtext"`                   // JSON: {nodes, edges}
 	IsPublic       bool           `json:"is_public" gorm:"default:false"`
 	WebhookToken   *string        `json:"webhook_token,omitempty" gorm:"type:varchar(64);uniqueIndex"`
 	CreatedAt      time.Time      `json:"created_at"`

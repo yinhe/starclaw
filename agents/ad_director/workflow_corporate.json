@@ -1,0 +1,247 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "position": {"x": 400, "y": 20},
+      "data": {"label": "企业宣传片项目"}
+    },
+
+    {
+      "id": "model-hero",
+      "type": "media",
+      "position": {"x": 80, "y": 110},
+      "data": {
+        "label": "英雄之旅",
+        "description": "平凡→冒险→挑战→崛起→回归",
+        "category": "template"
+      }
+    },
+    {
+      "id": "model-emotion",
+      "type": "media",
+      "position": {"x": 310, "y": 110},
+      "data": {
+        "label": "情感共鸣",
+        "description": "情感触发→递进→高潮→品牌锚定",
+        "category": "template"
+      }
+    },
+    {
+      "id": "model-psp",
+      "type": "media",
+      "position": {"x": 540, "y": 110},
+      "data": {
+        "label": "问题-方案-证明",
+        "description": "痛点→方案→数据→CTA · 路演/B2B",
+        "category": "template"
+      }
+    },
+    {
+      "id": "model-drama",
+      "type": "media",
+      "position": {"x": 770, "y": 110},
+      "data": {
+        "label": "叙事短剧",
+        "description": "人类困境→产品相遇→情感转变→悬念",
+        "category": "template"
+      }
+    },
+
+    {
+      "id": "strategy",
+      "type": "llm",
+      "position": {"x": 130, "y": 280},
+      "data": {
+        "label": "① 策略洞察",
+        "description": "品牌定位 + 企业愿景 + 受众画像"
+      }
+    },
+    {
+      "id": "research",
+      "type": "tool",
+      "position": {"x": 430, "y": 280},
+      "data": {
+        "label": "品牌调研",
+        "toolName": "web_search",
+        "description": "企业信息 + 行业趋势 + 竞品形象片"
+      }
+    },
+    {
+      "id": "competitor",
+      "type": "tool",
+      "position": {"x": 730, "y": 280},
+      "data": {
+        "label": "竞品解构",
+        "toolName": "browser",
+        "description": "竞品企业宣传片深度分析"
+      }
+    },
+
+    {
+      "id": "creative-brief",
+      "type": "llm",
+      "position": {"x": 400, "y": 430},
+      "data": {
+        "label": "② 创意策略",
+        "description": "品牌故事 + Slogan + 视觉调性 + 情绪曲线"
+      }
+    },
+
+    {
+      "id": "style-epic",
+      "type": "media",
+      "position": {"x": 30, "y": 570},
+      "data": {
+        "label": "品牌大气",
+        "description": "golden hour + anamorphic + luxury",
+        "category": "style"
+      }
+    },
+    {
+      "id": "storyboard",
+      "type": "llm",
+      "position": {"x": 400, "y": 570},
+      "data": {
+        "label": "③ 导演级分镜",
+        "description": "60-120s 分镜 · 企业愿景→团队→里程碑→品牌升华"
+      }
+    },
+    {
+      "id": "style-warm",
+      "type": "media",
+      "position": {"x": 790, "y": 570},
+      "data": {
+        "label": "温暖人文",
+        "description": "natural soft lighting + earthy tones + authentic",
+        "category": "style"
+      }
+    },
+
+    {
+      "id": "video-gen",
+      "type": "tool",
+      "position": {"x": 200, "y": 730},
+      "data": {
+        "label": "④ AI视频生成",
+        "toolName": "video_generation",
+        "description": "尾帧衔接法 · veo3/kling-v3 品牌级画质"
+      }
+    },
+    {
+      "id": "image-gen",
+      "type": "tool",
+      "position": {"x": 600, "y": 730},
+      "data": {
+        "label": "品牌视觉素材",
+        "toolName": "image_generation",
+        "description": "企业形象图 · 团队概念图 · 封面"
+      }
+    },
+
+    {
+      "id": "dubbing",
+      "type": "tool",
+      "position": {"x": 100, "y": 890},
+      "data": {
+        "label": "⑤ 品牌配音",
+        "toolName": "dubbing",
+        "description": "沉稳大气旁白 · longjing/longwan"
+      }
+    },
+    {
+      "id": "bgm",
+      "type": "tool",
+      "position": {"x": 400, "y": 890},
+      "data": {
+        "label": "交响/后摇配乐",
+        "toolName": "music_generation",
+        "description": "史诗交响 · 情绪递进 · 品牌级BGM"
+      }
+    },
+    {
+      "id": "code-fx",
+      "type": "tool",
+      "position": {"x": 700, "y": 890},
+      "data": {
+        "label": "里程碑数据",
+        "toolName": "code",
+        "description": "企业数据图表 · 里程碑时间线"
+      }
+    },
+
+    {
+      "id": "compose",
+      "type": "tool",
+      "position": {"x": 250, "y": 1050},
+      "data": {
+        "label": "⑥ Pro 合成",
+        "toolName": "mv_production",
+        "description": "compose_pro · fadeblack转场 · 品牌级合成"
+      }
+    },
+    {
+      "id": "desktop",
+      "type": "tool",
+      "position": {"x": 580, "y": 1050},
+      "data": {
+        "label": "剪映精修",
+        "toolName": "desktop",
+        "description": "GUI级微调 · Logo动画 · 最终导出"
+      }
+    },
+
+    {
+      "id": "delivery",
+      "type": "llm",
+      "position": {"x": 400, "y": 1210},
+      "data": {
+        "label": "⑦ 多平台交付",
+        "description": "主片(16:9) + LinkedIn + 官网 + 路演版 + 投放文案"
+      }
+    },
+
+    {
+      "id": "end",
+      "type": "end",
+      "position": {"x": 400, "y": 1350},
+      "data": {"label": "交付"}
+    }
+  ],
+  "edges": [
+    {"id": "e-s-strategy", "source": "start", "target": "strategy"},
+
+    {"id": "e-mh-strategy", "source": "model-hero", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-me-strategy", "source": "model-emotion", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-mp-strategy", "source": "model-psp", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-md-strategy", "source": "model-drama", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+
+    {"id": "e-strategy-research", "source": "strategy", "target": "research"},
+    {"id": "e-strategy-competitor", "source": "strategy", "target": "competitor"},
+
+    {"id": "e-research-brief", "source": "research", "target": "creative-brief"},
+    {"id": "e-competitor-brief", "source": "competitor", "target": "creative-brief"},
+
+    {"id": "e-brief-board", "source": "creative-brief", "target": "storyboard"},
+
+    {"id": "e-epic-board", "source": "style-epic", "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-warm-board", "source": "style-warm", "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+
+    {"id": "e-board-video", "source": "storyboard", "target": "video-gen"},
+    {"id": "e-board-image", "source": "storyboard", "target": "image-gen"},
+
+    {"id": "e-video-dub", "source": "video-gen", "target": "dubbing"},
+    {"id": "e-video-bgm", "source": "video-gen", "target": "bgm"},
+    {"id": "e-image-code", "source": "image-gen", "target": "code-fx"},
+
+    {"id": "e-dub-compose", "source": "dubbing", "target": "compose"},
+    {"id": "e-bgm-compose", "source": "bgm", "target": "compose"},
+    {"id": "e-code-compose", "source": "code-fx", "target": "compose"},
+
+    {"id": "e-compose-desktop", "source": "compose", "target": "desktop"},
+    {"id": "e-compose-delivery", "source": "compose", "target": "delivery"},
+    {"id": "e-desktop-delivery", "source": "desktop", "target": "delivery"},
+
+    {"id": "e-delivery-end", "source": "delivery", "target": "end"}
+  ]
+}

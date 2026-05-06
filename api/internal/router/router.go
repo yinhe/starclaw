@@ -1091,6 +1091,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			scheduleHandler := wf.NewScheduleHandler(db)
 			protected.GET("/schedules", scheduleHandler.List)
 			protected.POST("/schedules", scheduleHandler.Create)
+			protected.DELETE("/schedules/batch", scheduleHandler.BatchDelete)
 			protected.POST("/schedules/:id/toggle", scheduleHandler.Toggle)
 			protected.DELETE("/schedules/:id", scheduleHandler.Delete)
 
@@ -1099,6 +1100,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.GET("/activities", activityHandler.List)
 			protected.GET("/activities/templates", activityHandler.Templates)
 			protected.POST("/activities/seed", activityHandler.Seed)
+			protected.POST("/activities/batch-disable", activityHandler.BatchDisable)
 			protected.POST("/activities", activityHandler.Create)
 			protected.GET("/activities/:id", activityHandler.Get)
 			protected.PUT("/activities/:id", activityHandler.Update)
@@ -1154,6 +1156,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/tasks", taskHandler.CreateTask)
 			protected.GET("/tasks/visualization", taskHandler.Visualization)
 			protected.GET("/tasks/:id", taskHandler.GetTask)
+			protected.POST("/tasks/batch-cancel", taskHandler.BatchCancelTasks)
 			protected.POST("/tasks/:id/cancel", taskHandler.CancelTask)
 			protected.POST("/tasks/:id/pause", taskHandler.PauseTask)
 			protected.POST("/tasks/:id/resume", taskHandler.ResumeTask)
@@ -1175,17 +1178,36 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 			protected.POST("/videos/:id/cancel", videoHandler.Cancel)
 			protected.POST("/videos/:id/retry", videoHandler.Retry)
 			protected.POST("/videos/:id/regenerate", videoHandler.Regenerate)
+			protected.POST("/videos/merge", videoHandler.MergeByTaskIDs)
 			protected.POST("/videos/:id/remerge", videoHandler.Remerge)
 			protected.POST("/videos/:id/dub", videoHandler.Dub)
 			protected.POST("/videos/:id/add-music", videoHandler.AddMusic)
 			protected.GET("/videos/voices", videoHandler.ListVoices)
 			// Archive a generated video (Seedance TOS URL) into docs/<project>/production/<ep>/clips_v2/
 			protected.POST("/videos/archive", videoHandler.Archive)
+			// One-shot backfill: scan all _generated_urls.json ledgers and write local_url to DB.
+			protected.POST("/videos/backfill-archived", videoHandler.BackfillArchivedURLs)
+			// Soft-delete succeeded clips whose TOS URL has expired and have no local_url (废片).
+			protected.POST("/videos/cleanup-expired", videoHandler.CleanupExpiredOrphans)
+			// Publish picked takes to docs/<project>/episodes/<ep>/scenes/ + regenerate README.
+			// Called when the user confirms an episode is ready (all scenes picked) so the
+			// canonical script directory tree matches the finished episodes.
+			protected.POST("/videos/publish-episode", videoHandler.PublishEpisode)
 
 			// Project manifest helpers (used by workflow preflight self-check "一键修复")
 			projectManifestH := media.NewProjectManifestHandler(db)
 			protected.POST("/projects/:project/ref/suggest", projectManifestH.SuggestRef)
+			// Prune a single candidate image file under /entities/* (used by the
+			// LocalCandidateBar right-click "删除" action). Safe-guarded server-side
+			// against path traversal, wrong extensions, and deleting files still
+			// referenced by manifest.json.
+			protected.POST("/projects/:project/ref/delete", projectManifestH.DeleteRef)
 			protected.PUT("/projects/:project/manifest/characters/:key", projectManifestH.SetCharacterRef)
+			// Partial update of character or prop fields (tos_url / cdn_url /
+			// appearance_card / description / ref_clip). Called by NodePropertyPanel
+			// after launderTOS/resignTOS succeeds so the newly generated URL actually
+			// persists to manifest.json instead of only living in React state.
+			protected.PATCH("/projects/:project/manifest/:kind/:key", projectManifestH.PatchManifestEntity)
 			// v2: promote a candidate image (raw/nano/variants or external URL) into
 			// entities/<kind>/<key>/sheets/unified_sheet_v<N+1>.png and patch manifest.ref.
 			protected.POST("/projects/:project/entities/:kind/:key/promote", projectManifestH.PromoteToSheet)

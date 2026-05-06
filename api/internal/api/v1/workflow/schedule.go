@@ -20,7 +20,37 @@ func (h *ScheduleHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
 	var schedules []model.Schedule
 	h.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&schedules)
-	c.JSON(http.StatusOK, gin.H{"schedules": schedules})
+
+	// Join conversation titles
+	type convTitle struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	var convIDs []string
+	for _, s := range schedules {
+		if s.ConversationID != "" {
+			convIDs = append(convIDs, s.ConversationID)
+		}
+	}
+	convMap := make(map[string]string)
+	if len(convIDs) > 0 {
+		var titles []convTitle
+		h.db.Raw("SELECT id, COALESCE(title,'') as title FROM conversations WHERE id IN ?", convIDs).Scan(&titles)
+		for _, t := range titles {
+			convMap[t.ID] = t.Title
+		}
+	}
+
+	type enrichedSchedule struct {
+		model.Schedule
+		ConversationTitle string `json:"conversation_title"`
+	}
+	result := make([]enrichedSchedule, len(schedules))
+	for i, s := range schedules {
+		result[i] = enrichedSchedule{Schedule: s, ConversationTitle: convMap[s.ConversationID]}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"schedules": result})
 }
 
 func (h *ScheduleHandler) Create(c *gin.Context) {
@@ -70,6 +100,21 @@ func (h *ScheduleHandler) Toggle(c *gin.Context) {
 
 	h.db.Model(&schedule).Update("enabled", !schedule.Enabled)
 	c.JSON(http.StatusOK, gin.H{"enabled": !schedule.Enabled})
+}
+
+func (h *ScheduleHandler) BatchDelete(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	c.ShouldBindJSON(&req) // optional body
+
+	q := h.db.Where("user_id = ?", userID)
+	if len(req.IDs) > 0 {
+		q = q.Where("id IN ?", req.IDs)
+	}
+	result := q.Delete(&model.Schedule{})
+	c.JSON(http.StatusOK, gin.H{"deleted": result.RowsAffected})
 }
 
 func (h *ScheduleHandler) Delete(c *gin.Context) {

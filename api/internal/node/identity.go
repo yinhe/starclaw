@@ -121,6 +121,36 @@ func LoadOrCreateIdentity() *Identity {
 	return id
 }
 
+// ReadNodeID reads the existing node key file and returns the node ID (e.g. "claw:c536...").
+// Returns "" if the key file does not exist or cannot be parsed. Never creates a new identity.
+func ReadNodeID() string {
+	keyFile := getKeyFile()
+	raw, err := os.ReadFile(keyFile)
+	if err != nil {
+		return ""
+	}
+	var stored struct {
+		PublicKey []byte `json:"public_key"`
+	}
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return ""
+	}
+	if len(stored.PublicKey) != ed25519.PublicKeySize {
+		return ""
+	}
+	return deriveNodeID(stored.PublicKey)
+}
+
+// ReadNodeIDHex returns just the 40-char hex part of the node ID (without "claw:" prefix).
+// Useful for filesystem paths where ":" is problematic.
+func ReadNodeIDHex() string {
+	nid := ReadNodeID()
+	if strings.HasPrefix(nid, "claw:") {
+		return nid[5:]
+	}
+	return nid
+}
+
 // deriveNodeID returns "claw:" + first 40 hex chars of SHA-256(publicKey) = 160 bits
 // 160-bit address space supports ~10^24 unique IDs without collision (same as Bitcoin)
 func deriveNodeID(pub ed25519.PublicKey) string {

@@ -1,0 +1,247 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "position": {"x": 400, "y": 20},
+      "data": {"label": "产品宣传片项目"}
+    },
+
+    {
+      "id": "model-aida",
+      "type": "media",
+      "position": {"x": 80, "y": 110},
+      "data": {
+        "label": "AIDA 转化型",
+        "description": "注意→兴趣→渴望→行动",
+        "category": "template"
+      }
+    },
+    {
+      "id": "model-contrast",
+      "type": "media",
+      "position": {"x": 310, "y": 110},
+      "data": {
+        "label": "对比冲击",
+        "description": "传统(痛)→我们(爽)→效果对比→体验",
+        "category": "template"
+      }
+    },
+    {
+      "id": "model-psp",
+      "type": "media",
+      "position": {"x": 540, "y": 110},
+      "data": {
+        "label": "问题-方案-证明",
+        "description": "痛点→方案→数据→CTA",
+        "category": "template"
+      }
+    },
+    {
+      "id": "model-social",
+      "type": "media",
+      "position": {"x": 770, "y": 110},
+      "data": {
+        "label": "社媒爆款",
+        "description": "3秒钩子→功能秀→数据→CTA · 竖屏",
+        "category": "template"
+      }
+    },
+
+    {
+      "id": "strategy",
+      "type": "llm",
+      "position": {"x": 130, "y": 280},
+      "data": {
+        "label": "① 产品洞察",
+        "description": "核心卖点 + 用户画像 + 转化目标"
+      }
+    },
+    {
+      "id": "research",
+      "type": "tool",
+      "position": {"x": 430, "y": 280},
+      "data": {
+        "label": "市场调研",
+        "toolName": "web_search",
+        "description": "产品信息 + 竞品广告 + 用户痛点"
+      }
+    },
+    {
+      "id": "competitor",
+      "type": "tool",
+      "position": {"x": 730, "y": 280},
+      "data": {
+        "label": "竞品广告拆解",
+        "toolName": "browser",
+        "description": "竞品产品广告策略 + 转化路径分析"
+      }
+    },
+
+    {
+      "id": "creative-brief",
+      "type": "llm",
+      "position": {"x": 400, "y": 430},
+      "data": {
+        "label": "② 创意策略",
+        "description": "卖点提炼 + Slogan + 产品外貌卡 + CTA设计"
+      }
+    },
+
+    {
+      "id": "style-tech",
+      "type": "media",
+      "position": {"x": 30, "y": 570},
+      "data": {
+        "label": "极简现代",
+        "description": "clean white + studio lighting + Apple-inspired",
+        "category": "style"
+      }
+    },
+    {
+      "id": "storyboard",
+      "type": "llm",
+      "position": {"x": 400, "y": 570},
+      "data": {
+        "label": "③ 产品分镜",
+        "description": "15-60s · 钩子→功能展示→痛点对比→CTA"
+      }
+    },
+    {
+      "id": "style-pop",
+      "type": "media",
+      "position": {"x": 790, "y": 570},
+      "data": {
+        "label": "活力动感",
+        "description": "vibrant pop colors + dynamic angles + Gen-Z",
+        "category": "style"
+      }
+    },
+
+    {
+      "id": "video-gen",
+      "type": "tool",
+      "position": {"x": 200, "y": 730},
+      "data": {
+        "label": "④ 产品视频",
+        "toolName": "video_generation",
+        "description": "产品特写 + 使用场景 + Before/After"
+      }
+    },
+    {
+      "id": "image-gen",
+      "type": "tool",
+      "position": {"x": 600, "y": 730},
+      "data": {
+        "label": "产品概念图",
+        "toolName": "image_generation",
+        "description": "产品展示图 · 电商封面 · 社媒缩略图"
+      }
+    },
+
+    {
+      "id": "dubbing",
+      "type": "tool",
+      "position": {"x": 100, "y": 890},
+      "data": {
+        "label": "⑤ 活力配音",
+        "toolName": "dubbing",
+        "description": "年轻有感染力 · longshuo/longxiaochun"
+      }
+    },
+    {
+      "id": "bgm",
+      "type": "tool",
+      "position": {"x": 400, "y": 890},
+      "data": {
+        "label": "流行电子BGM",
+        "toolName": "music_generation",
+        "description": "节奏感 + 画面同步 + 产品氛围"
+      }
+    },
+    {
+      "id": "code-fx",
+      "type": "tool",
+      "position": {"x": 700, "y": 890},
+      "data": {
+        "label": "数据对比图",
+        "toolName": "code",
+        "description": "转化数据 · Before/After 图表"
+      }
+    },
+
+    {
+      "id": "compose",
+      "type": "tool",
+      "position": {"x": 250, "y": 1050},
+      "data": {
+        "label": "⑥ Pro 合成",
+        "toolName": "mv_production",
+        "description": "compose_pro · flash/cut快节奏转场"
+      }
+    },
+    {
+      "id": "desktop",
+      "type": "tool",
+      "position": {"x": 580, "y": 1050},
+      "data": {
+        "label": "剪映精修",
+        "toolName": "desktop",
+        "description": "GUI级微调 · 字幕特效 · 最终导出"
+      }
+    },
+
+    {
+      "id": "delivery",
+      "type": "llm",
+      "position": {"x": 400, "y": 1210},
+      "data": {
+        "label": "⑦ 多平台适配",
+        "description": "竖屏(抖音) + 方形(朋友圈) + 横屏(官网) + 投放文案"
+      }
+    },
+
+    {
+      "id": "end",
+      "type": "end",
+      "position": {"x": 400, "y": 1350},
+      "data": {"label": "交付"}
+    }
+  ],
+  "edges": [
+    {"id": "e-s-strategy", "source": "start", "target": "strategy"},
+
+    {"id": "e-ma-strategy", "source": "model-aida", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-mc-strategy", "source": "model-contrast", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-mp-strategy", "source": "model-psp", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-ms-strategy", "source": "model-social", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+
+    {"id": "e-strategy-research", "source": "strategy", "target": "research"},
+    {"id": "e-strategy-competitor", "source": "strategy", "target": "competitor"},
+
+    {"id": "e-research-brief", "source": "research", "target": "creative-brief"},
+    {"id": "e-competitor-brief", "source": "competitor", "target": "creative-brief"},
+
+    {"id": "e-brief-board", "source": "creative-brief", "target": "storyboard"},
+
+    {"id": "e-tech-board", "source": "style-tech", "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-pop-board", "source": "style-pop", "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+
+    {"id": "e-board-video", "source": "storyboard", "target": "video-gen"},
+    {"id": "e-board-image", "source": "storyboard", "target": "image-gen"},
+
+    {"id": "e-video-dub", "source": "video-gen", "target": "dubbing"},
+    {"id": "e-video-bgm", "source": "video-gen", "target": "bgm"},
+    {"id": "e-image-code", "source": "image-gen", "target": "code-fx"},
+
+    {"id": "e-dub-compose", "source": "dubbing", "target": "compose"},
+    {"id": "e-bgm-compose", "source": "bgm", "target": "compose"},
+    {"id": "e-code-compose", "source": "code-fx", "target": "compose"},
+
+    {"id": "e-compose-desktop", "source": "compose", "target": "desktop"},
+    {"id": "e-compose-delivery", "source": "compose", "target": "delivery"},
+    {"id": "e-desktop-delivery", "source": "desktop", "target": "delivery"},
+
+    {"id": "e-delivery-end", "source": "delivery", "target": "end"}
+  ]
+}

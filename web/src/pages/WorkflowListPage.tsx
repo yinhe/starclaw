@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { GitBranch, Trash2, Clock, History, CheckCircle, XCircle, Loader2, Webhook, Timer, Copy, Check, MessageSquare } from 'lucide-react'
+import { GitBranch, Trash2, Clock, History, CheckCircle, XCircle, Loader2, Webhook, Timer, Copy, Check, MessageSquare, Tag, Plus } from 'lucide-react'
 import { workflowAPI, scheduleAPI } from '../lib/api'
 
 interface Schedule {
@@ -25,13 +25,43 @@ interface Workflow {
   id: string
   name: string
   description: string
+  category?: string
   conversation_id?: string
   webhook_token?: string
   updated_at: string
 }
 
+const CATEGORY_PRESETS = [
+  { key: 'marketing', label: '广告宣传', color: 'indigo', icon: '📺' },
+  { key: 'creative', label: '创意制作', color: 'purple', icon: '🎬' },
+  { key: 'content', label: '内容运营', color: 'pink', icon: '📱' },
+  { key: 'coding', label: '编程开发', color: 'emerald', icon: '�' },
+  { key: 'finance', label: '金融财务', color: 'amber', icon: '💰' },
+  { key: 'research', label: '调研分析', color: 'cyan', icon: '�' },
+  { key: 'assistant', label: '通用助手', color: 'gray', icon: '🤖' },
+] as const
+
+const getCategoryLabel = (key: string) => CATEGORY_PRESETS.find(c => c.key === key)?.label || key
+const getCategoryColor = (key: string) => {
+  const colors: Record<string, string> = {
+    marketing: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+    creative: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    content: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300',
+    coding: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    finance: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    research: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+    assistant: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+  }
+  return colors[key] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+}
+const getCategoryIcon = (key: string) => CATEGORY_PRESETS.find(c => c.key === key)?.icon || '📁'
+
 export default function WorkflowListPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
+  const [allWorkflows, setAllWorkflows] = useState<Workflow[]>([])
+  const [categories, setCategories] = useState<string[]>([])
+  const [activeCategory, setActiveCategory] = useState<string>('')
+  const [categoryDropdown, setCategoryDropdown] = useState<string | null>(null)
   const [selectedRuns, setSelectedRuns] = useState<{ wfId: string; runs: WorkflowRun[] } | null>(null)
   const [webhookPanel, setWebhookPanel] = useState<string | null>(null)
   const [copiedToken, setCopiedToken] = useState(false)
@@ -40,14 +70,35 @@ export default function WorkflowListPage() {
   const [cronForm, setCronForm] = useState({ cron_expr: '0 9 * * *', input: '' })
   const navigate = useNavigate()
 
-  useEffect(() => {
-    loadWorkflows()
-  }, [])
-
   const loadWorkflows = async () => {
     try {
-      const res = await workflowAPI.list()
+      const res = await workflowAPI.list(activeCategory || undefined)
       setWorkflows(res.data.workflows || [])
+      setCategories(res.data.categories || [])
+    } catch { /* ignore */ }
+  }
+
+  const loadAllWorkflows = async () => {
+    try {
+      const res = await workflowAPI.list()
+      setAllWorkflows(res.data.workflows || [])
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    loadAllWorkflows()
+  }, [])
+
+  useEffect(() => {
+    loadWorkflows()
+  }, [activeCategory])
+
+  const handleSetCategory = async (wfId: string, category: string) => {
+    try {
+      await workflowAPI.update(wfId, { category })
+      setCategoryDropdown(null)
+      loadWorkflows()
+      loadAllWorkflows()
     } catch { /* ignore */ }
   }
 
@@ -56,6 +107,27 @@ export default function WorkflowListPage() {
     try {
       await workflowAPI.delete(id)
       loadWorkflows()
+      loadAllWorkflows()
+    } catch { /* ignore */ }
+  }
+
+  const createWorkflow = async () => {
+    try {
+      const defaultDef = JSON.stringify({
+        nodes: [
+          { id: 'start-1', type: 'start', position: { x: 250, y: 50 }, data: { label: '开始' } },
+          { id: 'end-1', type: 'end', position: { x: 250, y: 400 }, data: { label: '结束' } },
+        ],
+        edges: [],
+      })
+      const res = await workflowAPI.create({
+        name: '新建工作流',
+        description: '',
+        category: activeCategory || '',
+        definition: defaultDef,
+      })
+      const newId = res.data?.workflow?.id
+      if (newId) navigate(`/workflows/editor?id=${newId}`)
     } catch { /* ignore */ }
   }
 
@@ -136,24 +208,92 @@ export default function WorkflowListPage() {
     return <Loader2 className="w-3.5 h-3.5 text-yellow-500 animate-spin" />
   }
 
+  const workflowCounts = allWorkflows.reduce<Record<string, number>>((acc, wf) => {
+    const cat = wf.category || '_uncategorized'
+    acc[cat] = (acc[cat] || 0) + 1
+    return acc
+  }, {})
+
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-5xl mx-auto p-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">工作流</h1>
-            <p className="text-gray-500 text-sm mt-1">智能体绑定的多步自动化管道</p>
+    <div className="h-full flex">
+      {/* Left sidebar */}
+      <div className="w-56 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 overflow-y-auto">
+        <div className="p-4">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">分类</h2>
+          <div className="space-y-0.5">
+            <button
+              onClick={() => setActiveCategory('')}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                activeCategory === '' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-200/70 dark:text-gray-400 dark:hover:bg-gray-800'
+              }`}
+            >
+              <span className="text-base">📋</span>
+              <span className="flex-1 text-left">全部</span>
+              <span className={`text-xs tabular-nums ${activeCategory === '' ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`}>{allWorkflows.length}</span>
+            </button>
+            {CATEGORY_PRESETS.map((cat) => {
+              const count = workflowCounts[cat.key] || 0
+              if (count === 0 && !categories.includes(cat.key)) return null
+              return (
+                <button
+                  key={cat.key}
+                  onClick={() => setActiveCategory(activeCategory === cat.key ? '' : cat.key)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    activeCategory === cat.key ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-200/70 dark:text-gray-400 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <span className="text-base">{cat.icon}</span>
+                  <span className="flex-1 text-left">{cat.label}</span>
+                  <span className={`text-xs tabular-nums ${activeCategory === cat.key ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`}>{count}</span>
+                </button>
+              )
+            })}
+            {categories.filter(c => !CATEGORY_PRESETS.some(p => p.key === c)).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(activeCategory === cat ? '' : cat)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  activeCategory === cat ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-200/70 dark:text-gray-400 dark:hover:bg-gray-800'
+                }`}
+              >
+                <span className="text-base">📁</span>
+                <span className="flex-1 text-left">{cat}</span>
+                <span className={`text-xs tabular-nums ${activeCategory === cat ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`}>{workflowCounts[cat] || 0}</span>
+              </button>
+            ))}
           </div>
         </div>
+      </div>
 
-        {workflows.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>还没有工作流</p>
-            <p className="text-xs mt-1">工作流跟随智能体安装，或在智能体详情页中创建</p>
+      {/* Right content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-5xl mx-auto p-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                {activeCategory ? (getCategoryIcon(activeCategory) + ' ' + getCategoryLabel(activeCategory)) : '工作流'}
+              </h1>
+              <p className="text-gray-500 text-sm mt-1">
+                {activeCategory ? `${workflows.length} 个工作流` : '智能体绑定的多步自动化管道'}
+              </p>
+            </div>
+            <button
+              onClick={createWorkflow}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              新建工作流
+            </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {workflows.length === 0 ? (
+            <div className="text-center py-20 text-gray-400">
+              <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>还没有工作流</p>
+              <p className="text-xs mt-1">工作流跟随智能体安装，或在智能体详情页中创建</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {workflows.map((wf) => (
               <div key={wf.id} className="space-y-0">
                 <div
@@ -194,7 +334,48 @@ export default function WorkflowListPage() {
                       </button>
                     </div>
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">{wf.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex-1 truncate">{wf.name}</h3>
+                    <div className="relative">
+                      {wf.category ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCategoryDropdown(categoryDropdown === wf.id ? null : wf.id) }}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getCategoryColor(wf.category)}`}
+                        >
+                          {getCategoryLabel(wf.category)}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCategoryDropdown(categoryDropdown === wf.id ? null : wf.id) }}
+                          className="p-1 text-gray-300 hover:text-gray-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="设置分类"
+                        >
+                          <Tag className="w-3 h-3" />
+                        </button>
+                      )}
+                      {categoryDropdown === wf.id && (
+                        <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border rounded-lg shadow-lg py-1 z-10 min-w-[100px]" onClick={(e) => e.stopPropagation()}>
+                          {CATEGORY_PRESETS.map((cat) => (
+                            <button
+                              key={cat.key}
+                              onClick={() => handleSetCategory(wf.id, cat.key)}
+                              className={`block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 ${wf.category === cat.key ? 'font-bold' : ''}`}
+                            >
+                              {cat.label}
+                            </button>
+                          ))}
+                          {wf.category && (
+                            <button
+                              onClick={() => handleSetCategory(wf.id, '')}
+                              className="block w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 border-t"
+                            >
+                              清除分类
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <p className="text-sm text-gray-500 mt-1 line-clamp-2">
                     {wf.description || '暂无描述'}
                   </p>
@@ -306,6 +487,7 @@ export default function WorkflowListPage() {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   )

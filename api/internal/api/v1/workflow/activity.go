@@ -18,7 +18,7 @@ func NewActivityHandler(db *gorm.DB, engine *instinct.Engine) *ActivityHandler {
 	return &ActivityHandler{db: db, engine: engine}
 }
 
-// List returns all activities for the current user
+// List returns all activities for the current user, enriched with pending task counts
 func (h *ActivityHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
 	actType := c.Query("type") // optional filter by type
@@ -31,7 +31,41 @@ func (h *ActivityHandler) List(c *gin.Context) {
 	var activities []model.Activity
 	query.Order("type ASC, created_at ASC").Find(&activities)
 
-	c.JSON(http.StatusOK, gin.H{"activities": activities, "total": len(activities)})
+	// Collect pending/running task counts per activity via activity_logs
+	type taskStat struct {
+		ActivityID   string `json:"activity_id"`
+		PendingTasks int64  `json:"pending_tasks"`
+	}
+	var stats []taskStat
+	h.db.Raw(`SELECT al.activity_id, COUNT(*) as pending_tasks
+		FROM activity_logs al
+		INNER JOIN tasks t ON al.task_id = t.id
+		WHERE al.user_id = ? AND t.status IN ('pending','running','waiting') AND t.deleted_at IS NULL
+		GROUP BY al.activity_id`, userID).Scan(&stats)
+	statMap := make(map[string]int64)
+	for _, s := range stats {
+		statMap[s.ActivityID] = s.PendingTasks
+	}
+
+	// Build enriched response
+	type enrichedActivity struct {
+		model.Activity
+		PendingTasks int64 `json:"pending_tasks"`
+	}
+	result := make([]enrichedActivity, len(activities))
+	for i, act := range activities {
+		result[i] = enrichedActivity{Activity: act, PendingTasks: statMap[act.ID]}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"activities": result, "total": len(result)})
+}
+
+// BatchDisable disables all enabled activities for the current user
+func (h *ActivityHandler) BatchDisable(c *gin.Context) {
+	userID := c.GetString("user_id")
+	result := h.db.Model(&model.Activity{}).Where("user_id = ? AND enabled = ?", userID, true).
+		Update("enabled", false)
+	c.JSON(http.StatusOK, gin.H{"disabled": result.RowsAffected})
 }
 
 // Get returns a single activity

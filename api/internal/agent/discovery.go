@@ -70,16 +70,18 @@ type AgentManifest struct {
 
 	Bridge *ManifestBridge `yaml:"bridge"`
 
-	WorkflowFile string `yaml:"workflow_file"`
+	WorkflowFile  string             `yaml:"workflow_file"`
+	WorkflowFiles []ManifestWorkflow `yaml:"workflow_files"`
 
 	Team *ManifestTeam `yaml:"team"`
 
 	Marketplace *ManifestMarketplace `yaml:"marketplace"`
 
 	// Set at parse time (not from YAML)
-	Dir                string `yaml:"-"` // absolute directory path
-	PromptText         string `yaml:"-"` // loaded prompt content
-	WorkflowDefinition string `yaml:"-"`
+	Dir                 string                   `yaml:"-"` // absolute directory path
+	PromptText          string                   `yaml:"-"` // loaded prompt content
+	WorkflowDefinition  string                   `yaml:"-"`
+	WorkflowDefinitions []ManifestWorkflowParsed `yaml:"-"`
 }
 
 type ManifestAuthor struct {
@@ -151,6 +153,18 @@ type ManifestGland struct {
 	Required  bool       `yaml:"required"`
 	HelpText  I18nString `yaml:"help_text"`
 	SortOrder int        `yaml:"sort_order"`
+}
+
+type ManifestWorkflow struct {
+	File     string `yaml:"file"`
+	Name     string `yaml:"name"`
+	Category string `yaml:"category"`
+}
+
+type ManifestWorkflowParsed struct {
+	Name       string
+	Category   string
+	Definition string
 }
 
 type ManifestBridge struct {
@@ -434,6 +448,22 @@ func ParseManifest(path, dir string) (*AgentManifest, error) {
 			return nil, fmt.Errorf("invalid workflow file %s: %w", m.WorkflowFile, err)
 		}
 		m.WorkflowDefinition = string(content)
+	}
+	for _, wf := range m.WorkflowFiles {
+		wfPath := filepath.Join(dir, wf.File)
+		content, err := os.ReadFile(wfPath)
+		if err != nil {
+			return nil, fmt.Errorf("read workflow file %s: %w", wf.File, err)
+		}
+		var wfDef map[string]interface{}
+		if err := json.Unmarshal(content, &wfDef); err != nil {
+			return nil, fmt.Errorf("invalid workflow file %s: %w", wf.File, err)
+		}
+		m.WorkflowDefinitions = append(m.WorkflowDefinitions, ManifestWorkflowParsed{
+			Name:       wf.Name,
+			Category:   wf.Category,
+			Definition: string(content),
+		})
 	}
 
 	// Load team role prompts
@@ -882,30 +912,49 @@ func seedGlandDefs(db *gorm.DB, agentID, userID string, m *AgentManifest) {
 // ── Workflow ─────────────────────────────────────────────────
 
 func seedWorkflow(db *gorm.DB, agentID, userID string, m *AgentManifest) {
-	if strings.TrimSpace(m.WorkflowDefinition) == "" {
-		return
-	}
 	locale := "zh"
 	name := m.Name.Get(locale)
 	if name == "" {
 		name = m.ID
 	}
-	workflowName := name + " · 生产看板"
 	description := m.Description.Get(locale)
 
 	// Delete old default workflows for this agent (keep user-created ones)
-	db.Unscoped().Where("agent_id = ? AND user_id = ? AND (name LIKE ? OR name LIKE ?)",
-		agentID, userID, "%· 默认流程", "%· 生产看板").Delete(&model.Workflow{})
+	db.Unscoped().Where("agent_id = ? AND user_id = ? AND (name LIKE ? OR name LIKE ? OR name LIKE ?)",
+		agentID, userID, "%· 默认流程", "%· 生产看板", "%· 工作流").Delete(&model.Workflow{})
 
-	db.Create(&model.Workflow{
-		ID:          uuid.New().String(),
-		UserID:      userID,
-		AgentID:     agentID,
-		Name:        workflowName,
-		Description: description,
-		Definition:  m.WorkflowDefinition,
-		IsPublic:    m.Visibility == "public",
-	})
+	// Seed single workflow_file (legacy)
+	if strings.TrimSpace(m.WorkflowDefinition) != "" {
+		workflowName := name + " · 生产看板"
+		db.Create(&model.Workflow{
+			ID:          uuid.New().String(),
+			UserID:      userID,
+			AgentID:     agentID,
+			Name:        workflowName,
+			Description: description,
+			Category:    m.Category,
+			Definition:  m.WorkflowDefinition,
+			IsPublic:    m.Visibility == "public",
+		})
+	}
+
+	// Seed multiple workflow_files
+	for _, wf := range m.WorkflowDefinitions {
+		wfName := wf.Name
+		if wfName == "" {
+			wfName = name + " · 工作流"
+		}
+		db.Create(&model.Workflow{
+			ID:          uuid.New().String(),
+			UserID:      userID,
+			AgentID:     agentID,
+			Name:        wfName,
+			Description: description,
+			Category:    wf.Category,
+			Definition:  wf.Definition,
+			IsPublic:    m.Visibility == "public",
+		})
+	}
 }
 
 // ── Shared Skills ────────────────────────────────────────────

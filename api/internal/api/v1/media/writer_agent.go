@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -313,11 +314,58 @@ type promoResp struct {
 	Douyin        promoDouyin        `json:"douyin"`
 	WechatMoments promoWechatMoments `json:"wechat_moments"`
 	XiaoHongShu   string             `json:"xiaohongshu,omitempty"` // 小红书版（单条 300-500 字，优化 SEO）
-	CoreHook      string             `json:"core_hook"`             // 本集最核心的抓人点（一句话）
-	AudienceVibe  string             `json:"audience_vibe"`         // 目标受众情绪定位（"治愈/爽感/好奇"）
+	CoreHook      flexString         `json:"core_hook"`             // 本集最核心的抓人点（一句话）
+	AudienceVibe  flexString         `json:"audience_vibe"`         // 目标受众情绪定位（"治愈/爽感/好奇"）
 	Model         string             `json:"model"`
 	Provider      string             `json:"provider"`
 	GeneratedAt   string             `json:"generated_at"`
+}
+
+// flexString 同时接受 JSON string 与 []string —— 用户反馈：promp system prompt 写的
+// "选 1-2 个"，模型经常理解成数组 ["治愈","好奇"]，导致 promoResp.audience_vibe
+// Unmarshal 报 "cannot unmarshal array into Go struct field of type string"。
+// 这里数组会被 " / " 拼接，单 string 直接落入。
+type flexString string
+
+func (f *flexString) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" {
+		*f = ""
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexString(s)
+		return nil
+	}
+	if b[0] == '[' {
+		var arr []string
+		if err := json.Unmarshal(b, &arr); err != nil {
+			// 尝试 []any，模型可能给 [123, "x"] 之类的混合
+			var raw []any
+			if err2 := json.Unmarshal(b, &raw); err2 != nil {
+				return err
+			}
+			out := make([]string, 0, len(raw))
+			for _, v := range raw {
+				out = append(out, fmt.Sprint(v))
+			}
+			*f = flexString(strings.Join(out, " / "))
+			return nil
+		}
+		*f = flexString(strings.Join(arr, " / "))
+		return nil
+	}
+	// 数字 / 布尔等：直接 fmt.Sprint
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*f = flexString(fmt.Sprint(v))
+	return nil
 }
 
 const promoSystemPrompt = `你是《虫群宇宙》短剧项目的抖音冷启动运营操盘手，负责为一集短剧写**全套发布文案**。
@@ -445,14 +493,14 @@ func (h *DramaWriterHandler) GeneratePromo(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	rawText := stripCodeFence(strings.TrimSpace(chunk.Content))
+	rawText := extractJSONObject(strings.TrimSpace(chunk.Content))
 
 	var resp promoResp
 	if err := json.Unmarshal([]byte(rawText), &resp); err != nil {
 		log.Printf("[drama_promo] json parse failed, raw=%q", rawText[:min(len(rawText), 400)])
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":     "model did not return valid JSON",
-			"raw":       trim(rawText, 2000),
+			"raw":       trim(rawText, 4000),
 			"parse_err": err.Error(),
 		})
 		return
@@ -589,4 +637,50 @@ func stripCodeFence(s string) string {
 		}
 	}
 	return strings.TrimSpace(s)
+}
+
+// extractJSONObject 从模型输出里抠出第一个完整、括号平衡的 {…} JSON 对象。
+// 用户反馈：promo 文案生成偶发 "model did not return valid JSON"，
+// 抓到的 raw 文本要么前后多一段解释性中文，要么 ```json``` 围栏没合上，
+// 要么尾部多一句"以上文案仅供参考"——单纯 stripCodeFence 不够。
+// 这里走 brace-depth 扫描（忽略字符串里的 { }），保证只取第一对完整的对象字面量。
+// 输入若不含 { 直接原样返回，让上层 Unmarshal 自己报错。
+func extractJSONObject(s string) string {
+	s = stripCodeFence(s)
+	start := strings.Index(s, "{")
+	if start < 0 {
+		return s
+	}
+	depth := 0
+	inStr := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		ch := s[i]
+		if inStr {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch ch {
+			case '\\':
+				escaped = true
+			case '"':
+				inStr = false
+			}
+			continue
+		}
+		switch ch {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	// 没合上的话回退到原始 stripCodeFence 结果
+	return s
 }

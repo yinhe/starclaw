@@ -468,7 +468,7 @@ export default function Layout() {
             </>
           )}
         </div>
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-y-auto relative">
           {updateInfo && !updateDismissed && (
             <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 flex items-center justify-between text-sm">
               <span className="text-orange-700">

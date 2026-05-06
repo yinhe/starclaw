@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Brain, Clock, Heart, Shield, BookOpen, Zap, ToggleLeft, ToggleRight, Trash2, Plus, ChevronDown, ChevronRight, History, Sparkles, Play } from 'lucide-react'
-import { activityAPI } from '../lib/api'
+import { Brain, Clock, Heart, Shield, BookOpen, Zap, ToggleLeft, ToggleRight, Trash2, Plus, ChevronDown, ChevronRight, History, Sparkles, Play, PauseCircle, MessageSquare } from 'lucide-react'
+import { activityAPI, scheduleAPI } from '../lib/api'
 
 interface Activity {
   id: string
@@ -22,6 +22,7 @@ interface Activity {
   total_runs: number
   success_runs: number
   consec_fails: number
+  pending_tasks: number
   created_at: string
 }
 
@@ -32,6 +33,20 @@ interface ActivityLog {
   status: string
   result: string
   error: string
+  created_at: string
+}
+
+interface Schedule {
+  id: string
+  title: string
+  goal: string
+  cron_expr: string
+  enabled: boolean
+  conversation_id: string
+  conversation_title: string
+  agent_id: string
+  last_run_at: string | null
+  next_run_at: string | null
   created_at: string
 }
 
@@ -52,14 +67,20 @@ export default function ActivityPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [filterType, setFilterType] = useState<string>('')
   const [seeding, setSeeding] = useState(false)
+  const [schedules, setSchedules] = useState<Schedule[]>([])
+  const [selectedSchIds, setSelectedSchIds] = useState<Set<string>>(new Set())
 
   useEffect(() => { load() }, [filterType])
 
   async function load() {
     setLoading(true)
     try {
-      const actRes = await activityAPI.list(filterType || undefined)
+      const [actRes, schRes] = await Promise.all([
+        activityAPI.list(filterType || undefined),
+        scheduleAPI.list(),
+      ])
       setActivities(actRes.data.activities || [])
+      setSchedules(schRes.data.schedules || [])
     } catch { /* ignore */ }
     setLoading(false)
   }
@@ -99,8 +120,65 @@ export default function ActivityPage() {
     setSeeding(false)
   }
 
+  async function batchDisable() {
+    if (!confirm('确定暂停所有活动？暂停后不会再触发新任务。')) return
+    try {
+      await activityAPI.batchDisable()
+      await load()
+    } catch { /* ignore */ }
+  }
+
+  async function toggleSchedule(id: string) {
+    try {
+      const res = await scheduleAPI.toggle(id)
+      setSchedules(prev => prev.map(s => s.id === id ? { ...s, enabled: res.data.enabled } : s))
+    } catch { /* ignore */ }
+  }
+
+  async function deleteSchedule(id: string) {
+    if (!confirm('确定删除此定时任务？')) return
+    try {
+      await scheduleAPI.delete(id)
+      setSchedules(prev => prev.filter(s => s.id !== id))
+    } catch { /* ignore */ }
+  }
+
+  async function batchDeleteSchedules(ids?: string[]) {
+    const count = ids ? ids.length : schedules.length
+    const label = ids ? `选中的 ${count}` : `全部 ${count}`
+    if (!confirm(`确定删除${label}个会话定时任务？删除后不可恢复。`)) return
+    try {
+      await scheduleAPI.batchDelete(ids)
+      if (ids) {
+        const idSet = new Set(ids)
+        setSchedules(prev => prev.filter(s => !idSet.has(s.id)))
+        setSelectedSchIds(new Set())
+      } else {
+        setSchedules([])
+        setSelectedSchIds(new Set())
+      }
+    } catch { /* ignore */ }
+  }
+
+  function toggleSelectSchedule(id: string) {
+    setSelectedSchIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedSchIds.size === schedules.length) {
+      setSelectedSchIds(new Set())
+    } else {
+      setSelectedSchIds(new Set(schedules.map(s => s.id)))
+    }
+  }
+
   const enabledCount = activities.filter(a => a.enabled).length
   const totalRuns = activities.reduce((sum, a) => sum + a.total_runs, 0)
+  const totalPending = activities.reduce((sum, a) => sum + (a.pending_tasks || 0), 0)
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -112,11 +190,17 @@ export default function ActivityPage() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">本能系统</h1>
               <p className="text-sm text-gray-500">
-                Instinct — 主动行为引擎 · {enabledCount} 个活跃 · 累计执行 {totalRuns} 次
+                Instinct — 主动行为引擎 · {enabledCount} 个活跃 · 累计执行 {totalRuns} 次{totalPending > 0 ? ` · ${totalPending} 个任务排队中` : ''}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
+            {enabledCount > 0 && (
+              <button onClick={batchDisable}
+                className="px-3 py-2 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1">
+                <PauseCircle className="w-4 h-4" /> 全部暂停
+              </button>
+            )}
             <button onClick={seedBuiltins} disabled={seeding}
               className="px-3 py-2 text-sm bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 flex items-center gap-1">
               <Sparkles className="w-4 h-4" />
@@ -182,6 +266,9 @@ export default function ActivityPage() {
                         {act.condition && <span>· 条件: {act.condition}</span>}
                         <span>· 冷却: {act.cooldown || '24h'}</span>
                         {act.total_runs > 0 && <span>· 已执行 {act.total_runs} 次</span>}
+                        {act.pending_tasks > 0 && (
+                          <span className="text-orange-600 font-medium">· {act.pending_tasks} 个任务排队</span>
+                        )}
                         {act.next_run_at && (
                           <span>· 下次: {new Date(act.next_run_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                         )}
@@ -238,6 +325,78 @@ export default function ActivityPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Conversation Schedules section */}
+        {schedules.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center gap-2 mb-4">
+              <MessageSquare className="w-5 h-5 text-blue-600" />
+              <h2 className="text-lg font-bold text-gray-900">会话定时任务</h2>
+              <span className="text-sm text-gray-400">由对话中的 Agent 创建的 cron 定时任务</span>
+              <div className="ml-auto flex items-center gap-2">
+                <label className="flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer select-none">
+                  <input type="checkbox" checked={selectedSchIds.size === schedules.length && schedules.length > 0}
+                    onChange={toggleSelectAll} className="rounded border-gray-300" />
+                  全选
+                </label>
+                {selectedSchIds.size > 0 && (
+                  <button onClick={() => batchDeleteSchedules(Array.from(selectedSchIds))}
+                    className="px-3 py-1.5 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1">
+                    <Trash2 className="w-3.5 h-3.5" /> 删除选中 ({selectedSchIds.size})
+                  </button>
+                )}
+                <button onClick={() => batchDeleteSchedules()}
+                  className="px-3 py-1.5 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1">
+                  <Trash2 className="w-3.5 h-3.5" /> 全部删除 ({schedules.length})
+                </button>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {schedules.map(sch => (
+                <div key={sch.id} className={`bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3 ${selectedSchIds.has(sch.id) ? 'ring-2 ring-blue-300' : ''}`}>
+                  <input type="checkbox" checked={selectedSchIds.has(sch.id)}
+                    onChange={() => toggleSelectSchedule(sch.id)}
+                    className="rounded border-gray-300 flex-shrink-0" />
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-blue-600 bg-blue-50 border border-blue-200">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium text-gray-900 truncate">{sch.title || sch.goal?.slice(0, 60)}</h3>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5 flex-wrap">
+                      <span className="font-mono">{sch.cron_expr}</span>
+                      {sch.conversation_id && (
+                        <span className="text-blue-600 font-medium">
+                          · 来自对话: {sch.conversation_title || sch.conversation_id.slice(0, 8)}
+                        </span>
+                      )}
+                      {sch.last_run_at && (
+                        <span>· 上次: {new Date(sch.last_run_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      )}
+                      {sch.next_run_at && (
+                        <span>· 下次: {new Date(sch.next_run_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      )}
+                    </div>
+                    {sch.goal && sch.title && (
+                      <div className="text-xs text-gray-400 mt-1 truncate">{sch.goal.slice(0, 120)}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => toggleSchedule(sch.id)}
+                      className={`p-1.5 rounded-lg ${sch.enabled ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}
+                      title={sch.enabled ? '已启用，点击关闭' : '已关闭，点击启用'}>
+                      {sch.enabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                    </button>
+                    <button onClick={() => deleteSchedule(sch.id)} className="p-1.5 text-gray-400 hover:text-red-500" title="删除">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

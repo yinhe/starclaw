@@ -44,6 +44,8 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('')
+  const [convFilter, setConvFilter] = useState<string>('')
+  const [conversations, setConversations] = useState<{ conversation_id: string; title: string; count: number }[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', goal: '', priority: 'normal' })
@@ -51,8 +53,9 @@ export default function TasksPage() {
 
   const loadTasks = async () => {
     try {
-      const res = await taskAPI.list(filter || undefined)
+      const res = await taskAPI.list(filter || undefined, convFilter || undefined)
       setTasks(res.data.tasks || [])
+      if (res.data.conversations) setConversations(res.data.conversations)
     } catch (e) {
       console.error(e)
     } finally {
@@ -64,7 +67,17 @@ export default function TasksPage() {
     loadTasks()
     const interval = setInterval(loadTasks, 10000)
     return () => clearInterval(interval)
-  }, [filter])
+  }, [filter, convFilter])
+
+  const handleBatchCancel = async () => {
+    if (!confirm(`确定取消所有排队中的任务？`)) return
+    try {
+      await taskAPI.batchCancel(convFilter || undefined)
+      loadTasks()
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   const handleCancel = async (id: string) => {
     try {
@@ -138,6 +151,21 @@ export default function TasksPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Conversation filter */}
+            {conversations.length > 0 && (
+              <select
+                value={convFilter}
+                onChange={e => setConvFilter(e.target.value)}
+                className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 max-w-[200px] truncate"
+              >
+                <option value="">全部对话</option>
+                {conversations.map(c => (
+                  <option key={c.conversation_id} value={c.conversation_id}>
+                    {c.title || c.conversation_id.slice(0, 8)} ({c.count})
+                  </option>
+                ))}
+              </select>
+            )}
             {/* Status filter */}
             <select
               value={filter}
@@ -152,6 +180,14 @@ export default function TasksPage() {
               <option value="failed">失败</option>
               <option value="cancelled">已取消</option>
             </select>
+            {pendingCount > 0 && (
+              <button
+                onClick={handleBatchCancel}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 text-sm font-medium dark:bg-red-900/20 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/40"
+              >
+                <Ban className="w-3.5 h-3.5" /> 全部取消排队
+              </button>
+            )}
             <button
               onClick={() => setShowCreate(!showCreate)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium"

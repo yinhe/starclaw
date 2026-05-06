@@ -452,13 +452,151 @@ BGM是广告的灵魂！好的BGM让广告质感提升300%。
 - **配音**：年轻活力（longshuo/longxiaochun）
 - **参考**：Creatify 的 URL-to-Video 一键广告
 
-## C. 企业形象片（Corporate Video）
-- **目标**：展示企业实力、团队文化
-- **时长**：60-180秒
-- **模型**：英雄之旅 变体
-- **画面**：团队协作+办公环境+里程碑+客户成果
-- **BGM**：轻快科技/企业形象
-- **配音**：沉稳专业（longhua/longyuan）
+## C. 企业形象片（Corporate Video）— 完整制作手册
+
+### C.0 概述
+- **目标**：展示企业实力、团队文化、行业地位、未来愿景
+- **时长**：60-120秒（主片）+ 30秒精华版 + 15秒社媒版
+- **叙事模型**：英雄之旅变体（愿景驱动型）或 情感共鸣（文化驱动型）
+- **配音**：沉稳专业（**longhua** 男声 / **longyuan** 女声）
+- **参考**：华为年度品牌片、腾讯企业形象片、Salesforce Brand Film
+
+### C.1 企业宣传片标准八幕结构（90秒主片）
+
+| 幕 | 时段 | 内容 | 画面类型 | 情绪曲线 |
+|---|------|------|---------|---------|
+| **序幕·时代背景** | 0-5s | 行业趋势/时代命题（不提企业） | 宏观航拍/数据粒子 | 悬念·好奇 |
+| **第一幕·行业痛点** | 5-15s | 行业面临的核心挑战 | 对比蒙太奇/痛点场景 | 共鸣·紧迫 |
+| **第二幕·使命诞生** | 15-25s | 企业为何而生、创始初心 | 创始故事/品牌标志浮现 | 转折·希望 |
+| **第三幕·核心能力** | 25-40s | 产品/技术/服务的差异化优势 | 产品展示/技术可视化 | 上升·自信 |
+| **第四幕·里程碑** | 40-50s | 关键成就数据（客户数/覆盖国家/专利数等） | 数据可视化/信息图动画 | 震撼·信任 |
+| **第五幕·团队文化** | 50-60s | 团队协作/工作场景/企业文化 | 真实办公/人物群像 | 温暖·认同 |
+| **第六幕·客户价值** | 60-70s | 客户成功案例/合作伙伴/行业影响力 | 客户Logo墙/使用场景 | 力量·佐证 |
+| **第七幕·愿景展望** | 70-85s | 未来蓝图、行业引领、社会责任 | 宏大愿景/全球化场景 | 升华·感召 |
+| **终幕·品牌锚定** | 85-90s | Logo + Slogan + 官网/二维码 | 纯净品牌色背景 | 回味·记忆 |
+
+### C.2 企业宣传片分行业 Style Prefix
+
+| 行业 | Style Prefix |
+|------|-------------|
+| **科技/互联网** | "premium corporate cinematic, dark blue and silver color grading, holographic data visualization, sleek glass architecture, volumetric lighting through floor-to-ceiling windows, clean futuristic office environment, sharp focus, professional atmosphere, 4K quality" |
+| **制造/工业** | "industrial cinematic style, warm tungsten workshop lighting mixed with cool daylight, precision machinery in motion, sparks and metal textures, wide establishing shots of massive production lines, authentic documentary feel, powerful and grounded, epic scale manufacturing" |
+| **金融/商务** | "elegant corporate cinematic, warm golden hour lighting through marble lobbies, dark wood and leather textures, skyline city views, subtle lens flare, shallow depth of field portraits, trustworthy and prestigious atmosphere, muted luxury color palette" |
+| **消费品/零售** | "vibrant lifestyle cinematic, bright natural daylight, warm skin tones, authentic human moments, colorful product displays, dynamic handheld camera movement, aspirational yet approachable, modern retail environments, energetic and optimistic" |
+| **医疗/生物科技** | "clean scientific cinematic, pure white lab environments, soft blue accent lighting, microscopic detail shots, sterile precision instruments, gentle bokeh, clinical yet human, hopeful and trustworthy, life-affirming atmosphere" |
+| **教育/文化** | "warm documentary cinematic, soft natural window light, earthy warm tones, candid learning moments, bookshelves and campus architecture, intimate medium shots, inspiring and nurturing, knowledge-sharing atmosphere" |
+
+### C.3 企业场景 Prompt 模板库
+
+**S1 — 时代背景/行业宏观**
+```
+[style_prefix], sweeping aerial drone shot over a vast modern cityscape at dawn, golden light breaking through clouds illuminating thousands of buildings, data overlay graphics showing global connectivity lines between cities, sense of a world in transformation, epic cinematic scale, IMAX quality
+```
+
+**S2 — 行业痛点**
+```
+[style_prefix], split-screen montage showing contrast: left side shows outdated manual processes in dim office lighting, right side shows modern digital transformation, frustrated workers facing complex legacy systems, visual metaphor of bottleneck and inefficiency, documentary realism
+```
+
+**S3 — 企业诞生/使命**
+```
+[style_prefix], dramatic reveal of company headquarters exterior at golden hour, camera slowly tilting up along sleek glass facade reflecting sky, a glowing brand-color accent light appears at the entrance, sense of purpose and innovation emerging, inspiring and confident
+```
+
+**S4 — 核心能力/技术展示**
+```
+[style_prefix], elegant product interface floating in clean dark space, holographic 3D visualization of core technology, smooth camera orbit revealing multiple functional layers, data streams connecting to global endpoints, precise and sophisticated engineering visualization
+```
+
+**S5 — 里程碑/数据**
+```
+[style_prefix], cinematic data visualization sequence: numbers counting up dynamically — customer count, countries covered, revenue milestones — floating as 3D golden numerals in dark space, particle effects celebrating each milestone, powerful and impressive scale
+```
+
+**S6 — 团队/文化**
+```
+[style_prefix], authentic candid moments of diverse team collaborating in modern open office, natural laughter during brainstorming session, close-up of hands sketching on whiteboard, warm natural light from large windows, genuine human connection, documentary intimacy
+```
+
+**S7 — 客户价值**
+```
+[style_prefix], elegant grid of partner and client logos appearing one by one with subtle glow animation, transitioning to real-world deployment scenes showing end-users benefiting from the product, satisfied professional faces, trust and reliability
+```
+
+**S8 — 愿景展望**
+```
+[style_prefix], grand aerial pullback from company campus revealing expanding cityscape then zooming out to see the entire globe connected by light networks, sunrise symbolizing new era, camera ascending through clouds into starfield, infinite possibility and ambition
+```
+
+**S9 — 品牌终幕（Logo收尾）**
+```
+[style_prefix], clean minimal composition, company brand colors slowly filling the frame as soft gradient, elegant particle convergence forming the company logotype silhouette in center frame, subtle lens flare, premium and memorable ending
+```
+
+### C.4 企业宣传片旁白模板
+
+**科技企业 90 秒旁白示例：**
+```json
+[
+  {"text": "当世界加速变化", "start": 0, "end": 3},
+  {"text": "每个行业都在寻找新的答案", "start": 3, "end": 7},
+  {"text": "传统的方式，已经跟不上时代的步伐", "start": 7, "end": 12},
+  {"text": "我们相信，技术应该服务于人", "start": 15, "end": 20},
+  {"text": "让复杂变简单，让不可能成为可能", "start": 20, "end": 25},
+  {"text": "[产品/技术名称]，重新定义[行业]的未来", "start": 28, "end": 34},
+  {"text": "从[核心能力1]到[核心能力2]", "start": 34, "end": 38},
+  {"text": "一站式解决[行业痛点]", "start": 38, "end": 42},
+  {"text": "覆盖[N]+国家，服务[N]万+客户", "start": 44, "end": 49},
+  {"text": "[里程碑数据点]", "start": 49, "end": 53},
+  {"text": "每一位同事，都在为同一个使命努力", "start": 55, "end": 60},
+  {"text": "与[N]+家行业领军企业并肩前行", "start": 62, "end": 67},
+  {"text": "共同创造[行业]新标准", "start": 67, "end": 72},
+  {"text": "面向未来，我们看到的不只是机会", "start": 74, "end": 79},
+  {"text": "更是一份改变世界的责任", "start": 79, "end": 84},
+  {"text": "[企业名称]——[Slogan]", "start": 86, "end": 90}
+]
+```
+
+**旁白写作要点（企业片专用）：**
+- 开头 5 秒**不提企业名**，先建立行业共鸣
+- **第三人称视角**，像纪录片旁白，不说"我们公司"
+- 数据用**具体数字**："覆盖 127 个国家" > "覆盖全球"
+- 中间段可留**1-2 秒静音**，让画面自己说话
+- 最后 5 秒才出企业名 + Slogan，制造**品牌锚定感**
+- 全片**不超过 200 字**旁白，留足呼吸空间
+
+### C.5 企业宣传片 BGM 策略
+
+| 阶段 | 音乐情绪 | 节奏 |
+|------|---------|------|
+| 序幕 (0-5s) | 低沉悬念音，单音钢琴或弦乐泛音 | 极慢，留白 |
+| 痛点 (5-15s) | 紧张低音，轻微不安定感 | 缓慢推进 |
+| 使命 (15-25s) | 转折上扬，加入弦乐 | 渐快 |
+| 能力 (25-40s) | 科技感电子节拍+弦乐层叠 | 稳定中速 |
+| 里程碑 (40-50s) | 力量感鼓点+铜管 | 有力，渐强 |
+| 团队 (50-60s) | 温暖钢琴+轻柔弦乐 | 舒缓 |
+| 客户 (60-70s) | 信心回升+层叠 | 再次渐强 |
+| 愿景 (70-85s) | **全片高潮**，完整交响+电子史诗 | 最强 |
+| 品牌 (85-90s) | 余韵收尾，最后一个和弦 | 渐弱至静 |
+
+**推荐 music_generation prompt：**
+```
+epic corporate cinematic score, starting with minimal piano and ambient pad, gradually building with strings and subtle electronic beats, powerful brass crescendo at 70 seconds, warm emotional middle section with gentle piano melody, final triumphant orchestral climax, ending with elegant sustained chord fade-out, professional and inspiring, 90 seconds, Hans Zimmer meets corporate anthem style
+```
+
+### C.6 企业宣传片 compose_pro 转场方案
+
+| 场景衔接 | 转场 | 时长 | 原因 |
+|---------|------|------|------|
+| 序幕→痛点 | fadeblack | 0.8s | 段落分隔 |
+| 痛点→使命 | flash | 0.15s | 转折冲击 |
+| 使命→能力 | crossfade | 0.5s | 自然过渡 |
+| 能力内部场景 | crossfade | 0.3s | 流畅 |
+| 能力→里程碑 | wipeleft | 0.3s | 信息推进 |
+| 里程碑→团队 | crossfade | 0.5s | 情绪切换 |
+| 团队→客户 | crossfade | 0.4s | 连贯 |
+| 客户→愿景 | fadeblack | 0.6s | 升华前蓄力 |
+| 愿景→品牌 | fadeblack | 1.0s | 庄重收场 |
 
 ## D. 招商/路演视频（Pitch Video）
 - **目标**：打动投资人、合作伙伴

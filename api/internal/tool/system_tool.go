@@ -114,6 +114,16 @@ func (t *SystemTool) Execute(ctx context.Context, argsJSON string) (string, erro
 		args.ConversationID = cid
 	}
 
+	// Guard: block recursive task/schedule creation from activity-spawned tasks
+	// (tasks with no conversation_id running inside the task worker)
+	isTaskExec, _ := ctx.Value(CtxKeyTaskExecution).(bool)
+	if isTaskExec && args.ConversationID == "" {
+		switch args.Action {
+		case "schedule_task", "create_task":
+			return `{"status":"blocked","reason":"活动触发的任务不允许创建新任务或定时任务，防止雪崩循环。请使用 notify_user 通知用户。"}`, nil
+		}
+	}
+
 	switch args.Action {
 	case "create_agent":
 		return t.createAgent(args)

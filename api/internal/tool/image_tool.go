@@ -568,8 +568,13 @@ func (t *ImageTool) generateImage(ctx context.Context, args imageArgs) (string, 
 		Prompt: args.Prompt, Status: "running",
 	})
 
-	// Block and wait for result (up to 3 min) to prevent LLM hallucinating fake URLs
-	result, err := PollFalStatus(apiKey, statusEndpoint, requestID, 3*time.Minute)
+	// Block and wait for result. GPT Image 2/edit with 720x1280 + multi-ref input
+	// can take 5-8 min, so allow up to 10 min before failing.
+	pollTimeout := 3 * time.Minute
+	if isGPTImage2ModelHelper(args.Model) {
+		pollTimeout = 10 * time.Minute
+	}
+	result, err := PollFalStatus(apiKey, statusEndpoint, requestID, pollTimeout)
 	if err != nil {
 		t.db.Model(&model.ImageRecord{}).Where("id = ?", record.ID).Updates(map[string]interface{}{"status": "failed"})
 		UpdateGenLog(t.db, genLogID, "failed", "", err.Error())

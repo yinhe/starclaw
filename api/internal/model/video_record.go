@@ -15,6 +15,7 @@ type VideoRecord struct {
 	Model            string         `json:"model" gorm:"type:varchar(100)"`
 	Prompt           string         `json:"prompt" gorm:"type:text"`
 	VideoURL         string         `json:"video_url" gorm:"type:varchar(1000)"`
+	LocalURL         string         `json:"local_url" gorm:"type:varchar(1000)"` // 归档到 docs/<project>/production/<ep>/clips_v2/ 后的静态路径，TOS 过期后的退路
 	ImgURL           string         `json:"img_url" gorm:"type:varchar(4000)"`
 	Size             string         `json:"size" gorm:"type:varchar(20)"`
 	Duration         int            `json:"duration" gorm:"default:5"`

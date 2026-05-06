@@ -116,7 +116,7 @@ func BuiltinTemplates() []BuiltinTemplate {
 			Description: "检查记忆中的提醒和待办事项，到期时通知用户",
 			Type:        model.ActivityTypeSchedule,
 			Trigger:     "0 */2 * * *",
-			Action:      "请检查用户的提醒和待办事项：\n\n1. 搜索 Cerebrate 记忆中包含以下关键词的条目：\n   - \"提醒\"、\"remind\"、\"todo\"、\"待办\"、\"deadline\"、\"截止\"\n   - 包含日期/时间的记忆条目\n2. 对每个找到的条目：\n   - 判断是否已到期或即将到期（24小时内）\n   - 如果到期：通知用户（使用 notify_user）\n   - 如果已过期超过7天：标记为已处理（降低 importance）\n3. 也检查日历类记忆（会议、约会、生日等）\n\n只在有到期提醒时才通知用户，无事则静默。",
+			Action:      "请检查用户的提醒和待办事项：\n\n1. 搜索 Cerebrate 记忆中包含以下关键词的条目：\n   - \"提醒\"、\"remind\"、\"todo\"、\"待办\"、\"deadline\"、\"截止\"\n   - 包含日期/时间的记忆条目\n2. 对每个找到的条目：\n   - 判断是否已到期或即将到期（24小时内）\n   - 如果到期：通知用户（使用 notify_user）\n   - 如果已过期超过7天：标记为已处理（降低 importance）\n3. 也检查日历类记忆（会议、约会、生日等）\n\n只在有到期提醒时才通知用户，无事则静默。\n\n⚠️ 严禁调用 create_task 或 schedule_task，只能使用 notify_user 通知用户。如果没有找到提醒条目，直接结束，不要凭空编造提醒内容。",
 			Cooldown:    "2h",
 		},
 	}

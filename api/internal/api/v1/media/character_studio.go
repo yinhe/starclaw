@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/yinhe/starclaw/internal/config"
 	"github.com/yinhe/starclaw/internal/model"
+	"github.com/yinhe/starclaw/internal/node"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/sandbox"
 	"gorm.io/gorm"
@@ -144,7 +145,7 @@ func (h *CharacterStudioHandler) resolveModelConfig(userID string) (model.ModelC
 // ── CDN Upload（cdn.starclaw.net） ─────────────────────────────────────
 //
 // Env（所有可选；全部齐备才会真的走 scp，否则 fallback 到 /v1/uploads）：
-//   CDN_SSH_HOST       e.g. 43.106.158.26
+//   CDN_SSH_HOST       e.g. your-cdn-server-ip
 //   CDN_SSH_USER       e.g. root
 //   CDN_SSH_KEY_PATH   container 内路径 e.g. /root/.ssh/cdn_id_ed25519
 //   CDN_REMOTE_ROOT    e.g. /opt/cdn
@@ -167,6 +168,10 @@ func loadCDNConfig() (*cdnConfig, bool) {
 		RemoteRoot: strings.TrimSpace(os.Getenv("CDN_REMOTE_ROOT")),
 		PublicBase: strings.TrimSpace(os.Getenv("CDN_PUBLIC_BASE")),
 		ClawID:     strings.TrimSpace(os.Getenv("CDN_CLAW_ID")),
+	}
+	// Auto-derive ClawID from node identity if not explicitly set
+	if cfg.ClawID == "" {
+		cfg.ClawID = node.ReadNodeIDHex()
 	}
 	if cfg.Host == "" || cfg.User == "" || cfg.KeyPath == "" || cfg.RemoteRoot == "" || cfg.PublicBase == "" || cfg.ClawID == "" {
 		return nil, false
@@ -433,11 +438,17 @@ func scpUploadBytes(cfg *cdnConfig, data []byte, remotePath string) error {
 	}
 	tmp.Close()
 
+	// Ensure SSH key has strict permissions (Docker-on-Windows mounts as 0777)
+	keyPath, err := ensureKeyPerms(cfg.KeyPath)
+	if err != nil {
+		return fmt.Errorf("prepare ssh key: %w", err)
+	}
+
 	// 1) mkdir -p 远端目录
 	remoteDir := path.Dir(remotePath)
 	sshCmd := exec.Command(
 		"ssh",
-		"-i", cfg.KeyPath,
+		"-i", keyPath,
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "UserKnownHostsFile=/tmp/cdn_known_hosts",
 		"-o", "ConnectTimeout=10",
@@ -452,7 +463,7 @@ func scpUploadBytes(cfg *cdnConfig, data []byte, remotePath string) error {
 	// 2) scp 上传
 	scpCmd := exec.Command(
 		"scp",
-		"-i", cfg.KeyPath,
+		"-i", keyPath,
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "UserKnownHostsFile=/tmp/cdn_known_hosts",
 		"-o", "ConnectTimeout=10",
@@ -463,5 +474,43 @@ func scpUploadBytes(cfg *cdnConfig, data []byte, remotePath string) error {
 	if out, err := scpCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("scp: %w (out=%s)", err, string(out))
 	}
+
+	// 3) chmod 644 so nginx (non-root) can serve the file
+	chmodCmd := exec.Command(
+		"ssh",
+		"-i", keyPath,
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "UserKnownHostsFile=/tmp/cdn_known_hosts",
+		"-o", "ConnectTimeout=10",
+		"-o", "BatchMode=yes",
+		fmt.Sprintf("%s@%s", cfg.User, cfg.Host),
+		fmt.Sprintf("chmod 644 %q", remotePath),
+	)
+	if out, err := chmodCmd.CombinedOutput(); err != nil {
+		log.Printf("[cdn_upload] chmod warning (non-fatal): %v (out=%s)", err, string(out))
+	}
 	return nil
+}
+
+// ensureKeyPerms copies the SSH key to /tmp with 0600 if the original has
+// overly permissive mode (e.g. 0777 from Docker-on-Windows volume mounts).
+// Returns the usable key path (original or temp copy).
+func ensureKeyPerms(keyPath string) (string, error) {
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode().Perm()&0077 == 0 {
+		return keyPath, nil // already strict
+	}
+	// Copy to temp with 0600
+	dst := "/tmp/cdn_key_safe"
+	raw, err := os.ReadFile(keyPath)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(dst, raw, 0600); err != nil {
+		return "", err
+	}
+	return dst, nil
 }

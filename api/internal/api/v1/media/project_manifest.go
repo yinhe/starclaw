@@ -799,3 +799,383 @@ func (h *ProjectManifestHandler) SetCharacterRef(c *gin.Context) {
 		"note":         fmt.Sprintf("%s.ref updated to %s (%.2f MB)", key, ref, float64(fi.Size())/1024/1024),
 	})
 }
+
+// deleteRefReq is the body of POST /v1/projects/:project/ref/delete.
+// Frontend passes an absolute project-relative path (e.g.
+// "/entities/characters/lin_jianyue/variants/rejected.png"); backend
+// resolves it under DOCS_DIR/<project> and unlinks, with aggressive safety:
+//
+//   - path must start with "/entities/" — we refuse to delete legacy assets
+//     under /production/ or /assets/ (those are audit material, not candidates)
+//   - no ".." traversal
+//   - must be a regular file, not a dir
+//   - extension must be an image (.png/.jpg/.jpeg/.webp)
+//   - manifest.json, meta.json, cdn_mirror.json are explicitly blacklisted
+type deleteRefReq struct {
+	Path string `json:"path" binding:"required"`
+}
+
+var deleteRefBlockedBasenames = map[string]bool{
+	"manifest.json":   true,
+	"meta.json":       true,
+	"cdn_mirror.json": true,
+	"readme.md":       true,
+}
+
+// DeleteRef handles POST /v1/projects/:project/ref/delete.
+// It removes a single candidate image file from the project's entities/
+// tree so the LocalCandidateBar right-click "删除" action can prune bad
+// refs without requiring the user to SSH into the container.
+func (h *ProjectManifestHandler) DeleteRef(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	project := c.Param("project")
+	if !archiveValidEpRe.MatchString(project) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		return
+	}
+
+	var req deleteRefReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body", "detail": err.Error()})
+		return
+	}
+
+	rel := strings.TrimSpace(req.Path)
+	if rel == "" || !strings.HasPrefix(rel, "/") || strings.Contains(rel, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "path must be absolute project-relative without '..'"})
+		return
+	}
+	// Only allow deletion under entities/ — legacy /production and /assets are
+	// archive material and shouldn't be pruned through a UI right-click.
+	if !strings.HasPrefix(rel, "/entities/") {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "delete is only allowed under /entities/*",
+			"hint":  "legacy /production/ and /assets/ paths are historical and protected",
+		})
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(rel))
+	if !manifestScanExts[ext] {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":       "only image files can be deleted via this endpoint",
+			"allowed_ext": []string{".png", ".jpg", ".jpeg", ".webp"},
+		})
+		return
+	}
+	if deleteRefBlockedBasenames[strings.ToLower(filepath.Base(rel))] {
+		c.JSON(http.StatusForbidden, gin.H{"error": "this file is protected and cannot be deleted"})
+		return
+	}
+
+	docsDir := os.Getenv("DOCS_DIR")
+	if docsDir == "" {
+		docsDir = "/app/docs"
+	}
+	projectDir := filepath.Join(docsDir, project)
+	absPath := filepath.Join(projectDir, filepath.FromSlash(rel))
+
+	// Double-check the resolved path really sits inside projectDir —
+	// Clean() + HasPrefix is the canonical path-traversal guard.
+	cleanedProject := filepath.Clean(projectDir)
+	cleanedTarget := filepath.Clean(absPath)
+	if !strings.HasPrefix(cleanedTarget+string(filepath.Separator), cleanedProject+string(filepath.Separator)) && cleanedTarget != cleanedProject {
+		c.JSON(http.StatusForbidden, gin.H{"error": "resolved path escapes project dir"})
+		return
+	}
+
+	fi, err := os.Stat(cleanedTarget)
+	if err != nil {
+		if os.IsNotExist(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "file not found", "path": rel})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "stat failed", "detail": err.Error()})
+		return
+	}
+	if fi.IsDir() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "path is a directory"})
+		return
+	}
+
+	// Also refuse to remove files that are the authoritative ref of any
+	// character (prevent shooting the foot through the candidate bar).
+	if inUse, who := pathIsReferencedByManifest(projectDir, rel); inUse {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": fmt.Sprintf("file is currently %s.ref in manifest.json", who),
+			"hint":  "先 promote 另一张做 sheet，或手动在 manifest.json 里改 ref 后再删",
+		})
+		return
+	}
+
+	freed := fi.Size()
+	if err := os.Remove(cleanedTarget); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unlink failed", "detail": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deleted":    rel,
+		"size_bytes": freed,
+		"note":       fmt.Sprintf("deleted %s (%.2f KB freed)", rel, float64(freed)/1024),
+	})
+}
+
+// patchManifestEntityReq is the body of PATCH /v1/projects/:project/manifest/:kind/:key.
+// Only fields whitelisted in manifestPatchAllowedFields are honored; anything
+// else is silently dropped with an "unknown_fields" note in the response so
+// the frontend can catch typos without hard-failing. Values must be strings or
+// empty strings ("" means "clear the field").
+type patchManifestEntityReq map[string]interface{}
+
+// Fields the frontend is allowed to patch via the generic endpoint. Keep this
+// list tight — arbitrary field updates on manifest.json are dangerous.
+var manifestPatchAllowedFields = map[string]bool{
+	"tos_url":         true, // 24h Volcengine Ark signed URL (launder/resign/promote product)
+	"cdn_url":         true, // cdn.starclaw.net mirror URL
+	"appearance_card": true, // editable character sheet description
+	"description":     true,
+	"ref_clip":        true, // prop-only: short video reference
+}
+
+// manifestPatchArrayKey maps URL kind -> manifest.json array key.
+var manifestPatchArrayKey = map[string]string{
+	"characters": "characters",
+	"props":      "props",
+}
+
+// PatchManifestEntity handles PATCH /v1/projects/:project/manifest/:kind/:key.
+// It lets the frontend persist "generated" values (the most visible case is a
+// freshly-laundered TOS URL) back into manifest.json so they survive a page
+// reload. Without this, launderTOS would only update React state and the URL
+// would vanish on next seed from manifest.
+//
+// Design notes:
+//   - Partial update: only the fields present in the body (and whitelisted) are
+//     written. Missing fields stay as-is. Empty string clears the field.
+//   - Atomic write via tmp → rename, same lock as SetCharacterRef.
+//   - kind is "characters" or "props" (scenes are managed elsewhere).
+func (h *ProjectManifestHandler) PatchManifestEntity(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	project := c.Param("project")
+	kind := c.Param("kind")
+	key := c.Param("key")
+	if !archiveValidEpRe.MatchString(project) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		return
+	}
+	if !archiveValidEpRe.MatchString(key) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid entity key"})
+		return
+	}
+	arrayKey, ok := manifestPatchArrayKey[kind]
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":         "unsupported kind",
+			"allowed_kinds": []string{"characters", "props"},
+		})
+		return
+	}
+
+	var req patchManifestEntityReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body", "detail": err.Error()})
+		return
+	}
+	if len(req) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "empty patch body"})
+		return
+	}
+
+	// Normalize: string-only values, drop unknown fields with a friendly note.
+	patch := make(map[string]string, len(req))
+	unknown := []string{}
+	for k, v := range req {
+		if !manifestPatchAllowedFields[k] {
+			unknown = append(unknown, k)
+			continue
+		}
+		// Only strings (and "" to clear) are valid for the whitelisted fields.
+		sv, isStr := v.(string)
+		if !isStr {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("field %q must be a string (got %T)", k, v),
+			})
+			return
+		}
+		patch[k] = strings.TrimSpace(sv)
+	}
+	if len(patch) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":          "no whitelisted fields to patch",
+			"allowed_fields": allowedPatchFieldList(),
+			"got_fields":     keysOfInterface(req),
+		})
+		return
+	}
+
+	docsDir := os.Getenv("DOCS_DIR")
+	if docsDir == "" {
+		docsDir = "/app/docs"
+	}
+	manifestPath := filepath.Join(docsDir, project, "assets", "manifest.json")
+
+	manifestWriteMu.Lock()
+	defer manifestWriteMu.Unlock()
+
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "manifest.json not found", "detail": err.Error()})
+		return
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "manifest corrupt", "detail": err.Error()})
+		return
+	}
+
+	arr, arrOk := m[arrayKey].([]interface{})
+	if !arrOk {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("manifest missing %s[]", arrayKey)})
+		return
+	}
+
+	previous := map[string]string{}
+	found := false
+	for i, e := range arr {
+		em, _ := e.(map[string]interface{})
+		if em == nil {
+			continue
+		}
+		if k, _ := em["key"].(string); k != key {
+			continue
+		}
+		// Capture previous values then write the patch.
+		for field, newVal := range patch {
+			if prev, _ := em[field].(string); prev != "" {
+				previous[field] = prev
+			}
+			if newVal == "" {
+				// Explicit empty = clear — remove the key so JSON stays tidy.
+				delete(em, field)
+			} else {
+				em[field] = newVal
+			}
+		}
+		arr[i] = em
+		found = true
+		break
+	}
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("%s key %q not found in manifest", kind, key)})
+		return
+	}
+	m[arrayKey] = arr
+	m["updated_at"] = time.Now().UTC().Format("2006-01-02")
+
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "marshal failed", "detail": err.Error()})
+		return
+	}
+	tmp := manifestPath + ".tmp"
+	if err := os.WriteFile(tmp, out, 0o644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "write tmp failed", "detail": err.Error()})
+		return
+	}
+	if err := os.Rename(tmp, manifestPath); err != nil {
+		_ = os.Remove(tmp)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "rename failed", "detail": err.Error()})
+		return
+	}
+
+	// Return the full patched entity + what we did, to help the UI verify.
+	var patched map[string]interface{}
+	for _, e := range arr {
+		if em, _ := e.(map[string]interface{}); em != nil {
+			if k, _ := em["key"].(string); k == key {
+				patched = em
+				break
+			}
+		}
+	}
+	resp := gin.H{
+		"entity":          patched,
+		"kind":            kind,
+		"key":             key,
+		"patched_fields":  patch,
+		"previous_values": previous,
+	}
+	if len(unknown) > 0 {
+		resp["unknown_fields_ignored"] = unknown
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func allowedPatchFieldList() []string {
+	out := make([]string, 0, len(manifestPatchAllowedFields))
+	for k := range manifestPatchAllowedFields {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func keysOfInterface(m map[string]interface{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// pathIsReferencedByManifest returns (true, "lin_jianyue") if the given
+// project-relative path is the authoritative ref of some character in
+// manifest.json. Used by DeleteRef to refuse deleting "live" assets.
+func pathIsReferencedByManifest(projectDir, projectRelPath string) (bool, string) {
+	manifestPath := filepath.Join(projectDir, "assets", "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return false, ""
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return false, ""
+	}
+	target := strings.ToLower(projectRelPath)
+	check := func(arr []interface{}) (bool, string) {
+		for _, e := range arr {
+			cm, _ := e.(map[string]interface{})
+			if cm == nil {
+				continue
+			}
+			key, _ := cm["key"].(string)
+			if ref, _ := cm["ref"].(string); strings.ToLower(ref) == target {
+				return true, key
+			}
+		}
+		return false, ""
+	}
+	if chars, ok := m["characters"].([]interface{}); ok {
+		if hit, who := check(chars); hit {
+			return true, who
+		}
+	}
+	if props, ok := m["props"].([]interface{}); ok {
+		if hit, who := check(props); hit {
+			return true, who
+		}
+	}
+	return false, ""
+}

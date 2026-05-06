@@ -40,7 +40,12 @@ func registerStaticServeRoutes(apiV1 *gin.RouterGroup) {
 			c.JSON(404, gin.H{"error": "merged video not found"})
 			return
 		}
-		c.Header("Content-Disposition", "attachment; filename="+filename)
+		c.Header("Content-Type", "video/mp4")
+		if c.Query("download") == "1" {
+			c.Header("Content-Disposition", "attachment; filename="+filename)
+		} else {
+			c.Header("Content-Disposition", "inline")
+		}
 		c.File(filePath)
 	})
 

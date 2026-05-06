@@ -692,8 +692,11 @@ func (h *ChatHandler) handleStreamWithTools(c *gin.Context, rt *agentpkg.Runtime
 					if fullContent != "" {
 						allMsgs = append(allMsgs, provider.ChatMessage{Role: "assistant", Content: fullContent})
 					}
+					log.Printf("[cerebrate] streaming Done: invoking ExtractAndStore user=%s agent=%s msgs=%d contentLen=%d conv=%s", userID, aid, len(allMsgs), len(fullContent), convID)
 					go h.cerebrate.ExtractAndStore(context.Background(), userID, aid, allMsgs, convID)
 					go h.cerebrate.GenerateSummary(context.Background(), userID, aid, convID, allMsgs)
+				} else {
+					log.Printf("[cerebrate] streaming Done: cerebrate is nil, skipping extraction")
 				}
 
 				// Long-running conversation notification (>30s)

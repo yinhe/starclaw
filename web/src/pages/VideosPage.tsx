@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Film, Trash2, Download, Clock, CheckCircle2, Loader2, XCircle, Play, Ban, RefreshCw, ChevronDown, ChevronRight, Layers, MessageSquare, Volume2, Music2 } from 'lucide-react'
 import { videoAPI, musicAPI } from '../lib/api'
@@ -10,6 +10,7 @@ interface VideoRecord {
   model: string
   prompt: string
   video_url: string
+  local_url?: string  // 归档到 docs/<project>/production/<ep>/clips_v2/ 后的本地静态路径，TOS 过期退路
   img_url: string
   narrated_url: string
   size: string
@@ -20,6 +21,53 @@ interface VideoRecord {
   clip_ids: string
   conversation_id: string
   created_at: string
+}
+
+const CLIPS_PAGE_SIZE = 12
+
+// 延迟加载视频缩略图：只有进入视口时才挂载 <video>，避免一次性加载所有元数据。
+// 接受候选 URL 列表，video onError 时按顺序尝试下一个 —— TOS 过期不会再让格子空白。
+function LazyVideoThumb({ srcs, className }: { srcs: string[]; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+  const [idx, setIdx] = useState(0)
+  const src = srcs[idx] || ''
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setVisible(true); io.disconnect() }
+    }, { rootMargin: '200px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return (
+    <div ref={ref} className={className}>
+      {visible && src && (
+        <video key={src} src={src} preload="metadata" muted playsInline
+          className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+          onError={() => { if (idx < srcs.length - 1) setIdx(i => i + 1) }} />
+      )}
+    </div>
+  )
+}
+
+// 构建一个 video record 的候选 URL 列表：local_url 优先，TOS 在后面带 #t=3 预览。
+function videoThumbCandidates(v: VideoRecord): string[] {
+  const out: string[] = []
+  if (v.local_url) out.push(v.local_url + '#t=3')
+  if (v.video_url) out.push(v.video_url + '#t=3')
+  return out
+}
+
+// 「废片·已过期」识别：成功状态、没有 local_url、video_url 是 TOS 域名、且记录已超过 24h。
+//   TOS 视频 24h 后会被火山引擎清理，文件本身也丢了 → 缩略图只能挂占位徽章。
+function isExpiredOrphan(v: VideoRecord): boolean {
+  if (v.status !== 'succeeded') return false
+  if (v.local_url) return false
+  if (!v.video_url || !/tos-cn-beijing\.volces\.com/.test(v.video_url)) return false
+  const created = new Date(v.created_at).getTime()
+  return Number.isFinite(created) && (Date.now() - created) > 24 * 60 * 60 * 1000
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; icon: typeof Clock }> = {
@@ -51,6 +99,7 @@ export default function VideosPage() {
   const [musicLoading, setMusicLoading] = useState(false)
   const [narratedView, setNarratedView] = useState<Record<string, boolean>>({})
   const [remergingIds, setRemergingIds] = useState<Set<string>>(new Set())
+  const [clipPage, setClipPage] = useState(1)
 
   useEffect(() => { loadVideos() }, [])
 
@@ -215,20 +264,37 @@ export default function VideosPage() {
   const renderVideoPreview = (video: VideoRecord, small = false) => {
     const isPlaying = playingId === video.id
     const aspectClass = small ? 'aspect-video' : 'aspect-video'
+    // Fix #4: 缩略图原来用 img_url（ref image）作为 background —— Seedance i2v 的第一帧 ≈ 参考图，
+    // 所以看起来像角色 sheet。现在用真视频的 3s 时刻做 poster：
+    // `#t=3` 告诉浏览器加载 metadata 时 seek 到 3s，捕获那一帧当缩略图。
+    // 小于 3s 的短镜头会自动落在视频末尾（浏览器 clamp 到有效范围）。
     const posterUrl = (video.img_url || '').split(',').map(s => s.trim()).find(Boolean) || ''
-    const thumbStyle = posterUrl ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}
+    const expired = isExpiredOrphan(video)
+    const hasVideo = video.status === 'succeeded' && !!video.video_url && !expired
+    const thumbStyle = !hasVideo && posterUrl && !expired
+      ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+      : {}
     return (
-      <div className={`relative ${aspectClass} bg-gray-900 flex items-center justify-center`} style={!isPlaying ? thumbStyle : {}}>
-        {video.status === 'succeeded' && video.video_url ? (
+      <div className={`relative ${aspectClass} bg-gray-900 flex items-center justify-center overflow-hidden`} style={!isPlaying ? thumbStyle : {}}>
+        {expired ? (
+          <div className="flex flex-col items-center gap-1.5 text-gray-500 px-3 text-center">
+            <Clock className="w-7 h-7 opacity-50" />
+            <span className="text-xs font-medium text-gray-400">废片 · 已过期</span>
+            <span className="text-[10px] text-gray-600 leading-tight">TOS 24h 已清理 · 当时未归档本地</span>
+          </div>
+        ) : hasVideo ? (
           isPlaying ? (
-            <video src={video.video_url} controls autoPlay className="w-full h-full object-contain" onEnded={() => setPlayingId(null)} />
+            <video src={video.local_url || video.video_url} controls autoPlay className="w-full h-full object-contain" onEnded={() => setPlayingId(null)} />
           ) : (
-            <button onClick={() => setPlayingId(video.id)} className="flex flex-col items-center gap-2 text-white/70 hover:text-white transition-colors w-full h-full justify-center">
-              <div className={`${small ? 'w-10 h-10' : 'w-14 h-14'} rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center hover:bg-black/50`}>
-                <Play className={`${small ? 'w-5 h-5' : 'w-7 h-7'} ml-0.5`} />
-              </div>
-              <span className="text-xs bg-black/40 px-2 py-0.5 rounded">{video.duration}秒 · {video.size}</span>
-            </button>
+            <>
+              <LazyVideoThumb srcs={videoThumbCandidates(video)} className="absolute inset-0 w-full h-full" />
+              <button onClick={() => setPlayingId(video.id)} className="relative z-10 flex flex-col items-center gap-2 text-white/70 hover:text-white transition-colors w-full h-full justify-center">
+                <div className={`${small ? 'w-10 h-10' : 'w-14 h-14'} rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center hover:bg-black/50`}>
+                  <Play className={`${small ? 'w-5 h-5' : 'w-7 h-7'} ml-0.5`} />
+                </div>
+                <span className="text-xs bg-black/40 px-2 py-0.5 rounded">{video.duration}秒 · {video.size}</span>
+              </button>
+            </>
           )
         ) : video.status === 'running' || video.status === 'pending' ? (
           <div className="flex flex-col items-center gap-2 text-white/50">
@@ -501,7 +567,7 @@ export default function VideosPage() {
             {activeTab === 'clips' && (
               <div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {clipVideos.map(video => {
+                  {clipVideos.slice(0, clipPage * CLIPS_PAGE_SIZE).map(video => {
                     const st = STATUS_MAP[video.status] || STATUS_MAP.pending
                     const StIcon = st.icon
                     return (
@@ -535,6 +601,16 @@ export default function VideosPage() {
                     )
                   })}
                 </div>
+                {clipVideos.length > clipPage * CLIPS_PAGE_SIZE && (
+                  <div className="flex justify-center mt-6">
+                    <button
+                      onClick={() => setClipPage(p => p + 1)}
+                      className="px-6 py-2.5 rounded-xl text-sm font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 dark:text-violet-400 dark:bg-violet-900/30 dark:hover:bg-violet-900/50 transition-colors"
+                    >
+                      加载更多（还剩 {clipVideos.length - clipPage * CLIPS_PAGE_SIZE} 个）
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>

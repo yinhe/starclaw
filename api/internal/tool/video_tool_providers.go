@@ -229,11 +229,39 @@ func (t *VideoTool) generateVideoSeedance(ctx context.Context, userID, convID st
 			})
 		}
 	}
+	// Prefer explicit args.Resolution / args.Ratio (what the episode UI sends
+	// post-1080p feature). Fall back to deriving them from args.Size for
+	// legacy agent / manual callers. Defaults differ per category:
+	//   short_drama → 1080p + 9:16 (what drama creators actually want)
+	//   general     → 720p  + 16:9 (unchanged, cheap default)
+	ratio := strings.TrimSpace(args.Ratio)
+	if ratio == "" {
+		if args.Size != "" {
+			ratio = aspectRatioFromSize(args.Size)
+		} else if strings.ToLower(args.Category) == "short_drama" {
+			ratio = "9:16"
+		} else {
+			ratio = "16:9"
+		}
+	}
+	resolution := strings.TrimSpace(args.Resolution)
+	if resolution == "" {
+		if args.Size != "" {
+			resolution = resolutionFromSize(args.Size)
+		} else if strings.ToLower(args.Category) == "short_drama" {
+			resolution = "1080p"
+		} else {
+			resolution = "720p"
+		}
+	}
+	// Seedance only accepts lowercase resolution values ("720p"/"1080p"/"480p").
+	// wan2.7 uses uppercase ("720P") — normalise here so both UIs can feed either.
+	resolution = strings.ToLower(resolution)
 	body := map[string]interface{}{
 		"model":      args.Model,
 		"content":    content,
-		"ratio":      aspectRatioFromSize(args.Size),
-		"resolution": resolutionFromSize(args.Size),
+		"ratio":      ratio,
+		"resolution": resolution,
 		"duration":   duration,
 	}
 	if args.GenerateAudio != nil {
@@ -334,20 +362,29 @@ func (t *VideoTool) generateVideoSeedance(ctx context.Context, userID, convID st
 			}
 			return
 		}
-		savedURL := videoURL
-		// short_drama 专用路径：直接用 StarAI/Seedance 回传的公网 URL，
-		// 不做 SaveClipLocally，保证下一场 ref_video_url 仍然是 Seedance 可抓的公网地址。
-		// 其他 category（通用视频生成）继续走本地持久化以便 ffmpeg 合并。
-		if args.Category != "short_drama" {
+		savedURL := videoURL // 写到 video_url 的值
+		localOnly := ""      // 写到 local_url 的值（不覆盖 video_url）
+		// short_drama：video_url 必须保留 TOS 公网地址，下一场 ref_video_url 才能被 Seedance 抓。
+		//   但同时把 mp4 下到 data/videos/ 并写 local_url —— TOS 24h 过期后 UI 仍能播。
+		// 其他 category：保持原行为，video_url 直接用本地路径，便于 ffmpeg 合并。
+		if args.Category == "short_drama" {
+			if localURL, lerr := SaveClipLocally(videoURL); lerr == nil {
+				localOnly = localURL
+				log.Printf("[VideoTool] Seedance task %s (short_drama): TOS kept for ref chain, local saved at %s", taskID, localURL)
+			} else {
+				log.Printf("[VideoTool] Seedance task %s (short_drama): local save failed (TOS-only, will expire in 24h): %v", taskID, lerr)
+			}
+		} else {
 			if localURL, lerr := SaveClipLocally(videoURL); lerr == nil {
 				savedURL = localURL
 			} else {
 				log.Printf("[VideoTool] Seedance task %s: local save failed (will use remote URL): %v", taskID, lerr)
 			}
-		} else {
-			log.Printf("[VideoTool] Seedance task %s (short_drama): keep public URL for ref chain: %s", taskID, savedURL)
 		}
 		updates := map[string]interface{}{"video_url": savedURL, "status": "succeeded"}
+		if localOnly != "" {
+			updates["local_url"] = localOnly
+		}
 		t.db.Model(&model.VideoRecord{}).Where("task_id = ?", taskID).Updates(updates)
 		UpdateGenLog(t.db, genLogID, "succeeded", savedURL, "")
 		var rec model.VideoRecord

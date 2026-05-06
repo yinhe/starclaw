@@ -28,9 +28,17 @@ func (h *WorkflowHandler) List(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var workflows []model.Workflow
-	h.db.Where("user_id = ?", userID).Order("updated_at DESC").Find(&workflows)
+	q := h.db.Where("user_id = ?", userID)
+	if cat := c.Query("category"); cat != "" {
+		q = q.Where("category = ?", cat)
+	}
+	q.Order("updated_at DESC").Find(&workflows)
 
-	c.JSON(http.StatusOK, gin.H{"workflows": workflows})
+	// Collect distinct categories for tab rendering
+	var categories []string
+	h.db.Model(&model.Workflow{}).Where("user_id = ? AND category != ''", userID).Distinct("category").Pluck("category", &categories)
+
+	c.JSON(http.StatusOK, gin.H{"workflows": workflows, "categories": categories})
 }
 
 func (h *WorkflowHandler) Create(c *gin.Context) {
@@ -40,6 +48,7 @@ func (h *WorkflowHandler) Create(c *gin.Context) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Definition  string `json:"definition"`
+		Category    string `json:"category"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -51,6 +60,7 @@ func (h *WorkflowHandler) Create(c *gin.Context) {
 		Name:        req.Name,
 		Description: req.Description,
 		Definition:  req.Definition,
+		Category:    req.Category,
 	}
 	if err := h.db.Create(&wf).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create workflow"})
@@ -84,9 +94,10 @@ func (h *WorkflowHandler) Update(c *gin.Context) {
 	}
 
 	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Definition  string `json:"definition"`
+		Name        string  `json:"name"`
+		Description string  `json:"description"`
+		Definition  string  `json:"definition"`
+		Category    *string `json:"category"` // pointer to distinguish empty vs absent
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -102,6 +113,9 @@ func (h *WorkflowHandler) Update(c *gin.Context) {
 	}
 	if req.Definition != "" {
 		updates["definition"] = req.Definition
+	}
+	if req.Category != nil {
+		updates["category"] = *req.Category
 	}
 
 	h.db.Model(&wf).Updates(updates)

@@ -17,8 +17,10 @@ RUN mkdir -p internal/web/dist && \
     [ -z "$(ls -A internal/web/dist 2>/dev/null)" ] && echo "placeholder" > internal/web/dist/.keep || true
 
 # ── CI quality gate: vet + test ──
-RUN go vet ./... && \
-    go test ./internal/security/... ./internal/agent/... ./internal/webhook/... ./internal/inference/... ./internal/middleware/... -count=1 -timeout=60s && \
+# `-tags private` enables internal-only modules (e.g. Q8bot quant template);
+# OSS builds use the default tags and pick stubs instead.
+RUN go vet -tags private ./... && \
+    go test -tags private ./internal/security/... ./internal/agent/... ./internal/webhook/... ./internal/inference/... ./internal/middleware/... -count=1 -timeout=60s && \
     echo "✅ All tests passed"
 
 ARG BUILD_VERSION=
@@ -44,7 +46,7 @@ RUN VERSION="$BUILD_VERSION" && \
     # 5. UTC timestamp as last resort (NEVER "dev") 
     if [ -z "$VERSION" ] || [ "$VERSION" = "dev" ]; then VERSION=$(date -u +"%Y.%m%d.%H%M"); fi && \
     echo "Building with version: $VERSION" && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" -o /starclaw ./cmd/server && \
+    CGO_ENABLED=0 GOOS=linux go build -tags private -ldflags "-X github.com/yinhe/starclaw/internal/molt.Version=${VERSION}" -o /starclaw ./cmd/server && \
     echo "Cross-compiling MCP Bridge for all platforms..." && \
     BRIDGE_LDFLAGS="-X main.version=${VERSION}" && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "$BRIDGE_LDFLAGS" -o /mcp-bridge-darwin-amd64   ./cmd/mcp-bridge/ && \
@@ -95,6 +97,7 @@ COPY --from=builder /mcp-bridge-* ./mcp-bridge/
 COPY configs/config.yaml ./configs/
 COPY plugins/ ./plugins/
 COPY scripts/ ./scripts/
+COPY fonts/ ./fonts/
 
 EXPOSE 8080
 

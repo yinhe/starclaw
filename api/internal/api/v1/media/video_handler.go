@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +54,8 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 		Model           string `json:"model"`
 		ImgURL          string `json:"img_url"`
 		Size            string `json:"size"`
+		Resolution      string `json:"resolution"` // 480p/720p/1080p (Seedance) or 720P/1080P (wan2.7)
+		Ratio           string `json:"ratio"`      // 21:9/16:9/4:3/1:1/3:4/9:16 (Seedance only)
 		Duration        int    `json:"duration"`
 		Scene           string `json:"scene"`
 		StylePrefix     string `json:"style_prefix"`
@@ -85,6 +91,8 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 		"model":        req.Model,
 		"img_url":      req.ImgURL,
 		"size":         req.Size,
+		"resolution":   req.Resolution,
+		"ratio":        req.Ratio,
 		"duration":     fmt.Sprintf("%d", duration),
 		"scene":        req.Scene,
 		"style_prefix": req.StylePrefix,
@@ -143,14 +151,49 @@ func (h *VideoHandler) Delete(c *gin.Context) {
 func (h *VideoHandler) Cancel(c *gin.Context) {
 	id := c.Param("id")
 	userID := c.GetString("user_id")
-	result := h.db.Model(&model.VideoRecord{}).
-		Where("id = ? AND user_id = ? AND status IN ?", id, userID, []string{"running", "pending"}).
-		Update("status", "cancelled")
-	if result.RowsAffected == 0 {
+
+	// Look up record to get task_id and model for Ark cancellation
+	var rec model.VideoRecord
+	if err := h.db.Where("id = ? AND user_id = ? AND status IN ?", id, userID, []string{"running", "pending"}).First(&rec).Error; err != nil {
 		c.JSON(400, gin.H{"error": "video not found or cannot be cancelled"})
 		return
 	}
-	c.JSON(200, gin.H{"status": "cancelled"})
+
+	// Try to cancel via Ark DELETE API for Seedance tasks (only works for queued tasks)
+	arkCancelled := false
+	if strings.HasPrefix(rec.Model, "doubao-seedance-") && rec.TaskID != "" {
+		apiKey, baseURL := tool.GetVolcengineAPIKey(h.db, userID)
+		if apiKey != "" {
+			go func() {
+				cancelArkTask(apiKey, baseURL, rec.TaskID)
+			}()
+			arkCancelled = true
+		}
+	}
+
+	// Update local DB status
+	h.db.Model(&model.VideoRecord{}).Where("id = ?", id).Update("status", "cancelled")
+	c.JSON(200, gin.H{"status": "cancelled", "ark_cancel_attempted": arkCancelled})
+}
+
+// cancelArkTask sends DELETE to Volcengine Ark API to cancel a queued task.
+// Running tasks cannot be cancelled via the API — this is best-effort.
+func cancelArkTask(apiKey, baseURL, taskID string) {
+	reqURL := strings.TrimRight(baseURL, "/") + "/contents/generations/tasks/" + taskID
+	req, err := http.NewRequest("DELETE", reqURL, nil)
+	if err != nil {
+		log.Printf("[cancelArkTask] build request failed: %v", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("[cancelArkTask] DELETE %s failed: %v", taskID, err)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("[cancelArkTask] DELETE %s → HTTP %d: %s", taskID, resp.StatusCode, string(body))
 }
 
 func (h *VideoHandler) Retry(c *gin.Context) {
@@ -260,6 +303,66 @@ func (h *VideoHandler) Remerge(c *gin.Context) {
 		videoTool.Execute(ctx, argsJSON)
 	}()
 	c.JSON(200, gin.H{"status": "remerging", "message": "正在重新合成视频"})
+}
+
+// MergeByTaskIDs merges video clips identified by their task_ids into a single video.
+// POST /v1/videos/merge  { "task_ids": ["tid1","tid2",...], "episode": "EP05 夜袭", "season": 1, "episode_number": 5, "title": "夜袭" }
+func (h *VideoHandler) MergeByTaskIDs(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req struct {
+		TaskIDs       []string `json:"task_ids"`
+		Episode       string   `json:"episode"`
+		Season        int      `json:"season"`
+		EpisodeNumber int      `json:"episode_number"`
+		Title         string   `json:"title"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.TaskIDs) < 2 {
+		c.JSON(400, gin.H{"error": "task_ids (at least 2) is required"})
+		return
+	}
+	videoTool, ok := h.toolRegistry.Get("video_generation")
+	if !ok {
+		c.JSON(500, gin.H{"error": "video tool not available"})
+		return
+	}
+	taskIDsStr := strings.Join(req.TaskIDs, ",")
+	// Use episode as a synthetic conversation ID for grouping
+	convID := fmt.Sprintf("workflow-%s", req.Episode)
+	go func() {
+		argsJSON := fmt.Sprintf(`{"action":"merge_videos","task_ids":%q}`, taskIDsStr)
+		ctx := context.WithValue(context.Background(), tool.CtxKeyUserID, userID)
+		ctx = context.WithValue(ctx, tool.CtxKeyConversationID, convID)
+		result, err := videoTool.Execute(ctx, argsJSON)
+		if err != nil {
+			log.Printf("[MergeAPI] merge failed for %s: %v", req.Episode, err)
+			return
+		}
+		log.Printf("[MergeAPI] merge success for %s: %s", req.Episode, result)
+
+		// Apply title cards if episode metadata provided
+		if req.Season > 0 && req.EpisodeNumber > 0 && req.Title != "" {
+			var res map[string]interface{}
+			if json.Unmarshal([]byte(result), &res) == nil {
+				if dlURL, _ := res["download_url"].(string); dlURL != "" {
+					mergedPath := filepath.Join(tool.MergedVideosDir(), filepath.Base(dlURL))
+					titledPath := mergedPath + ".titled.mp4"
+					if err := tool.FfmpegAddTitleCards(ctx, mergedPath, titledPath, req.Season, req.EpisodeNumber, req.Title); err != nil {
+						log.Printf("[MergeAPI] title cards failed: %v", err)
+					} else {
+						// Replace merged file with titled version
+						os.Remove(mergedPath)
+						os.Rename(titledPath, mergedPath)
+						log.Printf("[MergeAPI] title cards applied to %s", mergedPath)
+					}
+				}
+			}
+		}
+	}()
+	c.JSON(200, gin.H{
+		"status":  "merging",
+		"message": fmt.Sprintf("正在合成 %d 个片段为成片（含片头字幕）", len(req.TaskIDs)),
+		"conv_id": convID,
+	})
 }
 
 func (h *VideoHandler) Dub(c *gin.Context) {

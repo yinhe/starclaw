@@ -8,13 +8,15 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/yinhe/starclaw/internal/node"
 )
 
 // CDN upload for generated video clips → cdn.starclaw.net
 //
 // Env（全部齐备才会走 scp，否则 UploadLocalFileToCDN 返回 ok=false，调用方回退）：
 //
-//	CDN_SSH_HOST       e.g. 43.106.158.26
+//	CDN_SSH_HOST       e.g. your-cdn-server-ip
 //	CDN_SSH_USER       e.g. root
 //	CDN_SSH_KEY_PATH   container 内路径 e.g. /root/.ssh/cdn_id_ed25519
 //	CDN_REMOTE_ROOT    e.g. /opt/cdn
@@ -37,6 +39,10 @@ func loadCDNEnvConfig() (*cdnEnvConfig, bool) {
 		RemoteRoot: strings.TrimSpace(os.Getenv("CDN_REMOTE_ROOT")),
 		PublicBase: strings.TrimSpace(os.Getenv("CDN_PUBLIC_BASE")),
 		ClawID:     strings.TrimSpace(os.Getenv("CDN_CLAW_ID")),
+	}
+	// Auto-derive ClawID from node identity if not explicitly set
+	if cfg.ClawID == "" {
+		cfg.ClawID = node.ReadNodeIDHex()
 	}
 	if cfg.Host == "" || cfg.User == "" || cfg.KeyPath == "" || cfg.RemoteRoot == "" || cfg.PublicBase == "" || cfg.ClawID == "" {
 		return nil, false
@@ -116,12 +122,18 @@ func UploadLocalFileToCDN(localPath, drama, assetType, filename string) (string,
 
 // scpUploadLocalFile runs ssh mkdir then scp localPath -> user@host:remotePath.
 func scpUploadLocalFile(cfg *cdnEnvConfig, localPath, remotePath string) error {
+	// Ensure SSH key has strict permissions (Docker-on-Windows mounts as 0777)
+	keyPath, err := ensureCDNKeyPerms(cfg.KeyPath)
+	if err != nil {
+		return fmt.Errorf("prepare ssh key: %w", err)
+	}
+
 	remoteDir := path.Dir(remotePath)
 
 	// 1) ssh mkdir -p remoteDir
 	sshCmd := exec.Command(
 		"ssh",
-		"-i", cfg.KeyPath,
+		"-i", keyPath,
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "UserKnownHostsFile=/tmp/cdn_known_hosts",
 		"-o", "ConnectTimeout=10",
@@ -136,7 +148,7 @@ func scpUploadLocalFile(cfg *cdnEnvConfig, localPath, remotePath string) error {
 	// 2) scp
 	scpCmd := exec.Command(
 		"scp",
-		"-i", cfg.KeyPath,
+		"-i", keyPath,
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "UserKnownHostsFile=/tmp/cdn_known_hosts",
 		"-o", "ConnectTimeout=10",
@@ -147,7 +159,43 @@ func scpUploadLocalFile(cfg *cdnEnvConfig, localPath, remotePath string) error {
 	if out, err := scpCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("scp: %w (out=%s)", err, string(out))
 	}
+
+	// 3) chmod 644 so nginx (non-root) can serve the file
+	chmodCmd := exec.Command(
+		"ssh",
+		"-i", keyPath,
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "UserKnownHostsFile=/tmp/cdn_known_hosts",
+		"-o", "ConnectTimeout=10",
+		"-o", "BatchMode=yes",
+		fmt.Sprintf("%s@%s", cfg.User, cfg.Host),
+		fmt.Sprintf("chmod 644 %q", remotePath),
+	)
+	if out, err := chmodCmd.CombinedOutput(); err != nil {
+		log.Printf("[cdn_upload] chmod warning (non-fatal): %v (out=%s)", err, string(out))
+	}
 	return nil
+}
+
+// ensureCDNKeyPerms copies the SSH key to /tmp with 0600 if the original has
+// overly permissive mode (e.g. 0777 from Docker-on-Windows volume mounts).
+func ensureCDNKeyPerms(keyPath string) (string, error) {
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode().Perm()&0077 == 0 {
+		return keyPath, nil
+	}
+	dst := "/tmp/cdn_key_safe"
+	raw, err := os.ReadFile(keyPath)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(dst, raw, 0600); err != nil {
+		return "", err
+	}
+	return dst, nil
 }
 
 // LocalPathFromVideoURL converts a "/v1/videos/clips/<name>.mp4" URL back to

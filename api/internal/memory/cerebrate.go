@@ -12,6 +12,7 @@ import (
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/provider"
 	"github.com/yinhe/starclaw/internal/rag"
+	"github.com/yinhe/starclaw/internal/security"
 	"gorm.io/gorm"
 )
 
@@ -559,6 +560,7 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 		convID = conversationID[0]
 	}
 	if len(messages) < 2 {
+		log.Printf("[cerebrate] skipping extraction: only %d messages (need >=2), user=%s agent=%s", len(messages), userID, agentID)
 		return
 	}
 
@@ -568,32 +570,70 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 		log.Printf("[cerebrate] skipping memory extraction: no provider available (user=%s)", userID)
 		return
 	}
+	// Fallback: if extractModel is empty, use provider's first available model
+	if extractModel == "" {
+		if models := p.Models(); len(models) > 0 {
+			extractModel = models[0]
+			log.Printf("[cerebrate] using provider default model %q for extraction", extractModel)
+		}
+	}
 
 	// Build conversation summary for extraction (last N messages, max 3000 chars)
 	convText := buildConversationText(messages, 3000)
 	if len(convText) < 50 {
-		return // too short to extract anything meaningful
+		log.Printf("[cerebrate] skipping extraction: convText too short (%d bytes), user=%s agent=%s", len(convText), userID, agentID)
+		return
 	}
+	log.Printf("[cerebrate] starting extraction: %d messages, %d bytes convText, model=%s, user=%s agent=%s", len(messages), len(convText), extractModel, userID, agentID)
 
 	extractMessages := []provider.ChatMessage{
 		{Role: "system", Content: extractionPrompt},
 		{Role: "user", Content: "对话内容：\n\n" + convText},
 	}
 
-	// O2: Retry extraction up to 2 times with 30s delay on failure
-	var result *provider.ChatChunk
+	// O2: Retry extraction up to 2 times with 30s delay on failure.
+	// Use streaming Chat instead of ChatSync — the Ed25519 registry provider
+	// (used when all API keys are corrupted) only works with streaming.
+	var extractedContent string
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		result, err = p.ChatSync(ctx, &provider.ChatRequest{
-			Model:       extractModel, // O1: use lightweight model when available
+		attemptCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		chatReq := &provider.ChatRequest{
+			Model:       extractModel,
 			Messages:    extractMessages,
 			Temperature: 0.1,
 			MaxTokens:   1000,
-		})
+			Stream:      true,
+		}
+		ch, chatErr := p.Chat(attemptCtx, chatReq)
+		if chatErr != nil {
+			cancel()
+			err = chatErr
+			log.Printf("[cerebrate] extraction LLM call failed (attempt %d/3): %v", attempt+1, err)
+			if attempt < 2 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(30 * time.Second):
+				}
+			}
+			continue
+		}
+		// Collect streaming response
+		var sb strings.Builder
+		for chunk := range ch {
+			if chunk.Error != "" {
+				err = fmt.Errorf("%s", chunk.Error)
+				break
+			}
+			sb.WriteString(chunk.Content)
+		}
+		cancel()
 		if err == nil {
+			extractedContent = sb.String()
 			break
 		}
-		log.Printf("[cerebrate] extraction LLM call failed (attempt %d/3): %v", attempt+1, err)
+		log.Printf("[cerebrate] extraction LLM stream error (attempt %d/3): %v", attempt+1, err)
 		if attempt < 2 {
 			select {
 			case <-ctx.Done():
@@ -615,7 +655,7 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 		Importance float64 `json:"importance"`
 	}
 
-	content := strings.TrimSpace(result.Content)
+	content := strings.TrimSpace(extractedContent)
 	// Strip markdown code fences if present
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
@@ -696,6 +736,8 @@ func (c *Cerebrate) ExtractAndStore(ctx context.Context, userID, agentID string,
 				Path:           path,
 				ConversationID: convID,
 				Importance:     e.Importance,
+				Tags:           "[]",
+				LastAccessAt:   time.Now(),
 			}
 			c.db.Create(&mem)
 			// P4: embed new memory
@@ -750,21 +792,28 @@ func (c *Cerebrate) GenerateSummary(ctx context.Context, userID, agentID, conver
 		return
 	}
 
-	result, err := p.ChatSync(ctx, &provider.ChatRequest{
-		Model: summaryModel, // O1: use lightweight model for summary generation
+	summaryCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	ch, err := p.Chat(summaryCtx, &provider.ChatRequest{
+		Model: summaryModel,
 		Messages: []provider.ChatMessage{
 			{Role: "system", Content: summaryPrompt},
 			{Role: "user", Content: convText},
 		},
 		Temperature: 0.2,
 		MaxTokens:   200,
+		Stream:      true,
 	})
 	if err != nil {
 		log.Printf("[cerebrate] summary generation failed: %v", err)
 		return
 	}
+	var sb strings.Builder
+	for chunk := range ch {
+		sb.WriteString(chunk.Content)
+	}
 
-	summary := strings.TrimSpace(result.Content)
+	summary := strings.TrimSpace(sb.String())
 	if len(summary) < 10 {
 		return
 	}
@@ -811,28 +860,47 @@ func (c *Cerebrate) getExtractionProvider(userID string) (provider.ModelProvider
 	// Priority: star-ai → ollama (local, free) → cheapest user model → platform model.
 	// Returns (provider, modelOverride) — modelOverride selects a cheap model when available.
 
-	// 1. Prefer star-ai (no API key needed, always works in swarm mode)
-	if err := c.db.Where("user_id = ? AND provider = ? AND is_enabled = ?",
-		userID, "star-ai", true).First(&cfg).Error; err == nil {
-		return provider.CreateFromConfig(c.providerRegistry, cfg), ""
+	// 1. Prefer star-ai with a usable API key.
+	//    Skip configs whose encrypted key decrypts to empty (corrupted/rotated master key).
+	//    Pass nil registry to avoid Ed25519 signed transport which hangs on non-streaming ChatSync.
+	var starConfigs []model.ModelConfig
+	if err := c.db.Where("user_id = ? AND provider = ? AND is_enabled = ? AND api_key != ''",
+		userID, "star-ai", true).Find(&starConfigs).Error; err == nil {
+		for _, sc := range starConfigs {
+			decKey := security.DecryptAPIKey(sc.APIKey)
+			if decKey != "" {
+				sc.APIKey = decKey // pre-decrypted so CreateFromConfig won't double-decrypt
+				return provider.CreateFromConfig(nil, sc), extractionModelOverride("star-ai")
+			}
+		}
 	}
-	// 2. Prefer local ollama (free, no API cost)
+	// 2. User model with API key configured (use lightweight model override)
+	//    This covers openai, qwen, deepseek, etc. — reliable cloud providers.
+	if err := c.db.Where("user_id = ? AND is_enabled = ? AND api_key != '' AND provider NOT IN ('star-ai','ollama','fal','volcengine-tts')",
+		userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
+		log.Printf("[cerebrate] using %s for extraction, user %s", cfg.Provider, userID)
+		return provider.CreateFromConfig(c.providerRegistry, cfg), extractionModelOverride(cfg.Provider)
+	}
+	// 3. Registry star-ai provider (Ed25519 signed transport — streaming only).
+	//    Used when all API keys are corrupted/missing but registry is available.
+	if c.providerRegistry != nil {
+		if rp, ok := c.providerRegistry.Get("star-ai"); ok {
+			log.Printf("[cerebrate] using registry star-ai provider (Ed25519) for extraction, user %s", userID)
+			return rp, extractionModelOverride("star-ai")
+		}
+	}
+	// 4. Local ollama (free, no API cost — only works when ollama is reachable)
 	if err := c.db.Where("user_id = ? AND provider = ? AND is_enabled = ?",
 		userID, "ollama", true).First(&cfg).Error; err == nil {
 		log.Printf("[cerebrate] using ollama (free) for extraction, user %s", userID)
 		return provider.CreateFromConfig(c.providerRegistry, cfg), ""
 	}
-	// 3. User model with API key configured (use lightweight model override)
-	if err := c.db.Where("user_id = ? AND is_enabled = ? AND api_key != ''",
+	// 5. Any user model (e.g. lm-studio, no key needed)
+	if err := c.db.Where("user_id = ? AND is_enabled = ? AND provider NOT IN ('star-ai','fal','volcengine-tts')",
 		userID, true).Order("created_at ASC").First(&cfg).Error; err == nil {
 		return provider.CreateFromConfig(c.providerRegistry, cfg), extractionModelOverride(cfg.Provider)
 	}
-	// 4. Any user model (e.g. lm-studio, no key needed)
-	if err := c.db.Where("user_id = ? AND is_enabled = ?", userID, true).
-		Order("created_at ASC").First(&cfg).Error; err == nil {
-		return provider.CreateFromConfig(c.providerRegistry, cfg), ""
-	}
-	// 5. Platform model
+	// 6. Platform model
 	if err := c.db.Where("is_platform = ? AND is_enabled = ?", true, true).
 		Order("created_at ASC").First(&cfg).Error; err == nil {
 		log.Printf("[cerebrate] using platform model (%s) for user %s", cfg.Provider, userID)
@@ -852,6 +920,12 @@ func extractionModelOverride(providerName string) string {
 		return "openai/gpt-4o-mini"
 	case "anthropic":
 		return "claude-3-haiku-20240307"
+	case "star-ai", "starai":
+		return "qwen3.5-flash"
+	case "qwen":
+		return "qwen-plus"
+	case "deepseek":
+		return "deepseek-chat"
 	default:
 		return "" // use provider default
 	}

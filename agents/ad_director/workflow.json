@@ -1,0 +1,280 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "position": {"x": 420, "y": 20},
+      "data": {"label": "宣传片项目"}
+    },
+
+    {
+      "id": "type-corp",
+      "type": "media",
+      "position": {"x": 30, "y": 110},
+      "data": {
+        "label": "🏢 企业宣传片",
+        "description": "八幕结构 · 6行业风格 · 90s主片 · 愿景驱动/文化驱动",
+        "category": "type"
+      }
+    },
+    {
+      "id": "type-product",
+      "type": "media",
+      "position": {"x": 220, "y": 110},
+      "data": {
+        "label": "📦 产品广告",
+        "description": "功能卖点 · 转化驱动 · 15-60s · AIDA/对比冲击",
+        "category": "type"
+      }
+    },
+    {
+      "id": "type-social",
+      "type": "media",
+      "position": {"x": 420, "y": 110},
+      "data": {
+        "label": "🎯 社媒广告",
+        "description": "信息流投放 · 竖屏/方形 · 15-30s · 3秒钩子",
+        "category": "type"
+      }
+    },
+    {
+      "id": "type-pitch",
+      "type": "media",
+      "position": {"x": 620, "y": 110},
+      "data": {
+        "label": "💼 招商路演",
+        "description": "打动投资人 · 数据驱动 · 60-120s · 问题-方案-证明",
+        "category": "type"
+      }
+    },
+    {
+      "id": "type-drama",
+      "type": "media",
+      "position": {"x": 820, "y": 110},
+      "data": {
+        "label": "🎭 叙事短剧",
+        "description": "品牌故事 · 人物驱动 · 45s×N集 · 情感悬念",
+        "category": "type"
+      }
+    },
+
+    {
+      "id": "strategy",
+      "type": "llm",
+      "position": {"x": 160, "y": 290},
+      "data": {
+        "label": "① 策略洞察",
+        "description": "需求诊断 + 受众画像 + 广告目标 + 投放平台"
+      }
+    },
+    {
+      "id": "research",
+      "type": "tool",
+      "position": {"x": 460, "y": 290},
+      "data": {
+        "label": "市场调研",
+        "toolName": "web_search",
+        "description": "品牌信息 + 竞品广告 + 行业趋势"
+      }
+    },
+    {
+      "id": "competitor",
+      "type": "tool",
+      "position": {"x": 760, "y": 290},
+      "data": {
+        "label": "竞品解构",
+        "toolName": "browser",
+        "description": "竞品官网/广告案例深度分析"
+      }
+    },
+
+    {
+      "id": "creative-brief",
+      "type": "llm",
+      "position": {"x": 420, "y": 450},
+      "data": {
+        "label": "② 创意策略",
+        "description": "叙事模型 + Slogan + Style Prefix + 外貌卡"
+      }
+    },
+
+    {
+      "id": "style-sci",
+      "type": "media",
+      "position": {"x": 20, "y": 600},
+      "data": {
+        "label": "科技震撼",
+        "description": "dark blue · cyan · holographic · lens flare",
+        "category": "style"
+      }
+    },
+    {
+      "id": "style-warm",
+      "type": "media",
+      "position": {"x": 20, "y": 700},
+      "data": {
+        "label": "温暖人文",
+        "description": "natural soft · earthy tones · authentic feel",
+        "category": "style"
+      }
+    },
+    {
+      "id": "storyboard",
+      "type": "llm",
+      "position": {"x": 420, "y": 600},
+      "data": {
+        "label": "③ 导演级分镜",
+        "description": "精确到秒的分镜脚本 · 运镜 · 情绪曲线"
+      }
+    },
+    {
+      "id": "style-epic",
+      "type": "media",
+      "position": {"x": 830, "y": 600},
+      "data": {
+        "label": "品牌大气",
+        "description": "golden hour · anamorphic · 35mm grain · luxury",
+        "category": "style"
+      }
+    },
+    {
+      "id": "style-pop",
+      "type": "media",
+      "position": {"x": 830, "y": 700},
+      "data": {
+        "label": "活力动感",
+        "description": "vibrant pop · dynamic angles · Gen-Z aesthetic",
+        "category": "style"
+      }
+    },
+
+    {
+      "id": "video-gen",
+      "type": "tool",
+      "position": {"x": 260, "y": 780},
+      "data": {
+        "label": "④ AI视频生成",
+        "toolName": "video_generation",
+        "description": "尾帧衔接法 · 逐场景链式生成"
+      }
+    },
+    {
+      "id": "image-gen",
+      "type": "tool",
+      "position": {"x": 580, "y": 780},
+      "data": {
+        "label": "概念图/封面",
+        "toolName": "image_generation",
+        "description": "产品概念图 · 广告封面 · 缩略图"
+      }
+    },
+
+    {
+      "id": "dubbing",
+      "type": "tool",
+      "position": {"x": 100, "y": 940},
+      "data": {
+        "label": "⑤ 专业配音",
+        "toolName": "dubbing",
+        "description": "旁白 + 字幕 · 音色矩阵匹配"
+      }
+    },
+    {
+      "id": "bgm",
+      "type": "tool",
+      "position": {"x": 390, "y": 940},
+      "data": {
+        "label": "BGM 配乐",
+        "toolName": "music_generation",
+        "description": "广告BGM · 情绪节拍对齐"
+      }
+    },
+    {
+      "id": "code-fx",
+      "type": "tool",
+      "position": {"x": 690, "y": 940},
+      "data": {
+        "label": "数据可视化",
+        "toolName": "code",
+        "description": "数据图表 · 信息图 · 辅助脚本"
+      }
+    },
+
+    {
+      "id": "compose",
+      "type": "tool",
+      "position": {"x": 260, "y": 1100},
+      "data": {
+        "label": "⑥ Pro 合成",
+        "toolName": "mv_production",
+        "description": "compose_pro · 转场 + 字幕 + 配乐混合"
+      }
+    },
+    {
+      "id": "desktop",
+      "type": "tool",
+      "position": {"x": 580, "y": 1100},
+      "data": {
+        "label": "剪映精修",
+        "toolName": "desktop",
+        "description": "GUI级微调 · 导出 · 最终打磨"
+      }
+    },
+
+    {
+      "id": "delivery",
+      "type": "llm",
+      "position": {"x": 420, "y": 1260},
+      "data": {
+        "label": "⑦ 多平台交付",
+        "description": "主片(16:9) + 竖屏(9:16) + 方形(1:1) + 精华版 + 投放文案"
+      }
+    },
+
+    {
+      "id": "end",
+      "type": "end",
+      "position": {"x": 420, "y": 1400},
+      "data": {"label": "交付"}
+    }
+  ],
+  "edges": [
+    {"id": "e-s-strategy", "source": "start", "target": "strategy"},
+
+    {"id": "e-tc-strategy", "source": "type-corp",    "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-tp-strategy", "source": "type-product", "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-ts-strategy", "source": "type-social",  "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-ti-strategy", "source": "type-pitch",   "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-td-strategy", "source": "type-drama",   "target": "strategy", "style": {"strokeDasharray": "5 5"}},
+
+    {"id": "e-strategy-research",    "source": "strategy",   "target": "research"},
+    {"id": "e-strategy-competitor",  "source": "strategy",   "target": "competitor"},
+
+    {"id": "e-research-brief",   "source": "research",   "target": "creative-brief"},
+    {"id": "e-competitor-brief", "source": "competitor", "target": "creative-brief"},
+
+    {"id": "e-brief-board", "source": "creative-brief", "target": "storyboard"},
+
+    {"id": "e-sci-board",  "source": "style-sci",  "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-warm-board", "source": "style-warm", "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-epic-board", "source": "style-epic",  "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+    {"id": "e-pop-board",  "source": "style-pop",  "target": "storyboard", "style": {"strokeDasharray": "5 5"}},
+
+    {"id": "e-board-video", "source": "storyboard", "target": "video-gen"},
+    {"id": "e-board-image", "source": "storyboard", "target": "image-gen"},
+
+    {"id": "e-video-dub", "source": "video-gen", "target": "dubbing"},
+    {"id": "e-video-bgm", "source": "video-gen", "target": "bgm"},
+    {"id": "e-image-code", "source": "image-gen", "target": "code-fx"},
+
+    {"id": "e-dub-compose",  "source": "dubbing", "target": "compose"},
+    {"id": "e-bgm-compose",  "source": "bgm",     "target": "compose"},
+    {"id": "e-code-compose", "source": "code-fx", "target": "compose"},
+
+    {"id": "e-compose-desktop",  "source": "compose",  "target": "desktop"},
+    {"id": "e-compose-delivery", "source": "compose",  "target": "delivery"},
+    {"id": "e-desktop-delivery", "source": "desktop",  "target": "delivery"},
+
+    {"id": "e-delivery-end", "source": "delivery", "target": "end"}
+  ]
+}

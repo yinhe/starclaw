@@ -58,9 +58,10 @@ func (t *VideoTool) Parameters() interface{} {
 			"prompt":            {Type: "string", Description: "Text prompt describing the video scene. Be detailed about motion, camera angle, style."},
 			"model":             {Type: "string", Description: "Model: wan2.6-t2v (default), wan2.7-i2v (latest i2v), wan2.7-t2v (latest t2v), wan2.6-i2v, doubao-seedance-2-0-260128, doubao-seedance-2-0-fast-260128, veo3, veo3.1, sora2, kling-v3, minimax-video, luma"},
 			"img_url":           {Type: "string", Description: "Image URL for image-to-video models (wan2.7-i2v, wan2.6-i2v). Tip: use extract_last_frame to get the last frame of the previous scene for continuity."},
-			"size":              {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720"},
+			"size":              {Type: "string", Description: "Video resolution: 1280*720 (landscape), 720*1280 (portrait), 960*960 (square). Default: 1280*720. Seedance 2.0 ignores this when `resolution`+`ratio` are provided."},
 			"duration":          {Type: "string", Description: "Video duration in seconds. wan2.7 supports up to 10s. Seedance 2.0 supports 4-15 or -1 for auto. Default: 5"},
-			"resolution":        {Type: "string", Description: "Video resolution for wan2.7: 720P (default) or 1080P. 1080P costs more (¥1.0/s vs ¥0.6/s)."},
+			"resolution":        {Type: "string", Description: "Output resolution. wan2.7: 720P / 1080P. Seedance 2.0: 480p / 720p / 1080p (default 1080p for short_drama, else 720p). 1080p costs more."},
+			"ratio":             {Type: "string", Description: "Seedance 2.0 only. Aspect ratio: 21:9, 16:9, 4:3, 1:1, 3:4, 9:16. Default 9:16 for short_drama category, else 16:9. When both this and `size` are set, this wins."},
 			"task_id":           {Type: "string", Description: "Task ID or record ID for check_status / extract_last_frame"},
 			"scene":             {Type: "string", Description: "Scene label for multi-scene projects (e.g. 'scene_1')"},
 			"task_ids":          {Type: "string", Description: "For merge_videos: comma-separated task_ids to merge in order. If empty, merges all in current conversation."},
@@ -91,7 +92,8 @@ type videoArgs struct {
 	RefVideoID      string `json:"ref_video_id"`
 	RefVideoURL     string `json:"ref_video_url"`
 	RefAudioURL     string `json:"ref_audio_url"`
-	Resolution      string `json:"resolution"` // "720P" or "1080P" (wan2.7)
+	Resolution      string `json:"resolution"` // wan2.7: "720P"/"1080P"; Seedance: "480p"/"720p"/"1080p"
+	Ratio           string `json:"ratio"`      // Seedance 2.0: "21:9"/"16:9"/"4:3"/"1:1"/"3:4"/"9:16"
 	GenerateAudio   *bool  `json:"generate_audio"`
 	Watermark       *bool  `json:"watermark"`
 	ReturnLastFrame *bool  `json:"return_last_frame"`

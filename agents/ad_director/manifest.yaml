@@ -23,6 +23,8 @@ visibility: public
 is_builtin: true
 featured: true
 
+workflow_file: workflow.json
+
 author:
   id: starclaw
   name: { zh: "StarClaw 官方", en: "StarClaw Official" }

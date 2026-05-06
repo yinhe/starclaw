@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -243,6 +244,121 @@ func ffmpegSimpleConcat(ctx context.Context, clipPaths []string, outputPath stri
 	return nil
 }
 
+// ── Title Card Overlay (EP03/EP04 同款片头字幕) ──
+
+// titleFadeExpr generates an ffmpeg alpha expression for fade-in / fade-out.
+// Matches the Python title_fade() from _merge_ep04.py.
+func titleFadeExpr(tIn, tOut, durIn, durOut float64) string {
+	return fmt.Sprintf(
+		"if(lt(t,%g),0,if(lt(t,%g),(t-%g)/%g,if(gt(t,%g),max(0,1-(t-%g)/%g),1)))",
+		tIn, tIn+durIn, tIn, durIn, tOut, tOut, durOut,
+	)
+}
+
+// FfmpegAddTitleCards overlays "虫群 / 第N季 副标题 / 第N集 标题" on the first few seconds.
+// Positions and sizes are scaled proportionally from the EP04 baseline (720×1280).
+// Font priority: STZHONGS (华文中宋, EP04 原版) → Noto Sans CJK → msyh.
+func FfmpegAddTitleCards(ctx context.Context, inputPath, outputPath string, season int, epNum int, epTitle string) error {
+	// 1) Probe actual video resolution for proportional scaling
+	_, videoH, probeErr := probeResolution(inputPath)
+	if probeErr != nil {
+		videoH = 1280 // fallback to EP04 baseline
+	}
+	scale := float64(videoH) / 1280.0
+	sy := func(baseY int) int { return int(float64(baseY) * scale) }
+	sf := func(baseFontSize int) int {
+		v := int(float64(baseFontSize) * scale)
+		if v < baseFontSize {
+			v = baseFontSize
+		} // never shrink below baseline
+		return v
+	}
+
+	// 2) Detect CJK font — try STZHONGS first (EP04 原版 exact match)
+	fontFile := ""
+	candidates := []struct{ check, ffpath string }{
+		// EP04 exact font (mounted from host or copied)
+		{"/app/fonts/STZHONGS.TTF", "/app/fonts/STZHONGS.TTF"},
+		{`C:\Windows\Fonts\STZHONGS.TTF`, "C\\:/Windows/Fonts/STZHONGS.TTF"},
+		// NotoSerifCJK is closest to 华文中宋 (Song/Serif typeface)
+		{"/usr/share/fonts/noto/NotoSerifCJK-Regular.ttc", "/usr/share/fonts/noto/NotoSerifCJK-Regular.ttc"},
+		{"/usr/share/fonts/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc"},
+		{`C:\Windows\Fonts\msyh.ttc`, "C\\:/Windows/Fonts/msyh.ttc"},
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c.check); err == nil {
+			fontFile = c.ffpath
+			break
+		}
+	}
+	if fontFile == "" {
+		fontFile = "NotoSansCJK" // last resort: let ffmpeg search by name
+	}
+	log.Printf("[VideoMerge] title cards: font=%s videoH=%d scale=%.2f", fontFile, videoH, scale)
+
+	// 3) Build drawtext filter — EP04 baseline values scaled by resolution
+	seasonTitle := "落地求生" // Season 1 subtitle
+	seasonLabel := fmt.Sprintf("第%s季  %s", chineseNum(season), seasonTitle)
+	epLabel := fmt.Sprintf("第%s集  %s", chineseNum(epNum), epTitle)
+	lm := sy(48)
+
+	vf := fmt.Sprintf(
+		"null"+
+			",drawtext=text='虫  群':fontfile='%s':fontsize=%d:fontcolor=#C0C0C0:x=%d:y=%d:alpha='0.7*%s'"+
+			",drawtext=text='%s':fontfile='%s':fontsize=%d:fontcolor=#909090:x=%d:y=%d:alpha='0.6*%s'"+
+			",drawtext=text='%s':fontfile='%s':fontsize=%d:fontcolor=#A0A0A0:x=%d:y=%d:alpha='0.65*%s'",
+		fontFile, sf(40), lm, sy(1060), titleFadeExpr(1.0, 3.5, 0.8, 0.6),
+		seasonLabel, fontFile, sf(18), lm, sy(1110), titleFadeExpr(2.5, 4.5, 0.8, 0.6),
+		epLabel, fontFile, sf(20), lm, sy(1140), titleFadeExpr(3.5, 5.5, 0.8, 0.6),
+	)
+
+	cmd := hiddenCmdCtx(ctx, "ffmpeg", "-y", "-i", inputPath,
+		"-vf", vf,
+		"-c:v", "libx264", "-preset", "slow", "-crf", "16",
+		"-pix_fmt", "yuv420p",
+		"-c:a", "copy",
+		"-movflags", "+faststart",
+		outputPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[VideoMerge] title card overlay failed: %s\n%s", err, string(out))
+		// Non-fatal: copy input as-is
+		if cpErr := copyFile(inputPath, outputPath); cpErr != nil {
+			return fmt.Errorf("title overlay failed and copy fallback failed: %v", cpErr)
+		}
+		log.Printf("[VideoMerge] title card skipped (fallback copy)")
+		return nil
+	}
+	log.Printf("[VideoMerge] Title cards applied: 虫群 / %s / %s (font=%s, h=%d)", seasonLabel, epLabel, fontFile, videoH)
+	return nil
+}
+
+func chineseNum(n int) string {
+	nums := []string{"零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"}
+	if n >= 0 && n < len(nums) {
+		return nums[n]
+	}
+	if n > 10 && n < 20 {
+		return "十" + nums[n-10]
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
 // ── Merge Videos ──
 
 func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, error) {
@@ -271,16 +387,18 @@ func (t *VideoTool) mergeVideos(ctx context.Context, args videoArgs) (string, er
 		for i, id := range ids {
 			idOrder[id] = i
 		}
+		orderOf := func(r model.VideoRecord) int {
+			best := math.MaxInt32
+			if v, ok := idOrder[r.ID]; ok && v < best {
+				best = v
+			}
+			if v, ok := idOrder[r.TaskID]; ok && v < best {
+				best = v
+			}
+			return best
+		}
 		sort.Slice(records, func(i, j int) bool {
-			oi := idOrder[records[i].ID]
-			if oj, ok := idOrder[records[i].TaskID]; ok && oj < oi {
-				oi = oj
-			}
-			oj := idOrder[records[j].ID]
-			if ojt, ok := idOrder[records[j].TaskID]; ok && ojt < oj {
-				oj = ojt
-			}
-			return oi < oj
+			return orderOf(records[i]) < orderOf(records[j])
 		})
 	} else if convID != "" {
 		// Use method chaining instead of raw SQL OR to avoid GORM parsing issues

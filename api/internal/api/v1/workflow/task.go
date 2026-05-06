@@ -26,21 +26,56 @@ func NewTaskHandler(db *gorm.DB, w WorkerController) *TaskHandler {
 	return &TaskHandler{db: db, worker: w}
 }
 
-// ListTasks returns user's tasks with optional status filter
+// ListTasks returns user's tasks with optional status and conversation_id filters
 func (h *TaskHandler) ListTasks(c *gin.Context) {
 	userID := c.GetString("user_id")
-	status := c.Query("status") // optional filter
+	status := c.Query("status")
+	convID := c.Query("conversation_id")
 
 	var tasks []model.Task
-	q := h.db.Where("user_id = ?", userID).Order("created_at DESC").Limit(50)
+	q := h.db.Where("user_id = ?", userID).Order("created_at DESC").Limit(100)
 	if status != "" {
 		q = q.Where("status = ?", status)
+	}
+	if convID != "" {
+		q = q.Where("conversation_id = ?", convID)
 	}
 	if err := q.Find(&tasks).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"tasks": tasks})
+
+	// Return distinct conversation IDs for frontend filter dropdown
+	type convOption struct {
+		ConversationID string `json:"conversation_id"`
+		Title          string `json:"title"`
+		Count          int64  `json:"count"`
+	}
+	var convOptions []convOption
+	h.db.Raw(`SELECT t.conversation_id, COALESCE(c.title,'') as title, COUNT(*) as count
+		FROM tasks t LEFT JOIN conversations c ON t.conversation_id = c.id
+		WHERE t.user_id = ? AND t.conversation_id != '' AND t.deleted_at IS NULL
+		GROUP BY t.conversation_id, c.title
+		ORDER BY count DESC LIMIT 20`, userID).Scan(&convOptions)
+
+	c.JSON(http.StatusOK, gin.H{"tasks": tasks, "conversations": convOptions})
+}
+
+// BatchCancelTasks cancels all pending/waiting tasks, optionally filtered by conversation_id
+func (h *TaskHandler) BatchCancelTasks(c *gin.Context) {
+	userID := c.GetString("user_id")
+	convID := c.Query("conversation_id")
+
+	q := h.db.Model(&model.Task{}).
+		Where("user_id = ? AND status IN ?", userID, []string{"pending", "waiting"})
+	if convID != "" {
+		q = q.Where("conversation_id = ?", convID)
+	}
+	result := q.Updates(map[string]interface{}{
+		"status":     model.TaskStatusCancelled,
+		"updated_at": time.Now(),
+	})
+	c.JSON(http.StatusOK, gin.H{"cancelled": result.RowsAffected})
 }
 
 // GetTask returns a single task by ID
