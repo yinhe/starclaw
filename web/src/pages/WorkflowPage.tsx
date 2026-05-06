@@ -36,6 +36,7 @@ import UniverseOverviewModal from '../components/workflow/UniverseOverviewModal'
 import AssetCoverageModal from '../components/workflow/AssetCoverageModal'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
+import ScriptImporterModal from '../components/workflow/ScriptImporterModal'
 import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData, type Take } from '../components/workflow/episodeTypes'
 import { buildSeedNodes, loadSwarmManifest } from '../components/workflow/swarmUniverseSeed'
 import { modelAPI, toolAPI, workflowAPI, videoAPI } from '../lib/api'
@@ -127,20 +128,24 @@ export default function WorkflowPage() {
   const [showEpModal, setShowEpModal] = useState(false)
   const [epModalSeason, setEpModalSeason] = useState<number>(1)
   const [epModalSpinoffGroup, setEpModalSpinoffGroup] = useState<string | undefined>(undefined)
+  // 广告剧本导入 modal
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importTargetType, setImportTargetType] = useState<{ id: string; label: string } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const nodeIdCounter = useRef(100)
   const rfRef = useRef<ReactFlowInstance | null>(null)
 
-  // 短剧工作流判定：category === 'content' 或画布已有剧集节点（兼容老工作流）
-  const isDramaWorkflow = useMemo(() => {
-    if (workflowCategory === 'content') return true
-    return nodes.some(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene')
-  }, [workflowCategory, nodes])
-
-  // 广告宣传片工作流判定：画布含 category=type 的 media 节点
+  // 广告宣传片工作流判定：画布含 category=type 的 media 节点（优先于短剧判定）
   const isAdWorkflow = useMemo(() => {
     return nodes.some(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'type')
   }, [nodes])
+
+  // 短剧工作流判定：category === 'content' 或画布有 scene 节点但不是广告工作流
+  const isDramaWorkflow = useMemo(() => {
+    if (isAdWorkflow) return false
+    if (workflowCategory === 'content') return true
+    return nodes.some(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene')
+  }, [workflowCategory, nodes, isAdWorkflow])
 
   // 聚焦模式：选中某一集时隐藏其他剧集节点，突出当前集的工作流
   const [focusedEpisodeId, setFocusedEpisodeId] = useState<string | null>(null)
@@ -173,6 +178,48 @@ export default function WorkflowPage() {
       } catch { /* ignore */ }
     }, 80)
   }, [])
+
+  // 广告工作流：把导入的剧本（EpisodeData）落地为画布节点 + 类型连线 + 自动聚焦
+  const addImportedAdScript = useCallback((typeNodeId: string, data: EpisodeData) => {
+    const newId = `script-${typeNodeId}-${Date.now()}`
+    setNodes(nds => {
+      const typeNode = nds.find(n => n.id === typeNodeId)
+      if (!typeNode) return nds
+      const existingCount = nds.filter(n => n.type === 'media'
+        && (n.data as Record<string, unknown>).category === 'scene'
+        && (n.data as Record<string, unknown>).ad_type === typeNodeId).length
+      const baseY = 1500
+      const newNode: Node = {
+        id: newId,
+        type: 'media',
+        position: { x: typeNode.position.x, y: baseY + existingCount * 220 },
+        data: { ...data, ad_type: typeNodeId } as unknown as Record<string, unknown>,
+      }
+      return [...nds, newNode]
+    })
+    setEdges(eds => eds.concat([{
+      id: `edge-${typeNodeId}-${newId}`,
+      source: typeNodeId,
+      target: newId,
+      animated: true,
+      style: { stroke: '#6366f1', strokeWidth: 2 },
+    } as unknown as Edge]))
+    // 立即聚焦
+    setTimeout(() => {
+      setNodes(curr => {
+        const node = curr.find(n => n.id === newId)
+        if (node) {
+          setSelectedNode(node)
+          setFocusedEpisodeId(newId)
+          setFocusedSceneId(null)
+          setTimeout(() => {
+            try { rfRef.current?.fitView({ nodes: [{ id: newId }], duration: 500, padding: 0.4, maxZoom: 1.4 }) } catch { /* ignore */ }
+          }, 80)
+        }
+        return curr
+      })
+    }, 0)
+  }, [setNodes, setEdges])
 
   // runEpisodeProduction 在下面定义，用 ref 打破循环依赖
   const runEpisodeProductionRef = useRef<(ep: EpisodeData, id: string, opts?: { initialRefVideoUrl?: string }) => void>(() => {})
@@ -2165,9 +2212,39 @@ export default function WorkflowPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin">
-              {/* 广告类型 */}
+              {/* 广告类型 + 类型下的剧本（可折叠，类似短剧 SEASONS） */}
               {(() => {
                 const typeNodes = nodes.filter(n => n.type === 'media' && (n.data as Record<string,unknown>).category === 'type')
+                const allScripts = nodes.filter(n => n.type === 'media' && (n.data as Record<string,unknown>).category === 'scene')
+                const renderScriptItem = (n: Node) => {
+                  const d = n.data as unknown as EpisodeData
+                  const sceneArr = d.scenes || []
+                  const picked = sceneArr.filter(s => s.picked_take).length
+                  const cover = (d as unknown as { cover_url?: string }).cover_url
+                  return (
+                    <button key={n.id} onClick={() => focusEpisode(n)}
+                      className={`w-full flex items-center gap-2 pl-9 pr-3 py-1.5 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-indigo-900/30 border-l-2 border-indigo-500' : ''}`}>
+                      {cover ? (
+                        <img src={cover} alt="" className="w-7 h-7 rounded object-cover border border-gray-700 flex-shrink-0" />
+                      ) : (
+                        <Film className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs text-gray-300 truncate">{d.label}</div>
+                        <div className="text-[10px] text-gray-600 truncate flex items-center gap-1">
+                          <span>{sceneArr.length}镜 · {d.duration || 0}s</span>
+                          {sceneArr.length > 0 && (
+                            <span className={picked === sceneArr.length ? 'text-emerald-400' : picked > 0 ? 'text-amber-400' : ''}>
+                              · {picked}/{sceneArr.length} 已选
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {d.composition?.status === 'ready' && <span className="text-[9px] text-emerald-400">●</span>}
+                      {d.composition?.status === 'generating' && <span className="text-[9px] text-amber-400 animate-pulse">●</span>}
+                    </button>
+                  )
+                }
                 return (
                   <div className="border-b border-gray-800/50">
                     <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-400">
@@ -2177,17 +2254,46 @@ export default function WorkflowPage() {
                     <div className="pb-2 space-y-0.5">
                       {typeNodes.map(n => {
                         const d = n.data as Record<string,unknown>
+                        const typeScripts = allScripts.filter(s => ((s.data as Record<string,unknown>).ad_type as string) === n.id)
+                        const sectionKey = `adtype-${n.id}`
+                        const isExpanded = expandedSections[sectionKey] ?? typeScripts.length > 0
                         return (
-                          <button key={n.id} onClick={() => { setSelectedNode(n); rfRef.current?.setCenter(n.position.x + 100, n.position.y + 50, { zoom: 1, duration: 500 }) }}
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-indigo-900/30 border-l-2 border-indigo-500' : ''}`}>
-                            <div className="w-8 h-8 rounded-lg bg-indigo-900/40 border border-indigo-700/50 flex items-center justify-center flex-shrink-0 text-base">
-                              {((d.label as string) || '').slice(0, 2)}
+                          <div key={n.id}>
+                            <div className="flex items-center pr-1">
+                              <button onClick={() => setExpandedSections(s => ({ ...s, [sectionKey]: !isExpanded }))}
+                                className="p-1 text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0">
+                                {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                              </button>
+                              <button onClick={() => { setSelectedNode(n); rfRef.current?.setCenter(n.position.x + 100, n.position.y + 50, { zoom: 1, duration: 500 }) }}
+                                className={`flex-1 flex items-center gap-2.5 px-1 py-1.5 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-indigo-900/30 border-l-2 border-indigo-500' : ''}`}>
+                                <div className="w-8 h-8 rounded-lg bg-indigo-900/40 border border-indigo-700/50 flex items-center justify-center flex-shrink-0 text-base">
+                                  {((d.label as string) || '').slice(0, 2)}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs text-gray-200 truncate">{((d.label as string) || '').slice(2).trim()}</div>
+                                  <div className="text-[10px] text-gray-500 truncate">{d.description as string}</div>
+                                </div>
+                                <span className="text-[10px] text-gray-600 flex-shrink-0">{typeScripts.length}</span>
+                              </button>
+                              <button onClick={() => {
+                                  setImportTargetType({ id: n.id, label: (d.label as string).replace(/^[\p{Emoji}\s]+/u, '').trim() })
+                                  setShowImportModal(true)
+                                }}
+                                title={`导入 ${(d.label as string).slice(2).trim()} 剧本 (.md)`}
+                                className="p-1 rounded text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition flex-shrink-0">
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-xs text-gray-200 truncate">{((d.label as string) || '').slice(2).trim()}</div>
-                              <div className="text-[10px] text-gray-500 truncate">{d.description as string}</div>
-                            </div>
-                          </button>
+                            {isExpanded && (
+                              <div className="pb-1 space-y-0.5">
+                                {typeScripts.length === 0 ? (
+                                  <div className="pl-9 pr-3 py-1.5 text-[10px] text-gray-600 italic">暂无剧本 · 点 + 新建</div>
+                                ) : (
+                                  typeScripts.map(renderScriptItem)
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )
                       })}
                     </div>
@@ -2645,6 +2751,18 @@ export default function WorkflowPage() {
           }}
         />
       )}
+
+      {/* 📥 广告剧本导入 (.md → scenes) */}
+      <ScriptImporterModal
+        open={showImportModal}
+        adType={importTargetType ?? undefined}
+        onClose={() => { setShowImportModal(false); setImportTargetType(null) }}
+        onImport={(data) => {
+          if (importTargetType) addImportedAdScript(importTargetType.id, data)
+          setShowImportModal(false)
+          setImportTargetType(null)
+        }}
+      />
 
       {/* 🌌 宇宙总览 */}
       <UniverseOverviewModal
