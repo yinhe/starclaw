@@ -1,0 +1,17 @@
+{
+  "name": "trading_daily_report",
+  "description": "Generate daily trading report: market environment, positions held, total cost, last scan results. Best called after market close (15:00+).",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/report/daily",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

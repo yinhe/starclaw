@@ -135,6 +135,17 @@ const comicWorkflow = `{
   ]
 }`
 
+// BuiltinWorkflows maps agent specialist type to its pre-defined workflow JSON.
+var BuiltinWorkflows = map[string]string{
+	"mv":            mvWorkflow,
+	"video":         videoWorkflow,
+	"music":         musicWorkflow,
+	"coding":        codingWorkflow,
+	"research":      researchWorkflow,
+	"comic":         comicWorkflow,
+	"business_plan": businessPlanWorkflow,
+}
+
 // generateWorkflowFromTools creates a workflow definition JSON from an agent's tool list.
 // This is used for user-created agents that don't have a built-in workflow.
 func generateWorkflowFromTools(_ string, toolsJSON string) string {

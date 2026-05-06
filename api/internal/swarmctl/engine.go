@@ -145,7 +145,7 @@ type Engine struct {
 	units      map[string]*PhysicalUnit
 	formations map[string]*Formation
 	missions   map[string]*Mission
-	stats      EngineStats
+	stats      EngineStats //nolint:unused // reserved for future stats collection
 	startAt    time.Time
 	nextID     int
 }

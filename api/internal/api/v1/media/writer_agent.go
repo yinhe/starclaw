@@ -100,13 +100,13 @@ type writerRewriteHint struct {
 
 // ── Dimensions (9 维) ───────────────────────────────────────────────
 
-type writerDimensionDef struct {
+type writerDimensionDef struct { //nolint:unused
 	Key    string
 	Label  string
 	Rubric string // 评分标准
 }
 
-var writerDimensions = []writerDimensionDef{
+var writerDimensions = []writerDimensionDef{ //nolint:unused
 	{Key: "hook_3s", Label: "开头 3 秒钩子", Rubric: "抖音冷启动核心。0-3s 是否有视觉冲击/悬念/身份反差/金句勾留，决定完播率上限"},
 	{Key: "conflict", Label: "冲突强度", Rubric: "每 8-12s 是否有一次明确冲突升级。平淡段超 8s 直接掉粉"},
 	{Key: "pacing", Label: "镜头节奏", Rubric: "场景数/时长比是否合理，切换是否太慢或太碎，单镜 ≤ 12s，最短 ≥ 3s"},

@@ -1,0 +1,17 @@
+{
+  "name": "trading_risk_status",
+  "description": "获取组合级风控状态：是否触发日亏损暂停、当日盈亏百分比、当前持仓数/上限、可用买入预算、仓位水位、市场环境。用于风控监控。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/trading/risk",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

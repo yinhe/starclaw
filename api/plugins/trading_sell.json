@@ -1,0 +1,37 @@
+{
+  "name": "trading_sell",
+  "description": "Submit a sell order for a stock via QMT. Returns the QMT order ID. Only works during trading hours. Use with caution — this places real orders on the connected account.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "account": {
+        "type": "string",
+        "description": "QMT account ID, e.g. test1006"
+      },
+      "code": {
+        "type": "string",
+        "description": "Stock code with exchange suffix, e.g. 600519.SH"
+      },
+      "price": {
+        "type": "number",
+        "description": "Limit price for the order"
+      },
+      "volume": {
+        "type": "integer",
+        "description": "Number of shares to sell (must be multiple of 100)"
+      }
+    },
+    "required": ["account", "code", "price", "volume"]
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/order/submit",
+    "method": "POST"
+  },
+  "body_template": "{\"account\":\"{{account}}\",\"code\":\"{{code}}\",\"direction\":\"sell\",\"price\":{{price}},\"volume\":{{volume}},\"order_type\":\"limit\"}",
+  "metadata": {
+    "category": "trading",
+    "dangerous": true
+  }
+}

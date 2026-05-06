@@ -607,7 +607,7 @@ func (h *VideoHandler) PublishEpisode(c *gin.Context) {
 				})
 				continue
 			}
-			srcName = fallbackName
+			_ = fallbackName
 			srcPath = fallbackPath
 		}
 		dstName := scene + ".mp4"

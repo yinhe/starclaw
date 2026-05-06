@@ -340,7 +340,7 @@ func resizeLongEdge(src image.Image, max int) image.Image {
 }
 
 // shrinkUnderArkLimit: 老名字保留 — 让测试或其他调用处不破。新实现转发到 shrinkPreferPNG。
-func shrinkUnderArkLimit(data []byte, mime string) ([]byte, string, error) {
+func shrinkUnderArkLimit(data []byte, mime string) ([]byte, string, error) { //nolint:unused
 	return shrinkPreferPNG(data, mime)
 }
 

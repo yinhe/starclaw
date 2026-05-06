@@ -1,0 +1,17 @@
+{
+  "name": "trading_dashboard",
+  "description": "获取完整交易面板数据：账户资产、持仓详情(含Alpha分析/生命周期/筹码形态/MA信号/止盈目标)、风控状态、市场环境、最近扫描结果。用于展示实时交易全貌。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/trading/dashboard",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

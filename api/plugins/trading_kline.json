@@ -1,0 +1,31 @@
+{
+  "name": "trading_kline",
+  "description": "Get K-line (candlestick) data for a stock. Returns OHLCV bars: date, open, high, low, close, volume, amount.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "description": "Stock code with exchange suffix, e.g. 600519.SH or 000001.SZ"
+      },
+      "period": {
+        "type": "string",
+        "description": "K-line period: 1d (daily), 1w (weekly), 1m (1-minute)"
+      },
+      "count": {
+        "type": "integer",
+        "description": "Number of bars to return (default 60)"
+      }
+    },
+    "required": ["code"]
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/market/kline?code={{code}}&period={{period}}&count={{count}}",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

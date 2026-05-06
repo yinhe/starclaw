@@ -1,0 +1,23 @@
+{
+  "name": "trading_alpha_analysis",
+  "description": "对指定股票运行完整Alpha评估：多周期层叠信号(W/D/H)、6维主升浪打分、MACD/RSI状态、筹码形态、生命周期阶段、Kelly仓位建议、动态止盈目标。输入股票代码如600519.SH。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "description": "股票代码，如 600519.SH 或 000001.SZ"
+      }
+    },
+    "required": ["code"]
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/trading/alpha/{code}",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}

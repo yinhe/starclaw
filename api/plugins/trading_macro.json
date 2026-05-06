@@ -1,0 +1,9 @@
+{
+  "name": "trading_macro_analysis",
+  "description": "Layer 1 宏观分析：三大指数趋势判断、市场宽度(MA20上方个股占比)、今日方向(bullish/bearish/neutral)、仓位建议(满仓/七成/半仓/轻仓/空仓)。盘前必看。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": { "type": "object", "properties": {} },
+  "endpoint": { "url": "http://localhost:8098/trading/macro", "method": "GET" },
+  "metadata": { "category": "trading" }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "trading_sector_rotation",
+  "description": "Layer 2 行业轮动：18个主要板块ETF动量排名、热门板块(做多方向)、冷门板块(回避方向)、量能变化。用于判断当前哪些行业值得关注。",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": { "type": "object", "properties": {} },
+  "endpoint": { "url": "http://localhost:8098/trading/sectors", "method": "GET" },
+  "metadata": { "category": "trading" }
+}

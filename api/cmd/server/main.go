@@ -105,6 +105,9 @@ func main() {
 		}
 	}
 
+	// Hide console window on Windows (no-op elsewhere)
+	hideConsole()
+
 	// Anchor CWD to exe directory if needed (fixes Spore / manual-launch CWD mismatch)
 	anchorToExeDir()
 

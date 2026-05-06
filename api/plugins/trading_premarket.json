@@ -1,0 +1,17 @@
+{
+  "name": "trading_premarket",
+  "description": "Run premarket analysis before market open. Uses AI to analyze market direction, suggest position sizing (full/70%/half/light/empty), highlight key sectors, and review existing holdings. Best called between 8:00-9:25.",
+  "version": "1.0.0",
+  "author": "Extractor",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  },
+  "endpoint": {
+    "url": "http://localhost:8098/premarket",
+    "method": "GET"
+  },
+  "metadata": {
+    "category": "trading"
+  }
+}
