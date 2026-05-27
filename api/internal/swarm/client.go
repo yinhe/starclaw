@@ -632,9 +632,23 @@ func (c *Client) post(path string, body map[string]interface{}) (map[string]inte
 	data, _ := json.Marshal(body)
 	url := c.cfg.QueenURL + path
 
+	result, err := c.doPost(url, data)
+	if err != nil && strings.Contains(err.Error(), "decode response") {
+		// Docker hairpin NAT: container can't reach itself via public URL.
+		// Fallback to localhost (embedded queen on same host).
+		fallback := "http://127.0.0.1:8080" + path
+		if r, e := c.doPost(fallback, data); e == nil {
+			log.Printf("[swarm] queen reachable via localhost fallback (hairpin NAT workaround)")
+			return r, nil
+		}
+	}
+	return result, err
+}
+
+func (c *Client) doPost(url string, data []byte) (map[string]interface{}, error) {
 	resp, err := c.httpC.Post(url, "application/json", bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("POST %s: %w", path, err)
+		return nil, fmt.Errorf("POST %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
@@ -645,7 +659,7 @@ func (c *Client) post(path string, body map[string]interface{}) (map[string]inte
 
 	if resp.StatusCode >= 400 {
 		errMsg, _ := result["error"].(string)
-		return nil, fmt.Errorf("POST %s: %d %s", path, resp.StatusCode, errMsg)
+		return nil, fmt.Errorf("POST %s: %d %s", url, resp.StatusCode, errMsg)
 	}
 
 	return result, nil
