@@ -37,8 +37,8 @@ import AssetCoverageModal from '../components/workflow/AssetCoverageModal'
 import CharacterCreatorModal from '../components/workflow/CharacterCreatorModal'
 import EpisodeCreatorModal from '../components/workflow/EpisodeCreatorModal'
 import ScriptImporterModal from '../components/workflow/ScriptImporterModal'
-import { SEASONS, SPINOFF_GROUPS, type EpisodeData, type CharacterData, type Take } from '../components/workflow/episodeTypes'
-import { buildSeedNodes, loadSwarmManifest } from '../components/workflow/swarmUniverseSeed'
+import { type EpisodeData, type CharacterData, type Take } from '../components/workflow/episodeTypes'
+import { buildSeedNodes, loadSwarmManifest, HAS_SEED_PROJECT, PROJECT_LABEL, SEASONS, SPINOFF_GROUPS } from '../components/workflow/swarmUniverseSeed'
 import { modelAPI, toolAPI, workflowAPI, videoAPI } from '../lib/api'
 import { parseTOSFreshness, refreshTOS } from '../components/workflow/tosUrlUtils'
 
@@ -1257,7 +1257,7 @@ export default function WorkflowPage() {
     // 一并清除指向被删节点的连线
     setEdges(eds => eds.filter(e => !e.id.startsWith('e-seed-')))
     // Auto-save workflow name if still default
-    if (workflowName === '未命名工作流') setWorkflowName('虫群宇宙 · 短剧完整红本')
+    if (workflowName === '未命名工作流') setWorkflowName(`${PROJECT_LABEL} · 短剧完整红本`)
     setShowSwarmConfirm(false)
   }, [setNodes, setEdges, workflowName])
 
@@ -2015,11 +2015,11 @@ export default function WorkflowPage() {
               <ArrowLeft className="w-3.5 h-3.5" /> 全部
             </button>
           )}
-          {isDramaWorkflow && (
+          {isDramaWorkflow && HAS_SEED_PROJECT && (
           <button onClick={loadSwarmUniverse}
-            title="一键加载虫群宇宙完整资产 (5角色 + 7道具 + 50集 + 衍生剧)"
+            title={`一键加载${PROJECT_LABEL}完整资产`}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-violet-600/90 to-cyan-600/90 backdrop-blur border border-violet-500/50 text-white hover:from-violet-500 hover:to-cyan-500 transition-all shadow-lg shadow-violet-900/30">
-            <Sparkles className="w-3.5 h-3.5" /> 虫群宇宙
+            <Sparkles className="w-3.5 h-3.5" /> {PROJECT_LABEL}
           </button>
           )}
           {isDramaWorkflow && (
@@ -3025,7 +3025,7 @@ export default function WorkflowPage() {
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-base font-semibold text-white">加载 虫群宇宙 完整资产</h3>
+                <h3 className="text-base font-semibold text-white">加载 {PROJECT_LABEL} 完整资产</h3>
                 <p className="text-xs text-gray-400 mt-0.5">一键铺设角色库 · 剧集骨架 · 道具 · 成片 takes</p>
               </div>
             </div>
@@ -3052,7 +3052,7 @@ export default function WorkflowPage() {
               </button>
               <button onClick={doLoadSwarmUniverse} disabled={loadingSwarm}
                 className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600 text-white hover:from-violet-500 hover:to-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed transition shadow-lg shadow-violet-900/40 flex items-center gap-1.5">
-                {loadingSwarm ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> 加载中…</>) : (<><Sparkles className="w-3.5 h-3.5" /> 加载虫群宇宙</>)}
+                {loadingSwarm ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> 加载中…</>) : (<><Sparkles className="w-3.5 h-3.5" /> 加载{PROJECT_LABEL}</>)}
               </button>
             </div>
           </div>

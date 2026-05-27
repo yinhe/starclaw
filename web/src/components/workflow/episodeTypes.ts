@@ -161,30 +161,7 @@ export interface SeasonMeta {
   gradient: string        // for badges
 }
 
-export const SEASONS: SeasonMeta[] = [
-  { number: 1, title: '第一季', subtitle: '起源', arc: 'Arc 0',
-    episode_range: 'EP01-10', duration_hint: '45s/集',
-    color: 'cyan', gradient: 'from-cyan-500 to-blue-500' },
-  { number: 2, title: '第二季', subtitle: '觉醒', arc: 'Arc 1',
-    episode_range: 'EP11-20', duration_hint: '90s-2min/集',
-    color: 'violet', gradient: 'from-violet-500 to-purple-500' },
-  { number: 3, title: '第三季', subtitle: '联盟', arc: 'Arc 2',
-    episode_range: 'EP21-30', duration_hint: '2-3min/集',
-    color: 'amber', gradient: 'from-amber-500 to-orange-500' },
-  { number: 4, title: '第四季', subtitle: '文明', arc: 'Arc 3',
-    episode_range: 'EP31-40', duration_hint: '3-4min/集',
-    color: 'rose', gradient: 'from-rose-500 to-pink-500' },
-  { number: 5, title: '第五季', subtitle: '新纪元', arc: 'Arc 4',
-    episode_range: 'EP41-50', duration_hint: '4-5min/集',
-    color: 'emerald', gradient: 'from-emerald-500 to-teal-500' },
-]
-
-export const SPINOFF_GROUPS = [
-  { key: '道裂前传', title: '《道裂》前传', desc: '源文明 6-8集迷你剧' },
-  { key: 'MCU外传', title: 'MCU 外传', desc: '5部外传 + 5部落篇' },
-  { key: '联动日历', title: '产品联动日历', desc: '8个里程碑' },
-  { key: '自定义', title: '自定义衍生', desc: '其他衍生剧' },
-]
+// SEASONS and SPINOFF_GROUPS moved to swarmUniverseSeed.ts (excluded from OSS builds)
 
 // ── Helpers ──
 

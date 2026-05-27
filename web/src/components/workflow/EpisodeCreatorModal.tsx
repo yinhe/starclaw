@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Film, Clapperboard } from 'lucide-react'
-import { SEASONS, SPINOFF_GROUPS, makeEmptyEpisode, type EpisodeData } from './episodeTypes'
+import { makeEmptyEpisode, type EpisodeData } from './episodeTypes'
+import { SEASONS, SPINOFF_GROUPS } from './swarmUniverseSeed'
 
 interface Props {
   open: boolean

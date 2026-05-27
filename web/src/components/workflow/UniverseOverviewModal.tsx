@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { X, Users, Film, Package, Clapperboard, Sparkles, Clock, CheckCircle2, Archive } from 'lucide-react'
 import type { Node } from '@xyflow/react'
-import { SEASONS, type EpisodeData, type CharacterData } from './episodeTypes'
+import { type EpisodeData, type CharacterData } from './episodeTypes'
+import { SEASONS } from './swarmUniverseSeed'
 
 interface Props {
   open: boolean

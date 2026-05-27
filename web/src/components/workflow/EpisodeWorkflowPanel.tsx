@@ -7,11 +7,12 @@ import {
 } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import {
-  SEASONS, sceneTakesSummary,
+  sceneTakesSummary,
   VIDEO_RESOLUTION_OPTIONS, VIDEO_RATIO_OPTIONS,
   DEFAULT_VIDEO_RESOLUTION, DEFAULT_VIDEO_RATIO,
   type EpisodeData, type SceneSpec, type Take, type Composition,
 } from './episodeTypes'
+import { SEASONS } from './swarmUniverseSeed'
 import { dramaAPI, videoAPI, imageAPI, type WriterReviewResponse, type PromoResponse } from '../../lib/api'
 import VideoPreviewModal from './VideoPreviewModal'
 
