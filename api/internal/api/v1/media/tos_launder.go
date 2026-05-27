@@ -56,7 +56,7 @@ type launderTOSReq struct {
 	ImageURL string `json:"image_url" binding:"required"`
 	// Optional character context. When present (sent by NodePropertyPanel from
 	// the manifest's appearance_card / character label), we prepend it to each
-	// Seedream retry prompt so the model is told "this is [图1]林见月, 薄荷绿古装…
+	// Seedream retry prompt so the model is told "this is [图1]角色名, 外观描述…
 	// 写实短剧风绝不卡通" instead of blindly shuffling generic photorealism
 	// hints. Drastically reduces drift / cartoonification on retries.
 	// All three are pure text, no images, no PII — safe to forward verbatim.
@@ -112,7 +112,7 @@ func (h *CharacterStudioHandler) LaunderTOSURL(c *gin.Context) {
 	origW, origH, _ := decodeImageDims(data)
 	outSize := "3K"
 
-	// Build a short anchor string like "处理 [图1] 林见月：薄荷绿古装汉服…"
+	// Build a short anchor string like "处理 [图1] 角色名：外观描述…"
 	// that gets prepended to every Seedream retry prompt when provided.
 	// Empty string when the caller didn't send any character context —
 	// laundering falls back to the generic realism prompts as before.
@@ -388,8 +388,8 @@ var seedreamPromptVariants = []struct {
 // to every Seedream retry prompt when the caller supplied character context.
 // Format examples:
 //
-//	tag="[图1]"  label="林见月"  card="薄荷绿古装汉服…"
-//	   → "Subject is [图1] 林见月. Appearance: 薄荷绿古装汉服…. Live-action
+//	tag="[图1]"  label="角色A"  card="薄荷绿古装汉服…"
+//	   → "Subject is [图1] 角色A. Appearance: 薄荷绿古装汉服…. Live-action
 //	      short-drama realism — absolutely not cartoon / anime / illustration."
 //
 // All fields are optional — returns "" when every input is empty, in which case
@@ -473,8 +473,8 @@ func deterministicSeed(data []byte, variantSeed int) int {
 // last error (possibly wrapped in errSeedreamSensitive) on full failure.
 //
 // `anchor` is optional — when non-empty it's prepended to every retry prompt
-// (see buildCharacterAnchor). It tells Seedream "Subject is [图1] 林见月,
-// 薄荷绿古装汉服…, live-action realism, not cartoon" so the model stops
+// (see buildCharacterAnchor). It tells Seedream "Subject is [图1] 角色名,
+// 外观描述…, live-action realism, not cartoon" so the model stops
 // drifting to anime on the 2nd/3rd retry.
 func seedreamLaunder(parent context.Context, data []byte, mime, size, anchor, directURL string) (string, error) {
 	if size == "" {

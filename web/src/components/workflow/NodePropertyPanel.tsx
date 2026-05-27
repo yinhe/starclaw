@@ -24,6 +24,60 @@ const MEDIA_CATEGORIES = [
   { value: 'reference', label: '参考' },
 ]
 
+const APPEARANCE_FORM_LABELS: Record<string, string> = {
+  wandering: '流浪/坠落虚弱态',
+  normal: '正常形态',
+  queen: '女王激活/虫后共振态',
+}
+
+const ZERG_APPEARANCE_CARDS: Record<string, string> = {
+  wandering: '流浪/坠落虚弱态 ZERG（Stage 0）：刚坠落到现代、在街头流浪的外星生物机械犬，中型偏小但更瘦弱，体态蜷缩防御、动作迟缓；深灰与灰黑色甲壳暗淡失光，表面有裂纹、刮痕和尘土磨损，机械关节局部外露；cyan 青色光纹几乎不亮，只在眼睛、脊背和四肢缝隙里微弱闪烁；小而警觉的青色眼睛带疲惫感，耳朵略下垂，尾巴低垂或收紧；整体是无家可归、能量不足但仍有灵性的流浪机械犬，不要华丽金色装饰，不要健康高亮状态',
+  normal: '正常/基础 Claw 态 ZERG（Stage 1）：恢复正常后的外星生物机械交易犬，中型犬体型，整体像机敏的机械柴犬/猎犬混合体；紫黑色与深灰色甲壳装甲完整，带细微六边形纹样，机械龙虾/节肢基体完整但仍保持犬类轮廓；青色 cyan 光纹稳定地沿脊背、四肢和关节流动，小而警觉的青色发光眼睛更主动；身体线条灵活敏捷，三角尖耳立起，深色爪，尾巴自然上扬；这是 EP07-20 的基础 Claw 正常态，不要虚弱破损，不要女王共振的半透明华丽态',
+  queen: '女王激活/虫后共振态 ZERG（Stage 3）：收到 Queen 上层信号后被激活的虫后共振形态，仍是外星生物机械犬/交易犬轮廓，但姿态沉稳威严；全身 cyan 光纹连成复杂虫群网络，偶尔闪过金色信号，壳上出现更高阶的新纹样；甲壳呈半透明紫黑与深灰质感，内部能量网流动，脊背、胸口和四肢关节出现暗金色能量节点；青色眼睛更亮更深，像接入上层意志；整体强能量场、神圣但克制，表现 Queen 共振与虫群秩序，不要变成人形，不要丢失 ZERG 机械犬身份',
+}
+
+function normalizeAppearanceCards(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const out: Record<string, string> = {}
+  for (const [key, card] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof card === 'string' && card.trim()) out[key] = card
+  }
+  return out
+}
+
+function isZergData(data: Record<string, unknown>): boolean {
+  const haystack = [data.key, data.label, data.description, data.appearance_card]
+    .map((v) => String(v || '').toLowerCase())
+    .join(' ')
+  return haystack.includes('zerg') || haystack.includes('虫族种子')
+}
+
+function appearanceCardsForData(data: Record<string, unknown>): Record<string, string> {
+  const cards = normalizeAppearanceCards(data.appearance_cards)
+  if (Object.keys(cards).length > 0) return cards
+  return isZergData(data) ? ZERG_APPEARANCE_CARDS : {}
+}
+
+function appearanceFormLabel(key: string): string {
+  return APPEARANCE_FORM_LABELS[key] || key
+}
+
+function inferAppearanceFormFromUrl(url: string, keys: string[]): string {
+  const lower = url.toLowerCase()
+  if ((lower.includes('stage0') || lower.includes('weak') || lower.includes('wandering')) && keys.includes('wandering')) return 'wandering'
+  if ((lower.includes('stage3') || lower.includes('queen')) && keys.includes('queen')) return 'queen'
+  if ((lower.includes('stage1') || lower.includes('normal') || lower.includes('healthy')) && keys.includes('normal')) return 'normal'
+  if ((lower.includes('turnaround') || lower.includes('ref.png') || lower.includes('unified_sheet_v1')) && keys.includes('normal')) return 'normal'
+  return ''
+}
+
+function zergFormImageUrl(form: string): string {
+  if (form === 'wandering') return '/v1/projects/swarm-universe/production/characters/zerg/unified_sheet_stage0.png'
+  if (form === 'queen') return '/v1/projects/swarm-universe/production/characters/zerg/unified_sheet_stage3.png'
+  if (form === 'normal') return '/v1/projects/swarm-universe/production/characters/zerg/unified_sheet_stage1.png'
+  return ''
+}
+
 export default function NodePropertyPanel({ node, models, tools, onUpdate, onClose, onEditCharacter, onEditProp }: Props) {
   const [localData, setLocalData] = useState<Record<string, unknown>>({})
   const [launderingTOS, setLaunderingTOS] = useState(false)
@@ -56,6 +110,37 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
 
   const update = (key: string, value: unknown) => {
     const next = { ...localData, [key]: value }
+    setLocalData(next)
+    onUpdate(node.id, next)
+  }
+
+  const switchAppearanceForm = (form: string) => {
+    const cards = appearanceCardsForData(localData)
+    const next: Record<string, unknown> = { ...localData, appearance_form: form }
+    if (cards[form]) next.appearance_card = cards[form]
+    if (localData.key === 'zerg') {
+      const formImageUrl = zergFormImageUrl(form)
+      if (formImageUrl) next.imageUrl = formImageUrl
+      next.cdn_url = ''
+      next.tos_url = ''
+    }
+    setLocalData(next)
+    onUpdate(node.id, next)
+  }
+
+  const pickCharacterImage = (url: string) => {
+    const cards = appearanceCardsForData(localData)
+    const keys = Object.keys(cards)
+    const form = inferAppearanceFormFromUrl(url, keys)
+    const next: Record<string, unknown> = { ...localData, imageUrl: url }
+    if (form) {
+      next.appearance_form = form
+      next.appearance_card = cards[form]
+      if (localData.key === 'zerg') {
+        next.cdn_url = ''
+        next.tos_url = ''
+      }
+    }
     setLocalData(next)
     onUpdate(node.id, next)
   }
@@ -95,7 +180,8 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
 
   // 生成 / 刷新 TOS URL。首选 resign（HMAC 7d，零成本）→ promote → Seedream launder（24h）
   const launderTOS = async () => {
-    const oldTOSUrl = (localData.tos_url as string) || ''
+    const hasAppearanceForms = Object.keys(appearanceCardsForData(localData)).length > 0
+    const oldTOSUrl = hasAppearanceForms ? '' : ((localData.tos_url as string) || '')
     const fallbackSrc = ((localData.cdn_url as string) || (localData.imageUrl as string) || '').trim()
     if (!oldTOSUrl && !fallbackSrc) {
       setLaunderErr('先填「本地图片 URL」或「CDN URL」作为 laundering 源')
@@ -200,6 +286,8 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
   const tosFreshness = useMemo(() => parseTOSFreshness((localData.tos_url as string) || ''), [localData.tos_url])
 
   const nodeType = node.type || ''
+  const appearanceCards = appearanceCardsForData(localData)
+  const appearanceFormKeys = Object.keys(appearanceCards)
 
   return (
     <div className="w-72 border-l border-gray-800 bg-gray-900 flex flex-col h-full">
@@ -303,7 +391,7 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
                   characterKey={(localData.key as string) || inferKeyFromImageUrl((localData.imageUrl as string) || '')}
                   characterLabel={(localData.label as string) || ''}
                   currentImageUrl={(localData.imageUrl as string) || ''}
-                  onPick={(url) => update('imageUrl', url)}
+                  onPick={pickCharacterImage}
                   onOpen={openLightbox}
                 />
               )}
@@ -426,6 +514,28 @@ export default function NodePropertyPanel({ node, models, tools, onUpdate, onClo
                     className="input-dark text-xs" placeholder="女一 / 男一 / 配角" />
                 </Field>
                 <Field label="外观卡 (appearance card)">
+                  {appearanceFormKeys.length > 0 && (
+                    <div className="mb-2 grid grid-cols-3 gap-1 rounded-lg border border-gray-800 bg-gray-950/50 p-1">
+                      {appearanceFormKeys.map((key) => {
+                        const active = ((localData.appearance_form as string) || appearanceFormKeys[0] || '') === key
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => switchAppearanceForm(key)}
+                            className={`px-1.5 py-1 rounded-md text-[10px] font-medium transition truncate ${
+                              active
+                                ? 'bg-violet-600 text-white shadow shadow-violet-900/40'
+                                : 'text-gray-400 hover:text-cyan-200 hover:bg-gray-800/80'
+                            }`}
+                            title={appearanceFormLabel(key)}
+                          >
+                            {appearanceFormLabel(key)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                   <textarea value={(localData.appearance_card as string) || ''} onChange={(e) => update('appearance_card', e.target.value)}
                     rows={5} className="input-dark resize-none text-xs leading-relaxed" placeholder="给 AI 看图生视频用的一句话外观描述，注入到场景 prompt 的 [图N] 占位符" />
                 </Field>

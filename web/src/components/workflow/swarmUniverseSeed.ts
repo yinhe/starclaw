@@ -11,6 +11,8 @@ export interface SwarmManifest {
   characters: Array<{
     key: string; label: string; tag: string; role: string
     description: string; appearance_card: string
+    appearance_cards?: Record<string, string>
+    appearance_form?: string
     ref: string | null
     tos_url?: string  // Volcengine Ark TOS signed URL (bypasses Seedance privacy filter)
     // 角色级参考视频 (Seedance 2.0 v2v) — 项目里 EP07 三个混混复用 EP03 S2 片段
@@ -63,6 +65,8 @@ function charactersFromManifest(m: SwarmManifest): CharacterData[] {
     label: c.label, tag: c.tag, role: c.role,
     key: c.key,
     appearance_card: c.appearance_card,
+    appearance_cards: c.appearance_cards,
+    appearance_form: c.appearance_form,
     description: c.description,
     imageUrl: abs(m, c.ref),
     tos_url: c.tos_url,

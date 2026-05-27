@@ -87,8 +87,8 @@ type suggestCandidate struct {
 
 // resolveKeyFromManifest opens manifest.json and, if exactly one character
 // label matches (case-insensitive exact match against label), returns its key.
-// This is our escape hatch when the frontend only has a Chinese label like
-// "林见月" and the workflow snapshot predates key propagation — without it,
+// This is our escape hatch when the frontend only has a Chinese label
+// and the workflow snapshot predates key propagation — without it,
 // a Chinese label never substring-matches against pinyin paths and the
 // candidate bar renders (0).
 func resolveKeyFromManifest(projectDir, label string) string {
@@ -182,9 +182,9 @@ func (h *ProjectManifestHandler) SuggestRef(c *gin.Context) {
 	}
 
 	// Hint resolution — this is the anti-empty-result logic.
-	// When the frontend only has a Chinese label ("林见月") and no key, we
+	// When the frontend only has a Chinese label and no key, we
 	// look the label up in manifest.json to recover the pinyin key, so
-	// substring scoring can actually hit the path "/entities/characters/lin_jianyue/...".
+	// substring scoring can actually hit the path "/entities/characters/<key>/...".
 	resolvedKey := strings.TrimSpace(req.CharacterKey)
 	if resolvedKey == "" && strings.TrimSpace(req.CharacterLabel) != "" {
 		resolvedKey = resolveKeyFromManifest(projectDir, req.CharacterLabel)

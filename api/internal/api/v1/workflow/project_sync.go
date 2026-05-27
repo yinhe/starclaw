@@ -255,14 +255,11 @@ func scanCharacters(projectDir, projectName string) []scannedCharacter {
 }
 
 func findCharacterImage(projectDir, projectName, charName string) string {
-	dirMap := map[string]string{
-		"林见月": "lin_jianyue", "ZERG": "zerg", "ZERG Stage 0": "zerg",
-		"苏蜜": "sumi", "温婉": "wenwan", "颜术": "yanshu", "老周": "laozhou",
-	}
-
-	dirName, ok := dirMap[charName]
-	if !ok {
-		dirName = strings.ToLower(charName)
+	// Try to resolve character key from project manifest.json first
+	dirName := resolveCharDirFromManifest(projectDir, charName)
+	if dirName == "" {
+		// Fallback: lowercase the character name, replace spaces with underscores
+		dirName = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(charName), " ", "_"))
 	}
 
 	charDir := filepath.Join(projectDir, "production", "characters", dirName)
@@ -299,6 +296,43 @@ func findCharacterImage(projectDir, projectName, charName string) string {
 	}
 
 	return fmt.Sprintf("/v1/projects/%s/production/characters/%s/%s", projectName, dirName, allImages[0])
+}
+
+// resolveCharDirFromManifest reads manifest.json in the project and looks up
+// a character directory name by its Chinese label. Returns "" if not found.
+func resolveCharDirFromManifest(projectDir, charLabel string) string {
+	data, err := os.ReadFile(filepath.Join(projectDir, "manifest.json"))
+	if err != nil {
+		return ""
+	}
+	var manifest struct {
+		Entities struct {
+			Characters map[string]struct {
+				Label string `json:"label"`
+			} `json:"characters"`
+		} `json:"entities"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return ""
+	}
+	for key, ch := range manifest.Entities.Characters {
+		if strings.EqualFold(ch.Label, charLabel) {
+			return key
+		}
+	}
+	// Also try scanning character subdirectories directly
+	charsDir := filepath.Join(projectDir, "production", "characters")
+	entries, err := os.ReadDir(charsDir)
+	if err != nil {
+		return ""
+	}
+	lower := strings.ToLower(charLabel)
+	for _, e := range entries {
+		if e.IsDir() && strings.Contains(strings.ToLower(e.Name()), lower) {
+			return e.Name()
+		}
+	}
+	return ""
 }
 
 func scanEpisodes(projectDir, projectName string) []scannedEpisode {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/google/uuid"
 	"github.com/yinhe/starclaw/internal/model"
 	"gorm.io/gorm"
 )
@@ -70,27 +71,69 @@ func SeedBuiltinAgents(db *gorm.DB) {
 	// Seed/update specialist agents (MV, 视频, 音乐, etc.)
 	for _, def := range builtinAgents {
 		if def.ManifestID != "" {
+			var agentID string
+
 			var manifestAgent model.Agent
 			if err := db.Where("manifest_id = ? AND (user_id = ? OR user_id = ?)", def.ManifestID, ownerID, model.SystemUserID).First(&manifestAgent).Error; err == nil {
-				db.Model(&manifestAgent).Updates(map[string]interface{}{
+				updates := map[string]interface{}{
 					"is_builtin": true,
 					"is_public":  true,
-				})
+				}
+				if def.Prompt != "" {
+					updates["system_prompt"] = def.Prompt
+				}
+				if def.Tools != "" {
+					updates["tools"] = def.Tools
+				}
+				if def.Description != "" {
+					updates["description"] = def.Description
+				}
+				db.Model(&manifestAgent).Updates(updates)
 				db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '') AND id != ?", ownerID, model.SystemUserID, def.Name, manifestAgent.ID).Delete(&model.Agent{})
-				continue
+				agentID = manifestAgent.ID
+			} else {
+				var legacyAgent model.Agent
+				if err := db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '')", ownerID, model.SystemUserID, def.Name).First(&legacyAgent).Error; err == nil {
+					updates := map[string]interface{}{
+						"manifest_id": def.ManifestID,
+						"is_builtin":  true,
+						"is_public":   true,
+					}
+					if def.Prompt != "" {
+						updates["system_prompt"] = def.Prompt
+					}
+					if def.Tools != "" {
+						updates["tools"] = def.Tools
+					}
+					if def.Description != "" {
+						updates["description"] = def.Description
+					}
+					db.Model(&legacyAgent).Updates(updates)
+					db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '') AND id != ?", ownerID, model.SystemUserID, def.Name, legacyAgent.ID).Delete(&model.Agent{})
+					agentID = legacyAgent.ID
+				} else if def.Prompt != "" {
+					// No manifest on disk AND no legacy agent — create from builtin definition
+					newAgent := model.Agent{
+						UserID:       ownerID,
+						Name:         def.Name,
+						Description:  def.Description,
+						Tools:        def.Tools,
+						SystemPrompt: def.Prompt,
+						Config:       `{"temperature":0.5,"max_tokens":8192}`,
+						IsPublic:     true,
+						IsBuiltin:    true,
+						ManifestID:   def.ManifestID,
+					}
+					db.Create(&newAgent)
+					agentID = newAgent.ID
+					log.Printf("[Seed] Created manifest builtin agent: %s (manifest_id=%s)", def.Name, def.ManifestID)
+				}
 			}
 
-			var legacyAgent model.Agent
-			if err := db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '')", ownerID, model.SystemUserID, def.Name).First(&legacyAgent).Error; err == nil {
-				db.Model(&legacyAgent).Updates(map[string]interface{}{
-					"manifest_id": def.ManifestID,
-					"is_builtin":  true,
-					"is_public":   true,
-				})
-				db.Where("(user_id = ? OR user_id = ?) AND name = ? AND (manifest_id IS NULL OR manifest_id = '') AND id != ?", ownerID, model.SystemUserID, def.Name, legacyAgent.ID).Delete(&model.Agent{})
-				continue
+			// Seed workflow for this manifest agent if definition is provided
+			if agentID != "" && def.Workflow != "" {
+				seedBuiltinAgentWorkflow(db, agentID, ownerID, def)
 			}
-
 			continue
 		}
 
@@ -367,12 +410,86 @@ var builtinAgents = []builtinAgentDef{
 		Tools:       `["video_generation","dubbing","music_generation","image_generation","mv_production","web_search","browser","code","desktop"]`,
 		Prompt:      shortDramaAgentPrompt,
 		ManifestID:  "short_drama",
+		Workflow:    shortDramaWorkflowJSON,
 	},
 	{
 		Name:       "抖音爆款导演",
 		ManifestID: "douyin_viral",
 	},
 }
+
+// seedBuiltinAgentWorkflow creates or updates a workflow for a builtin agent.
+// Uses upsert: deletes old builtin workflow then creates fresh.
+func seedBuiltinAgentWorkflow(db *gorm.DB, agentID, ownerID string, def builtinAgentDef) {
+	wfName := def.Name + " · 生产看板"
+	// Delete old builtin workflow for this agent (keep user-created ones)
+	db.Unscoped().Where("agent_id = ? AND user_id = ? AND (name = ? OR name LIKE ?)",
+		agentID, ownerID, wfName, def.Name+" · %看板%").Delete(&model.Workflow{})
+
+	db.Create(&model.Workflow{
+		ID:          uuid.New().String(),
+		UserID:      ownerID,
+		AgentID:     agentID,
+		Name:        wfName,
+		Description: def.Description,
+		Category:    "creative",
+		Definition:  def.Workflow,
+		IsPublic:    true,
+	})
+	log.Printf("[Seed] Created builtin workflow: %s for agent %s", wfName, def.Name)
+}
+
+// shortDramaWorkflowJSON is the generic short drama production pipeline workflow.
+// This is shown as a visual kanban in the client UI.
+const shortDramaWorkflowJSON = `{
+  "nodes": [
+    {"id":"start","type":"start","position":{"x":400,"y":20},"data":{"label":"剧本项目"}},
+
+    {"id":"char-1","type":"media","position":{"x":80,"y":120},"data":{"label":"[图1] 主角","description":"角色三视图 · 全集复用","category":"character"}},
+    {"id":"char-2","type":"media","position":{"x":270,"y":120},"data":{"label":"[图2] 配角A","description":"角色三视图 · 全集复用","category":"character"}},
+    {"id":"char-3","type":"media","position":{"x":460,"y":120},"data":{"label":"[图3] 配角B","description":"角色三视图 · 全集复用","category":"character"}},
+
+    {"id":"bible","type":"llm","position":{"x":400,"y":260},"data":{"label":"加载 bible.md","description":"角色库 + 世界观 + [图N] 标签"}},
+
+    {"id":"scene-ep01","type":"media","position":{"x":80,"y":380},"data":{"label":"EP01","description":"第一集分镜","category":"scene"}},
+    {"id":"scene-ep02","type":"media","position":{"x":270,"y":380},"data":{"label":"EP02","description":"第二集分镜","category":"scene"}},
+    {"id":"scene-ep03","type":"media","position":{"x":460,"y":380},"data":{"label":"EP03","description":"第三集分镜","category":"scene"}},
+    {"id":"scene-more","type":"media","position":{"x":650,"y":380},"data":{"label":"EP04+","description":"更多集数","category":"scene"}},
+
+    {"id":"script-parse","type":"llm","position":{"x":150,"y":520},"data":{"label":"解析分镜表","description":"故事剧本 → Seedance prompt"}},
+    {"id":"seedance","type":"tool","position":{"x":400,"y":520},"data":{"label":"Seedance 2.0 生成","toolName":"video_generation","description":"[图N] + 尾帧链式 · 逐镜生成"}},
+
+    {"id":"dubbing","type":"tool","position":{"x":150,"y":660},"data":{"label":"TTS 配音","toolName":"dubbing","description":"情感旁白 + 角色对话"}},
+    {"id":"bgm","type":"tool","position":{"x":400,"y":660},"data":{"label":"BGM 配乐","toolName":"music_generation","description":"氛围音乐 · 节拍同步"}},
+
+    {"id":"compose","type":"tool","position":{"x":280,"y":790},"data":{"label":"Pro 合成成片","toolName":"mv_production","description":"compose_pro · 转场 + 字幕 + 配乐"}},
+    {"id":"end","type":"end","position":{"x":500,"y":790},"data":{"label":"交付"}}
+  ],
+  "edges": [
+    {"id":"e-s-bible","source":"start","target":"bible"},
+    {"id":"e-c1-bible","source":"char-1","target":"bible"},
+    {"id":"e-c2-bible","source":"char-2","target":"bible"},
+    {"id":"e-c3-bible","source":"char-3","target":"bible"},
+
+    {"id":"e-bible-ep01","source":"bible","target":"scene-ep01"},
+    {"id":"e-bible-ep02","source":"bible","target":"scene-ep02"},
+    {"id":"e-bible-ep03","source":"bible","target":"scene-ep03"},
+    {"id":"e-bible-epmore","source":"bible","target":"scene-more"},
+
+    {"id":"e-ep-parse","source":"scene-ep01","target":"script-parse"},
+    {"id":"e-parse-sd","source":"script-parse","target":"seedance"},
+
+    {"id":"e-c1-sd","source":"char-1","target":"seedance","style":{"strokeDasharray":"5 5"}},
+    {"id":"e-c2-sd","source":"char-2","target":"seedance","style":{"strokeDasharray":"5 5"}},
+
+    {"id":"e-sd-dub","source":"seedance","target":"dubbing"},
+    {"id":"e-sd-bgm","source":"seedance","target":"bgm"},
+
+    {"id":"e-dub-comp","source":"dubbing","target":"compose"},
+    {"id":"e-bgm-comp","source":"bgm","target":"compose"},
+    {"id":"e-comp-end","source":"compose","target":"end"}
+  ]
+}`
 
 // updateSuperAgentWorkflow ensures the SuperAgent's workflow contains the 总管决策流程 nodes.
 func updateSuperAgentWorkflow(db *gorm.DB, ownerID, agentName string) {

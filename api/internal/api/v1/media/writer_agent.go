@@ -120,11 +120,11 @@ var writerDimensions = []writerDimensionDef{ //nolint:unused
 
 // ── System prompt ───────────────────────────────────────────────────
 
-const writerSystemPrompt = `你是《虫群宇宙》短剧项目的资深编剧顾问，你的工作是**在视频生成前**审阅一集的剧本+提示词，按抖音/TikTok 短剧冷启动算法的先验给出**可执行**的修改意见。
+const writerSystemPrompt = `你是一位资深短剧编剧顾问，你的工作是**在视频生成前**审阅一集的剧本+提示词，按抖音/TikTok 短剧冷启动算法的先验给出**可执行**的修改意见。
 
-你的决策先验（EP01-EP04 实战复盘）：
-1. EP03《闺蜜》6000+ 播 · EP04《新世界》1000 播 → 差距全在"冲突密度"和"开头钩子"
-2. 纯温情无冲突 = 必扑（EP04 的教训）
+你的决策先验（实战复盘）：
+1. 高播放集与低播放集的差距全在"冲突密度"和"开头钩子"
+2. 纯温情无冲突 = 必扑
 3. 竖屏 720x1280，字幕会遮挡画面底部 1/5，建议不烧对白字幕；Seedance 原生中文 TTS + 唇形同步够用
 4. 每 8-12s 必须有一次冲突升级；单镜不超过 12s
 5. 开头 3 秒必须有视觉冲击或身份反差或金句，否则观众划走
@@ -297,7 +297,7 @@ type promoDouyin struct {
 	Body              string   `json:"body"`                // 正文（发布时配文，≤ 200 字）
 	Hashtags          []string `json:"hashtags"`            // #话题，按热度降序，6-12 个
 	FirstFrameCaption string   `json:"first_frame_caption"` // 前 3s 锁屏钩子文字（6-12 字）
-	SeriesTag         string   `json:"series_tag"`          // 系列标签 e.g. "#虫群宇宙第一季"
+	SeriesTag         string   `json:"series_tag"`          // 系列标签 e.g. "#项目名第一季"
 	PinnedComment     string   `json:"pinned_comment"`      // 作者置顶评论（引导互动）
 }
 
@@ -368,12 +368,12 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-const promoSystemPrompt = `你是《虫群宇宙》短剧项目的抖音冷启动运营操盘手，负责为一集短剧写**全套发布文案**。
+const promoSystemPrompt = `你是一位抖音冷启动运营操盘手，负责为一集 AI 短剧写**全套发布文案**。
 
-核心先验（EP01-EP04 实战复盘）：
+核心先验（实战复盘）：
 1. 抖音冷启动核心 = 前 3 秒钩子 + 标题钩子 + 话题标签三位一体
-2. EP03《闺蜜》6000+ 播放靠"穿越者第一次有家的感觉"这种身份反差钩子
-3. EP04《新世界》1000 播放因为标题+钩子都太温情，缺爆点
+2. 高播放集靠身份反差钩子、冲突爆点
+3. 纯温情无爆点的集播放量必低
 4. 抖音标题最佳字数 10-18 字，带数字/冲突词/反差词效果最好
 5. 话题要选 1-2 个大盘（>10亿）+ 3-5 个垂类（>千万）+ 1-2 个 IP 专属
 6. 朋友圈是社交破冰，必须"我" 为主语说自己的故事/感受，不能像广告
@@ -386,9 +386,9 @@ const promoSystemPrompt = `你是《虫群宇宙》短剧项目的抖音冷启�
   "douyin": {
     "titles": ["候选标题1 10-18字带钩子", "候选标题2", "候选标题3", "候选标题4"],
     "body": "发布时配文 ≤ 200 字，开头就 hook，中段留悬念，结尾 CTA（追更/关注/连刷）",
-    "hashtags": ["#虫群宇宙", "#AI短剧", ... 6-12 个，大盘 > 垂类 > IP 专属],
+    "hashtags": ["#AI短剧", "#短剧推荐", ... 6-12 个，大盘 > 垂类 > IP 专属],
     "first_frame_caption": "前 3 秒锁屏文字 6-12 字",
-    "series_tag": "#虫群宇宙第X季",
+    "series_tag": "#项目名第X季",
     "pinned_comment": "作者置顶评论，驱动互动（问选择/问立场/金句+@朋友）"
   },
   "wechat_moments": {

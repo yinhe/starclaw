@@ -65,6 +65,7 @@ func (g *Gateway) IsEnabled() bool {
 func (g *Gateway) seedPrices() {
 	entries := []PriceEntry{
 		// Video generation
+		{ToolName: "video_generation", SubType: "doubao-seedance-2-0-260128", ResourceType: "video", UpstreamCNY: 1.50},
 		{ToolName: "video_generation", SubType: "veo3.1", ResourceType: "video", UpstreamCNY: 2.50},
 		{ToolName: "video_generation", SubType: "veo3", ResourceType: "video", UpstreamCNY: 2.50},
 		{ToolName: "video_generation", SubType: "sora2", ResourceType: "video", UpstreamCNY: 1.50},
@@ -74,12 +75,14 @@ func (g *Gateway) seedPrices() {
 		{ToolName: "video_generation", SubType: "wan2.6-i2v", ResourceType: "video", UpstreamCNY: 0.20},
 		{ToolName: "video_generation", SubType: "", ResourceType: "video", UpstreamCNY: 0.20},
 		// Image generation
+		{ToolName: "image_generation", SubType: "gpt-image-2", ResourceType: "image", UpstreamCNY: 0.50},
 		{ToolName: "image_generation", SubType: "flux-pro", ResourceType: "image", UpstreamCNY: 0.30},
 		{ToolName: "image_generation", SubType: "flux-kontext", ResourceType: "image", UpstreamCNY: 0.20},
 		{ToolName: "image_generation", SubType: "", ResourceType: "image", UpstreamCNY: 0.20},
 		// Music generation
 		{ToolName: "music_generation", SubType: "", ResourceType: "music", UpstreamCNY: 1.00},
-		// TTS
+		// Dubbing / TTS
+		{ToolName: "dubbing", SubType: "", ResourceType: "tts", UpstreamCNY: 0.10},
 		{ToolName: "text_to_speech", SubType: "", ResourceType: "tts", UpstreamCNY: 0.05},
 		// Search
 		{ToolName: "web_search", SubType: "", ResourceType: "search", UpstreamCNY: 0.01},

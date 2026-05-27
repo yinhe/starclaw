@@ -79,10 +79,26 @@ export default function EpisodeWorkflowPanel({ node, nodes, onUpdate, onClose, o
     .filter(n => (n.data as Record<string, unknown> | undefined)?.category === 'character')
     .map(n => {
       const d = n.data as Record<string, unknown>
+      const imageUrl = typeof d.imageUrl === 'string' ? d.imageUrl : undefined
       return {
         tag: typeof d.tag === 'string' ? d.tag : undefined,
         label: typeof d.label === 'string' ? d.label : undefined,
+        key: typeof d.key === 'string' ? d.key : undefined,
+        imageUrl,
+      }
+    })
+
+  const propNodes = (nodes || [])
+    .filter(n => (n.data as Record<string, unknown> | undefined)?.category === 'prop')
+    .map(n => {
+      const d = n.data as Record<string, unknown>
+      return {
+        tag: typeof d.tag === 'string' ? d.tag : undefined,
+        label: typeof d.label === 'string' ? d.label : undefined,
+        description: typeof d.description === 'string' ? d.description : undefined,
         imageUrl: typeof d.imageUrl === 'string' ? d.imageUrl : undefined,
+        tosUrl: typeof d.tos_url === 'string' ? d.tos_url : undefined,
+        cdnUrl: typeof d.cdn_url === 'string' ? d.cdn_url : undefined,
       }
     })
 
@@ -164,20 +180,18 @@ export default function EpisodeWorkflowPanel({ node, nodes, onUpdate, onClose, o
     if (!scene) return
     if (!models.length) return
 
-    // 收集 prompt 引用的角色 ref 图
-    const tags = Array.from(new Set((prompt.match(/\[图\d+\]/g) || [])))
+    const promptLower = prompt.toLowerCase()
     const refUrls: string[] = []
-    if (nodes && tags.length) {
-      for (const tag of tags) {
-        const charNode = nodes.find(n => {
-          const d = (n.data || {}) as Record<string, unknown>
-          return d.category === 'character' && d.tag === tag
-        })
-        const url = charNode?.data && (charNode.data as Record<string, unknown>).imageUrl
-        if (typeof url === 'string' && url) {
-          const absUrl = url.startsWith('http') || url.startsWith('/') ? url : `/${url}`
-          if (!refUrls.includes(absUrl)) refUrls.push(absUrl)
-        }
+    const pushRefUrl = (url?: string) => {
+      if (!url) return
+      const absUrl = url.startsWith('http') || url.startsWith('/') ? url : `/${url}`
+      if (!refUrls.includes(absUrl)) refUrls.push(absUrl)
+    }
+    for (const c of characterNodes) {
+      const aliases = [c.tag, c.label, c.key, c.key?.replace(/_/g, ' ')].filter(Boolean) as string[]
+      const mentioned = aliases.some(a => prompt.includes(a) || promptLower.includes(a.toLowerCase()))
+      if (mentioned) {
+        pushRefUrl(c.imageUrl)
       }
     }
 
@@ -326,6 +340,58 @@ export default function EpisodeWorkflowPanel({ node, nodes, onUpdate, onClose, o
       <div className="flex-1 overflow-y-auto">
         {tab === 'scenes' && (
           <div className="p-3 space-y-2">
+            {(characterNodes.length > 0 || propNodes.length > 0) && (
+              <div className="rounded-xl border border-gray-800 bg-gray-950/50 overflow-hidden">
+                {characterNodes.length > 0 && (
+                  <div className="p-2.5 border-b border-gray-800/70">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[11px] font-semibold text-violet-300 flex items-center gap-1.5">
+                        <ImageIcon className="w-3 h-3" /> 角色参考
+                      </div>
+                      <span className="text-[10px] text-gray-600">{characterNodes.length}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {characterNodes.map((c, idx) => (
+                        <div key={`${c.tag || c.label || idx}`} className="rounded-lg bg-gray-900 border border-gray-800 overflow-hidden min-w-0">
+                          <div className="h-14 bg-gray-950 flex items-center justify-center overflow-hidden">
+                            {c.imageUrl ? <img src={c.imageUrl} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-4 h-4 text-gray-700" />}
+                          </div>
+                          <div className="px-1.5 py-1 min-w-0">
+                            <div className="text-[10px] text-gray-300 truncate">{c.tag && <span className="text-violet-400 font-mono">{c.tag} </span>}{c.label || '角色'}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {propNodes.length > 0 && (
+                  <div className="p-2.5">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[11px] font-semibold text-amber-300 flex items-center gap-1.5">
+                        <Wrench className="w-3 h-3" /> 道具参考
+                      </div>
+                      <span className="text-[10px] text-gray-600">{propNodes.length}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {propNodes.map((p, idx) => {
+                        const src = p.cdnUrl || p.tosUrl || p.imageUrl
+                        return (
+                          <div key={`${p.tag || p.label || idx}`} className="rounded-lg bg-gray-900 border border-gray-800 overflow-hidden min-w-0">
+                            <div className="h-14 bg-gray-950 flex items-center justify-center overflow-hidden">
+                              {src ? <img src={src} alt="" className="w-full h-full object-cover" /> : <Wrench className="w-4 h-4 text-gray-700" />}
+                            </div>
+                            <div className="px-1.5 py-1 min-w-0">
+                              <div className="text-[10px] text-gray-300 truncate">{p.tag && <span className="text-amber-400 font-mono">{p.tag} </span>}{p.label || '道具'}</div>
+                              {p.description && <div className="text-[9px] text-gray-600 truncate">{p.description}</div>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {scenes.length === 0 && (
               <div className="text-center py-12 text-gray-500">
                 <Film className="w-8 h-8 mx-auto mb-2 opacity-50" />

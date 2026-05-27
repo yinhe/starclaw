@@ -66,6 +66,44 @@ const NODE_PALETTE = [
   { type: 'media', label: '素材节点', icon: Image, color: 'text-violet-400', desc: '图片/视频/角色', defaultData: { category: 'character' } },
 ]
 
+const Q8BOT_PROMO_NODE_ID = 'script-type-corp-q8bot-evolution'
+
+const Q8BOT_PROMO_SCRIPT: EpisodeData & { ad_type: string; ad_type_label: string } = {
+  category: 'scene',
+  label: 'Q8BOT 期波量化进化史',
+  season: 0,
+  duration: 78,
+  description: '13镜 · 78s · 林见月 + ZERG + 苏蜜 · 企业宣传片',
+  cover_url: '/v1/images/2b5f72c2-5457-487b-8d58-93d8142ec758.png',
+  video_resolution: '720p',
+  video_ratio: '16:9',
+  ad_type: 'type-corp',
+  ad_type_label: '企业宣传片',
+  scenes: [
+    { id: 'S0', label: '时间长廊启动', duration: 6, storyboard_url: '/v1/images/2b5f72c2-5457-487b-8d58-93d8142ec758.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '纯黑虚空，ZERG 蹲坐，眼中 cyan 数据流亮起，扫开金色时间裂隙，林见月和苏蜜分别从两端出现。字幕：四百年。同一个市场。' },
+    { id: 'S1', label: '1602 阿姆斯特丹咖啡馆', duration: 4, storyboard_url: '/v1/images/1ce9cecc-998e-4926-b0eb-2cac120775e1.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '1602 阿姆斯特丹咖啡馆烛光，商人用鹅毛笔写下 VOC 股票认购单，林见月走过，手中铜钱共鸣发光。台词：四百年前，他们在咖啡馆里炒股。' },
+    { id: 'S2', label: '1792 NYSE 交易池', duration: 5, storyboard_url: '/v1/images/7b9122a8-2afc-4bc4-9b89-42ebd4e39da4.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '1792 NYSE 交易池，西装男嘶吼挥纸条，林见月古装裙裾扫过，时间静止 0.5 秒，侧脸特写。台词：两百年后，他们在地板上嘶吼。' },
+    { id: 'S3', label: '1875 电报与纸带', duration: 7, storyboard_url: '/v1/images/942c60eb-7dbe-4962-938a-162c6e097759.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '1875 电报房，ticker tape 黄纸卷喷涌，林见月伸手接住一段行情纸带。台词：又过了一百年，行情顺着电线，飞了起来。' },
+    { id: 'S4', label: '1990 中国营业部大屏', duration: 5, storyboard_url: '/v1/images/324e9ccc-56ea-4a28-851c-843f2d9b03eb.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '1990s 中国营业部红绿大屏，一群股民仰头，苏蜜母亲虚化站在人群中，苏蜜从画面前景接过场。台词：我妈那辈人，在营业部大屏下抢过红马甲。' },
+    { id: 'S5', label: '2000 PC 同花顺 K 线', duration: 5, storyboard_url: '/v1/images/d2900c1c-ba6e-4600-954c-d9e946f28207.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '2000s 苏蜜坐在台式机前看同花顺 K 线，喝奶茶，自信选股。台词：到了我这里，K 线搬到了电脑上。' },
+    { id: 'S6', label: '抖音大V喊单 + 地铁追单', duration: 6, storyboard_url: '/v1/images/8cf0adf2-a6fe-47dc-9244-f2de9b428652.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '抖音直播大V喊单“兄弟们冲！明天必板！”，苏蜜在地铁激动截图，群里“稳了！冲冲冲！”刷屏，按下买入键欢呼。台词：再后来，我刷着短视频就把单下了。' },
+    { id: 'S7', label: '凌晨3点瘫床 -32%', duration: 6, storyboard_url: '/v1/images/ee4ec49f-fd56-4745-a8de-f2e3e0349a8d.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '三天后凌晨，苏蜜瘫在床上，账户 -32% 漂在屏幕上，泡面散落，黑眼圈，眼眶泛红。台词：可我每次都买在最高点。' },
+    { id: 'S8', label: '手机里映出 cyan 眼', duration: 6, storyboard_url: '/v1/images/8e98a7ed-a16d-4893-a21e-d6bfd17fc262.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '[图3] 苏蜜怔怔出神，保持酒红 crop top、黑皮裙、大波浪卷发现代都市女孩造型，手机屏幕里只倒映 [图2] ZERG 的一双 cyan 发光眼睛，不出现第二张人脸，心跳音效。字幕：直到那一晚 —' },
+    { id: 'S9', label: 'ZERG 实体化 + Q8BOT 仪表盘', duration: 6, storyboard_url: '/v1/images/51514ee7-69b8-483c-9c4c-fab591ec1969.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '[图2] ZERG 从屏幕里走出实体化，保持暗灰色甲壳机甲犬、cyan 发光裂纹、宝石般 cyan 双眼、短秃尾设定，蹲在 [图3] 苏蜜床边，眼中 Q8BOT 仪表盘投影到墙上，显示 AI 分析柱状图、候选股打分卡、止损止盈纪律线。台词：扫描完成。已过滤 4783 只噪声。' },
+    { id: 'S10', label: 'ZERG 推 Q8BOT 终端', duration: 5, storyboard_url: '/v1/images/9b95e090-3b8a-4fce-89d8-a97070946ed1.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '[图2] ZERG 用深色爪轻推一台干净 Q8BOT 终端到 [图3] 苏蜜手边，ZERG 保持暗灰色甲壳机甲犬与 cyan 发光裂纹，苏蜜保持酒红 crop top、黑皮裙、大波浪卷发现代造型，屏幕上 3 只候选股，每只附带买入理由、仓位、止损、止盈、信心分。台词：3 只候选。每一笔都说得清。' },
+    { id: 'S11', label: '三人同框三角构图', duration: 5, storyboard_url: '/v1/images/6161f2d2-28c6-469a-9993-35e1d8a6b7c2.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '[图3] 苏蜜抬头看 [图2] ZERG，[图1] 林见月从背景走来站在 ZERG 另一侧，林见月保持薄荷绿古装、黑色长直发、清冷温柔气质，苏蜜保持酒红现代穿搭，ZERG 保持暗灰甲壳机甲犬，三人形成三角构图。台词：四百年，第一次有这种东西，普通人也能拿在手里。' },
+    { id: 'S12', label: '终幕全景 + 8 时代闪带', duration: 6, storyboard_url: '/v1/images/92a0564d-af82-487c-a0ee-eee016c60628.png', storyboard_status: 'succeeded', storyboard_use_as_ref: true, takes: [], prompt: '镜头大幅拉远，[图1] 林见月、[图2] ZERG、[图3] 苏蜜三人并排，林见月保持薄荷绿古装和黑色长直发，苏蜜保持酒红现代穿搭和大波浪卷发，ZERG 保持暗灰甲壳机甲犬与 cyan 发光裂纹，背景连续光带从左到右闪过 8 个时代剪影，汇聚成 Q8BOT 仪表盘全景。台词：从一根算盘，到一只智能体。' },
+  ],
+  composition: { picked_clips: [], status: 'pending' },
+}
+
+const Q8BOT_PROMO_FALLBACK_NODE: Node = {
+  id: Q8BOT_PROMO_NODE_ID,
+  type: 'media',
+  position: { x: 30, y: 1500 },
+  data: JSON.parse(JSON.stringify(Q8BOT_PROMO_SCRIPT)) as Record<string, unknown>,
+}
+
 export default function WorkflowPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -140,6 +178,23 @@ export default function WorkflowPage() {
     return nodes.some(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'type')
   }, [nodes])
 
+  useEffect(() => {
+    if (!isAdWorkflow) return
+    const corpType = nodes.find(n => n.id === 'type-corp')
+    if (!corpType) return
+    const alreadyExists = nodes.some(n => n.id === Q8BOT_PROMO_NODE_ID || (n.data as Record<string, unknown>)?.label === Q8BOT_PROMO_SCRIPT.label)
+    if (alreadyExists) return
+    const q8botNode: Node = { ...Q8BOT_PROMO_FALLBACK_NODE, position: { x: corpType.position.x, y: 1500 } }
+    setNodes(nds => [...nds, q8botNode])
+    setEdges(eds => eds.some(e => e.id === `edge-type-corp-${Q8BOT_PROMO_NODE_ID}`) ? eds : eds.concat([{
+      id: `edge-type-corp-${Q8BOT_PROMO_NODE_ID}`,
+      source: 'type-corp',
+      target: Q8BOT_PROMO_NODE_ID,
+      animated: true,
+      style: { stroke: '#6366f1', strokeWidth: 2 },
+    } as unknown as Edge]))
+  }, [isAdWorkflow, nodes, setNodes, setEdges])
+
   // 短剧工作流判定：category === 'content' 或画布有 scene 节点但不是广告工作流
   const isDramaWorkflow = useMemo(() => {
     if (isAdWorkflow) return false
@@ -171,17 +226,22 @@ export default function WorkflowPage() {
     setSelectedNode(n)
     setFocusedEpisodeId(n.id)
     setFocusedSceneId(null)
-    // 下一帧再 fitView，让 hidden 生效 + 子图节点已注入后再缩放
     const ep = n.data as unknown as EpisodeData
     const sceneIds = (ep?.scenes || []).map(s => `__scene__${n.id}__${s.id}`)
     const finalId = `__scene__${n.id}__final`
-    const fitIds = [n.id, ...sceneIds, finalId]
+    const assetIds = isAdWorkflow
+      ? nodes.filter(nd => {
+        const cat = (nd.data as Record<string, unknown>).category
+        return nd.type === 'media' && (cat === 'character' || cat === 'prop')
+      }).map(nd => nd.id)
+      : []
+    const fitIds = [...assetIds, n.id, ...sceneIds, finalId]
     setTimeout(() => {
       try {
-        rfRef.current?.fitView({ nodes: fitIds.map(id => ({ id })), duration: 500, padding: 0.15, maxZoom: 1.0 })
+        rfRef.current?.fitView({ nodes: fitIds.map(id => ({ id })), duration: 600, padding: isAdWorkflow ? 0.25 : 0.15, maxZoom: isAdWorkflow ? 0.85 : 1.0 })
       } catch { /* ignore */ }
     }, 120)
-  }, [])
+  }, [isAdWorkflow, nodes])
 
   // 广告工作流：把导入的剧本（EpisodeData）落地为画布节点 + 类型连线 + 自动聚焦
   const addImportedAdScript = useCallback((typeNodeId: string, data: EpisodeData) => {
@@ -456,7 +516,7 @@ export default function WorkflowPage() {
 
   // 派生画布显示节点：选中某一集（focusedEpisodeId 已设）时
   //   · 在该集下方注入场景子图（S1→S2→…→Final）—— 无需 focusMode
-  //   · 当 focusMode=true：还会隐藏其他剧集；广告工作流额外隐藏 chars/props/types/styles/pipeline
+  //   · 当 focusMode=true：还会隐藏其他剧集；广告工作流额外隐藏 types/styles/pipeline，保留角色/道具参考
   const { displayNodes, displayEdges } = useMemo(() => {
     if (!focusedEpisodeId) {
       // 没聚焦：广告工作流隐藏 type/style，短剧/通用维持原状
@@ -472,34 +532,59 @@ export default function WorkflowPage() {
       return { displayNodes: nodes, displayEdges: edges }
     }
     const focused = nodes.find(n => n.id === focusedEpisodeId)
+    const focusedData = focused?.data as unknown as EpisodeData | undefined
+    const isQ8botFocus = focusedEpisodeId === Q8BOT_PROMO_NODE_ID || focusedData?.label === Q8BOT_PROMO_SCRIPT.label
+    const adFocusLayout = isAdWorkflow && focusMode
+    const characterNodes = adFocusLayout ? nodes.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'character') : []
+    const propNodes = adFocusLayout ? nodes.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'prop') : []
     const visibleNodes = nodes.map(n => {
       // 其他剧集节点 → 永远隐藏（只显示当前剧本）
       if (n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene') {
-        return { ...n, hidden: n.id !== focusedEpisodeId }
+        return { ...n, hidden: n.id !== focusedEpisodeId, position: adFocusLayout && n.id === focusedEpisodeId ? { x: 520, y: 300 } : n.position }
       }
-      // focusMode + 广告：把噪音节点全部藏起来（chars/props/types/styles/pipeline）
+      // focusMode + 广告：隐藏类型/风格/流水线，但保留角色/道具参考在画布上
       if (isAdWorkflow && focusMode && n.id !== focusedEpisodeId) {
         const cat = (n.data as Record<string, unknown>).category as string | undefined
         const isPipeline = n.type === 'llm' || n.type === 'tool'
-        if ((n.type === 'media' && (cat === 'character' || cat === 'prop' || cat === 'type' || cat === 'style')) || isPipeline) {
+        if ((n.type === 'media' && (cat === 'type' || cat === 'style')) || isPipeline) {
           return { ...n, hidden: true }
+        }
+        if (n.type === 'media' && cat === 'character') {
+          const idx = Math.max(0, characterNodes.findIndex(ch => ch.id === n.id))
+          return { ...n, hidden: false, position: { x: 40 + (idx % 5) * 230, y: 20 + Math.floor(idx / 5) * 230 } }
+        }
+        if (n.type === 'media' && cat === 'prop') {
+          const idx = Math.max(0, propNodes.findIndex(p => p.id === n.id))
+          return { ...n, hidden: false, position: { x: 40 + (idx % 7) * 230, y: 850 + Math.floor(idx / 7) * 230 } }
         }
       }
       return n
     })
     // 如果聚焦节点不存在或没有 scenes，不注入子图
-    const ep = focused?.data as unknown as EpisodeData | undefined
-    if (!focused || !ep?.scenes || ep.scenes.length === 0) {
+    const ep = isQ8botFocus
+      ? {
+          ...Q8BOT_PROMO_SCRIPT,
+          ...focusedData,
+          scenes: (Q8BOT_PROMO_SCRIPT.scenes || []).map(scene => {
+            const persisted = (focusedData?.scenes || []).find(s => s.id === scene.id)
+            return { ...scene, ...persisted, label: scene.label, duration: scene.duration, prompt: scene.prompt }
+          }),
+        }
+      : focusedData
+    if (!ep?.scenes || ep.scenes.length === 0) {
       return { displayNodes: visibleNodes, displayEdges: edges }
     }
 
-    // 场景节点子图布局：在聚焦集下方一行水平排开
-    const SCENE_W = 190
-    const SCENE_H_OFFSET = 280    // 聚焦集下方距离
+    // 场景节点子图布局：广告聚焦态分两行显示首帧；普通短剧仍保持横向链路
+    const SCENE_W = adFocusLayout ? 220 : 190
+    const SCENE_H_OFFSET = adFocusLayout ? 260 : 280
     const n = ep.scenes.length
-    const rowWidth = (n + 1) * SCENE_W  // +1 给 final 节点
-    const startX = (focused.position?.x ?? 0) - rowWidth / 2 + 100 // 大致居中
-    const y = (focused.position?.y ?? 0) + SCENE_H_OFFSET
+    const scenesPerRow = adFocusLayout ? 7 : n + 1
+    const rowWidth = Math.min(n + 1, scenesPerRow) * SCENE_W
+    const focusedBaseX = adFocusLayout ? 520 : (focused?.position?.x ?? Q8BOT_PROMO_FALLBACK_NODE.position.x)
+    const focusedBaseY = adFocusLayout ? 300 : (focused?.position?.y ?? Q8BOT_PROMO_FALLBACK_NODE.position.y)
+    const startX = adFocusLayout ? 40 : focusedBaseX - rowWidth / 2 + 100
+    const y = focusedBaseY + SCENE_H_OFFSET
 
     // 归档目录约定：docs/<project>/production/<epKey>/clips_v2/<scene>_<take>.mp4
     //   被静态路由 /v1/projects/:project/*filepath 映射为可访问 URL。
@@ -516,7 +601,7 @@ export default function WorkflowPage() {
       return {
         id: nodeId,
         type: 'sceneStep',
-        position: savedPos || { x: startX + i * SCENE_W, y },
+        position: adFocusLayout ? { x: startX + (i % scenesPerRow) * SCENE_W, y: y + Math.floor(i / scenesPerRow) * 180 } : (savedPos || { x: startX + i * SCENE_W, y }),
         data: {
           sceneId: s.id,
           label: s.label,
@@ -555,7 +640,7 @@ export default function WorkflowPage() {
     const finalNode: Node = {
       id: finalNodeId,
       type: 'sceneStep',
-      position: finalSaved || { x: startX + n * SCENE_W, y },
+      position: adFocusLayout ? { x: startX + (n % scenesPerRow) * SCENE_W, y: y + Math.floor(n / scenesPerRow) * 180 } : (finalSaved || { x: startX + n * SCENE_W, y }),
       data: {
         isFinal: true, sceneId: 'FIN', label: '合成成片', duration: 0,
         hasClip: !!ep.composition?.final_video_url,
@@ -713,7 +798,12 @@ export default function WorkflowPage() {
               const src = charMap.get(d.key)
               if (!src) return n
               const newD: Record<string, unknown> = { ...d }
-              if (src.appearance_card) newD.appearance_card = src.appearance_card
+              if (src.appearance_cards) newD.appearance_cards = src.appearance_cards
+              const form = (newD.appearance_form as string) || src.appearance_form
+              if (form) newD.appearance_form = form
+              const cards = src.appearance_cards as Record<string, string> | undefined
+              if (form && cards?.[form]) newD.appearance_card = cards[form]
+              else if (src.appearance_card) newD.appearance_card = src.appearance_card
               if (src.tos_url) newD.tos_url = src.tos_url
               if (src.ref_video) newD.ref_video = src.ref_video
               return { ...n, data: newD }
@@ -747,6 +837,8 @@ export default function WorkflowPage() {
                 category: 'character',
                 label: c.label, tag: c.tag, role: c.role, key: c.key,
                 appearance_card: c.appearance_card,
+                appearance_cards: c.appearance_cards,
+                appearance_form: c.appearance_form,
                 description: c.description,
                 imageUrl: absUrl(c.ref),
                 tos_url: c.tos_url,
@@ -915,7 +1007,12 @@ export default function WorkflowPage() {
                 if (n.position?.x && n.position.x > maxCharX) maxCharX = n.position.x
                 const src = charMap.get(d.key)
                 if (src) {
-                  if (src.appearance_card) d.appearance_card = src.appearance_card
+                  if (src.appearance_cards) d.appearance_cards = src.appearance_cards
+                  const form = (d.appearance_form as string) || src.appearance_form
+                  if (form) d.appearance_form = form
+                  const cards = src.appearance_cards as Record<string, string> | undefined
+                  if (form && cards?.[form]) d.appearance_card = cards[form]
+                  else if (src.appearance_card) d.appearance_card = src.appearance_card
                   if (src.tos_url) d.tos_url = src.tos_url
                   // ref_video 是后加字段，老快照里没有；同步补上才能让 v2v-only
                   // 角色（EP07 三个混混）的 preflight 短路分支正确触发。
@@ -956,6 +1053,8 @@ export default function WorkflowPage() {
                   role: c.role,
                   key: c.key,
                   appearance_card: c.appearance_card,
+                  appearance_cards: c.appearance_cards,
+                  appearance_form: c.appearance_form,
                   description: c.description,
                   imageUrl: absUrl(c.ref),
                   tos_url: c.tos_url,
@@ -1045,9 +1144,7 @@ export default function WorkflowPage() {
     setContextMenu(null)
     // 点到剧集节点 → 聚焦
     if (node.type === 'media' && (node.data as Record<string, unknown>).category === 'scene') {
-      setSelectedNode(node)
-      setFocusedEpisodeId(node.id)
-      setFocusedSceneId(null)
+      focusEpisode(node)
       return
     }
     // 点到场景子图节点 → 选中其父剧集并打开对应 scene tab
@@ -1069,7 +1166,7 @@ export default function WorkflowPage() {
       return
     }
     setSelectedNode(node)
-  }, [nodes])
+  }, [nodes, focusEpisode])
 
   // 场景子图节点拖动后持久化位置
   const onNodeDragStop = useCallback((_e: React.MouseEvent, node: Node) => {
@@ -1179,9 +1276,9 @@ export default function WorkflowPage() {
   }, [])
 
   // 从 nodes 里收集角色参考（tag → imageUrl 与 label → imageUrl）
-  const collectCharacterRefs = useCallback((): { byTag: Record<string, string>; list: Array<{ label: string; tag?: string; url: string }> } => {
+  const collectCharacterRefs = useCallback((): { byTag: Record<string, string>; list: Array<{ label: string; tag?: string; key?: string; url: string }> } => {
     const byTag: Record<string, string> = {}
-    const list: Array<{ label: string; tag?: string; url: string }> = []
+    const list: Array<{ label: string; tag?: string; key?: string; url: string }> = []
     for (const n of nodes) {
       if (n.type !== 'media') continue
       const d = n.data as Record<string, unknown>
@@ -1191,7 +1288,8 @@ export default function WorkflowPage() {
       if (!url) continue
       const tag = (d.tag as string) || ''
       const label = (d.label as string) || ''
-      list.push({ label, tag, url })
+      const key = (d.key as string) || ''
+      list.push({ label, tag, key, url })
       if (tag) byTag[tag] = url
     }
     return { byTag, list }
@@ -1387,6 +1485,11 @@ export default function WorkflowPage() {
         if (!p.url) continue
         if (out.includes(p.label)) pushUrl(p.url)
       }
+      const promptLower = out.toLowerCase()
+      for (const c of charList) {
+        const aliases = [c.label, c.key, c.key?.replace(/_/g, ' ')].filter(Boolean) as string[]
+        if (aliases.some(a => out.includes(a) || promptLower.includes(a.toLowerCase()))) pushUrl(c.url)
+      }
       return { resolved: out, usedUrls }
     }
 
@@ -1465,11 +1568,11 @@ export default function WorkflowPage() {
       //
       //   故事板静帧 (scene.storyboard_url) 需同时满足：
       //   - 用户勾选了“用作 i2v 首帧”（storyboard_use_as_ref === true）
-      //   - URL 是公网 https 开头（本地 /v1/images/... Seedance 后端无法访问）
+      //   - URL 非空；后端会把 /v1/images/... 等本地路径解析成 Seedance 可消费的 data URL
       const sbUrl = scene.storyboard_url || ''
-      const sbUsable = scene.storyboard_use_as_ref === true && /^https?:\/\//.test(sbUrl)
+      const sbUsable = scene.storyboard_use_as_ref === true && !!sbUrl.trim()
       const refUrlList = [
-        ...(sbUsable ? [sbUrl] : []),        // 故事板首帧（勾选且公网时）
+        ...(sbUsable ? [sbUrl] : []),        // 故事板首帧（勾选且非空时）
         ...usedUrls,                         // [图N] 角色参考 + 道具 ref
       ].filter(Boolean)
       const imgUrl = refUrlList.join(',')
@@ -2217,7 +2320,7 @@ export default function WorkflowPage() {
 
         {/* Left Ad Panel — 广告宣传片类型/风格菜单 */}
         {showLeftPanel && isAdWorkflow && !isDramaWorkflow && (
-          <div className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden z-30">
+          <div className="w-72 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden z-30">
             <div className="px-3 py-2.5 pt-14 border-b border-gray-800 flex items-center justify-between">
               <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">宣传片菜单</span>
               <button onClick={() => setShowLeftPanel(false)} className="p-1 text-gray-600 hover:text-gray-400 transition-colors">
@@ -2225,6 +2328,88 @@ export default function WorkflowPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin">
+              {(() => {
+                const chars = nodes.filter(n => n.type === 'media' && (n.data as Record<string,unknown>).category === 'character')
+                if (chars.length === 0) return null
+                return (
+                  <div className="border-b border-gray-800/50">
+                    <button onClick={() => setExpandedSections(s => ({ ...s, characters: !s.characters }))}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors">
+                      {expandedSections.characters ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      <Users className="w-3.5 h-3.5 text-violet-400" />
+                      <span>角色 ({chars.length})</span>
+                    </button>
+                    {expandedSections.characters && (
+                      <div className="pb-2 space-y-0.5">
+                        {chars.map(n => {
+                          const d = n.data as unknown as CharacterData
+                          return (
+                            <button key={n.id} onClick={() => { setSelectedNode(n); rfRef.current?.setCenter(n.position.x + 100, n.position.y + 50, { zoom: 1, duration: 500 }) }}
+                              className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-violet-900/30 border-l-2 border-violet-500' : ''}`}>
+                              {d.imageUrl ? (
+                                <img src={d.imageUrl} alt="" className="w-7 h-7 rounded object-cover border border-gray-700 flex-shrink-0" />
+                              ) : (
+                                <div className="w-7 h-7 rounded bg-violet-900/40 border border-violet-700/50 flex items-center justify-center flex-shrink-0">
+                                  <Users className="w-3 h-3 text-violet-400" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs text-gray-300 truncate flex items-center gap-1">
+                                  {d.tag && <span className="text-violet-400 font-mono text-[10px]">{d.tag}</span>}
+                                  <span className="truncate">{d.label}</span>
+                                </div>
+                                {d.description && <div className="text-[10px] text-gray-600 truncate">{d.description}</div>}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {(() => {
+                const props = nodes.filter(n => n.type === 'media' && (n.data as Record<string,unknown>).category === 'prop')
+                if (props.length === 0) return null
+                return (
+                  <div className="border-b border-gray-800/50">
+                    <button onClick={() => setExpandedSections(s => ({ ...s, props: !s.props }))}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors">
+                      {expandedSections.props ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      <Package className="w-3.5 h-3.5 text-amber-400" />
+                      <span>道具 ({props.length})</span>
+                    </button>
+                    {expandedSections.props && (
+                      <div className="pb-2 space-y-0.5">
+                        {props.map(n => {
+                          const d = n.data as Record<string,unknown>
+                          const tag = typeof d.tag === 'string' ? d.tag : ''
+                          const description = typeof d.description === 'string' ? d.description : ''
+                          return (
+                            <button key={n.id} onClick={() => { setSelectedNode(n); rfRef.current?.setCenter(n.position.x + 100, n.position.y + 50, { zoom: 1, duration: 500 }) }}
+                              className={`w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-amber-900/30 border-l-2 border-amber-500' : ''}`}>
+                              {d.imageUrl ? (
+                                <img src={d.imageUrl as string} alt="" className="w-7 h-7 rounded object-cover border border-gray-700 flex-shrink-0" />
+                              ) : (
+                                <Package className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs text-gray-300 truncate flex items-center gap-1">
+                                  {tag && <span className="text-amber-400 font-mono text-[10px]">{tag}</span>}
+                                  <span className="truncate">{d.label as string}</span>
+                                </div>
+                                {description && <div className="text-[10px] text-gray-600 truncate">{description}</div>}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {/* 广告类型 + 类型下的剧本（可折叠，类似短剧 SEASONS） */}
               {(() => {
                 const typeNodes = nodes.filter(n => n.type === 'media' && (n.data as Record<string,unknown>).category === 'type')
@@ -2235,27 +2420,45 @@ export default function WorkflowPage() {
                   const picked = sceneArr.filter(s => s.picked_take).length
                   const cover = (d as unknown as { cover_url?: string }).cover_url
                   return (
-                    <button key={n.id} onClick={() => focusEpisode(n)}
-                      className={`w-full flex items-center gap-2 pl-9 pr-3 py-1.5 text-left hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id ? 'bg-indigo-900/30 border-l-2 border-indigo-500' : ''}`}>
-                      {cover ? (
-                        <img src={cover} alt="" className="w-7 h-7 rounded object-cover border border-gray-700 flex-shrink-0" />
-                      ) : (
-                        <Film className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs text-gray-300 truncate">{d.label}</div>
-                        <div className="text-[10px] text-gray-600 truncate flex items-center gap-1">
-                          <span>{sceneArr.length}镜 · {d.duration || 0}s</span>
-                          {sceneArr.length > 0 && (
-                            <span className={picked === sceneArr.length ? 'text-emerald-400' : picked > 0 ? 'text-amber-400' : ''}>
-                              · {picked}/{sceneArr.length} 已选
-                            </span>
+                    <div key={n.id}>
+                      <div className={`flex items-center pr-2 hover:bg-gray-800/60 transition-colors ${selectedNode?.id === n.id && !focusedSceneId ? 'bg-indigo-900/30 border-l-2 border-indigo-500' : ''}`}>
+                        <button onClick={() => {
+                          if (n.id === Q8BOT_PROMO_NODE_ID && !nodes.some(nd => nd.id === Q8BOT_PROMO_NODE_ID)) {
+                            setNodes(nds => nds.some(nd => nd.id === Q8BOT_PROMO_NODE_ID) ? nds : [...nds, n])
+                            setEdges(eds => eds.some(e => e.id === `edge-type-corp-${Q8BOT_PROMO_NODE_ID}`) ? eds : eds.concat([{
+                              id: `edge-type-corp-${Q8BOT_PROMO_NODE_ID}`,
+                              source: 'type-corp',
+                              target: Q8BOT_PROMO_NODE_ID,
+                              animated: true,
+                              style: { stroke: '#6366f1', strokeWidth: 2 },
+                            } as unknown as Edge]))
+                            setTimeout(() => focusEpisode(n), 80)
+                            return
+                          }
+                          focusEpisode(n)
+                        }}
+                          className="flex-1 flex items-center gap-2 pl-9 pr-1 py-1.5 text-left min-w-0">
+                          {cover ? (
+                            <img src={cover} alt="" className="w-7 h-7 rounded object-cover border border-gray-700 flex-shrink-0" />
+                          ) : (
+                            <Film className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
                           )}
-                        </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs text-gray-300 truncate">{d.label}</div>
+                            <div className="text-[10px] text-gray-600 truncate flex items-center gap-1">
+                              <span>{sceneArr.length}镜 · {d.duration || 0}s</span>
+                              {sceneArr.length > 0 && (
+                                <span className={picked === sceneArr.length ? 'text-emerald-400' : picked > 0 ? 'text-amber-400' : ''}>
+                                  · {picked}/{sceneArr.length} 已选
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {d.composition?.status === 'ready' && <span className="text-[9px] text-emerald-400">●</span>}
+                          {d.composition?.status === 'generating' && <span className="text-[9px] text-amber-400 animate-pulse">●</span>}
+                        </button>
                       </div>
-                      {d.composition?.status === 'ready' && <span className="text-[9px] text-emerald-400">●</span>}
-                      {d.composition?.status === 'generating' && <span className="text-[9px] text-amber-400 animate-pulse">●</span>}
-                    </button>
+                    </div>
                   )
                 }
                 return (
@@ -2267,7 +2470,9 @@ export default function WorkflowPage() {
                     <div className="pb-2 space-y-0.5">
                       {typeNodes.map(n => {
                         const d = n.data as Record<string,unknown>
-                        const typeScripts = allScripts.filter(s => ((s.data as Record<string,unknown>).ad_type as string) === n.id)
+                        const savedTypeScripts = allScripts.filter(s => ((s.data as Record<string,unknown>).ad_type as string) === n.id)
+                        const hasQ8bot = savedTypeScripts.some(s => s.id === Q8BOT_PROMO_NODE_ID || (s.data as Record<string, unknown>).label === Q8BOT_PROMO_SCRIPT.label)
+                        const typeScripts = n.id === 'type-corp' && !hasQ8bot ? [Q8BOT_PROMO_FALLBACK_NODE, ...savedTypeScripts] : savedTypeScripts
                         const sectionKey = `adtype-${n.id}`
                         const isExpanded = expandedSections[sectionKey] ?? typeScripts.length > 0
                         return (

@@ -136,6 +136,8 @@ export interface CharacterData {
   tag?: string             // "[图1]"
   key?: string             // manifest key, e.g. "lin_jianyue" / "sumi" / "zerg" — 自检一键修复要用
   appearance_card?: string // 外观卡文案
+  appearance_cards?: Record<string, string>
+  appearance_form?: string
   imageUrl?: string        // 参考图/三视图（/v1/projects/... path）
   tos_url?: string         // Seedance TOS URL (24h)
   // 角色级参考视频（Seedance 2.0 v2v）——用于人物一致性。
