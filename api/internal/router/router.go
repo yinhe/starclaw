@@ -136,6 +136,14 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, swarmClient ...*s
 		})
 	})
 
+	// Embedded Queen: handle swarm registration locally for self-hosted deployments.
+	// Without this, /swarm/register returns 404 and "加入虫群" fails.
+	embeddedQueen := swarm.NewEmbeddedQueen(db)
+	r.POST("/swarm/register", embeddedQueen.Register)
+	r.POST("/swarm/heartbeat", embeddedQueen.Heartbeat)
+	r.GET("/swarm/config", embeddedQueen.Config)
+	r.GET("/swarm/nodes", embeddedQueen.Nodes)
+
 	// API v1
 	apiV1 := r.Group("/v1")
 	{
