@@ -935,12 +935,35 @@ fi
 
 # ── Build from source if needed ──
 if [ "$NEED_BUILD" = "true" ]; then
-  # Update source code from Nydus (temp dir avoids tar overwrite conflicts)
+  # Update source code: try Nydus tarball first, fall back to git pull
   echo "@@SOURCE_START"
+  SOURCE_OK=false
+
+  # Method 1: Nydus source tarball (fast, works offline from GitHub)
   TMP=$(mktemp -d)
-  curl -sfL --connect-timeout 10 --max-time 120 "$NYDUS" | tar xz -C "$TMP" --strip-components=1
-  cp -rf "$TMP"/. "$SRCDIR"/
+  if curl -sfL --connect-timeout 10 --max-time 120 "$NYDUS" | tar xz -C "$TMP" --strip-components=1 2>/dev/null && [ -f "$TMP/api/go.mod" ]; then
+    cp -rf "$TMP"/. "$SRCDIR"/
+    SOURCE_OK=true
+    echo "@@SOURCE_METHOD:nydus-tarball"
+  fi
   rm -rf "$TMP"
+
+  # Method 2: git pull from origin (GitHub)
+  if [ "$SOURCE_OK" = "false" ] && command -v git >/dev/null 2>&1; then
+    apk add --no-cache git > /dev/null 2>&1 || true
+    cd "$SRCDIR"
+    if [ -d ".git" ]; then
+      git fetch origin main --depth=1 2>/dev/null && git reset --hard origin/main 2>/dev/null && SOURCE_OK=true
+      echo "@@SOURCE_METHOD:git-pull"
+    fi
+  fi
+
+  if [ "$SOURCE_OK" = "false" ]; then
+    echo "@@SOURCE_FAILED"
+    echo "ERROR: Cannot update source code (nydus tarball unavailable, git pull failed)"
+    exit 1
+  fi
+
   echo -n "$VER" > "$SRCDIR/api/.version"
   echo "@@SOURCE_OK"
 
@@ -1006,7 +1029,11 @@ echo "@@UPDATE_COMPLETE"
 		case strings.HasPrefix(line, "@@PROJECT:"):
 			ulogInfo("项目名: %s", strings.TrimPrefix(line, "@@PROJECT:"))
 		case line == "@@SOURCE_START":
-			ulogInfo("正在从 Nydus 下载源码...")
+			ulogInfo("正在更新源码...")
+		case strings.HasPrefix(line, "@@SOURCE_METHOD:"):
+			ulogInfo("源码更新方式: %s", strings.TrimPrefix(line, "@@SOURCE_METHOD:"))
+		case line == "@@SOURCE_FAILED":
+			ulogError("源码更新失败 (Nydus tarball + git pull 均不可用)")
 		case line == "@@SOURCE_OK":
 			ulogInfo("源码已更新，版本写入完成")
 		case line == "@@BUILD_START":
