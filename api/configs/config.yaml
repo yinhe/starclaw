@@ -1,0 +1,81 @@
+server:
+  port: 8080
+  mode: debug
+  deploy_mode: opensource  # hosted = 官网托管(有计费), opensource = 开源自部署(无计费)
+
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: starclaw
+  dbname: starclaw
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: starclaw-secret-key-change-me-in-production
+  expire_hour: 72
+
+# OpenAI API (used for RAG embeddings)
+openai:
+  api_key: ""       # or set env STARCLAW_OPENAI_API_KEY
+  base_url: ""      # optional: custom base URL for OpenAI-compatible API
+
+storage:
+  data_dir: /app
+  tos:
+    enabled: false
+    region: ""
+    endpoint: ""
+    access_key: ""
+    secret_key: ""
+    logical_claw: ""
+    owned_bucket: ""
+    default_storage_class: STANDARD
+    presign_ttl_seconds: 604800
+    promote_on_ingest: true
+    raw_retention_hours: 168
+    derived_retention_hours: 2160
+    tmp_retention_hours: 24
+    quarantine_retention_hours: 720
+    sse_algorithm: AES256
+    kms_key_id: ""
+
+# Overlord (Team Agent orchestration)
+overlord:
+  enabled: false                    # set true to register with Overlord
+  overlord_url: ""                  # e.g. http://overlord-api:8095
+  node_name: ""                     # display name (defaults to hostname)
+  region: ""                        # e.g. cn-east
+  heartbeat_interval: 30            # seconds
+
+# Trading (Extractor quantitative trading plugin)
+trading:
+  enabled: false                    # set true to activate trading tools
+  role: "worker"                    # "worker" or "master"
+  bridge_url: "http://localhost:8098"
+  mode: "follower"                  # "follower", "collaborator", "autonomous"
+  master:
+    heartbeat_url: ""               # e.g. http://master-host:8097/health
+    heartbeat_interval: 10          # seconds
+    heartbeat_timeout: 30           # seconds before autonomous switch
+    auto_autonomous: true
+  autonomous_policy:
+    allow_new_positions: false
+    max_position_pct: 50
+    stop_loss_pct: 3.0
+    min_confidence: 0.90
+    scan_interval: 300              # seconds
+
+# Swarm (register with Queen for centralized management)
+swarm:
+  enabled: false                    # set true to join the swarm
+  queen_url: ""                     # e.g. https://api.starclaw.me or http://queen-swarm:8090
+  arena_url: ""                     # Queen web URL with /arena/* proxy, e.g. https://starclaw.net.cn
+  node_name: ""                     # display name (defaults to hostname)
+  region: ""                        # e.g. cn-east, us-west
+  heartbeat_interval: 30            # seconds

@@ -62,6 +62,7 @@ claw-node*
 
 # Runtime configs (closed-source, live in monorepo root)
 config.yaml
+!api/configs/config.yaml
 config-local-follower.yaml
 Sporefile.yaml
 nydus.pipeline.yml
