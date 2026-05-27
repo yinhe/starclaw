@@ -2,7 +2,7 @@ module github.com/yinhe/starclaw
 
 go 1.24.1
 
-toolchain go1.25.0
+toolchain go1.24.5
 
 require (
 	github.com/gin-contrib/cors v1.7.2
