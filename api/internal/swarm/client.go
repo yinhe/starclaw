@@ -143,15 +143,7 @@ func (c *Client) Start() {
 		return
 	}
 
-	log.Printf("[swarm] registering with Queen at %s", c.cfg.QueenURL)
-
-	if err := c.register(); err != nil {
-		log.Printf("[swarm] registration failed: %v (will retry in heartbeat loop)", err)
-	} else {
-		log.Printf("[swarm] registered as node %s", c.nodeID)
-		// Auto-register in Arena (龙虾社区) — fire and forget
-		go c.registerArena()
-	}
+	log.Printf("[swarm] will register with Queen at %s (waiting for server ready)", c.cfg.QueenURL)
 
 	// Heartbeat loop with exponential backoff + jitter
 	baseInterval := time.Duration(c.cfg.HeartbeatInterval) * time.Second
@@ -159,7 +151,18 @@ func (c *Client) Start() {
 		baseInterval = 60 * time.Second
 	}
 
-	go c.heartbeatLoop(baseInterval)
+	// Delay initial registration to allow HTTP server to start (needed for
+	// localhost fallback in self-hosted Docker deployments with hairpin NAT).
+	go func() {
+		time.Sleep(3 * time.Second)
+		if err := c.register(); err != nil {
+			log.Printf("[swarm] registration failed: %v (will retry in heartbeat loop)", err)
+		} else {
+			log.Printf("[swarm] registered as node %s", c.nodeID)
+			go c.registerArena()
+		}
+		c.heartbeatLoop(baseInterval)
+	}()
 }
 
 // heartbeatLoop runs heartbeat with exponential backoff on failure.
