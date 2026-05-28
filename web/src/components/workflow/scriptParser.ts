@@ -28,6 +28,14 @@ export interface ParseResult {
   warnings: string[]
 }
 
+export interface ProjectScriptData {
+  title: string
+  description?: string
+  characters: Array<{ label: string; description?: string; role?: string; tag?: string }>
+  props: Array<{ label: string; description?: string; tag?: string }>
+  episodes: EpisodeData[]
+}
+
 interface FrontMatter {
   label?: string
   duration?: number
@@ -40,6 +48,10 @@ interface FrontMatter {
 
 const SCENE_HEADING_RE = /^##\s+(S\d+)\s+(.+?)\s*\((\d+)s\)\s*$/m
 const SCENE_SPLIT_RE = /^##\s+S\d+\s+/m
+const EPISODE_SPLIT_RE = /^##\s+(EP\d+|第\s*\d+\s*集)\s*/m
+const EPISODE_HEADING_RE = /^##\s+(?:EP(\d+)|第\s*(\d+)\s*集)\s*(.*?)\s*(?:\((\d+)s\))?\s*$/m
+const NESTED_SCENE_HEADING_RE = /^###\s+(S\d+)\s+(.+?)\s*\((\d+)s\)\s*$/m
+const NESTED_SCENE_SPLIT_RE = /^###\s+S\d+\s+/m
 
 export function parseScriptMarkdown(md: string): ParseResult {
   const warnings: string[] = []
@@ -108,6 +120,118 @@ export function parseScriptMarkdown(md: string): ParseResult {
   }
 
   return { data, warnings }
+}
+
+export function parseProjectScriptMarkdown(md: string): { project: ProjectScriptData | null; warnings: string[] } {
+  const warnings: string[] = []
+  let body = md
+  let fm: FrontMatter = {}
+  const fmMatch = md.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/)
+  if (fmMatch) {
+    fm = parseFrontMatter(fmMatch[1])
+    body = md.slice(fmMatch[0].length)
+  }
+
+  const episodeSections = splitSections(body, EPISODE_SPLIT_RE)
+  const episodes: EpisodeData[] = []
+  for (const sec of episodeSections) {
+    const head = sec.match(EPISODE_HEADING_RE)
+    if (!head) continue
+    const episodeNumber = Number(head[1] || head[2] || episodes.length + 1)
+    const title = (head[3] || `第 ${episodeNumber} 集`).trim()
+    const scenes = parseNestedScenes(sec.slice(head[0].length))
+    if (scenes.length === 0) warnings.push(`${title} 未发现 ### Sx 场景，已生成空场景骨架`)
+    const duration = Number(head[4]) || scenes.reduce((sum, s) => sum + (s.duration || 0), 0) || 60
+    episodes.push({
+      category: 'scene',
+      label: `EP${String(episodeNumber).padStart(2, '0')} ${title}`,
+      season: 1,
+      episode_number: episodeNumber,
+      duration,
+      description: `${scenes.length}场 · ${duration}s · 剧本导入`,
+      video_resolution: fm.resolution,
+      video_ratio: fm.ratio,
+      scenes,
+      composition: { picked_clips: [], status: 'pending' },
+    })
+  }
+
+  const characters = parseListBlock(body, ['角色', '人物', 'Characters']).map((item, i) => ({
+    ...item,
+    tag: item.tag || `[图${i + 1}]`,
+  }))
+  const props = parseListBlock(body, ['物料', '道具', 'Props', 'Assets']).map((item, i) => ({
+    ...item,
+    tag: item.tag || `[图${characters.length + i + 1}]`,
+  }))
+  if (episodes.length === 0 && characters.length === 0 && props.length === 0) return { project: null, warnings }
+
+  return {
+    project: {
+      title: fm.label || firstHeading(body) || '新短剧项目',
+      description: fm.description || `${episodes.length}集 · ${characters.length}角色 · ${props.length}物料`,
+      characters,
+      props,
+      episodes,
+    },
+    warnings,
+  }
+}
+
+function splitSections(body: string, marker: RegExp): string[] {
+  const sections: string[] = []
+  let lastIdx = 0
+  const re = new RegExp(marker.source, 'gm')
+  let m: RegExpExecArray | null
+  while ((m = re.exec(body))) {
+    if (lastIdx > 0) sections.push(body.slice(lastIdx, m.index))
+    lastIdx = m.index
+  }
+  if (lastIdx > 0) sections.push(body.slice(lastIdx))
+  return sections
+}
+
+function parseNestedScenes(body: string): SceneSpec[] {
+  return splitSections(body, NESTED_SCENE_SPLIT_RE).map(sec => {
+    const head = sec.match(NESTED_SCENE_HEADING_RE)
+    if (!head) return null
+    const [, id, label, durStr] = head
+    const sceneBody = sec.slice(head[0].length)
+    const promptMatch = sceneBody.match(/(?:^|\n)(?:prompt|提示词|prompt_zh)\s*[:：]\s*([\s\S]*?)(?:\n\s*\n|\n###|$)/i)
+    const sbMatch = sceneBody.match(/(?:^|\n)(?:storyboard|分镜|cover)\s*[:：]\s*(\S+)/i)
+    return {
+      id,
+      label: label.trim(),
+      duration: Number(durStr) || 0,
+      prompt: promptMatch ? promptMatch[1].trim() : '',
+      storyboard_url: sbMatch ? sbMatch[1].trim() : undefined,
+      storyboard_status: sbMatch ? 'succeeded' : undefined,
+      storyboard_use_as_ref: !!sbMatch,
+      takes: [],
+    } as SceneSpec
+  }).filter(Boolean) as SceneSpec[]
+}
+
+function parseListBlock(body: string, names: string[]): Array<{ label: string; description?: string; role?: string; tag?: string }> {
+  const title = names.map(escapeRegExp).join('|')
+  const re = new RegExp(`^##\\s*(?:${title})\\s*$([\\s\\S]*?)(?=^##\\s+|$)`, 'im')
+  const block = body.match(re)?.[1] || ''
+  return block.split(/\r?\n/).map(line => {
+    const m = line.match(/^\s*[-*]\s*(?:\[([^\]]+)\]\s*)?(.+?)(?:[:：-]\s*(.+))?\s*$/)
+    if (!m) return null
+    const label = (m[2] || '').trim()
+    if (!label) return null
+    const desc = (m[3] || '').trim()
+    return { label, description: desc || undefined, role: desc && desc.length < 12 ? desc : undefined, tag: m[1] ? `[${m[1]}]` : undefined }
+  }).filter(Boolean) as Array<{ label: string; description?: string; role?: string; tag?: string }>
+}
+
+function firstHeading(body: string): string | undefined {
+  return body.match(/^#\s+(.+)$/m)?.[1]?.trim()
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function parseFrontMatter(raw: string): FrontMatter {

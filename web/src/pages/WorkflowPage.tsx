@@ -41,6 +41,7 @@ import { type EpisodeData, type CharacterData, type Take } from '../components/w
 import { buildSeedNodes, loadSwarmManifest, HAS_SEED_PROJECT, PROJECT_LABEL, SEASONS, SPINOFF_GROUPS } from '../components/workflow/swarmUniverseSeed'
 import { modelAPI, toolAPI, workflowAPI, videoAPI } from '../lib/api'
 import { parseTOSFreshness, refreshTOS } from '../components/workflow/tosUrlUtils'
+import type { ProjectScriptData } from '../components/workflow/scriptParser'
 
 const nodeTypes = {
   llm: LLMNode,
@@ -121,6 +122,7 @@ export default function WorkflowPage() {
   )
   const [workflowName, setWorkflowName] = useState('未命名工作流')
   const [workflowCategory, setWorkflowCategory] = useState<string>('')
+  const [projectWorkflows, setProjectWorkflows] = useState<Array<{ id?: string; name: string; role?: string; status?: string }>>([])
   const [saving, setSaving] = useState(false)
   // 保存反馈（toast），3s 后自动消失
   const [saveToast, setSaveToast] = useState<{ kind: 'ok' | 'err' | 'info'; msg: string } | null>(null)
@@ -987,6 +989,7 @@ export default function WorkflowPage() {
         setWorkflowName(wf.name || '未命名工作流')
         setWorkflowCategory(wf.category || '')
         const def = typeof wf.definition === 'string' ? JSON.parse(wf.definition) : wf.definition
+        setProjectWorkflows(Array.isArray(def?.project_meta?.workflows) ? def.project_meta.workflows : [])
         // 只有当后端 definition 真的有内容时才覆盖本地草稿，避免空态擦掉用户数据
         if (def?.nodes && Array.isArray(def.nodes) && def.nodes.length > 0) {
           // Auto-sync character/prop nodes from manifest (单一真相源)
@@ -1260,6 +1263,56 @@ export default function WorkflowPage() {
     if (workflowName === '未命名工作流') setWorkflowName(`${PROJECT_LABEL} · 短剧完整红本`)
     setShowSwarmConfirm(false)
   }, [setNodes, setEdges, workflowName])
+
+  const addImportedProjectScript = useCallback((project: ProjectScriptData) => {
+    const nextName = workflowName === '未命名工作流' ? `${project.title} · 总导演生产看板` : workflowName
+    const createdEpisodeIds: string[] = []
+    setWorkflowCategory('content')
+    if (workflowName === '未命名工作流') setWorkflowName(nextName)
+    setProjectWorkflows(wfs => wfs.length ? wfs : [{ id: workflowId || undefined, name: nextName, role: '总导演生产看板', status: 'active' }])
+    setNodes(nds => {
+      const existingCharCount = nds.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'character').length
+      const existingPropCount = nds.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'prop').length
+      const existingEpisodeCount = nds.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene').length
+      const charNodes: Node[] = project.characters.map((c, i) => ({
+        id: `media-${nodeIdCounter.current++}`,
+        type: 'media',
+        position: { x: 80, y: 100 + (existingCharCount + i) * 110 },
+        data: { category: 'character', label: c.label, description: c.description, role: c.role, tag: c.tag, source: 'script-import' },
+      }))
+      const propNodes: Node[] = project.props.map((p, i) => ({
+        id: `media-${nodeIdCounter.current++}`,
+        type: 'media',
+        position: { x: 80, y: 620 + (existingPropCount + i) * 92 },
+        data: { category: 'prop', label: p.label, description: p.description, tag: p.tag, source: 'script-import' },
+      }))
+      const episodeNodes: Node[] = project.episodes.map((ep, i) => {
+        const id = `media-${nodeIdCounter.current++}`
+        createdEpisodeIds.push(id)
+        return {
+          id,
+          type: 'media',
+          position: { x: 280 + ((existingEpisodeCount + i) % 5) * 220, y: 260 + Math.floor((existingEpisodeCount + i) / 5) * 180 },
+          data: { ...ep, source: 'script-import' } as unknown as Record<string, unknown>,
+        }
+      })
+      return [...nds, ...charNodes, ...propNodes, ...episodeNodes]
+    })
+    setShowOverview(true)
+    setTimeout(() => {
+      const firstId = createdEpisodeIds[0]
+      if (!firstId) return
+      setNodes(curr => {
+        const node = curr.find(n => n.id === firstId)
+        if (node) {
+          setSelectedNode(node)
+          setFocusedEpisodeId(firstId)
+          setFocusedSceneId(null)
+        }
+        return curr
+      })
+    }, 0)
+  }, [workflowId, workflowName, setNodes])
 
   // ── 剧本/bible/提示词文本缓存 + 获取 ──
   const textCacheRef = useRef<Record<string, string>>({})
@@ -1846,6 +1899,36 @@ export default function WorkflowPage() {
     [nodes, setNodes],
   )
 
+  const addImportedDramaScript = useCallback((data: EpisodeData) => {
+    const episodeCount = nodes.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'scene').length
+    const nextName = workflowName === '未命名工作流' && data.label ? `${data.label} · 总导演生产看板` : workflowName
+    const id = addMediaNodeWithData({
+      ...data,
+      category: 'scene',
+      season: data.season || 1,
+      episode_number: data.episode_number || episodeCount + 1,
+      is_spinoff: !!data.is_spinoff,
+      source: 'script-import',
+    } as unknown as Record<string, unknown>)
+    setWorkflowCategory('content')
+    if (workflowName === '未命名工作流' && data.label) setWorkflowName(nextName)
+    setProjectWorkflows(wfs => wfs.length ? wfs : [{ id: workflowId || undefined, name: nextName, role: '总导演生产看板', status: 'active' }])
+    setTimeout(() => {
+      setNodes(curr => {
+        const node = curr.find(n => n.id === id)
+        if (node) {
+          setSelectedNode(node)
+          setFocusedEpisodeId(id)
+          setFocusedSceneId(null)
+          setTimeout(() => {
+            try { rfRef.current?.fitView({ nodes: [{ id }], duration: 500, padding: 0.4, maxZoom: 1.4 }) } catch { /* ignore */ }
+          }, 80)
+        }
+        return curr
+      })
+    }, 0)
+  }, [addMediaNodeWithData, nodes, workflowId, workflowName, setNodes])
+
   // ── 显示临时 toast · 3s 自动消失 ──
   const showToast = useCallback((kind: 'ok' | 'err' | 'info', msg: string) => {
     setSaveToast({ kind, msg })
@@ -1873,7 +1956,8 @@ export default function WorkflowPage() {
     const auto = !!opts?.auto
     setSaving(true)
     try {
-      const definition = JSON.stringify({ nodes, edges })
+      const workflows = projectWorkflows.length ? projectWorkflows : [{ id: workflowId || undefined, name: workflowName, role: '总导演生产看板', status: 'active' }]
+      const definition = JSON.stringify({ nodes, edges, project_meta: { kind: 'short_drama', workflows } })
       if (definition === lastSavedDefRef.current) {
         if (!auto) showToast('info', '无改动，无需保存')
         return
@@ -1901,7 +1985,7 @@ export default function WorkflowPage() {
     } finally {
       setSaving(false)
     }
-  }, [nodes, edges, workflowId, workflowName, navigate, showToast])
+  }, [nodes, edges, workflowId, workflowName, projectWorkflows, navigate, showToast])
 
   const handleSave = () => { void doSave() }
 
@@ -2017,9 +2101,23 @@ export default function WorkflowPage() {
           )}
           {isDramaWorkflow && HAS_SEED_PROJECT && (
           <button onClick={loadSwarmUniverse}
-            title={`一键加载${PROJECT_LABEL}完整资产`}
+            title="一键加载示例短剧项目资产"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-violet-600/90 to-cyan-600/90 backdrop-blur border border-violet-500/50 text-white hover:from-violet-500 hover:to-cyan-500 transition-all shadow-lg shadow-violet-900/30">
-            <Sparkles className="w-3.5 h-3.5" /> {PROJECT_LABEL}
+            <Sparkles className="w-3.5 h-3.5" /> 示例资产
+          </button>
+          )}
+          {isDramaWorkflow && (
+          <button onClick={() => { setImportTargetType(null); setShowImportModal(true) }}
+            title="导入完整剧本或分集 Markdown，自动生成剧集、场景和生产节点"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-indigo-700/40 text-indigo-200 hover:text-white hover:bg-indigo-900/40 transition-all">
+            <FileText className="w-3.5 h-3.5" /> 导入剧本
+          </button>
+          )}
+          {isDramaWorkflow && (
+          <button onClick={() => { setEpModalSeason(1); setEpModalSpinoffGroup(undefined); setShowEpModal(true) }}
+            title="新建一集短剧，后续可继续补剧本、分镜、物料和生产流"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800/80 backdrop-blur border border-cyan-700/40 text-cyan-200 hover:text-white hover:bg-cyan-900/40 transition-all">
+            <Clapperboard className="w-3.5 h-3.5" /> 新建剧集
           </button>
           )}
           {isDramaWorkflow && (
@@ -2083,14 +2181,14 @@ export default function WorkflowPage() {
                 <PanelLeftClose className="w-3.5 h-3.5" />
               </button>
             </div>
-            {/* 🌌 宇宙总览入口 */}
+            {/* 项目总览入口 */}
             <button
               onClick={() => setShowOverview(true)}
               className="mx-2 mt-2 mb-1 px-2.5 py-2 rounded-lg bg-gradient-to-r from-violet-600/20 via-cyan-600/20 to-emerald-600/20 hover:from-violet-600/40 hover:via-cyan-600/40 hover:to-emerald-600/40 border border-violet-500/30 hover:border-violet-400/60 text-xs font-medium text-violet-200 hover:text-white transition flex items-center gap-2 shadow-md shadow-violet-900/20"
-              title="查看 5 季 50 集项目全景 + 角色卡 + 世界观骨架"
+              title="查看剧本总览、角色、剧集、物料和关联工作流"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span className="flex-1 text-left">🌌 宇宙总览</span>
+              <span className="flex-1 text-left">🎬 项目总览</span>
               <ChevronRight className="w-3 h-3 opacity-60" />
             </button>
             <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -2970,13 +3068,19 @@ export default function WorkflowPage() {
         />
       )}
 
-      {/* 📥 广告剧本导入 (.md → scenes) */}
+      {/* 📥 剧本导入 (.md → scenes) */}
       <ScriptImporterModal
         open={showImportModal}
         adType={importTargetType ?? undefined}
         onClose={() => { setShowImportModal(false); setImportTargetType(null) }}
         onImport={(data) => {
           if (importTargetType) addImportedAdScript(importTargetType.id, data)
+          else addImportedDramaScript(data)
+          setShowImportModal(false)
+          setImportTargetType(null)
+        }}
+        onImportProject={(project) => {
+          addImportedProjectScript(project)
           setShowImportModal(false)
           setImportTargetType(null)
         }}
@@ -2987,6 +3091,8 @@ export default function WorkflowPage() {
         open={showOverview}
         onClose={() => setShowOverview(false)}
         nodes={nodes}
+        workflowName={workflowName}
+        workflows={projectWorkflows}
         onFocusEpisode={focusEpisodeFromOverview}
       />
 

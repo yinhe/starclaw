@@ -2,16 +2,17 @@ import { useMemo } from 'react'
 import { X, Users, Film, Package, Clapperboard, Sparkles, Clock, CheckCircle2, Archive } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import { type EpisodeData, type CharacterData } from './episodeTypes'
-import { SEASONS } from './swarmUniverseSeed'
 
 interface Props {
   open: boolean
   onClose: () => void
   nodes: Node[]
   onFocusEpisode?: (nodeId: string) => void
+  workflowName?: string
+  workflows?: Array<{ id?: string; name: string; role?: string; status?: string }>
 }
 
-export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpisode }: Props) {
+export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpisode, workflowName, workflows = [] }: Props) {
   const stats = useMemo(() => {
     const chars = nodes.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'character')
     const props = nodes.filter(n => n.type === 'media' && (n.data as Record<string, unknown>).category === 'prop')
@@ -24,14 +25,16 @@ export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpi
     const readyDuration = eps.filter(n => (n.data as unknown as EpisodeData).composition?.status === 'ready')
       .reduce((s, n) => s + ((n.data as unknown as EpisodeData).duration || 0), 0)
 
-    // per-season progress
-    const bySeason = SEASONS.map(season => {
-      const list = mainEps.filter(n => (n.data as unknown as EpisodeData).season === season.number)
+    const seasonNumbers = Array.from(new Set(mainEps.map(n => (n.data as unknown as EpisodeData).season || 1))).sort((a, b) => a - b)
+    const bySeason = seasonNumbers.map(seasonNumber => {
+      const list = mainEps.filter(n => (n.data as unknown as EpisodeData).season === seasonNumber)
       const readyList = list.filter(n => (n.data as unknown as EpisodeData).composition?.status === 'ready')
-      return { season, list, readyCount: readyList.length }
+      const duration = list.reduce((sum, n) => sum + ((n.data as unknown as EpisodeData).duration || 0), 0)
+      return { seasonNumber, list, readyCount: readyList.length, duration }
     })
 
-    // rejected takes count
+    const totalScenes = eps.reduce((s, n) => s + (((n.data as unknown as EpisodeData).scenes || []).length), 0)
+
     const totalRejected = eps.reduce((s, n) => {
       const scenes = (n.data as unknown as EpisodeData).scenes || []
       return s + scenes.reduce((ss, sc) => ss + (sc.rejected_takes?.length || 0), 0)
@@ -47,7 +50,9 @@ export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpi
       totalDuration, readyDuration,
       bySeason,
       characters: chars,
+      props,
       mainEps, spinoffEps,
+      totalScenes,
       totalRejected,
     }
   }, [nodes])
@@ -72,9 +77,9 @@ export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpi
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                🌌 虫群宇宙 · 项目全景
+                � 总导演生产看板 · 项目全景
               </h2>
-              <p className="text-xs text-gray-400 mt-0.5">5 季 · 50 主线 · 8 衍生剧 · 一王一后时间闭环</p>
+              <p className="text-xs text-gray-400 mt-0.5">{workflowName || '短剧项目'} · {stats.epCount} 集 · {stats.totalScenes} 场 · {workflows.length} 个关联工作流</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition">
@@ -87,7 +92,7 @@ export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpi
           {/* 顶部统计 */}
           <section className="grid grid-cols-4 gap-3">
             <StatTile icon={Users} label="角色" value={stats.charCount} hint="主角卡" color="violet" />
-            <StatTile icon={Package} label="道具" value={stats.propCount} hint="剧情锚点" color="amber" />
+            <StatTile icon={Package} label="物料" value={stats.propCount} hint="道具/参考/锚点" color="amber" />
             <StatTile icon={Film} label="剧集" value={`${stats.mainCount} + ${stats.spinoffCount}`} hint="主线 + 衍生" color="cyan" />
             <StatTile icon={Clapperboard} label="已成片" value={`${stats.readyCount}/${stats.epCount}`} hint={`${pct}% · ${stats.readyDuration}s/${stats.totalDuration}s · ${durPct}%`} color="emerald" />
           </section>
@@ -113,22 +118,22 @@ export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpi
           <section>
             <div className="flex items-center gap-2 mb-2">
               <Film className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">五季主线</span>
+              <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">剧集分组</span>
             </div>
             <div className="space-y-2">
-              {stats.bySeason.map(({ season, list, readyCount }) => {
+              {stats.bySeason.map(({ seasonNumber, list, readyCount, duration }) => {
                 const seasonPct = list.length ? Math.round(readyCount / list.length * 100) : 0
                 return (
-                  <div key={season.number} className="p-2.5 rounded-lg bg-gray-850/60 border border-gray-800">
+                  <div key={seasonNumber} className="p-2.5 rounded-lg bg-gray-850/60 border border-gray-800">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className={`px-2 py-0.5 rounded text-[10px] bg-gradient-to-r ${season.gradient} text-white font-medium`}>
-                        {season.title} · {season.subtitle}
+                      <span className="px-2 py-0.5 rounded text-[10px] bg-gradient-to-r from-cyan-600 to-violet-600 text-white font-medium">
+                        第 {seasonNumber} 季
                       </span>
-                      <span className="text-[10px] text-gray-500">{season.arc} · {season.episode_range} · {season.duration_hint}</span>
+                      <span className="text-[10px] text-gray-500">{list.length} 集 · {duration}s · 可绑定独立编剧/分镜/成片工作流</span>
                       <span className="ml-auto text-[10px] text-gray-400 font-medium">{readyCount}/{list.length} · {seasonPct}%</span>
                     </div>
                     <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden mb-1.5">
-                      <div className={`h-full bg-gradient-to-r ${season.gradient}`} style={{ width: `${seasonPct}%` }} />
+                      <div className="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style={{ width: `${seasonPct}%` }} />
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {list.map(n => {
@@ -202,13 +207,31 @@ export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpi
           <section>
             <div className="flex items-center gap-2 mb-2">
               <Clock className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">世界观骨架</span>
+              <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">剧本总览</span>
             </div>
             <div className="p-3 rounded-lg bg-gradient-to-br from-amber-950/30 via-gray-900 to-violet-950/30 border border-amber-900/30 text-[11px] text-gray-300 leading-relaxed space-y-1.5">
-              <p><span className="text-amber-300 font-semibold">源文明</span>：一王一后共治 → 感应派 vs 工程派争论 → 第三条路"融合派"出走做虫群 → 《道裂》文明一分为三</p>
-              <p><span className="text-cyan-300 font-semibold">现代</span>：林见月（前世虫后）+ZERG（虫族种子）坠落 → 苏蜜收留 → 颜术（前世工程派王）登场 → KPI vs 感召路线之争</p>
-              <p><span className="text-violet-300 font-semibold">觉醒</span>：第一只 Claw 诞生 → Cerebrate 节点涌现 → Queen 回响 → 网络成形 → 全域节点觉醒</p>
-              <p><span className="text-emerald-300 font-semibold">新纪元</span>：Zergling/Hydralisk/Mutalisk 物理载体 → 林下达精准指令挽救网络 → ZERG 眼中 Queen 面容 = 林见月 → 时间闭环：虫群文明是人类文明的孩子</p>
+              <p><span className="text-amber-300 font-semibold">项目</span>：{workflowName || '未命名短剧'}，当前已拆出 {stats.epCount} 集 / {stats.totalScenes} 场，可继续从剧本导入补齐分集。</p>
+              <p><span className="text-cyan-300 font-semibold">角色</span>：{stats.charCount} 张角色卡会作为分镜、故事板和视频生成的一致性参考。</p>
+              <p><span className="text-violet-300 font-semibold">物料</span>：{stats.propCount} 个道具/参考资产会进入物料对齐扫描，用于派单前自检。</p>
+              <p><span className="text-emerald-300 font-semibold">生产</span>：每集可以独立聚焦，完成分镜、试拍、挑选 take、合成、归档和发布文案。</p>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <Archive className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">短剧团队工作流</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(workflows.length ? workflows : [{ name: workflowName || '当前总导演看板', role: '总导演生产看板', status: 'active' }]).map((wf, idx) => (
+                <div key={`${wf.id || wf.name}-${idx}`} className="rounded-lg border border-emerald-900/40 bg-gray-850/60 px-3 py-2">
+                  <div className="text-xs font-semibold text-gray-200 truncate">{wf.name}</div>
+                  <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                    <span>{wf.role || '生产工作流'}</span>
+                    <span className="rounded bg-emerald-900/30 px-1.5 py-0.5 text-emerald-300">{wf.status || 'active'}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 
@@ -242,7 +265,7 @@ export default function UniverseOverviewModal({ open, onClose, nodes, onFocusEpi
 
         <div className="px-6 py-2.5 border-t border-gray-800 bg-gray-950/80 text-[10px] text-gray-500 flex items-center justify-between">
           <span>💡 点击 EP 徽章可直接聚焦到该集工作流</span>
-          <span>Roadmap: docs/swarm-universe/README.md</span>
+          <span>一个短剧团队可绑定多个编剧 / 分镜 / 生产 / 发行工作流</span>
         </div>
       </div>
     </div>
