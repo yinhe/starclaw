@@ -26,6 +26,21 @@ type StarAIBalance struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+type StarAIUsageItem struct {
+	Month        string  `json:"month"`
+	ResourceType string  `json:"resource_type"`
+	Total        int64   `json:"total"`
+	TotalCost    float64 `json:"total_cost"`
+}
+
+type StarAIUsageSummary struct {
+	Period        string                      `json:"period"`
+	Usage         map[string]int64            `json:"usage"`
+	Cost          map[string]float64          `json:"cost"`
+	UsageBySource map[string]map[string]int64 `json:"usage_by_source"`
+	History       []StarAIUsageItem           `json:"history"`
+}
+
 // StarAI proxy singleton — set once during router init, used by all tools
 var (
 	staraiMu      sync.RWMutex
@@ -160,6 +175,43 @@ func GetStarAIBalance(force bool) *StarAIBalance {
 	staraiBalance = bal
 	staraiMu.Unlock()
 	return bal
+}
+
+func GetStarAIUsageSummary() (*StarAIUsageSummary, error) {
+	staraiMu.RLock()
+	client := staraiClient
+	baseURL := staraiBaseURL
+	staraiMu.RUnlock()
+
+	if client == nil || baseURL == "" {
+		return nil, http.ErrServerClosed
+	}
+
+	summaryURL := strings.TrimSuffix(baseURL, "/v1") + "/v1/claw/usage-summary"
+	req, err := http.NewRequest("GET", summaryURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, http.ErrNoLocation
+	}
+
+	var summary StarAIUsageSummary
+	if err := json.Unmarshal(body, &summary); err != nil {
+		return nil, err
+	}
+	return &summary, nil
 }
 
 // autoProvisionAPIKey calls Router /v1/claw/provision to get or verify API key.

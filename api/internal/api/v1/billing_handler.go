@@ -10,6 +10,7 @@ import (
 	"github.com/yinhe/starclaw/internal/billing"
 	"github.com/yinhe/starclaw/internal/model"
 	"github.com/yinhe/starclaw/internal/swarm"
+	"github.com/yinhe/starclaw/internal/tool"
 	"gorm.io/gorm"
 )
 
@@ -110,6 +111,21 @@ func (h *BillingHandler) GetCurrentPlan(c *gin.Context) {
 	month := time.Now().Format("2006-01")
 	usage := h.getMonthUsage(tenant.ID, userID, month)
 	cost := h.getMonthCost(tenant.ID, userID, month)
+	usageBySrc := h.getMonthUsageBySource(tenant.ID, userID, month)
+	if summary, err := tool.GetStarAIUsageSummary(); err == nil && summary != nil {
+		if len(summary.Usage) > 0 {
+			usage = summary.Usage
+		}
+		if len(summary.Cost) > 0 {
+			cost = summary.Cost
+		}
+		if len(summary.UsageBySource) > 0 {
+			usageBySrc = summary.UsageBySource
+		}
+		if summary.Period != "" {
+			month = summary.Period
+		}
+	}
 
 	// Use Queen balance as authoritative source if available
 	balance := tenant.Balance
@@ -118,9 +134,6 @@ func (h *BillingHandler) GetCurrentPlan(c *gin.Context) {
 			balance = float64(queenBalance) // Queen returns balance in 分 (stars)
 		}
 	}
-
-	// Usage split by source (starai vs self)
-	usageBySrc := h.getMonthUsageBySource(tenant.ID, userID, month)
 
 	c.JSON(200, gin.H{
 		"tenant":          tenant,
@@ -185,6 +198,10 @@ func (h *BillingHandler) GetUsageHistory(c *gin.Context) {
 	tenant, err := h.getTenant(userID)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if summary, err := tool.GetStarAIUsageSummary(); err == nil && summary != nil && len(summary.History) > 0 {
+		c.JSON(200, gin.H{"usage": summary.History})
 		return
 	}
 
