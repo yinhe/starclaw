@@ -24,14 +24,21 @@ const (
 	checkEvery = 1 * time.Hour
 )
 
-// Update sources: GitHub (primary) → Nydus mirror (fallback for China / offline)
+// Update sources: Nydus CN (fastest for China) → GitHub → Nydus international
 var UpdateSources = []UpdateSource{
+	{Name: "nydus-cn", ReleaseURL: "https://nydus.starclaw.net.cn/releases/latest", Timeout: 5 * time.Second},
 	{Name: "github", ReleaseURL: "https://api.github.com/repos/yinhe/starclaw/releases/latest", Timeout: 8 * time.Second},
 	{Name: "nydus", ReleaseURL: "https://nydus.starclaw.net/releases/latest", Timeout: 5 * time.Second},
 }
 
-// NydusSourceURL is the tarball URL for source-based updates (fallback when git fetch fails)
-const NydusSourceURL = "https://nydus.starclaw.net/releases/source.tar.gz"
+// NydusSourceURLs are tarball URLs for source-based updates (tried in order)
+var NydusSourceURLs = []string{
+	"https://nydus.starclaw.net.cn/releases/source.tar.gz",
+	"https://nydus.starclaw.net/releases/source.tar.gz",
+}
+
+// NydusSourceURL is the primary source tarball URL (kept for backward compat)
+const NydusSourceURL = "https://nydus.starclaw.net.cn/releases/source.tar.gz"
 
 type UpdateSource struct {
 	Name       string
