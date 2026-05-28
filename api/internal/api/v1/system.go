@@ -189,45 +189,44 @@ func (h *SystemHandler) LeaveSwarm(c *gin.Context) {
 // GetCredits returns cached star energy balance from Queen (updated via heartbeat).
 // If ?refresh=true, queries Queen directly for latest balance.
 func (h *SystemHandler) GetCredits(c *gin.Context) {
-	if h.swarmClient == nil || !h.swarmClient.Connected() {
-		// Standalone mode: try star-ai.net balance first, fall back to local stardust
-		force := c.Query("refresh") == "true"
-		if bal := tool.GetStarAIBalance(force); bal != nil {
-			hp := "healthy"
-			switch bal.StarStatus {
-			case "hibernated":
-				hp = "hibernated"
-			case "":
-				// Derive from balance if Queen didn't return status
-				if bal.Balance < 100 {
-					hp = "critical"
-				} else if bal.Balance < 500 {
-					hp = "low"
-				} else if bal.Balance >= 5000 {
-					hp = "full"
-				}
-			default:
-				if bal.Balance < 100 {
-					hp = "critical"
-				} else if bal.Balance < 500 {
-					hp = "low"
-				} else if bal.Balance >= 5000 {
-					hp = "full"
-				}
+	force := c.Query("refresh") == "true"
+
+	// Always prefer StarAI balance (includes pending debt for accurate effective balance)
+	if bal := tool.GetStarAIBalance(force); bal != nil {
+		// bal.Balance is effective display value (raw ⚡ minus pending debt in cents).
+		// Convert back to internal-units scale (×10000) for BillingPage formatEnergy().
+		effectiveInternal := int64(bal.Balance * 10000)
+
+		hp := "healthy"
+		if bal.StarStatus == "hibernated" {
+			hp = "hibernated"
+		} else if effectiveInternal < 0 {
+			hp = "critical"
+		} else {
+			energy := float64(effectiveInternal) / 10000.0
+			if energy < 100 {
+				hp = "critical"
+			} else if energy < 500 {
+				hp = "low"
+			} else if energy >= 5000 {
+				hp = "full"
 			}
-			c.JSON(http.StatusOK, gin.H{
-				"connected":      true,
-				"balance":        bal.BalanceRaw, // internal units (1⚡ = 10000) for BillingPage formatEnergy()
-				"balance_energy": bal.Balance,    // display ⚡ value for HPBar
-				"hp_status":      hp,
-				"status":         "synapse",
-				"star_status":    bal.StarStatus,
-				"message":        fmt.Sprintf("星能余额 %.1f ⚡（star-ai.net）", bal.Balance),
-				"updated_at":     bal.UpdatedAt.Format("15:04:05"),
-			})
-			return
 		}
-		// StarAI unreachable — show disconnected, never fake balance
+		c.JSON(http.StatusOK, gin.H{
+			"connected":      true,
+			"balance":        effectiveInternal, // internal-unit scale for BillingPage formatEnergy()
+			"balance_energy": bal.Balance,        // effective display value for HPBar
+			"hp_status":      hp,
+			"status":         "synapse",
+			"star_status":    bal.StarStatus,
+			"message":        fmt.Sprintf("星能余额 %.1f ⚡（star-ai.net）", bal.Balance),
+			"updated_at":     bal.UpdatedAt.Format("15:04:05"),
+		})
+		return
+	}
+
+	// StarAI unreachable — fall back to CreditClient (raw Queen balance)
+	if h.swarmClient == nil || !h.swarmClient.Connected() {
 		c.JSON(http.StatusOK, gin.H{
 			"connected": false,
 			"message":   "未连接星能网络（star-ai.net 不可达）",
@@ -235,27 +234,25 @@ func (h *SystemHandler) GetCredits(c *gin.Context) {
 		return
 	}
 
-	// Direct query if requested
-	if c.Query("refresh") == "true" {
-		if cc := h.swarmClient.CreditClient(); cc != nil {
-			if balance, err := cc.QueryBalance(); err == nil {
-				c.JSON(http.StatusOK, gin.H{
-					"connected":      true,
-					"balance":        balance.Balance,
-					"balance_energy": balance.BalanceEnergy,
-					"frozen":         balance.Frozen,
-					"frozen_energy":  balance.FrozenEnergy,
-					"total_in":       balance.TotalIn,
-					"total_out":      balance.TotalOut,
-					"nonce":          balance.Nonce,
-					"status":         balance.Status,
-					"hp_status":      balance.HPStatus,
-					"hp":             string(cc.HP()),
-					"trust_level":    balance.TrustLevel,
-					"updated_at":     balance.UpdatedAt,
-				})
-				return
-			}
+	// Direct query via CreditClient as fallback
+	if cc := h.swarmClient.CreditClient(); cc != nil {
+		if balance, err := cc.QueryBalance(); err == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"connected":      true,
+				"balance":        balance.Balance,
+				"balance_energy": balance.BalanceEnergy,
+				"frozen":         balance.Frozen,
+				"frozen_energy":  balance.FrozenEnergy,
+				"total_in":       balance.TotalIn,
+				"total_out":      balance.TotalOut,
+				"nonce":          balance.Nonce,
+				"status":         balance.Status,
+				"hp_status":      balance.HPStatus,
+				"hp":             string(cc.HP()),
+				"trust_level":    balance.TrustLevel,
+				"updated_at":     balance.UpdatedAt,
+			})
+			return
 		}
 	}
 

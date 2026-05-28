@@ -89,8 +89,9 @@ const ENERGY_UNIT = 10000
 
 function formatEnergy(units: number): string {
   const stars = units / ENERGY_UNIT
-  if (stars >= 10000) return `${(stars / 10000).toFixed(2)}万`
-  if (stars >= 1000) return `${(stars / 1000).toFixed(2)}K`
+  const abs = Math.abs(stars)
+  if (abs >= 10000) return `${(abs / 10000).toFixed(2)}万`
+  if (abs >= 1000) return `${(abs / 1000).toFixed(2)}K`
   return stars.toFixed(2)
 }
 
@@ -277,7 +278,10 @@ export default function BillingPage() {
   const hp = credits?.hp_status ?? 'hibernated'
   const hpMeta = hpConfig[hp] || hpConfig.hibernated
   const trust = trustConfig[credits?.trust_level || 'newcomer'] || trustConfig.newcomer
-  const pct = Math.min(100, ((credits?.balance_energy ?? 0) / 2000) * 100)
+  const effectiveEnergy = credits?.balance_energy ?? ((credits?.balance ?? 0) / ENERGY_UNIT)
+  const effectiveUnits = effectiveEnergy * ENERGY_UNIT
+  const isDebt = effectiveEnergy < 0
+  const pct = Math.min(100, (Math.max(effectiveEnergy, 0) / 2000) * 100)
   const clawAuthUrl = normalizeClawUrl(window.location.origin)
   const topUpUrl = nodeInfo?.node_id
     ? `https://star-ai.net/login?claw_url=${encodeURIComponent(clawAuthUrl)}&claw_id=${encodeURIComponent(nodeInfo.node_id)}`
@@ -361,18 +365,18 @@ export default function BillingPage() {
               </div>
             )}
 
-            <div className={`relative overflow-hidden rounded-2xl p-6 text-white ${connected ? (credits?.balance != null && credits.balance < 0 ? 'bg-gradient-to-br from-red-900 via-red-800 to-gray-900' : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900') : 'bg-gradient-to-br from-gray-500 to-gray-600'}`}>
+            <div className={`relative overflow-hidden rounded-2xl p-6 text-white ${connected ? (isDebt ? 'bg-gradient-to-br from-red-900 via-red-800 to-gray-900' : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900') : 'bg-gradient-to-br from-gray-500 to-gray-600'}`}>
               <div className="absolute -top-8 -right-8 h-48 w-48 opacity-[0.04]"><Zap className="h-full w-full" fill="white" /></div>
               <div className="relative">
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div>
-                    <p className={`text-xs font-medium uppercase tracking-wider ${connected && credits?.balance != null && credits.balance < 0 ? 'text-red-300' : 'text-gray-300'}`}>{connected && credits?.balance != null && credits.balance < 0 ? '⚠️ 欠费' : '真实星能余额'}</p>
+                    <p className={`text-xs font-medium uppercase tracking-wider ${connected && isDebt ? 'text-red-300' : 'text-gray-300'}`}>{connected && isDebt ? '⚠️ 欠费' : '真实星能余额'}</p>
                     <div className="mt-2 flex items-end gap-3">
-                      <span className={`text-5xl font-extrabold tracking-tight ${connected && credits?.balance != null && credits.balance < 0 ? 'text-red-400' : ''}`}>{connected ? (credits?.balance != null && credits.balance < 0 ? `-${formatEnergy(Math.abs(credits.balance))}` : formatEnergy(credits?.balance ?? 0)) : '—'}</span>
+                      <span className={`text-5xl font-extrabold tracking-tight ${connected && isDebt ? 'text-red-400' : ''}`}>{connected ? (isDebt ? `-${formatEnergy(Math.abs(effectiveUnits))}` : formatEnergy(effectiveUnits)) : '—'}</span>
                       <Zap className="mb-1 h-5 w-5 text-amber-400" fill="currentColor" />
                     </div>
-                    {connected && credits?.balance != null && credits.balance < 0 && <p className="mt-1.5 text-xs text-red-300">请充值结清欠费后才能继续使用</p>}
-                    {connected && credits?.balance != null && credits.balance >= 0 && <p className="mt-1.5 text-xs font-mono text-gray-400">{credits.balance.toLocaleString()} 内部单位</p>}
+                    {connected && isDebt && <p className="mt-1.5 text-xs text-red-300">请充值结清欠费后才能继续使用</p>}
+                    {connected && !isDebt && <p className="mt-1.5 text-xs font-mono text-gray-400">{Math.round(effectiveUnits).toLocaleString()} 内部单位</p>}
                   </div>
                   <button onClick={handleRefresh} disabled={refreshing} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 px-3 py-1.5 text-xs text-white hover:bg-white/5 disabled:opacity-50">
                     <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} /> 刷新
@@ -443,17 +447,17 @@ export default function BillingPage() {
         {/* Usage Tab */}
         {tab === 'usage' && (
           <div className="space-y-6">
-            <div className={`rounded-2xl p-6 text-white ${connected ? (credits?.balance != null && credits.balance < 0 ? 'bg-gradient-to-r from-red-900 via-red-800 to-gray-900' : 'bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900') : 'bg-gradient-to-r from-gray-500 to-gray-600'}`}>
+            <div className={`rounded-2xl p-6 text-white ${connected ? (isDebt ? 'bg-gradient-to-r from-red-900 via-red-800 to-gray-900' : 'bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900') : 'bg-gradient-to-r from-gray-500 to-gray-600'}`}>
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className={`text-xs font-medium uppercase tracking-wider ${connected && credits?.balance != null && credits.balance < 0 ? 'text-red-300' : 'text-gray-300'}`}>{connected && credits?.balance != null && credits.balance < 0 ? '⚠️ 欠费' : '真实星能余额'}</p>
+                  <p className={`text-xs font-medium uppercase tracking-wider ${connected && isDebt ? 'text-red-300' : 'text-gray-300'}`}>{connected && isDebt ? '⚠️ 欠费' : '真实星能余额'}</p>
                   <div className="mt-2 flex items-end gap-3">
-                    <span className={`text-4xl font-extrabold tracking-tight ${connected && credits?.balance != null && credits.balance < 0 ? 'text-red-400' : ''}`}>{connected ? (credits?.balance != null && credits.balance < 0 ? `-${formatEnergy(Math.abs(credits.balance))}` : formatEnergy(credits?.balance ?? 0)) : '—'}</span>
+                    <span className={`text-4xl font-extrabold tracking-tight ${connected && isDebt ? 'text-red-400' : ''}`}>{connected ? (isDebt ? `-${formatEnergy(Math.abs(effectiveUnits))}` : formatEnergy(effectiveUnits)) : '—'}</span>
                     <Zap className="mb-1 h-5 w-5 text-amber-400" fill="currentColor" />
                   </div>
                   <p className="mt-2 text-sm text-gray-300">
                     {connected
-                      ? (credits?.balance != null && credits.balance < 0
+                      ? (isDebt
                         ? '请充值结清欠费后才能继续使用'
                         : `状态：${hpLabels[credits?.hp_status || 'hibernated'] || '未知'}${credits?.updated_at ? ` · 更新于 ${new Date(credits.updated_at).toLocaleString()}` : ''}`)
                       : '当前未同步到 Queen 星能余额'}
