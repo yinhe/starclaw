@@ -1,3 +1,5 @@
+
+
 <h1 align="center">🦞 StarClaw</h1>
 
 <p align="center">
@@ -37,7 +39,7 @@
 | **RAG Knowledge Base** | Document upload → smart chunking → vector embedding → semantic retrieval |
 | **Tool System** | Browser control, code execution, video/music/image generation, TTS, web search |
 | **Multi-Model** | Qwen · OpenAI · DeepSeek · Anthropic · Ollama · OpenRouter |
-| **Coding Agent** | Autonomous coding, file ops, sandbox for 13 languages |
+| **Coding Agent** | Autonomous coding, file ops, sandbox for 14 languages |
 | **MCP Compatible** | Connect external MCP tool servers to extend Agent capabilities |
 | **P2P Network** | Ed25519 identity · Gossip protocol · DHT · NAT traversal · encrypted node-to-node communication |
 | **BYOK** | Bring Your Own Key — use your own API keys, completely free |
@@ -151,7 +153,7 @@ server:
 
 ## 🤝 Contributing
 
-We welcome contributions of all kinds! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions of all kind! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 - 🐛 [Report a bug](https://github.com/yinhe/starclaw/issues)
 - 💡 [Suggest a feature](https://github.com/yinhe/starclaw/discussions)
